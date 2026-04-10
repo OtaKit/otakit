@@ -1,0 +1,63 @@
+{
+  "name": "@otakit/cli",
+  "version": "1.0.0",
+  "description": "CLI for uploading and releasing OtaKit OTA bundles",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "author": "OtaKit",
+  "bin": {
+    "otakit": "./bin/otakit.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OtaKit/otakit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OtaKit/otakit/issues"
+  },
+  "homepage": "https://github.com/OtaKit/otakit/tree/main/packages/cli#readme",
+  "files": [
+    "LICENSE",
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "node -e \"console.log('No tests configured')\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "dotenv": "^17.2.3",
+    "ora": "^9.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/archiver": "^7.0.0",
+    "@types/node": "^25.2.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.32.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "capacitor",
+    "ota",
+    "cli",
+    "update",
+    "release"
+  ]
+}

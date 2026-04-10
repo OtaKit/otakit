@@ -1,0 +1,39 @@
+{
+  "name": "demo-app",
+  "version": "0.3.15",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "build:cap": "next build && npx cap sync",
+    "ios": "npx cap open ios",
+    "android": "npx cap open android",
+    "ios:run": "npx cap run ios",
+    "android:run": "npx cap run android",
+    "release": "bash release.sh",
+    "release:prod": "bash release.sh --channel production"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/ios": "^8.0.2",
+    "@otakit/capacitor-updater": "workspace:*",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@otakit/cli": "workspace:*",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

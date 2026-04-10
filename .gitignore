@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Native builds
+packages/capacitor-plugin/ios/Pods/
+packages/capacitor-plugin/ios/DerivedData/
+packages/capacitor-plugin/ios/*.xcworkspace
+packages/capacitor-plugin/ios/build/
+packages/capacitor-plugin/android/.gradle/
+packages/capacitor-plugin/android/build/
+packages/capacitor-plugin/android/local.properties
+packages/capacitor-plugin/android/.cxx/
+packages/capacitor-plugin/.build/
+packages/capacitor-plugin/.swiftpm/
+
+# Capacitor
+examples/*/ios/App/Pods/
+examples/*/android/.gradle/
+examples/*/android/app/build/
+
+# Prisma
+packages/web/prisma/*.db
+packages/web/prisma/*.db-journal
+
+# Documentation source files (keep only the compiled docs)
+*.md.bak

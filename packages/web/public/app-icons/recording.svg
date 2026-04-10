@@ -1,0 +1,15 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#0F172A"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#recordGlow)" fill-opacity="0.22"/>
+  <rect x="47" y="28" width="26" height="42" rx="13" fill="white"/>
+  <path d="M37 57C37 70 47.2 80 60 80C72.8 80 83 70 83 57" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <path d="M60 80V92" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <path d="M47 92H73" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="86" cy="34" r="8" fill="#FF4D4F"/>
+  <defs>
+    <radialGradient id="recordGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(87 31) rotate(136.848) scale(70.0357)">
+      <stop stop-color="#EF4444"/>
+      <stop offset="1" stop-color="#EF4444" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

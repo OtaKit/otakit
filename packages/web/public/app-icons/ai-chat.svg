@@ -1,0 +1,12 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#7C3AED"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#chatGlow)" fill-opacity="0.28"/>
+  <path d="M33 45C33 36.2 40.2 29 49 29H71C79.8 29 87 36.2 87 45V59C87 67.8 79.8 75 71 75H56L43 86V75H49C40.2 75 33 67.8 33 59V45Z" fill="white"/>
+  <path d="M60 39L62.8 47.2L71 50L62.8 52.8L60 61L57.2 52.8L49 50L57.2 47.2L60 39Z" fill="#7C3AED"/>
+  <defs>
+    <radialGradient id="chatGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(34 24) rotate(46.9228) scale(95.5131)">
+      <stop stop-color="#C4B5FD"/>
+      <stop offset="1" stop-color="#C4B5FD" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

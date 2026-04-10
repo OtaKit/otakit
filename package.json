@@ -1,0 +1,34 @@
+{
+  "name": "otakit",
+  "version": "0.0.1",
+  "private": true,
+  "description": "OTA updater for Capacitor apps",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @otakit/web dev",
+    "dev:cli": "pnpm --filter @otakit/cli dev",
+    "docs:llms": "node scripts/generate-llms-txt.mjs",
+    "build": "pnpm -r build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build:plugin": "pnpm --filter @otakit/capacitor-updater build",
+    "build:cli": "pnpm --filter @otakit/cli build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "ship": "git add -A && git commit -m 'ship' && git push",
+    "demo:release": "bash examples/demo-app/release.sh",
+    "demo:release:remote": "bash examples/demo-app/release.sh --remote",
+    "db:generate": "pnpm --filter @otakit/web db:generate",
+    "db:migrate": "pnpm --filter @otakit/web db:migrate",
+    "db:push": "pnpm --filter @otakit/web db:push"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1",
+    "prettier-plugin-java": "^2.8.1",
+    "typescript": "^5.9.3"
+  }
+}

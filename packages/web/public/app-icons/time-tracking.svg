@@ -1,0 +1,13 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#2563EB"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#timeGlow)" fill-opacity="0.28"/>
+  <circle cx="60" cy="60" r="24" stroke="white" stroke-width="8"/>
+  <path d="M60 46V60L70 68" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 28H78" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="timeGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(41 33) rotate(51.34) scale(84.0107)">
+      <stop stop-color="white"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

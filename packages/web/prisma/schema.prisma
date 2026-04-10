@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  ios
+  android
+}
+
+enum MemberRole {
+  owner
+  admin
+  member
+}
+
+// ── Better Auth core tables ─────────────────────────────────────────
+
+model User {
+  id                   String               @id
+  name                 String
+  email                String               @unique
+  emailVerified        Boolean              @default(false)
+  image                String?
+  activeOrganizationId String?
+  activeOrganization   Organization?        @relation("UserActiveOrganization", fields: [activeOrganizationId], references: [id], onDelete: SetNull)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  sessions             Session[]
+  accounts             Account[]
+  memberships          OrganizationMember[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ── Billing enums ───────────────────────────────────────────────────
+
+enum PlanKey {
+  starter
+  pro
+  scale
+}
+
+enum UsageWarningSent {
+  none
+  at90
+  at100
+}
+
+enum UploadSessionStatus {
+  initiated
+  finalized
+  expired
+}
+
+// ── Organizations & membership ──────────────────────────────────────
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String
+  // Billing (Polar)
+  planKey             PlanKey              @default(starter)
+  isActive            Boolean              @default(false)
+  polarCustomerId     String?
+  polarSubscriptionId String?
+  usagePeriodStart    DateTime?
+  usageCalculatedAt   DateTime?
+  downloadsCount      Int                  @default(0)
+  usageBlocked        Boolean              @default(false)
+  overageEnabled      Boolean              @default(false)
+  warningSent         UsageWarningSent     @default(none)
+  // Relations
+  apps                App[]
+  apiKeys             OrganizationApiKey[]
+  members             OrganizationMember[]
+  invites             OrganizationInvite[]
+  activeForUsers      User[]               @relation("UserActiveOrganization")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  role           MemberRole   @default(member)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+}
+
+model OrganizationInvite {
+  id              String       @id @default(uuid())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId  String
+  email           String
+  role            MemberRole   @default(member)
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+
+  @@index([email, acceptedAt])
+  @@index([organizationId, createdAt(sort: Desc)])
+}
+
+model OrganizationApiKey {
+  id             String       @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  name           String
+  keyHash        String       @unique
+  keyPrefix      String
+  createdAt      DateTime     @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, revokedAt])
+}
+
+// ── App & bundles ───────────────────────────────────────────────────
+
+model App {
+  id             String       @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  slug           String
+  bundles        Bundle[]
+  releases       Release[]
+  uploadSessions UploadSession[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@unique([organizationId, slug])
+}
+
+model Bundle {
+  id                 String          @id @default(uuid())
+  app                App             @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId              String
+  version            String
+  sha256             String
+  storageKey         String
+  size               Int
+  minNativeBuild     Int?
+  metadata           Json?
+  createdAt          DateTime        @default(now())
+  releases           Release[]       @relation("ReleaseBundle")
+  previousInReleases Release[]       @relation("ReleasePreviousBundle")
+  uploadSessions     UploadSession[]
+
+  @@unique([appId, version])
+  @@index([appId, createdAt(sort: Desc)])
+}
+
+model Release {
+  id               String    @id @default(uuid())
+  app              App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId            String
+  bundle           Bundle    @relation("ReleaseBundle", fields: [bundleId], references: [id], onDelete: Restrict)
+  bundleId         String
+  previousBundle   Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
+  previousBundleId String?
+  channel          String?
+  promotedAt       DateTime  @default(now())
+  promotedBy       String?
+  revertedAt       DateTime?
+  revertedBy       String?
+
+  @@index([appId, channel, promotedAt(sort: Desc)])
+  @@index([bundleId, promotedAt(sort: Desc)])
+}
+
+model UploadSession {
+  id             String              @id @default(uuid())
+  app            App                 @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId          String
+  version        String
+  expectedSha256 String
+  expectedSize   Int
+  actualSize     Int?
+  minNativeBuild Int?
+  metadata       Json?
+  storageKey     String
+  status         UploadSessionStatus @default(initiated)
+  bundle         Bundle?             @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  bundleId       String?
+  expiresAt      DateTime
+  finalizedAt    DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([appId, status, createdAt(sort: Desc)])
+  @@index([expiresAt, status])
+  @@index([bundleId])
+}
+
+model DeviceEvent {
+  id            String   @id @default(uuid())
+  appId         String
+  platform      Platform
+  action        String   // downloaded, applied, download_error, rollback
+  bundleVersion String?
+  channel       String?
+  releaseId     String?
+  nativeBuild   String?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  @@index([appId, action, createdAt(sort: Desc)])
+  @@index([appId, channel, createdAt(sort: Desc)])
+  @@index([appId, releaseId, createdAt(sort: Desc)])
+  @@index([appId, bundleVersion, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+}

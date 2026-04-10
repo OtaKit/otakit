@@ -1,0 +1,85 @@
+{
+  "name": "@otakit/capacitor-updater",
+  "version": "1.0.0",
+  "description": "Capacitor plugin for OTA updates",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "LICENSE",
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "ios/Tests/",
+    "UpdatekitUpdater.podspec"
+  ],
+  "author": "OtaKit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OtaKit/otakit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OtaKit/otakit/issues"
+  },
+  "homepage": "https://github.com/OtaKit/otakit/tree/main/packages/capacitor-plugin#readme",
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native",
+    "ota",
+    "update"
+  ],
+  "scripts": {
+    "verify": "npm run verify:minimal",
+    "verify:minimal": "node -e \"console.log('Native verification is not wired yet')\"",
+    "verify:web": "npm run build",
+    "lint": "npm run eslint && npm run prettier -- --check && npm run swiftlint -- lint",
+    "fmt": "npm run eslint -- --fix && npm run prettier -- --write && npm run swiftlint -- --fix --format",
+    "eslint": "eslint src",
+    "prettier": "prettier \"src/**/*.{ts,js}\" \"android/src/main/java/**/*.java\" --plugin=prettier-plugin-java",
+    "swiftlint": "node-swiftlint",
+    "docgen": "docgen --api UpdaterPlugin --output-readme README.md --output-json dist/docs.json",
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/core": "8.0.2",
+    "@capacitor/docgen": "^0.3.1",
+    "@capacitor/ios": "^8.0.2",
+    "@eslint/js": "^9.18.0",
+    "@ionic/prettier-config": "^4.0.0",
+    "@ionic/swiftlint-config": "^2.0.0",
+    "eslint": "^9.39.2",
+    "typescript-eslint": "^8.32.1",
+    "prettier": "^3.8.1",
+    "prettier-plugin-java": "^2.8.1",
+    "rimraf": "^6.1.2",
+    "rollup": "^4.57.1",
+    "swiftlint": "^2.0.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

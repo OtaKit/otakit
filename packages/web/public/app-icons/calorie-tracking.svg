@@ -1,0 +1,12 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#F97316"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#calorieGlow)" fill-opacity="0.24"/>
+  <path d="M60.3 91C48.1 91 39 81.8 39 69.9C39 58.7 46.5 50.1 57.5 46.1C58.8 39.8 63.8 34.4 70.8 33C74.6 37 76.4 41.3 76.4 46C83.6 49.9 88 57.3 88 65.7C88 79.6 77 91 63.3 91H60.3Z" fill="white"/>
+  <path d="M74 31C79.2 26.8 84.8 24.3 90 24C89.5 30.6 85.8 36.4 79.4 39.7" stroke="#FFF7ED" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <radialGradient id="calorieGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(84 32) rotate(132.083) scale(79.4834)">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#FDE68A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

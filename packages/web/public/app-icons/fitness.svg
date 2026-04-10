@@ -1,0 +1,15 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#059669"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#fitnessGlow)" fill-opacity="0.2"/>
+  <rect x="25" y="45" width="10" height="30" rx="4" fill="white"/>
+  <rect x="37" y="39" width="10" height="42" rx="4" fill="white"/>
+  <rect x="49" y="47" width="22" height="26" rx="6" fill="white"/>
+  <rect x="73" y="39" width="10" height="42" rx="4" fill="white"/>
+  <rect x="85" y="45" width="10" height="30" rx="4" fill="white"/>
+  <defs>
+    <radialGradient id="fitnessGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(88 28) rotate(140.453) scale(77.4866)">
+      <stop stop-color="#A7F3D0"/>
+      <stop offset="1" stop-color="#A7F3D0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

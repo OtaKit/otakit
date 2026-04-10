@@ -1,0 +1,13 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="#DB2777"/>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#habitGlow)" fill-opacity="0.24"/>
+  <rect x="30" y="30" width="60" height="60" rx="14" stroke="white" stroke-width="8"/>
+  <path d="M42 49L53 60L78 42" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 73H78" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="habitGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(81 31) rotate(136.218) scale(71.7458)">
+      <stop stop-color="#F9A8D4"/>
+      <stop offset="1" stop-color="#F9A8D4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>
