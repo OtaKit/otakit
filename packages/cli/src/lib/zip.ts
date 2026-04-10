@@ -2,7 +2,7 @@ import { createWriteStream, existsSync, lstatSync, readdirSync } from 'node:fs';
 import { stat, unlink } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import archiver, { type Archiver } from 'archiver';
+import yazl from 'yazl';
 
 import { CliError } from './errors.js';
 
@@ -28,7 +28,7 @@ export function validateBundleDirectory(directory: string): void {
   }
 }
 
-function appendDirectory(archive: Archiver, sourceDirectory: string, relativePath: string): void {
+function addDirectory(zipfile: yazl.ZipFile, sourceDirectory: string, relativePath: string): void {
   const currentPath = join(sourceDirectory, relativePath);
   const entries = readdirSync(currentPath, { withFileTypes: true });
 
@@ -46,11 +46,11 @@ function appendDirectory(archive: Archiver, sourceDirectory: string, relativePat
       );
     }
     if (entry.isDirectory()) {
-      appendDirectory(archive, sourceDirectory, nextRelativePath);
+      addDirectory(zipfile, sourceDirectory, nextRelativePath);
       continue;
     }
     if (entry.isFile()) {
-      archive.file(absolutePath, { name: archiveName });
+      zipfile.addFile(absolutePath, archiveName, { compress: true });
     }
   }
 }
@@ -64,8 +64,8 @@ export async function createZip(
   await mkdir(dirname(destinationZipPath), { recursive: true });
 
   return new Promise<ZipResult>((resolve, reject) => {
+    const zipfile = new yazl.ZipFile();
     const output = createWriteStream(destinationZipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
 
     output.on('close', async () => {
       try {
@@ -80,11 +80,10 @@ export async function createZip(
     });
 
     output.on('error', reject);
-    archive.on('error', reject);
 
-    archive.pipe(output);
-    appendDirectory(archive, sourceDirectory, '');
-    archive.finalize().catch(reject);
+    addDirectory(zipfile, sourceDirectory, '');
+    zipfile.outputStream.pipe(output);
+    zipfile.end();
   });
 }
 
