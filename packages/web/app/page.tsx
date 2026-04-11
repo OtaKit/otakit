@@ -1,6 +1,5 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import dashboardPreview from '../public/dashboard-preview.png';
 import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -246,8 +245,10 @@ export default function LandingPage() {
                   <div className="pointer-events-none absolute inset-x-[10%] top-4 h-24 rounded-full bg-foreground/10 blur-3xl opacity-20" />
                   <div className="overflow-hidden rounded-t-2xl border border-border/80 bg-background pt-3 shadow-[0_56px_150px_-72px_rgba(15,23,42,0.65)]">
                     <Image
-                      src={dashboardPreview}
+                      src="/dashboard-preview.png"
                       alt="OtaKit dashboard preview showing bundles, releases, and events"
+                      width={3290}
+                      height={1778}
                       priority
                       sizes="(min-width: 1536px) 1400px, (min-width: 1280px) 1200px, (min-width: 768px) 92vw, 100vw"
                       className="block h-auto w-full"
@@ -442,6 +443,14 @@ export default function LandingPage() {
               className="transition-colors hover:text-foreground"
             >
               Docs
+            </Link>
+            <Link
+              href="https://github.com/OtaKit/otakit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              GitHub
             </Link>
             <Link href="#pricing" className="transition-colors hover:text-foreground">
               Pricing

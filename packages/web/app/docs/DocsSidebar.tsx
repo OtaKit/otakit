@@ -82,6 +82,15 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           Contact support
         </Link>
         <Link
+          href="https://github.com/OtaKit/otakit"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onClick}
+          className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          GitHub
+        </Link>
+        <Link
           href="/docs/llms.txt"
           onClick={onClick}
           className={`block rounded-md px-2 py-1.5 text-sm transition-colors ${
