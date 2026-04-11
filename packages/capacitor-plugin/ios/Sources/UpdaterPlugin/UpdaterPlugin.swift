@@ -7,7 +7,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private enum UpdateMode: String {
     case manual
     case nextLaunch = "next-launch"
+    case nextResume = "next-resume"
     case immediate
+  }
+
+  private enum Trigger {
+    case launch
+    case resume
   }
 
   public let identifier = "UpdaterPlugin"
@@ -39,8 +45,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var channel: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
+  private var checkIntervalMs: Int = 600_000
+  private let isCheckInProgress = NSLock()
+  private var checkInProgress = false
+  private var foregroundObserver: NSObjectProtocol?
   private static let defaultUpdateURL = "https://www.otakit.app/api/v1"
   private static let apiPathSuffix = "/api/v1"
+  private static let lastCheckTimestampKey = "otakit_last_check_timestamp"
 
   public override func load() {
     let envUpdateUrl = ProcessInfo.processInfo.environment["OTAKIT_SERVER_URL"]
@@ -55,6 +66,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     updateMode = resolveUpdateMode(configured: updateModeRaw)
     downloader = Downloader(allowInsecureUrls: allowInsecureUrls)
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
+    checkIntervalMs = max(600_000, getConfig().getInt("checkInterval", 600_000))
 
     let rawKeysValue = getConfig().getArray("manifestKeys")
     if let rawKeys = rawKeysValue as? [[String: String]] {
@@ -99,31 +111,124 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     if isAutomaticUpdateMode() {
-      startAutoUpdate()
+      runAutomaticUpdate(trigger: .launch)
+    }
+
+    if isAutomaticUpdateMode() {
+      foregroundObserver = NotificationCenter.default.addObserver(
+        forName: UIApplication.willEnterForegroundNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.handleAppWillEnterForeground()
+      }
     }
   }
 
-  private func startAutoUpdate() {
-    switch updateMode {
-    case .manual:
-      return
-    case .nextLaunch:
-      Task {
-        _ = try? await performCheckAndDownload(channel: nil, emitEvents: true)
+  deinit {
+    if let observer = foregroundObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+
+  private func handleAppWillEnterForeground() {
+    runAutomaticUpdate(trigger: .resume)
+  }
+
+  private func runAutomaticUpdate(trigger: Trigger) {
+    // Resume-only guards
+    if trigger == .resume {
+      if updateMode == .manual { return }
+
+      // next-resume and immediate: activate staged bundle on resume without server check
+      if (updateMode == .nextResume || updateMode == .immediate),
+         let stagedId = store.getStagedBundleId(),
+         store.getBundle(id: stagedId) != nil {
+        activateStagedBundleForReload()
+        reloadWebView()
+        return
       }
-    case .immediate:
+
+      if shouldThrottleCheck() { return }
+    }
+
+    // Acquire in-flight guard (submit-time)
+    guard claimCheckInProgress() else { return }
+
+    // Immediate mode on cold start: block until check+download+activate completes
+    if updateMode == .immediate && trigger == .launch {
       Task {
+        defer { releaseCheckInProgress() }
         do {
-          let downloaded = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          if downloaded != nil {
+          let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
+          recordCheckTimestamp()
+          if result != nil {
             activateStagedBundleForReload()
             reloadWebView()
           }
         } catch {
-          print("[UpdateKit] immediate startup update failed: \(error.localizedDescription)")
+          print("[OtaKit] immediate startup update failed: \(error.localizedDescription)")
         }
       }
+      return
     }
+
+    // Immediate mode on resume: background check+download, activate when done
+    if updateMode == .immediate && trigger == .resume {
+      Task {
+        defer { releaseCheckInProgress() }
+        do {
+          let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
+          recordCheckTimestamp()
+          if result != nil {
+            activateStagedBundleForReload()
+            reloadWebView()
+          }
+        } catch {
+          print("[OtaKit] immediate resume update failed: \(error.localizedDescription)")
+        }
+      }
+      return
+    }
+
+    // next-launch / next-resume: background check+download (fire-and-forget)
+    Task {
+      defer { releaseCheckInProgress() }
+      do {
+        _ = try await performCheckAndDownload(channel: nil, emitEvents: true)
+        recordCheckTimestamp()
+      } catch {
+        // Check failed — timestamp not recorded, will retry on next trigger
+      }
+    }
+  }
+
+  private func shouldThrottleCheck() -> Bool {
+    let lastCheck = UserDefaults.standard.double(forKey: UpdaterPlugin.lastCheckTimestampKey)
+    guard lastCheck > 0 else { return false }
+    let elapsed = Date().timeIntervalSince1970 * 1000 - lastCheck
+    return elapsed < Double(checkIntervalMs)
+  }
+
+  private func recordCheckTimestamp() {
+    UserDefaults.standard.set(
+      Date().timeIntervalSince1970 * 1000,
+      forKey: UpdaterPlugin.lastCheckTimestampKey
+    )
+  }
+
+  private func claimCheckInProgress() -> Bool {
+    isCheckInProgress.lock()
+    defer { isCheckInProgress.unlock() }
+    if checkInProgress { return false }
+    checkInProgress = true
+    return true
+  }
+
+  private func releaseCheckInProgress() {
+    isCheckInProgress.lock()
+    defer { isCheckInProgress.unlock() }
+    checkInProgress = false
   }
 
   private func shouldActivateStagedOnLaunch() -> Bool {
@@ -141,10 +246,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return .nextLaunch
     case UpdateMode.manual.rawValue:
       return .manual
+    case UpdateMode.nextResume.rawValue:
+      return .nextResume
     case UpdateMode.immediate.rawValue:
       return .immediate
     default:
-      print("[UpdateKit] Unknown updateMode '\(raw)', defaulting to 'next-launch'")
+      print("[OtaKit] Unknown updateMode '\(raw)', defaulting to 'next-launch'")
       return .nextLaunch
     }
   }
@@ -189,10 +296,33 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func check(_ call: CAPPluginCall) {
+    // Respect throttle — return staged bundle as a LatestVersion if available, else null
+    if shouldThrottleCheck() || !claimCheckInProgress() {
+      if let stagedId = store.getStagedBundleId(),
+         let staged = store.getBundle(id: stagedId) {
+        var payload: [String: Any] = [
+          "version": staged.version,
+          "url": "",
+          "sha256": staged.sha256 ?? "",
+          "size": 0,
+          "downloaded": true,
+        ]
+        if let releaseId = staged.releaseId {
+          payload["releaseId"] = releaseId
+        }
+        call.resolve(payload)
+      } else {
+        call.resolve()
+      }
+      return
+    }
     let targetChannel = resolveTargetChannel(nil)
     Task {
+      defer { releaseCheckInProgress() }
       do {
         let latest = try await fetchLatest(channel: targetChannel)
+        // check() does NOT record timestamp — only download() and automatic paths do.
+        // This keeps check() -> download() working without the throttle blocking download().
         if let latest {
           let staged = findMatchingStagedBundle(latest: latest, targetChannel: targetChannel)
           call.resolve(manifestToDictionary(latest, downloaded: staged != nil))
@@ -225,9 +355,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func download(_ call: CAPPluginCall) {
+    // Respect throttle — return staged info if available, else null
+    if shouldThrottleCheck() || !claimCheckInProgress() {
+      if let stagedId = store.getStagedBundleId(),
+         let staged = store.getBundle(id: stagedId) {
+        call.resolve(staged.toDictionary())
+      } else {
+        call.resolve()
+      }
+      return
+    }
     Task {
+      defer { releaseCheckInProgress() }
       do {
         let bundle = try await performCheckAndDownload(channel: nil, emitEvents: true)
+        recordCheckTimestamp()
         if let bundle {
           call.resolve(bundle.toDictionary())
         } else {

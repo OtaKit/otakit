@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @CapacitorPlugin(name = "OtaKit")
 public class UpdaterPlugin extends Plugin {
@@ -39,11 +40,17 @@ public class UpdaterPlugin extends Plugin {
   private String appId;
   private String channel;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
+  private long checkIntervalMs = 600_000;
+  private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
   private static final String DEFAULT_UPDATE_URL = "https://www.otakit.app/api/v1";
   private static final String API_PATH_SUFFIX = "/api/v1";
   private static final String UPDATE_MODE_MANUAL = "manual";
   private static final String UPDATE_MODE_NEXT_LAUNCH = "next-launch";
+  private static final String UPDATE_MODE_NEXT_RESUME = "next-resume";
   private static final String UPDATE_MODE_IMMEDIATE = "immediate";
+  private static final String KEY_LAST_CHECK_TIMESTAMP = "last_check_timestamp";
+  private static final String TRIGGER_LAUNCH = "launch";
+  private static final String TRIGGER_RESUME = "resume";
 
   @Override
   public void load() {
@@ -112,6 +119,7 @@ public class UpdaterPlugin extends Plugin {
     }
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
+    this.checkIntervalMs = Math.max(600_000, getConfig().getInt("checkInterval", 600_000));
 
     BundleInfo current = store.getCurrentBundle();
     if (current.status == BundleStatus.TRIAL) {
@@ -135,24 +143,82 @@ public class UpdaterPlugin extends Plugin {
     }
 
     if (isAutomaticUpdateMode()) {
-      startAutoUpdate();
+      runAutomaticUpdate(TRIGGER_LAUNCH);
     }
   }
 
-  private void startAutoUpdate() {
-    executor.execute(() -> {
-      try {
-        BundleInfo downloaded = performCheckAndDownload(null, true);
-        if (UPDATE_MODE_IMMEDIATE.equals(updateMode) && downloaded != null) {
+  @Override
+  protected void handleOnResume() {
+    super.handleOnResume();
+    if (isAutomaticUpdateMode()) {
+      runAutomaticUpdate(TRIGGER_RESUME);
+    }
+  }
+
+  private void runAutomaticUpdate(String trigger) {
+    // Resume-only guards
+    if (TRIGGER_RESUME.equals(trigger)) {
+      if (UPDATE_MODE_MANUAL.equals(updateMode)) return;
+
+      // next-resume and immediate: activate staged bundle on resume without server check
+      if ((UPDATE_MODE_NEXT_RESUME.equals(updateMode) || UPDATE_MODE_IMMEDIATE.equals(updateMode))) {
+        String stagedId = store.getStagedBundleId();
+        if (stagedId != null && store.getBundle(stagedId) != null) {
           activateStagedBundleForReload();
           reloadWebView();
-        }
-      } catch (Exception e) {
-        if (UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
-          android.util.Log.w("UpdateKit", "immediate startup update failed", e);
+          return;
         }
       }
+
+      if (shouldThrottleCheck()) return;
+    }
+
+    // Acquire in-flight guard (submit-time)
+    if (!checkInProgress.compareAndSet(false, true)) return;
+
+    if (UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
+      // Immediate: check+download, activate if found
+      executor.execute(() -> {
+        try {
+          BundleInfo result = performCheckAndDownload(null, true);
+          recordCheckTimestamp();
+          if (result != null) {
+            activateStagedBundleForReload();
+            reloadWebView();
+          }
+        } catch (Exception e) {
+          android.util.Log.w("OtaKit", "immediate update failed (" + trigger + ")", e);
+        } finally {
+          checkInProgress.set(false);
+        }
+      });
+      return;
+    }
+
+    // next-launch / next-resume: background check+download (fire-and-forget)
+    executor.execute(() -> {
+      try {
+        performCheckAndDownload(null, true);
+        recordCheckTimestamp();
+      } catch (Exception ignored) {
+        // Check failed — timestamp not recorded, will retry on next trigger
+      } finally {
+        checkInProgress.set(false);
+      }
     });
+  }
+
+  private boolean shouldThrottleCheck() {
+    long lastCheck = store.getPrefs().getLong(KEY_LAST_CHECK_TIMESTAMP, 0);
+    if (lastCheck <= 0) return false;
+    long elapsed = System.currentTimeMillis() - lastCheck;
+    return elapsed < checkIntervalMs;
+  }
+
+  private void recordCheckTimestamp() {
+    store.getPrefs().edit()
+      .putLong(KEY_LAST_CHECK_TIMESTAMP, System.currentTimeMillis())
+      .apply();
   }
 
   private boolean shouldActivateStagedOnLaunch() {
@@ -175,12 +241,15 @@ public class UpdaterPlugin extends Plugin {
     if (UPDATE_MODE_MANUAL.equals(raw)) {
       return UPDATE_MODE_MANUAL;
     }
+    if (UPDATE_MODE_NEXT_RESUME.equals(raw)) {
+      return UPDATE_MODE_NEXT_RESUME;
+    }
     if (UPDATE_MODE_IMMEDIATE.equals(raw)) {
       return UPDATE_MODE_IMMEDIATE;
     }
 
     android.util.Log.w(
-      "UpdateKit",
+      "OtaKit",
       "Unknown updateMode '" + raw + "', defaulting to 'next-launch'"
     );
     return UPDATE_MODE_NEXT_LAUNCH;
@@ -209,10 +278,34 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void check(PluginCall call) {
+    // Respect throttle — return staged bundle as a LatestVersion if available, else null
+    if (shouldThrottleCheck() || !checkInProgress.compareAndSet(false, true)) {
+      String stagedId = store.getStagedBundleId();
+      if (stagedId != null) {
+        BundleInfo staged = store.getBundle(stagedId);
+        if (staged != null) {
+          JSObject result = new JSObject();
+          result.put("version", staged.version);
+          result.put("url", "");
+          result.put("sha256", staged.sha256 != null ? staged.sha256 : "");
+          result.put("size", 0);
+          result.put("downloaded", true);
+          if (staged.releaseId != null) {
+            result.put("releaseId", staged.releaseId);
+          }
+          call.resolve(result);
+          return;
+        }
+      }
+      call.resolve((JSObject) null);
+      return;
+    }
     String targetChannel = resolveTargetChannel(null);
     executor.execute(() -> {
       try {
         ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
+        // check() does NOT record timestamp — only download() and automatic paths do.
+        // This keeps check() -> download() working without the throttle blocking download().
         if (latest == null) {
           call.resolve((JSObject) null);
         } else {
@@ -221,15 +314,31 @@ public class UpdaterPlugin extends Plugin {
         }
       } catch (Exception e) {
         call.reject("check failed: " + e.getMessage());
+      } finally {
+        checkInProgress.set(false);
       }
     });
   }
 
   @PluginMethod
   public void download(PluginCall call) {
+    // Respect throttle — return staged info if available, else null
+    if (shouldThrottleCheck() || !checkInProgress.compareAndSet(false, true)) {
+      String stagedId = store.getStagedBundleId();
+      if (stagedId != null) {
+        BundleInfo staged = store.getBundle(stagedId);
+        if (staged != null) {
+          call.resolve(staged.toJSObject());
+          return;
+        }
+      }
+      call.resolve((JSObject) null);
+      return;
+    }
     executor.execute(() -> {
       try {
         BundleInfo bundle = performCheckAndDownload(null, true);
+        recordCheckTimestamp();
         if (bundle == null) {
           call.resolve((JSObject) null);
         } else {
@@ -237,6 +346,8 @@ public class UpdaterPlugin extends Plugin {
         }
       } catch (Exception e) {
         call.reject("download failed: " + e.getMessage());
+      } finally {
+        checkInProgress.set(false);
       }
     });
   }

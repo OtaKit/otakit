@@ -7,7 +7,8 @@ Capacitor OTA updater plugin for OtaKit.
 - checks the manifest endpoint for a newer bundle
 - downloads and verifies OTA bundles
 - stages updates safely
-- activates them on the next launch or immediately during startup
+- activates them on the next launch, next resume, or immediately
+- checks for updates on cold start and app resume (configurable interval)
 - also supports fully manual update prompts when the app wants control
 - requires `notifyAppReady()` as the success handshake
 - rolls back automatically if the new bundle does not prove healthy
@@ -45,6 +46,7 @@ plugins: {
     appReadyTimeout: 10000,
     // Optional:
     // channel: "staging",
+    // updateMode: "next-resume",
     // updateMode: "manual",
     // updateMode: "immediate",
   }
@@ -74,14 +76,32 @@ In the hosted path, managed signing keys are already built in.
 
 ## Update modes
 
-- `manual`
-  no automatic startup check and no automatic staged activation
-- `next-launch`
-  automatic startup check, download in the background, activate on the next cold launch
-- `immediate`
-  automatic startup check, then download and activate during startup
+All automatic modes check for updates on **cold start** (always) and **app
+resume**.
 
-The default is `next-launch`.
+### Production modes
+
+- `next-launch` (default)
+  check and download in the background on cold start and resume.
+  activate the staged bundle only on the next cold start.
+  zero disruption during a session — the user never sees a surprise reload.
+
+- `next-resume` (more eager)
+  check and download in the background on cold start and resume.
+  activate the staged bundle on the next resume or cold start.
+
+### Manual mode
+
+- `manual`
+  no automatic checks, no automatic staged activation.
+  the app integration drives everything via `check()`, `download()`, `apply()`, or `update()`.
+
+### Dev/debug mode
+
+- `immediate`
+  checks, downloads, and activates in one shot as soon as possible on cold start and resume (the user may briefly see the previous version before a reload).
+  primarily for development and testing — not recommended for production.
+
 
 ## Runtime model
 
@@ -127,7 +147,8 @@ await OtaKit.notifyAppReady();
 ```
 
 The plugin handles checking, downloading, activation, and rollback based on
-`updateMode`.
+`updateMode`. It checks on cold start and every time the app comes back from
+the background (throttled by `checkInterval`).
 
 For most apps, this is the entire runtime integration.
 
@@ -153,6 +174,13 @@ await OtaKit.apply();
 
 Use the split flow when the app wants to download in the background and switch
 only after explicit user confirmation.
+
+## Throttle
+
+All server checks are rate-limited by `checkInterval` (default 10 min).
+This applies to automatic resume checks and to manual `check()` / `download()`
+calls. Within the interval, calls return the staged bundle if one exists, or
+null.
 
 ## Retention and deletion
 

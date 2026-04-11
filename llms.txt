@@ -407,24 +407,25 @@ plugins: {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
-    // updateMode: "manual",
-    // updateMode: "immediate",
+    // updateMode: "next-resume",
   }
 }
 ```
 - `appId` (string): OtaKit app ID for manifest and stats access.
 - `channel` (string): Named release track to check. Omit it to use the base channel.
-- `updateMode` ('manual' | 'next-launch' | 'immediate'): Overall update behavior. Optional, defaults to next-launch.
+- `updateMode` ('manual' | 'next-launch' | 'next-resume' | 'immediate'): Overall update behavior. Optional, defaults to next-launch.
+- `checkInterval` (number): Milliseconds between automatic update checks. Optional, defaults to 600000 (10 min).
 - `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000.
 
 Hosted OtaKit points at the managed server automatically. Do not set `serverUrl` or `manifestKeys` unless you intentionally want custom server or verification behavior.
 
 ### Update Modes
 
-OtaKit supports three update behaviors:
-- `manual` (optional): Do not check automatically. Your app decides when to check, download, and apply.
-- `next-launch` (default): Check automatically on startup, download in the background, and activate on the next cold app launch.
-- `immediate` (optional): Check automatically on startup, then download and activate immediately.
+All automatic modes check for updates on cold start (always) and app resume (throttled by checkInterval, default 10 minutes).
+- `next-launch` (default): Check and download in the background. Activate the staged bundle only on the next cold start. Zero disruption during a session.
+- `next-resume` (recommended): Check and download in the background. Activate the staged bundle on the next resume or cold start. Brief reload when returning to the app.
+- `immediate` (dev/debug): Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing.
+- `manual` (optional): No automatic checks. Your app drives everything via check(), download(), apply(), and update().
 
 ### Manifest Verification
 

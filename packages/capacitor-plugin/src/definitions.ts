@@ -64,7 +64,7 @@ export interface OtaKitDebugState extends OtaKitState {
   fallback: BundleInfo;
 }
 
-export type OtaKitUpdateMode = 'manual' | 'next-launch' | 'immediate';
+export type OtaKitUpdateMode = 'manual' | 'next-launch' | 'next-resume' | 'immediate';
 
 export interface OtaKitManifestKey {
   kid: string;
@@ -81,6 +81,12 @@ export interface OtaKitConfig {
   channel?: string;
   /** Overall update behavior. Defaults to next-launch. */
   updateMode?: OtaKitUpdateMode;
+  /**
+   * Minimum milliseconds between automatic update checks.
+   * Applies to both resume-triggered and manual check()/download() calls.
+   * Debug APIs bypass this throttle. Defaults to 600000 (10 min).
+   */
+  checkInterval?: number;
   /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
   appReadyTimeout?: number;
   /** Custom API base URL for self-hosted or custom servers. */

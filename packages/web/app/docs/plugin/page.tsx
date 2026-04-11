@@ -27,8 +27,7 @@ export default function PluginReferencePage() {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
-    // updateMode: "manual",
-    // updateMode: "immediate",
+    // updateMode: "next-resume",
   }
 }`}</Pre>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
@@ -44,8 +43,13 @@ export default function PluginReferencePage() {
         />
         <ConfigRow
           field="updateMode"
-          type="'manual' | 'next-launch' | 'immediate'"
+          type="'manual' | 'next-launch' | 'next-resume' | 'immediate'"
           description="Overall update behavior. Optional, defaults to next-launch."
+        />
+        <ConfigRow
+          field="checkInterval"
+          type="number"
+          description="Milliseconds between automatic update checks. Optional, defaults to 600000 (10 min)."
         />
         <ConfigRow
           field="appReadyTimeout"
@@ -64,22 +68,27 @@ export default function PluginReferencePage() {
       <Separator className="my-10" />
 
       <H2>Update Modes</H2>
-      <P>OtaKit supports three update behaviors:</P>
+      <P>All automatic modes check for updates on cold start (always) and app resume (throttled by checkInterval, default 10 minutes).</P>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
-        <ConfigRow
-          field="manual"
-          type="optional"
-          description="Do not check automatically. Your app decides when to check, download, and apply."
-        />
         <ConfigRow
           field="next-launch"
           type="default"
-          description="Check automatically on startup, download in the background, and activate on the next cold app launch."
+          description="Check and download in the background. Activate the staged bundle only on the next cold start. Zero disruption during a session."
+        />
+        <ConfigRow
+          field="next-resume"
+          type="recommended"
+          description="Check and download in the background. Activate the staged bundle on the next resume or cold start. Brief reload when returning to the app."
         />
         <ConfigRow
           field="immediate"
+          type="dev/debug"
+          description="Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing."
+        />
+        <ConfigRow
+          field="manual"
           type="optional"
-          description="Check automatically on startup, then download and activate immediately."
+          description="No automatic checks. Your app drives everything via check(), download(), apply(), and update()."
           last
         />
       </div>

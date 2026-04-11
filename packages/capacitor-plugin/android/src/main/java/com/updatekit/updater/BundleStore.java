@@ -48,6 +48,10 @@ final class BundleStore {
     return builtinVersion;
   }
 
+  SharedPreferences getPrefs() {
+    return prefs;
+  }
+
   BundleInfo builtinBundle() {
     return new BundleInfo(
       "builtin",

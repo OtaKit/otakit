@@ -67,7 +67,7 @@ examples/
 
 Requirements:
 
-- Node.js 23+
+- Node.js 20.9+
 - pnpm 9+
 
 Install and run:

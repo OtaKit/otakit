@@ -95,8 +95,7 @@ export const registerCommand = new Command('register')
       console.log(`    appId: "${payload.id}",`);
       console.log('    appReadyTimeout: 10000,');
       console.log('    // Optional:');
-      console.log('    // updateMode: "manual",');
-      console.log('    // updateMode: "immediate",');
+      console.log('    // updateMode: "next-resume",');
       console.log('  },');
       console.log('}');
       console.log('');
