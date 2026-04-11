@@ -16,7 +16,7 @@ export type ManifestReleaseBundle = {
   version: string;
   sha256: string;
   size: number;
-  minNativeBuild: number | null;
+  runtimeVersion: string | null;
   storageKey: string;
 };
 
@@ -102,12 +102,18 @@ export async function getCachedManifestAppAccess(appId: string): Promise<Manifes
 export async function loadLatestManifestReleaseFromDb(
   appId: string,
   channel: string | null,
+  runtimeVersion: string | null,
 ): Promise<ManifestReleaseDescriptor | null> {
   const latestRelease = await db.release.findFirst({
     where: {
       appId,
       channel,
       revertedAt: null,
+      bundle: {
+        is: {
+          runtimeVersion,
+        },
+      },
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
     include: {
@@ -116,7 +122,7 @@ export async function loadLatestManifestReleaseFromDb(
           version: true,
           sha256: true,
           size: true,
-          minNativeBuild: true,
+          runtimeVersion: true,
           storageKey: true,
         },
       },
@@ -137,14 +143,15 @@ export async function loadLatestManifestReleaseFromDb(
 export async function getCachedLatestManifestRelease(
   appId: string,
   channel: string | null,
+  runtimeVersion: string | null,
 ): Promise<ManifestReleaseDescriptor | null> {
-  const cacheKey = getManifestLatestReleaseCacheKey(appId, channel);
+  const cacheKey = getManifestLatestReleaseCacheKey(appId, channel, runtimeVersion);
   const cached = await readJsonCache<CachedManifestReleaseRecord>(cacheKey);
   if (cached) {
     return cached.exists ? cached.release : null;
   }
 
-  const loaded = await loadLatestManifestReleaseFromDb(appId, channel);
+  const loaded = await loadLatestManifestReleaseFromDb(appId, channel, runtimeVersion);
   const cachedValue: CachedManifestReleaseRecord = loaded
     ? { exists: true, release: loaded }
     : { exists: false };
@@ -155,8 +162,9 @@ export async function getCachedLatestManifestRelease(
 export async function invalidateManifestReleaseCache(
   appId: string,
   channel: string | null,
+  runtimeVersion: string | null,
 ): Promise<void> {
-  await deleteCacheKeys([getManifestLatestReleaseCacheKey(appId, channel)]);
+  await deleteCacheKeys([getManifestLatestReleaseCacheKey(appId, channel, runtimeVersion)]);
 }
 
 export async function invalidateManifestAppAccessCacheForApps(appIds: string[]): Promise<void> {

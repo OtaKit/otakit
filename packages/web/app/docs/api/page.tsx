@@ -59,7 +59,7 @@ Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN`}</Pre>
   "version": "1.0.1",       // semver string
   "size": 1048576,          // bundle size in bytes
   "sha256": "64-char hex checksum of the zip file",
-  "minNativeBuild": 100     // optional
+  "runtimeVersion": "2026.04" // optional compatibility lane
 }`}
           response={`{
   "uploadId": "uuid",
@@ -81,7 +81,7 @@ Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN`}</Pre>
   "version": "1.0.1",
   "sha256": "...",
   "size": 1048576,
-  "minNativeBuild": null,
+  "runtimeVersion": "2026.04",
   "createdAt": "ISO timestamp"
 }`}
           description="Finalize a bundle upload session. The server checks that the uploaded object exists and that its size matches the initiated session, then creates the bundle record from the stored session data."
@@ -122,13 +122,14 @@ Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN`}</Pre>
   "release": {
     "id": "uuid",
     "channel": null,
+    "runtimeVersion": "2026.04",
     "bundleId": "uuid",
     "bundleVersion": "1.0.1",
     "promotedAt": "ISO timestamp"
   },
   "previousRelease": { ... } | null
 }`}
-          description="Release a bundle to the base channel or a named channel. One bundle = one release event."
+          description="Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion)."
         />
         <Endpoint
           method="GET"
@@ -137,7 +138,7 @@ Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN`}</Pre>
           queryParams="?channel=staging&limit=20&offset=0"
           response={`{
   "releases": [{
-    id, channel, bundleId, bundleVersion, promotedAt
+    id, channel, runtimeVersion, bundleId, bundleVersion, promotedAt
   }],
   "total": 12
 }`}

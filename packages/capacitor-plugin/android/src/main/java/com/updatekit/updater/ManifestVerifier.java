@@ -34,7 +34,51 @@ final class ManifestVerifier {
     String version,
     String sha256,
     int size,
-    Integer minNativeBuild,
+    String runtimeVersion,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
+    String payload = buildCanonicalPayload(
+      appId,
+      channel,
+      platform,
+      version,
+      sha256,
+      size,
+      runtimeVersion,
+      signature.kid,
+      signature.iat,
+      signature.exp
+    );
+    verifyPayload(payload, signature, trustedKeys);
+  }
+
+  static void verifyLegacy(
+    String appId,
+    String channel,
+    String platform,
+    String version,
+    String sha256,
+    int size,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
+    String payload = buildLegacyCanonicalPayload(
+      appId,
+      channel,
+      platform,
+      version,
+      sha256,
+      size,
+      signature.kid,
+      signature.iat,
+      signature.exp
+    );
+    verifyPayload(payload, signature, trustedKeys);
+  }
+
+  private static void verifyPayload(
+    String payload,
     ManifestClient.ManifestSignature signature,
     List<KeyEntry> trustedKeys
   ) throws Exception {
@@ -55,20 +99,6 @@ final class ManifestVerifier {
     if (keyEntry == null) {
       throw new IllegalStateException("Unknown signing key ID: " + signature.kid);
     }
-
-    // Build canonical payload (must match server exactly)
-    String payload = buildCanonicalPayload(
-      appId,
-      channel,
-      platform,
-      version,
-      sha256,
-      size,
-      minNativeBuild,
-      signature.kid,
-      signature.iat,
-      signature.exp
-    );
 
     // Decode base64url signature
     byte[] sigBytes = base64UrlDecode(signature.sig);
@@ -94,12 +124,56 @@ final class ManifestVerifier {
     String version,
     String sha256,
     int size,
-    Integer minNativeBuild,
+    String runtimeVersion,
     String kid,
     int iat,
     int exp
   ) {
-    String minBuildStr = minNativeBuild != null ? String.valueOf(minNativeBuild) : "null";
+    return (
+      "MANIFEST_V2\n" +
+      "appId:" +
+      appId +
+      "\n" +
+      "channel:" +
+      (channel != null ? channel : "null") +
+      "\n" +
+      "platform:" +
+      platform +
+      "\n" +
+      "version:" +
+      version +
+      "\n" +
+      "sha256:" +
+      sha256 +
+      "\n" +
+      "size:" +
+      size +
+      "\n" +
+      "runtimeVersion:" +
+      (runtimeVersion != null ? runtimeVersion : "null") +
+      "\n" +
+      "kid:" +
+      kid +
+      "\n" +
+      "iat:" +
+      iat +
+      "\n" +
+      "exp:" +
+      exp
+    );
+  }
+
+  private static String buildLegacyCanonicalPayload(
+    String appId,
+    String channel,
+    String platform,
+    String version,
+    String sha256,
+    int size,
+    String kid,
+    int iat,
+    int exp
+  ) {
     return (
       "MANIFEST_V1\n" +
       "appId:" +
@@ -120,8 +194,7 @@ final class ManifestVerifier {
       "size:" +
       size +
       "\n" +
-      "minNativeBuild:" +
-      minBuildStr +
+      "minNativeBuild:null" +
       "\n" +
       "kid:" +
       kid +

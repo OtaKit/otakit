@@ -129,7 +129,7 @@ export type UploadWorkflowOptions = {
   api: ApiClient;
   sourcePath: string;
   version: string;
-  minNativeBuild?: number;
+  runtimeVersion?: string;
   releaseChannel?: string | null;
   onStatus?: (message: string) => void;
 };
@@ -142,7 +142,7 @@ export type UploadWorkflowResult = {
 export async function runUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
-  const { api, sourcePath, version, minNativeBuild, releaseChannel, onStatus } = options;
+  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
 
   validateBundleDirectory(sourcePath);
 
@@ -167,7 +167,7 @@ export async function runUploadWorkflow(
     onStatus?.('Requesting upload URL...');
     const initiated = await api.initiateUpload({
       version,
-      minNativeBuild,
+      runtimeVersion,
       size: zipStat.size,
       sha256,
     });

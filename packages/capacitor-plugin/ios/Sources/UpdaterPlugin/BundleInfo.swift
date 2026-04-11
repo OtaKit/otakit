@@ -3,6 +3,7 @@ import Foundation
 struct BundleInfo: Codable {
   let id: String
   let version: String
+  let runtimeVersion: String?
   let status: BundleStatus
   let downloadedAt: Date?
   let sha256: String?
@@ -20,6 +21,10 @@ struct BundleInfo: Codable {
       "version": version,
       "status": status.rawValue,
     ]
+
+    if let runtimeVersion {
+      result["runtimeVersion"] = runtimeVersion
+    }
 
     if let downloadedAt {
       result["downloadedAt"] = ISO8601DateFormatter().string(from: downloadedAt)

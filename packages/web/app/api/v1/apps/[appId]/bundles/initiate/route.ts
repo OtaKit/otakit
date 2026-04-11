@@ -5,7 +5,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { db } from '@/lib/db';
 import { createPresignedUpload, getMaxBundleSize } from '@/lib/storage';
-import { isValidMetadata, isValidVersion, parsePositiveInteger } from '@/lib/validation';
+import {
+  isValidMetadata,
+  isValidRuntimeVersion,
+  isValidVersion,
+  normalizeOptionalRuntimeVersion,
+  parsePositiveInteger,
+} from '@/lib/validation';
 
 export const runtime = 'nodejs';
 const SHA_256_REGEX = /^[a-f0-9]{64}$/i;
@@ -38,12 +44,21 @@ export async function POST(
     return NextResponse.json({ error: 'Version must be 1-64 characters' }, { status: 400 });
   }
 
-  const minNativeBuild = parsePositiveInteger(body.minNativeBuild, {
-    optional: true,
-  });
-  if (minNativeBuild === null) {
+  if (
+    body.runtimeVersion !== undefined &&
+    body.runtimeVersion !== null &&
+    typeof body.runtimeVersion !== 'string'
+  ) {
+    return NextResponse.json({ error: 'runtimeVersion must be a string' }, { status: 400 });
+  }
+  const runtimeVersion = normalizeOptionalRuntimeVersion(body.runtimeVersion);
+  if (
+    typeof body.runtimeVersion === 'string' &&
+    body.runtimeVersion.trim().length > 0 &&
+    (!runtimeVersion || !isValidRuntimeVersion(runtimeVersion))
+  ) {
     return NextResponse.json(
-      { error: 'minNativeBuild must be a positive integer' },
+      { error: 'runtimeVersion must be 1-64 characters using letters, numbers, dot, underscore, or dash' },
       { status: 400 },
     );
   }
@@ -106,7 +121,7 @@ export async function POST(
       version,
       expectedSha256: sha256,
       expectedSize: size,
-      minNativeBuild,
+      runtimeVersion,
       metadata:
         metadata === null ? Prisma.JsonNull : (metadata as Prisma.InputJsonValue | undefined),
       storageKey,

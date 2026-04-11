@@ -20,6 +20,8 @@ Try it for free: [OtaKit.app](https://www.otakit.app/)
   an append-only promotion of a bundle to the unnamed channel or a named channel
 - `Channel`
   a release track such as the unnamed default path or `staging`
+- `Runtime version`
+  an optional native compatibility lane configured in `plugins.OtaKit.runtimeVersion`
 
 ## Managed flow
 
@@ -62,6 +64,8 @@ examples/
 - `capacitor.config.*` is the source of truth for plugin and CLI project config.
 - There is no `otakit init`.
 - The default release path is the unnamed channel.
+- Channels are rollout tracks. `runtimeVersion` is the optional compatibility lane.
+- Optionally set `runtimeVersion` when a new store build must stop receiving older OTA bundles.
 - Self-hosting exists, but it is the advanced path.
 - Uploads and releases are separate: you can upload first and promote later.
 

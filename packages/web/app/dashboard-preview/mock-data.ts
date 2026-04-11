@@ -26,9 +26,10 @@ function bundle(
     version,
     size,
     createdAt: atOffset(createdMinutesAgo),
+    runtimeVersion: null,
     isLive: false,
-    currentChannels: [],
-    deployedChannels: [],
+    currentTargets: [],
+    deployedTargets: [],
     eventCounts: {
       downloads: 0,
       applied: 0,
@@ -47,6 +48,7 @@ function release(
   promotedMinutesAgo: number,
   promotedBy: string | null,
   options?: {
+    runtimeVersion?: string | null;
     previousBundleId?: string | null;
     previousBundleVersion?: string | null;
     revertedAt?: string | null;
@@ -61,6 +63,7 @@ function release(
     previousBundleId: options?.previousBundleId ?? null,
     previousBundleVersion: options?.previousBundleVersion ?? null,
     channel,
+    runtimeVersion: options?.runtimeVersion ?? null,
     promotedAt: atOffset(promotedMinutesAgo),
     promotedBy,
     revertedAt: options?.revertedAt ?? null,
@@ -103,11 +106,15 @@ const voiceNotesAppId = 'preview-app-voicenotes';
 const focusFlowData: DashboardPreviewAppData = {
   bundles: [
     bundle('bundle-focus-0408-2', '2026.04.08-2', 2_481_664, 55, {
+      runtimeVersion: '2.0',
       isLive: true,
-      currentChannels: [null, 'beta'],
-      deployedChannels: [
-        { channel: null, deployedAt: atOffset(35) },
-        { channel: 'beta', deployedAt: atOffset(30) },
+      currentTargets: [
+        { channel: null, runtimeVersion: '2.0' },
+        { channel: 'beta', runtimeVersion: '2.0' },
+      ],
+      deployedTargets: [
+        { channel: null, runtimeVersion: '2.0', deployedAt: atOffset(35) },
+        { channel: 'beta', runtimeVersion: '2.0', deployedAt: atOffset(30) },
       ],
       eventCounts: {
         downloads: 18_420,
@@ -117,8 +124,9 @@ const focusFlowData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-focus-0407-6', '2026.04.07-6', 2_432_518, 1280, {
-      currentChannels: ['pilot'],
-      deployedChannels: [{ channel: 'pilot', deployedAt: atOffset(410) }],
+      runtimeVersion: '1.0',
+      currentTargets: [{ channel: 'pilot', runtimeVersion: '1.0' }],
+      deployedTargets: [{ channel: 'pilot', runtimeVersion: '1.0', deployedAt: atOffset(410) }],
       eventCounts: {
         downloads: 10_381,
         applied: 10_094,
@@ -127,10 +135,11 @@ const focusFlowData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-focus-0405-3', '2026.04.05-3', 2_371_200, 4220, {
-      deployedChannels: [
-        { channel: null, deployedAt: atOffset(2290) },
-        { channel: 'beta', deployedAt: atOffset(1510) },
-        { channel: 'pilot', deployedAt: atOffset(950) },
+      runtimeVersion: '1.0',
+      deployedTargets: [
+        { channel: null, runtimeVersion: '1.0', deployedAt: atOffset(2290) },
+        { channel: 'beta', runtimeVersion: '1.0', deployedAt: atOffset(1510) },
+        { channel: 'pilot', runtimeVersion: '1.0', deployedAt: atOffset(950) },
       ],
       eventCounts: {
         downloads: 76_204,
@@ -149,6 +158,7 @@ const focusFlowData: DashboardPreviewAppData = {
       30,
       'api-key:github-actions',
       {
+        runtimeVersion: '2.0',
         previousBundleId: 'bundle-focus-0405-3',
         previousBundleVersion: '2026.04.05-3',
         eventCounts: { downloads: 3_184, applied: 3_092, downloadErrors: 41, rollbacks: 6 },
@@ -162,6 +172,7 @@ const focusFlowData: DashboardPreviewAppData = {
       35,
       'api-key:github-actions',
       {
+        runtimeVersion: '2.0',
         previousBundleId: 'bundle-focus-0405-3',
         previousBundleVersion: '2026.04.05-3',
         eventCounts: { downloads: 12_418, applied: 12_102, downloadErrors: 123, rollbacks: 18 },
@@ -175,6 +186,7 @@ const focusFlowData: DashboardPreviewAppData = {
       410,
       'marina@northstar.studio',
       {
+        runtimeVersion: '1.0',
         previousBundleId: 'bundle-focus-0405-3',
         previousBundleVersion: '2026.04.05-3',
         eventCounts: { downloads: 5_421, applied: 5_304, downloadErrors: 56, rollbacks: 11 },
@@ -229,7 +241,8 @@ const focusFlowData: DashboardPreviewAppData = {
 const macroTrackData: DashboardPreviewAppData = {
   bundles: [
     bundle('bundle-macro-0408-1', '2026.04.08-1', 1_986_412, 90, {
-      deployedChannels: [],
+      runtimeVersion: '2.0',
+      deployedTargets: [],
       eventCounts: {
         downloads: 0,
         applied: 0,
@@ -238,7 +251,8 @@ const macroTrackData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-macro-0403-4', '2026.04.03-4', 1_935_772, 7120, {
-      deployedChannels: [{ channel: null, deployedAt: atOffset(5380) }],
+      runtimeVersion: '1.0',
+      deployedTargets: [{ channel: null, runtimeVersion: '1.0', deployedAt: atOffset(5380) }],
       eventCounts: {
         downloads: 54_221,
         applied: 53_108,
@@ -247,9 +261,10 @@ const macroTrackData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-macro-0327-2', '2026.03.27-2', 1_902_320, 18_940, {
+      runtimeVersion: '1.0',
       isLive: true,
-      currentChannels: [null],
-      deployedChannels: [{ channel: null, deployedAt: atOffset(13_640) }],
+      currentTargets: [{ channel: null, runtimeVersion: '1.0' }],
+      deployedTargets: [{ channel: null, runtimeVersion: '1.0', deployedAt: atOffset(13_640) }],
       eventCounts: {
         downloads: 91_448,
         applied: 89_910,
@@ -267,6 +282,7 @@ const macroTrackData: DashboardPreviewAppData = {
       5380,
       'api-key:github-actions',
       {
+        runtimeVersion: '1.0',
         previousBundleId: 'bundle-macro-0327-2',
         previousBundleVersion: '2026.03.27-2',
         revertedAt: atOffset(5200),
@@ -282,6 +298,7 @@ const macroTrackData: DashboardPreviewAppData = {
       13_640,
       'marina@northstar.studio',
       {
+        runtimeVersion: '1.0',
         eventCounts: { downloads: 32_604, applied: 31_948, downloadErrors: 92, rollbacks: 11 },
       },
     ),
@@ -317,11 +334,15 @@ const macroTrackData: DashboardPreviewAppData = {
 const voiceNotesData: DashboardPreviewAppData = {
   bundles: [
     bundle('bundle-voice-0407-1', '2026.04.07-1', 3_298_220, 180, {
+      runtimeVersion: '3.0',
       isLive: true,
-      currentChannels: [null, 'beta'],
-      deployedChannels: [
-        { channel: null, deployedAt: atOffset(150) },
-        { channel: 'beta', deployedAt: atOffset(120) },
+      currentTargets: [
+        { channel: null, runtimeVersion: '3.0' },
+        { channel: 'beta', runtimeVersion: '3.0' },
+      ],
+      deployedTargets: [
+        { channel: null, runtimeVersion: '3.0', deployedAt: atOffset(150) },
+        { channel: 'beta', runtimeVersion: '3.0', deployedAt: atOffset(120) },
       ],
       eventCounts: {
         downloads: 8_248,
@@ -331,7 +352,8 @@ const voiceNotesData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-voice-0406-2', '2026.04.06-2', 3_284_018, 2920, {
-      deployedChannels: [{ channel: null, deployedAt: atOffset(2810) }],
+      runtimeVersion: '3.0',
+      deployedTargets: [{ channel: null, runtimeVersion: '3.0', deployedAt: atOffset(2810) }],
       eventCounts: {
         downloads: 6_382,
         applied: 6_114,
@@ -340,7 +362,8 @@ const voiceNotesData: DashboardPreviewAppData = {
       },
     }),
     bundle('bundle-voice-0329-7', '2026.03.29-7', 3_201_876, 15_100, {
-      deployedChannels: [{ channel: 'beta', deployedAt: atOffset(10_820) }],
+      runtimeVersion: '2.0',
+      deployedTargets: [{ channel: 'beta', runtimeVersion: '2.0', deployedAt: atOffset(10_820) }],
       eventCounts: {
         downloads: 48_660,
         applied: 47_024,
@@ -358,6 +381,7 @@ const voiceNotesData: DashboardPreviewAppData = {
       120,
       'marina@northstar.studio',
       {
+        runtimeVersion: '3.0',
         previousBundleId: 'bundle-voice-0329-7',
         previousBundleVersion: '2026.03.29-7',
         eventCounts: { downloads: 2_218, applied: 2_132, downloadErrors: 17, rollbacks: 4 },
@@ -371,6 +395,7 @@ const voiceNotesData: DashboardPreviewAppData = {
       150,
       'api-key:github-actions',
       {
+        runtimeVersion: '3.0',
         previousBundleId: 'bundle-voice-0406-2',
         previousBundleVersion: '2026.04.06-2',
         eventCounts: { downloads: 5_704, applied: 5_536, downloadErrors: 39, rollbacks: 6 },
@@ -384,6 +409,7 @@ const voiceNotesData: DashboardPreviewAppData = {
       2810,
       'api-key:github-actions',
       {
+        runtimeVersion: '3.0',
         previousBundleId: 'bundle-voice-0329-7',
         previousBundleVersion: '2026.03.29-7',
         eventCounts: { downloads: 11_908, applied: 11_344, downloadErrors: 83, rollbacks: 24 },

@@ -5,9 +5,8 @@ struct LatestManifest {
   let url: String
   let sha256: String
   let size: Int
-  let minNativeBuild: Int?
+  let runtimeVersion: String?
   let releaseId: String?
-  let signature: ManifestSignature?
 }
 
 struct ManifestSignature {
@@ -44,7 +43,7 @@ enum ManifestClient {
     channel: String?,
     currentVersion: String,
     currentReleaseId: String?,
-    nativeBuild: String,
+    runtimeVersion: String?,
     platform: String,
     allowInsecureUrls: Bool = false,
     manifestKeys: [ManifestKey] = []
@@ -73,7 +72,9 @@ enum ManifestClient {
     if let currentReleaseId, !currentReleaseId.isEmpty {
       request.setValue(currentReleaseId, forHTTPHeaderField: "X-Release-Id")
     }
-    request.setValue(nativeBuild, forHTTPHeaderField: "X-Native-Build")
+    if let runtimeVersion, !runtimeVersion.isEmpty {
+      request.setValue(runtimeVersion, forHTTPHeaderField: "X-Runtime-Version")
+    }
     request.timeoutInterval = 30
 
     let (data, response) = try await URLSession.shared.data(for: request)
@@ -102,21 +103,12 @@ enum ManifestClient {
       throw ManifestClientError.invalidResponse
     }
 
-    var minNativeBuild: Int?
-    if let numeric = object["minNativeBuild"] as? NSNumber {
-      minNativeBuild = numeric.intValue
-    } else if let stringValue = object["minNativeBuild"] as? String {
-      minNativeBuild = Int(stringValue)
-    }
+    let runtimeVersion = (object["runtimeVersion"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty
 
-    var signature: ManifestSignature?
-    if let sigObj = object["signature"] as? [String: Any],
-       let kid = sigObj["kid"] as? String,
-       let sig = sigObj["sig"] as? String,
-       let iat = sigObj["iat"] as? Int,
-       let exp = sigObj["exp"] as? Int {
-      signature = ManifestSignature(kid: kid, sig: sig, iat: iat, exp: exp)
-    }
+    let signature = parseSignature(object["signature"])
+    let signatureV2 = parseSignature(object["signatureV2"])
 
     let releaseId = object["releaseId"] as? String
 
@@ -130,22 +122,36 @@ enum ManifestClient {
       print("[UpdateKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
     }
 
-    // Verify manifest signature if signing keys are configured
+    // Verify manifest signature if signing keys are configured.
+    // New manifests carry signatureV2 with runtimeVersion in the signed payload.
+    // Older servers only return the legacy signature field.
     if !manifestKeys.isEmpty {
-      guard let sig = signature else {
+      if let sigV2 = signatureV2 {
+        try ManifestVerifier.verify(
+          appId: appId,
+          channel: channel,
+          platform: platform,
+          version: version,
+          sha256: sha256,
+          size: size,
+          runtimeVersion: runtimeVersion,
+          signature: sigV2,
+          trustedKeys: manifestKeys
+        )
+      } else if let sig = signature {
+        try ManifestVerifier.verifyLegacy(
+          appId: appId,
+          channel: channel,
+          platform: platform,
+          version: version,
+          sha256: sha256,
+          size: size,
+          signature: sig,
+          trustedKeys: manifestKeys
+        )
+      } else {
         throw ManifestVerifierError.missingSignature
       }
-      try ManifestVerifier.verify(
-        appId: appId,
-        channel: channel,
-        platform: platform,
-        version: version,
-        sha256: sha256,
-        size: size,
-        minNativeBuild: minNativeBuild,
-        signature: sig,
-        trustedKeys: manifestKeys
-      )
     }
 
     return LatestManifest(
@@ -153,9 +159,26 @@ enum ManifestClient {
       url: downloadUrl,
       sha256: sha256,
       size: size,
-      minNativeBuild: minNativeBuild,
-      releaseId: releaseId,
-      signature: signature
+      runtimeVersion: runtimeVersion,
+      releaseId: releaseId
     )
+  }
+
+  private static func parseSignature(_ rawValue: Any?) -> ManifestSignature? {
+    guard let sigObj = rawValue as? [String: Any],
+          let kid = sigObj["kid"] as? String,
+          let sig = sigObj["sig"] as? String,
+          let iat = sigObj["iat"] as? Int,
+          let exp = sigObj["exp"] as? Int else {
+      return nil
+    }
+
+    return ManifestSignature(kid: kid, sig: sig, iat: iat, exp: exp)
+  }
+}
+
+private extension String {
+  var nilIfEmpty: String? {
+    isEmpty ? nil : self
   }
 }

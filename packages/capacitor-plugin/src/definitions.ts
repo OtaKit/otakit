@@ -21,6 +21,8 @@ export interface BundleInfo {
   id: string;
   /** Semantic version string */
   version: string;
+  /** Native compatibility lane for this bundle. */
+  runtimeVersion?: string;
   /** Current status of the bundle */
   status: BundleStatus;
   /** ISO timestamp when bundle was downloaded */
@@ -36,6 +38,8 @@ export interface BundleInfo {
 export interface LatestVersion {
   /** Version string */
   version: string;
+  /** Native compatibility lane for this update. */
+  runtimeVersion?: string;
   /** Download URL */
   url: string;
   /** SHA-256 checksum */
@@ -46,8 +50,6 @@ export interface LatestVersion {
   downloaded?: boolean;
   /** Release history ID associated with this manifest */
   releaseId?: string;
-  /** Minimum native build required */
-  minNativeBuild?: number;
 }
 
 export interface BundleListResult {
@@ -79,6 +81,8 @@ export interface OtaKitConfig {
   appId: string;
   /** Optional named release track. Omit to use the base channel. */
   channel?: string;
+  /** Optional native compatibility lane. Set this when a new store build should start a new OTA line. */
+  runtimeVersion?: string;
   /** Overall update behavior. Defaults to next-launch. */
   updateMode?: OtaKitUpdateMode;
   /**

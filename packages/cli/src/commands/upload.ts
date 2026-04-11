@@ -6,14 +6,13 @@ import { ApiClient } from '../lib/api.js';
 import { requireConfig } from '../lib/config.js';
 import { runCommand } from '../lib/errors.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
-import { normalizeChannel, parsePositiveInteger } from '../lib/validate.js';
+import { normalizeChannel } from '../lib/validate.js';
 
 type UploadOptions = {
   appId?: string;
   server?: string;
   version?: string;
   strictVersion?: boolean;
-  minNativeBuild?: string;
   release?: string | boolean;
 };
 
@@ -38,7 +37,6 @@ export const uploadCommand = new Command('upload')
   .option('--server <url>', 'Server URL override')
   .option('--version <version>', 'Version string (default: OTAKIT_VERSION, then auto-generated)')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
-  .option('--min-native-build <build>', 'Minimum native build number')
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
@@ -60,9 +58,6 @@ export const uploadCommand = new Command('upload')
         console.log(`Using auto-generated version: ${version}`);
       }
 
-      const minNativeBuild = options.minNativeBuild
-        ? parsePositiveInteger(options.minNativeBuild, 'min-native-build')
-        : undefined;
       const releaseChannel = resolveReleaseChannel(options.release);
 
       const spinner = ora('Creating zip archive...').start();
@@ -73,7 +68,7 @@ export const uploadCommand = new Command('upload')
             api,
             sourcePath,
             version,
-            minNativeBuild,
+            runtimeVersion: config.runtimeVersion,
             releaseChannel,
             onStatus: (message) => {
               spinner.text = message;

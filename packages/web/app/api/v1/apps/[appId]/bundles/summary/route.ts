@@ -17,10 +17,15 @@ type BundleSummary = {
   id: string;
   createdAt: string;
   size: number;
+  runtimeVersion: string | null;
   isLive: boolean;
-  currentChannels: Array<string | null>;
-  deployedChannels: Array<{
+  currentTargets: Array<{
     channel: string | null;
+    runtimeVersion: string | null;
+  }>;
+  deployedTargets: Array<{
+    channel: string | null;
+    runtimeVersion: string | null;
     deployedAt: string;
   }>;
   eventCounts: EventCountSummary;
@@ -30,11 +35,11 @@ function createEmptyCounts(): EventCountSummary {
   return { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0 };
 }
 
-function toChannelKey(channel: string | null): string {
-  return channel ?? '__base__';
+function toTargetKey(channel: string | null, runtimeVersion: string | null): string {
+  return `${channel ?? '__base__'}::${runtimeVersion ?? '__runtime_null__'}`;
 }
 
-function compareChannels(a: string | null, b: string | null): number {
+function compareNullableStrings(a: string | null, b: string | null): number {
   if (a === b) {
     return 0;
   }
@@ -45,6 +50,17 @@ function compareChannels(a: string | null, b: string | null): number {
     return 1;
   }
   return a.localeCompare(b);
+}
+
+function compareTargets(
+  a: { channel: string | null; runtimeVersion: string | null },
+  b: { channel: string | null; runtimeVersion: string | null },
+): number {
+  const byChannel = compareNullableStrings(a.channel, b.channel);
+  if (byChannel !== 0) {
+    return byChannel;
+  }
+  return compareNullableStrings(a.runtimeVersion, b.runtimeVersion);
 }
 
 export async function GET(
@@ -66,6 +82,7 @@ export async function GET(
       version: true,
       size: true,
       createdAt: true,
+      runtimeVersion: true,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -107,9 +124,13 @@ export async function GET(
       id: string;
       createdAt: Date;
       size: number;
+      runtimeVersion: string | null;
       isLive: boolean;
-      currentChannels: Map<string, string | null>;
-      deployedChannels: Map<string, { channel: string | null; deployedAt: Date }>;
+      currentTargets: Map<string, { channel: string | null; runtimeVersion: string | null }>;
+      deployedTargets: Map<
+        string,
+        { channel: string | null; runtimeVersion: string | null; deployedAt: Date }
+      >;
       eventCounts: EventCountSummary;
     }
   >();
@@ -120,15 +141,22 @@ export async function GET(
         id: bundle.id,
         createdAt: bundle.createdAt,
         size: bundle.size,
+        runtimeVersion: bundle.runtimeVersion,
         isLive: false,
-        currentChannels: new Map<string, string | null>(),
-        deployedChannels: new Map<string, { channel: string | null; deployedAt: Date }>(),
+        currentTargets: new Map<string, { channel: string | null; runtimeVersion: string | null }>(),
+        deployedTargets: new Map<
+          string,
+          { channel: string | null; runtimeVersion: string | null; deployedAt: Date }
+        >(),
         eventCounts: createEmptyCounts(),
       });
     }
   }
 
-  const latestByChannel = new Map<string, { channel: string | null; bundleId: string }>();
+  const latestByTarget = new Map<
+    string,
+    { channel: string | null; runtimeVersion: string | null; bundleId: string }
+  >();
 
   for (const release of releases) {
     const bundle = bundleById.get(release.bundleId);
@@ -137,32 +165,41 @@ export async function GET(
     const row = byVersion.get(bundle.version);
     if (!row) continue;
 
-    const channelKey = toChannelKey(release.channel);
-    const currentRelease = row.deployedChannels.get(channelKey);
+    const target = {
+      channel: release.channel,
+      runtimeVersion: bundle.runtimeVersion,
+    };
+    const targetKey = toTargetKey(target.channel, target.runtimeVersion);
+    const currentRelease = row.deployedTargets.get(targetKey);
     if (!currentRelease || release.promotedAt > currentRelease.deployedAt) {
-      row.deployedChannels.set(channelKey, {
-        channel: release.channel,
+      row.deployedTargets.set(targetKey, {
+        channel: target.channel,
+        runtimeVersion: target.runtimeVersion,
         deployedAt: release.promotedAt,
       });
     }
 
-    if (!latestByChannel.has(channelKey) && release.revertedAt === null) {
-      latestByChannel.set(channelKey, {
-        channel: release.channel,
+    if (!latestByTarget.has(targetKey) && release.revertedAt === null) {
+      latestByTarget.set(targetKey, {
+        channel: target.channel,
+        runtimeVersion: target.runtimeVersion,
         bundleId: release.bundleId,
       });
     }
   }
 
-  for (const latest of latestByChannel.values()) {
+  for (const latest of latestByTarget.values()) {
     const bundle = bundleById.get(latest.bundleId);
     if (!bundle) continue;
 
     const row = byVersion.get(bundle.version);
     if (!row) continue;
 
-    const channelKey = toChannelKey(latest.channel);
-    row.currentChannels.set(channelKey, latest.channel);
+    const targetKey = toTargetKey(latest.channel, latest.runtimeVersion);
+    row.currentTargets.set(targetKey, {
+      channel: latest.channel,
+      runtimeVersion: latest.runtimeVersion,
+    });
     if (latest.channel === null) {
       row.isLive = true;
     }
@@ -188,23 +225,25 @@ export async function GET(
 
   const summaries: BundleSummary[] = Array.from(byVersion.entries())
     .map(([version, row]) => {
-      const currentChannels = Array.from(row.currentChannels.values()).sort(compareChannels);
+      const currentTargets = Array.from(row.currentTargets.values()).sort(compareTargets);
 
-      const deployedChannels = Array.from(row.deployedChannels.values())
+      const deployedTargets = Array.from(row.deployedTargets.values())
         .map((entry) => ({
           channel: entry.channel,
+          runtimeVersion: entry.runtimeVersion,
           deployedAt: entry.deployedAt.toISOString(),
         }))
-        .sort((a, b) => compareChannels(a.channel, b.channel));
+        .sort(compareTargets);
 
       return {
         version,
         id: row.id,
         createdAt: row.createdAt.toISOString(),
         size: row.size,
+        runtimeVersion: row.runtimeVersion,
         isLive: row.isLive,
-        currentChannels,
-        deployedChannels,
+        currentTargets,
+        deployedTargets,
         eventCounts: row.eventCounts,
       };
     })

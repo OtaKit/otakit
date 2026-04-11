@@ -40,7 +40,6 @@ import type {
   Platform,
   ReleaseHistoryItem,
 } from '@/app/components/dashboard-types';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -76,6 +75,10 @@ import { cn } from '@/lib/utils';
 type EventPlatformFilter = Platform | 'all';
 type EventActionFilter = 'all' | 'downloaded' | 'applied' | 'download_error' | 'rollback';
 type EventTimeframeFilter = '1h' | '24h' | '7d' | '30d';
+type ReleaseTarget = {
+  channel: string | null;
+  runtimeVersion: string | null;
+};
 type BundleTableColumn =
   | 'version'
   | 'size'
@@ -100,6 +103,7 @@ type ReleaseTableColumn =
 const BASE_RELEASE_STREAM_LABEL = 'base';
 const BASE_RELEASE_STREAM_KEY = '$base';
 const NEW_RELEASE_STREAM_KEY = '$new';
+const NULL_RUNTIME_TARGET_KEY = '$runtime-null';
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v2';
@@ -114,7 +118,7 @@ const BUNDLE_COLUMN_OPTIONS: Array<{ key: BundleTableColumn; label: string }> = 
   { key: 'version', label: 'Version' },
   { key: 'size', label: 'Size' },
   { key: 'uploaded', label: 'Uploaded' },
-  { key: 'targets', label: 'Channels' },
+  { key: 'targets', label: 'Targets' },
   { key: 'downloads', label: 'Downloads' },
   { key: 'applied', label: 'Applied' },
   { key: 'errors', label: 'Errors' },
@@ -124,7 +128,7 @@ const BUNDLE_COLUMN_OPTIONS: Array<{ key: BundleTableColumn; label: string }> = 
 const BUNDLE_COLUMN_KEYS = BUNDLE_COLUMN_OPTIONS.map((option) => option.key);
 const RELEASE_COLUMN_OPTIONS: Array<{ key: ReleaseTableColumn; label: string }> = [
   { key: 'version', label: 'Bundle' },
-  { key: 'channel', label: 'Channel' },
+  { key: 'channel', label: 'Target' },
   { key: 'previous', label: 'Previous' },
   { key: 'releaser', label: 'Releaser' },
   { key: 'date', label: 'Date' },
@@ -243,11 +247,11 @@ function formatEventAction(action: string): string {
   return action.replace(/_/g, ' ');
 }
 
-function getReleaseTargetKey(channel: string | null): string {
-  return channel ?? BASE_RELEASE_STREAM_KEY;
+function getReleaseTargetKey(channel: string | null, runtimeVersion: string | null): string {
+  return `${channel ?? BASE_RELEASE_STREAM_KEY}::${runtimeVersion ?? NULL_RUNTIME_TARGET_KEY}`;
 }
 
-function compareReleaseTargets(a: string | null, b: string | null): number {
+function compareNullableStrings(a: string | null, b: string | null): number {
   if (a === b) {
     return 0;
   }
@@ -260,77 +264,126 @@ function compareReleaseTargets(a: string | null, b: string | null): number {
   return a.localeCompare(b);
 }
 
-function formatReleaseTarget(channel: string | null): string {
-  return channel ?? BASE_RELEASE_STREAM_LABEL;
+function compareReleaseTargets(a: ReleaseTarget, b: ReleaseTarget): number {
+  const byChannel = compareNullableStrings(a.channel, b.channel);
+  if (byChannel !== 0) {
+    return byChannel;
+  }
+  return compareNullableStrings(a.runtimeVersion, b.runtimeVersion);
+}
+
+function formatReleaseTarget(channel: string | null, runtimeVersion: string | null): string {
+  const label = channel ?? BASE_RELEASE_STREAM_LABEL;
+  return runtimeVersion ? `${label} · ${runtimeVersion}` : label;
 }
 
 function isValidChannelName(channel: string): boolean {
   return CHANNEL_NAME_REGEX.test(channel) && !RESERVED_CHANNEL_NAMES.has(channel.toLowerCase());
 }
 
-function isCurrentOnChannel(bundle: BundleSummaryItem, channel: string | null): boolean {
-  return bundle.currentChannels.some((currentChannel) => currentChannel === channel);
+function isCurrentOnTarget(
+  bundle: BundleSummaryItem,
+  channel: string | null,
+  runtimeVersion: string | null,
+): boolean {
+  return bundle.currentTargets.some(
+    (target) => target.channel === channel && target.runtimeVersion === runtimeVersion,
+  );
 }
 
-function findCurrentVersionOnChannel(
+function findCurrentVersionOnTarget(
   bundles: BundleSummaryItem[],
   channel: string | null,
+  runtimeVersion: string | null,
 ): string | null {
   const currentBundle = bundles.find((bundle) =>
-    bundle.currentChannels.some((currentChannel) => currentChannel === channel),
+    bundle.currentTargets.some(
+      (target) => target.channel === channel && target.runtimeVersion === runtimeVersion,
+    ),
   );
   return currentBundle?.version ?? null;
 }
 
-function findCurrentReleaseOnChannel(
+function findCurrentReleaseOnTarget(
   releases: ReleaseHistoryItem[],
   channel: string | null,
+  runtimeVersion: string | null,
 ): ReleaseHistoryItem | null {
-  return releases.find((release) => release.channel === channel && release.revertedAt === null) ?? null;
+  return (
+    releases.find(
+      (release) =>
+        release.channel === channel &&
+        release.runtimeVersion === runtimeVersion &&
+        release.revertedAt === null,
+    ) ?? null
+  );
+}
+
+function getReleaseTargetsForRuntime(
+  targets: ReleaseTarget[],
+  runtimeVersion: string | null,
+): ReleaseTarget[] {
+  const byKey = new Map<string, ReleaseTarget>();
+  const baseTarget = { channel: null, runtimeVersion };
+  byKey.set(getReleaseTargetKey(baseTarget.channel, baseTarget.runtimeVersion), baseTarget);
+
+  for (const target of targets) {
+    if (target.runtimeVersion !== runtimeVersion) {
+      continue;
+    }
+    byKey.set(getReleaseTargetKey(target.channel, target.runtimeVersion), target);
+  }
+
+  return Array.from(byKey.values()).sort(compareReleaseTargets);
 }
 
 function getDefaultReleaseTargetKey(
   bundle: BundleSummaryItem,
-  channels: Array<string | null>,
+  targets: ReleaseTarget[],
 ): string {
-  const firstAvailableChannel = channels.find((channel) => !isCurrentOnChannel(bundle, channel));
-  return firstAvailableChannel === undefined
+  const firstAvailableTarget = targets.find(
+    (target) => !isCurrentOnTarget(bundle, target.channel, target.runtimeVersion),
+  );
+  return firstAvailableTarget === undefined
     ? NEW_RELEASE_STREAM_KEY
-    : getReleaseTargetKey(firstAvailableChannel);
+    : getReleaseTargetKey(firstAvailableTarget.channel, firstAvailableTarget.runtimeVersion);
 }
 
 function rebuildPreviewCurrentReleaseState(
   bundles: BundleSummaryItem[],
   releases: ReleaseHistoryItem[],
 ): BundleSummaryItem[] {
-  const currentChannelsByBundleId = new Map<string, Array<string | null>>();
-  const seenChannels = new Set<string>();
+  const currentTargetsByBundleId = new Map<string, ReleaseTarget[]>();
+  const seenTargets = new Set<string>();
 
   for (const release of releases) {
     if (release.revertedAt !== null) {
       continue;
     }
 
-    const channelKey = getReleaseTargetKey(release.channel);
-    if (seenChannels.has(channelKey)) {
+    const targetKey = getReleaseTargetKey(release.channel, release.runtimeVersion);
+    if (seenTargets.has(targetKey)) {
       continue;
     }
 
-    seenChannels.add(channelKey);
-    const currentChannels = currentChannelsByBundleId.get(release.bundleId) ?? [];
-    currentChannels.push(release.channel);
-    currentChannelsByBundleId.set(release.bundleId, currentChannels);
+    seenTargets.add(targetKey);
+    const currentTargets = currentTargetsByBundleId.get(release.bundleId) ?? [];
+    currentTargets.push({
+      channel: release.channel,
+      runtimeVersion: release.runtimeVersion,
+    });
+    currentTargetsByBundleId.set(release.bundleId, currentTargets);
   }
 
   return bundles.map((bundle) => {
-    const currentChannels = [...(currentChannelsByBundleId.get(bundle.id) ?? [])].sort(
+    const currentTargets = [...(currentTargetsByBundleId.get(bundle.id) ?? [])].sort(
       compareReleaseTargets,
     );
 
     return {
       ...bundle,
-      currentChannels,
-      isLive: currentChannels.includes(null),
+      currentTargets,
+      isLive: currentTargets.some((target) => target.channel === null),
     };
   });
 }
@@ -523,7 +576,7 @@ export function ProductDashboard({
   // Release
   const [releasingAction, setReleasingAction] = useState<{
     version: string;
-    channel: string | null;
+    targetKey: string;
   } | null>(null);
   const [releaseConfirm, setReleaseConfirm] = useState<{
     bundle: BundleSummaryItem;
@@ -535,6 +588,7 @@ export function ProductDashboard({
   const [revertConfirm, setRevertConfirm] = useState<{
     releaseId: string;
     channel: string | null;
+    runtimeVersion: string | null;
     currentVersion: string;
     previousVersion: string | null;
   } | null>(null);
@@ -564,54 +618,70 @@ export function ProductDashboard({
     }
   }, [apps, selectedAppId]);
 
-  const releaseChannels = useMemo(() => {
-    const targets = new Map<string, string | null>();
-    targets.set(BASE_RELEASE_STREAM_KEY, null);
+  const releaseTargets = useMemo(() => {
+    const targets = new Map<string, ReleaseTarget>();
 
     for (const bundle of bundles) {
-      for (const channel of bundle.currentChannels) {
-        targets.set(getReleaseTargetKey(channel), channel);
+      for (const target of bundle.currentTargets) {
+        targets.set(getReleaseTargetKey(target.channel, target.runtimeVersion), target);
       }
-      for (const entry of bundle.deployedChannels) {
-        targets.set(getReleaseTargetKey(entry.channel), entry.channel);
+      for (const entry of bundle.deployedTargets) {
+        targets.set(getReleaseTargetKey(entry.channel, entry.runtimeVersion), entry);
       }
     }
 
     for (const release of releaseHistory) {
-      targets.set(getReleaseTargetKey(release.channel), release.channel);
+      const target = { channel: release.channel, runtimeVersion: release.runtimeVersion };
+      targets.set(getReleaseTargetKey(target.channel, target.runtimeVersion), target);
     }
 
     return Array.from(targets.values()).sort(compareReleaseTargets);
   }, [bundles, releaseHistory]);
-  const releaseSelectedChannel = useMemo(() => {
+  const releaseTargetOptions = useMemo(() => {
     if (!releaseConfirm) {
-      return null;
+      return releaseTargets;
     }
 
-    if (releaseConfirm.selectedTargetKey === BASE_RELEASE_STREAM_KEY) {
+    return getReleaseTargetsForRuntime(releaseTargets, releaseConfirm.bundle.runtimeVersion);
+  }, [releaseConfirm, releaseTargets]);
+  const releaseSelectedTarget = useMemo<ReleaseTarget | null>(() => {
+    if (!releaseConfirm) {
       return null;
     }
 
     if (releaseConfirm.selectedTargetKey === NEW_RELEASE_STREAM_KEY) {
       const normalized = releaseConfirm.newChannelName.trim();
-      return normalized.length > 0 ? normalized : null;
+      return {
+        channel: normalized.length > 0 ? normalized : null,
+        runtimeVersion: releaseConfirm.bundle.runtimeVersion,
+      };
     }
 
-    return releaseChannels.find(
-      (channel) => getReleaseTargetKey(channel) === releaseConfirm.selectedTargetKey,
-    ) ?? null;
-  }, [releaseChannels, releaseConfirm]);
+    return (
+      releaseTargetOptions.find(
+        (target) =>
+          getReleaseTargetKey(target.channel, target.runtimeVersion) ===
+          releaseConfirm.selectedTargetKey,
+      ) ?? null
+    );
+  }, [releaseConfirm, releaseTargetOptions]);
   const releaseCurrentVersion = useMemo(() => {
-    if (!releaseConfirm) {
+    if (!releaseConfirm || !releaseSelectedTarget) {
       return null;
     }
 
-    return findCurrentVersionOnChannel(bundles, releaseSelectedChannel);
-  }, [bundles, releaseConfirm, releaseSelectedChannel]);
+    return findCurrentVersionOnTarget(
+      bundles,
+      releaseSelectedTarget.channel,
+      releaseSelectedTarget.runtimeVersion,
+    );
+  }, [bundles, releaseConfirm, releaseSelectedTarget]);
   const releaseConfirmBusy =
     releaseConfirm !== null &&
+    releaseSelectedTarget !== null &&
     releasingAction?.version === releaseConfirm.bundle.version &&
-    releasingAction.channel === releaseSelectedChannel;
+    releasingAction.targetKey ===
+      getReleaseTargetKey(releaseSelectedTarget.channel, releaseSelectedTarget.runtimeVersion);
   const isCreatingNewReleaseChannel =
     releaseConfirm?.selectedTargetKey === NEW_RELEASE_STREAM_KEY;
   const releaseChannelMissing = useMemo(() => {
@@ -631,8 +701,9 @@ export function ProductDashboard({
       return null;
     }
     if (
-      releaseChannels.some(
-        (channel) => channel !== null && channel.toLowerCase() === normalized.toLowerCase(),
+      releaseTargetOptions.some(
+        (target) =>
+          target.channel !== null && target.channel.toLowerCase() === normalized.toLowerCase(),
       )
     ) {
       return 'already_exists';
@@ -643,25 +714,32 @@ export function ProductDashboard({
     if (!isValidChannelName(normalized)) {
       return 'invalid';
     }
-
     return null;
-  }, [releaseChannels, releaseConfirm]);
+  }, [releaseTargetOptions, releaseConfirm]);
   const releaseAlreadyCurrent =
     releaseConfirm !== null &&
+    releaseSelectedTarget !== null &&
     !isCreatingNewReleaseChannel &&
     releaseChannelError === null &&
-    isCurrentOnChannel(releaseConfirm.bundle, releaseSelectedChannel);
+    isCurrentOnTarget(
+      releaseConfirm.bundle,
+      releaseSelectedTarget.channel,
+      releaseSelectedTarget.runtimeVersion,
+    );
 
   const eventBundleOptions = useMemo(() => bundles.map((bundle) => bundle.version), [bundles]);
 
   const hideChannelColumns = useMemo(() => {
-    return releaseChannels.length === 1 && releaseChannels[0] === null;
-  }, [releaseChannels]);
+    return (
+      releaseTargets.length <= 1 &&
+      releaseTargets.every((target) => target.channel === null && target.runtimeVersion === null)
+    );
+  }, [releaseTargets]);
   const bundleColumnOptions = useMemo(
     () =>
       BUNDLE_COLUMN_OPTIONS.map((option) =>
         option.key === 'targets'
-          ? { ...option, label: hideChannelColumns ? 'Status' : 'Channels' }
+          ? { ...option, label: hideChannelColumns ? 'Status' : 'Targets' }
           : option,
       ),
     [hideChannelColumns],
@@ -888,22 +966,30 @@ export function ProductDashboard({
     if (releasingAction !== null) return;
     setReleaseConfirm({
       bundle,
-      selectedTargetKey: getDefaultReleaseTargetKey(bundle, releaseChannels),
+      selectedTargetKey: getDefaultReleaseTargetKey(
+        bundle,
+        getReleaseTargetsForRuntime(releaseTargets, bundle.runtimeVersion),
+      ),
       newChannelName: '',
     });
   }
 
   async function releaseBundle(
     bundle: BundleSummaryItem,
-    channel: string | null,
+    target: ReleaseTarget | null,
   ): Promise<boolean> {
-    if (!selectedAppId) return false;
-    if (isCurrentOnChannel(bundle, channel)) {
-      toast.success(`${bundle.version} is already current on ${formatReleaseTarget(channel)}`);
+    if (!selectedAppId || !target) return false;
+    if (isCurrentOnTarget(bundle, target.channel, target.runtimeVersion)) {
+      toast.success(
+        `${bundle.version} is already current on ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+      );
       return false;
     }
 
-    setReleasingAction({ version: bundle.version, channel });
+    setReleasingAction({
+      version: bundle.version,
+      targetKey: getReleaseTargetKey(target.channel, target.runtimeVersion),
+    });
     try {
       if (isPreview) {
         const promotedAt = new Date().toISOString();
@@ -914,14 +1000,28 @@ export function ProductDashboard({
             return current;
           }
 
-          const previousRelease = findCurrentReleaseOnChannel(previewApp.releases, channel);
+          const previousRelease = findCurrentReleaseOnTarget(
+            previewApp.releases,
+            target.channel,
+            target.runtimeVersion,
+          );
           const bundlesWithDeployment = previewApp.bundles.map((item) => {
             if (item.id === bundle.id) {
               return {
                 ...item,
-                deployedChannels: [
-                  { channel, deployedAt: promotedAt },
-                  ...item.deployedChannels.filter((entry) => entry.channel !== channel),
+                deployedTargets: [
+                  {
+                    channel: target.channel,
+                    runtimeVersion: target.runtimeVersion,
+                    deployedAt: promotedAt,
+                  },
+                  ...item.deployedTargets.filter(
+                    (entry) =>
+                      !(
+                        entry.channel === target.channel &&
+                        entry.runtimeVersion === target.runtimeVersion
+                      ),
+                  ),
                 ].sort(
                   (a, b) => new Date(b.deployedAt).getTime() - new Date(a.deployedAt).getTime(),
                 ),
@@ -936,7 +1036,8 @@ export function ProductDashboard({
           const nextReleases: ReleaseHistoryItem[] = [
             {
               id: `preview-release-${Date.now()}`,
-              channel,
+              channel: target.channel,
+              runtimeVersion: target.runtimeVersion,
               bundleId: bundle.id,
               bundleVersion: bundle.version,
               previousBundleId: previousRelease?.bundleId ?? null,
@@ -964,7 +1065,9 @@ export function ProductDashboard({
           };
         });
 
-        toast.success(`Released ${bundle.version} to ${formatReleaseTarget(channel)}`);
+        toast.success(
+          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+        );
         setReleaseConfirm(null);
         return true;
       }
@@ -972,11 +1075,13 @@ export function ProductDashboard({
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bundleId: bundle.id, channel }),
+        body: JSON.stringify({ bundleId: bundle.id, channel: target.channel }),
       });
       const data = await parseJson<ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
-      toast.success(`Released ${bundle.version} to ${formatReleaseTarget(channel)}`);
+      toast.success(
+        `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+      );
       await Promise.all([
         loadBundles(selectedAppId),
         loadEvents(selectedAppId),
@@ -998,13 +1103,14 @@ export function ProductDashboard({
     if (releaseChannelError || releaseChannelMissing) {
       return;
     }
-    await releaseBundle(releaseConfirm.bundle, releaseSelectedChannel);
+    await releaseBundle(releaseConfirm.bundle, releaseSelectedTarget);
   }
 
   function openRevertConfirm(row: ReleaseHistoryItem) {
     setRevertConfirm({
       releaseId: row.id,
       channel: row.channel,
+      runtimeVersion: row.runtimeVersion,
       currentVersion: row.bundleVersion,
       previousVersion: row.previousBundleVersion ?? null,
     });
@@ -1043,7 +1149,9 @@ export function ProductDashboard({
           };
         });
 
-        toast.success(`Reverted ${formatReleaseTarget(revertConfirm.channel)}`);
+        toast.success(
+          `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
+        );
         setRevertConfirm(null);
         return;
       }
@@ -1056,7 +1164,9 @@ export function ProductDashboard({
       );
       const data = await parseJson<ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Revert failed');
-      toast.success(`Reverted ${formatReleaseTarget(revertConfirm.channel)}`);
+      toast.success(
+        `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
+      );
       setRevertConfirm(null);
       await Promise.all([loadBundles(selectedAppId), loadReleaseHistory(selectedAppId)]);
       router.refresh();
@@ -1262,15 +1372,6 @@ export function ProductDashboard({
                         <SlidersHorizontal className="size-3.5" />
                         <span className="sr-only">Edit bundle columns</span>
                       </Button>
-                      {/* {releaseChannels.map((channel) => (
-                    <Badge
-                      key={getReleaseTargetKey(channel)}
-                      variant={channel === null ? 'default' : 'secondary'}
-                      className="h-5 px-2 text-[10px]"
-                    >
-                      {formatReleaseTarget(channel)}
-                    </Badge>
-                  ))} */}
                     </div>
 
                     {bundles.length === 0 && !loadingBundles ? (
@@ -1374,7 +1475,11 @@ export function ProductDashboard({
                               <TableBody>
                                 {bundles.slice(0, visibleBundleCount).map((b) => {
                                   const isReleasing = releasingAction?.version === b.version;
-                                  const currentSet = new Set(b.currentChannels);
+                                  const currentSet = new Set(
+                                    b.currentTargets.map((target) =>
+                                      getReleaseTargetKey(target.channel, target.runtimeVersion),
+                                    ),
+                                  );
 
                                   return (
                                     <TableRow key={b.version}>
@@ -1398,17 +1503,25 @@ export function ProductDashboard({
                                       {hasBundleColumn('targets') ? (
                                         !hideChannelColumns ? (
                                           <TableCell className="border-r border-border">
-                                            {b.deployedChannels.length === 0 ? (
+                                            {b.deployedTargets.length === 0 ? (
                                               <span className="text-xs text-muted-foreground">
                                                 Not released
                                               </span>
                                             ) : (
                                               <div className="flex flex-wrap items-center gap-1">
-                                                {b.deployedChannels.map((entry) => {
-                                                  const isCurrent = currentSet.has(entry.channel);
+                                                {b.deployedTargets.map((entry) => {
+                                                  const isCurrent = currentSet.has(
+                                                    getReleaseTargetKey(
+                                                      entry.channel,
+                                                      entry.runtimeVersion,
+                                                    ),
+                                                  );
                                                   return (
                                                     <span
-                                                      key={getReleaseTargetKey(entry.channel)}
+                                                      key={getReleaseTargetKey(
+                                                        entry.channel,
+                                                        entry.runtimeVersion,
+                                                      )}
                                                       title={`Released ${formatDate(entry.deployedAt)}${isCurrent ? ' · current' : ''}`}
                                                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
                                                         isCurrent
@@ -1422,7 +1535,10 @@ export function ProductDashboard({
                                                           strokeWidth={3}
                                                         />
                                                       ) : null}
-                                                      {formatReleaseTarget(entry.channel)}
+                                                      {formatReleaseTarget(
+                                                        entry.channel,
+                                                        entry.runtimeVersion,
+                                                      )}
                                                     </span>
                                                   );
                                                 })}
@@ -1439,12 +1555,12 @@ export function ProductDashboard({
                                                 />
                                                 Live
                                               </span>
-                                            ) : b.deployedChannels[0] ? (
+                                            ) : b.deployedTargets[0] ? (
                                               <span
                                                 className="text-xs text-muted-foreground"
-                                                title={`Last served ${formatDate(b.deployedChannels[0].deployedAt)}`}
+                                                title={`Last served ${formatDate(b.deployedTargets[0].deployedAt)}`}
                                               >
-                                                Released {formatDate(b.deployedChannels[0].deployedAt)}
+                                                Released {formatDate(b.deployedTargets[0].deployedAt)}
                                               </span>
                                             ) : (
                                               <span className="text-xs text-muted-foreground">
@@ -1597,14 +1713,14 @@ export function ProductDashboard({
                       (() => {
                         const visible = releaseHistory.slice(0, visibleReleaseCount);
 
-                        // Current release per channel = the most recent non-reverted release.
+                        // Current release per target = the most recent non-reverted release.
                         const currentReleaseIds = new Set<string>();
-                        const seenChannels = new Set<string>();
+                        const seenTargets = new Set<string>();
                         for (const release of releaseHistory) {
-                          const key = getReleaseTargetKey(release.channel);
-                          if (!seenChannels.has(key) && release.revertedAt === null) {
+                          const key = getReleaseTargetKey(release.channel, release.runtimeVersion);
+                          if (!seenTargets.has(key) && release.revertedAt === null) {
                             currentReleaseIds.add(release.id);
-                            seenChannels.add(key);
+                            seenTargets.add(key);
                           }
                         }
 
@@ -1624,7 +1740,7 @@ export function ProductDashboard({
                                     ) : null}
                                     {hasReleaseColumn('channel') && !hideChannelColumns ? (
                                       <TableHead className="border-r border-border">
-                                        Channel
+                                        Target
                                       </TableHead>
                                     ) : null}
                                     {hasReleaseColumn('previous') ? (
@@ -1711,7 +1827,7 @@ export function ProductDashboard({
                                         ) : null}
                                         {hasReleaseColumn('channel') && !hideChannelColumns ? (
                                           <TableCell className="border-r border-border truncate text-sm text-muted-foreground">
-                                            {formatReleaseTarget(row.channel)}
+                                            {formatReleaseTarget(row.channel, row.runtimeVersion)}
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('previous') ? (
@@ -2032,7 +2148,7 @@ export function ProductDashboard({
                                   </TableCell>
                                   {!hideChannelColumns ? (
                                     <TableCell className="truncate text-xs text-muted-foreground">
-                                      {formatReleaseTarget(ev.channel)}
+                                      {formatReleaseTarget(ev.channel, null)}
                                     </TableCell>
                                   ) : null}
                                 </TableRow>
@@ -2147,13 +2263,17 @@ export function ProductDashboard({
                     <SelectValue placeholder="Select channel" />
                   </SelectTrigger>
                   <SelectContent>
-                    {releaseChannels.map((channel) => (
+                    {releaseTargetOptions.map((target) => (
                       <SelectItem
-                        key={getReleaseTargetKey(channel)}
-                        value={getReleaseTargetKey(channel)}
-                        disabled={isCurrentOnChannel(releaseConfirm.bundle, channel)}
+                        key={getReleaseTargetKey(target.channel, target.runtimeVersion)}
+                        value={getReleaseTargetKey(target.channel, target.runtimeVersion)}
+                        disabled={isCurrentOnTarget(
+                          releaseConfirm.bundle,
+                          target.channel,
+                          target.runtimeVersion,
+                        )}
                       >
-                        {formatReleaseTarget(channel)}
+                        {formatReleaseTarget(target.channel, target.runtimeVersion)}
                       </SelectItem>
                     ))}
                     <SelectItem value={NEW_RELEASE_STREAM_KEY}>New channel…</SelectItem>
@@ -2195,7 +2315,12 @@ export function ProductDashboard({
               </div>
               {releaseAlreadyCurrent ? (
                 <p className="text-xs text-muted-foreground">
-                  This bundle is already current on {formatReleaseTarget(releaseSelectedChannel)}.
+                  This bundle is already current on{' '}
+                  {formatReleaseTarget(
+                    releaseSelectedTarget?.channel ?? null,
+                    releaseSelectedTarget?.runtimeVersion ?? null,
+                  )}
+                  .
                 </p>
               ) : null}
             </div>
@@ -2255,7 +2380,9 @@ export function ProductDashboard({
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Channel</span>
-                <span className="font-medium">{formatReleaseTarget(revertConfirm.channel)}</span>
+                <span className="font-medium">
+                  {formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}
+                </span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Current</span>

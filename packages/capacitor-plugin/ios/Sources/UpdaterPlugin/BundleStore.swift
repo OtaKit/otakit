@@ -10,6 +10,7 @@ final class BundleStore {
 
   private let defaults = UserDefaults.standard
   private let fileManager = FileManager.default
+  var appRuntimeVersion: String?
 
   private lazy var decoder: JSONDecoder = {
     let decoder = JSONDecoder()
@@ -51,6 +52,7 @@ final class BundleStore {
     BundleInfo(
       id: "builtin",
       version: builtinVersion,
+      runtimeVersion: appRuntimeVersion,
       status: .builtin,
       downloadedAt: nil,
       sha256: nil,
@@ -202,6 +204,7 @@ final class BundleStore {
     bundle = BundleInfo(
       id: bundle.id,
       version: bundle.version,
+      runtimeVersion: bundle.runtimeVersion,
       status: status,
       downloadedAt: bundle.downloadedAt,
       sha256: bundle.sha256,

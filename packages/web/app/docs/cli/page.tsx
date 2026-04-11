@@ -53,6 +53,8 @@ const config: CapacitorConfig = {
       appId: "app_xxxxxxxx",
       // Optional named channel:
       // channel: "staging"
+      // Optional compatibility lane:
+      // runtimeVersion: "2026.04"
     }
   }
 };
@@ -118,6 +120,10 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
           <Code>--release &lt;channel&gt;</Code> {'->'} named channel
         </li>
         <li>
+          Runtime version: <Code>plugins.OtaKit.runtimeVersion</Code> {'->'} bundle metadata during
+          upload
+        </li>
+        <li>
           Upload version: <Code>--version</Code> {'->'} <Code>OTAKIT_VERSION</Code> {'->'}{' '}
           auto-generated version
         </li>
@@ -145,10 +151,6 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             },
             { flag: '--strict-version', desc: 'Require explicit or env-provided version.' },
             {
-              flag: '--min-native-build <n>',
-              desc: 'Minimum native build required for this update.',
-            },
-            {
               flag: '--release [channel]',
               desc: 'Release after upload. Omit channel to release to the base channel.',
             },
@@ -161,7 +163,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit release"
           args="[bundleId]"
-          description="Release a bundle to the base channel or a named channel. If bundleId is omitted, releases the latest bundle."
+          description="Release a bundle to the base channel or a named channel. The bundle already carries its runtimeVersion, so release only chooses the rollout channel."
           options={[
             {
               flag: '--channel <channel>',

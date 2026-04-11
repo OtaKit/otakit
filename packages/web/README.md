@@ -44,15 +44,22 @@ The main server-side models are:
 
 1. choose a bundle
 2. create append-only `Release`
-3. newest non-reverted release per `(appId, channel)` becomes current
+3. newest non-reverted release per `(appId, channel, runtimeVersion)` becomes current
 
 ### Manifest
 
-1. resolve the latest non-reverted release for the app + channel
-2. check current version and `minNativeBuild`
+1. resolve the latest non-reverted release for the app + channel + runtimeVersion
+2. compare against the device's current version
 3. mint a fresh download URL
 4. sign the manifest
 5. return update metadata to the plugin
+
+### Compatibility model
+
+- `channel` is the rollout track
+- `runtimeVersion` is the native compatibility lane
+- bundles inherit `runtimeVersion` at upload time
+- releases do not pick compatibility separately; they publish the bundle that was already tagged
 
 ### Usage
 

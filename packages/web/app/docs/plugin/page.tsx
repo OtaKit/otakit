@@ -27,6 +27,7 @@ export default function PluginReferencePage() {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
+    // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
   }
 }`}</Pre>
@@ -40,6 +41,11 @@ export default function PluginReferencePage() {
           field="channel"
           type="string"
           description="Named release track to check. Omit it to use the base channel."
+        />
+        <ConfigRow
+          field="runtimeVersion"
+          type="string"
+          description="Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles."
         />
         <ConfigRow
           field="updateMode"
@@ -63,6 +69,22 @@ export default function PluginReferencePage() {
         Hosted OtaKit points at the managed server automatically. Do not set <Code>serverUrl</Code>{' '}
         or <Code>manifestKeys</Code> unless you intentionally want custom server or verification
         behavior.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Compatibility lanes</H2>
+      <P>
+        <Code>channel</Code> is for rollout audience. <Code>runtimeVersion</Code> is for native
+        compatibility.
+      </P>
+      <P>
+        If you ship a new store build and do not want it to keep consuming older OTA bundles, bump{' '}
+        <Code>runtimeVersion</Code> in the plugin config before uploading the next OTA bundle.
+      </P>
+      <P>
+        The CLI reads that same value automatically during upload, so releases stay simple: release
+        the bundle and it naturally stays inside its own runtime lane.
       </P>
 
       <Separator className="my-10" />
@@ -113,7 +135,7 @@ export default function PluginReferencePage() {
       <P>
         This is the normal OtaKit flow. Leave <Code>updateMode</Code> unset or set it to{' '}
         <Code>next-launch</Code>. The plugin checks automatically on startup, downloads in the
-        background, and activates the new bundle on the next cold app launch.
+        background, and activates the new bundle according to the selected update mode.
       </P>
       <P>
         In this mode, your app code usually only needs to call <Code>notifyAppReady()</Code>.
@@ -345,6 +367,7 @@ await OtaKit.removeAllListeners();`}</Pre>
       <Pre>{`interface BundleInfo {
   id: string;
   version: string;
+  runtimeVersion?: string;
   status: "builtin" | "pending"
     | "trial" | "success" | "error";
   downloadedAt?: string;
@@ -364,9 +387,9 @@ interface LatestVersion {
   url: string;
   sha256: string;
   size: number;
+  runtimeVersion?: string;
   downloaded?: boolean;
   releaseId?: string;
-  minNativeBuild?: number;
 }`}</Pre>
     </>
   );

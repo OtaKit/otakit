@@ -57,6 +57,7 @@ const resolveSubcommand = new Command('resolve')
         serverUrl: snapshot.serverUrl,
         outputDir: snapshot.outputDir,
         channel: snapshot.channel,
+        runtimeVersion: snapshot.runtimeVersion,
         auth: {
           present: snapshot.authToken.value !== null,
           source: snapshot.authSource ?? 'none',
@@ -76,6 +77,9 @@ const resolveSubcommand = new Command('resolve')
         `outputDir: ${formatMaybe(snapshot.outputDir.value)} (${snapshot.outputDir.source})`,
       );
       console.log(`channel: ${formatMaybe(snapshot.channel.value)} (${snapshot.channel.source})`);
+      console.log(
+        `runtimeVersion: ${formatMaybe(snapshot.runtimeVersion.value)} (${snapshot.runtimeVersion.source})`,
+      );
       console.log(
         `auth token: ${snapshot.authToken.value ? 'present' : 'missing'} (${formatAuthSource(
           snapshot.authSource,

@@ -7,7 +7,7 @@ export interface Bundle {
   version: string;
   sha256: string;
   size: number;
-  minNativeBuild?: number;
+  runtimeVersion?: string | null;
   createdAt: string;
 }
 
@@ -21,6 +21,7 @@ export interface UploadInitResponse {
 export interface Release {
   id: string;
   channel: string | null;
+  runtimeVersion?: string | null;
   bundleId: string;
   bundleVersion?: string;
   promotedAt: string;
@@ -93,7 +94,7 @@ export class ApiClient {
 
   async initiateUpload(options: {
     version: string;
-    minNativeBuild?: number;
+    runtimeVersion?: string;
     size: number;
     sha256: string;
   }): Promise<UploadInitResponse> {

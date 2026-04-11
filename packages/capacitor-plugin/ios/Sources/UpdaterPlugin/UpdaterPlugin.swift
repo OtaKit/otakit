@@ -43,6 +43,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var updateUrl = UpdaterPlugin.defaultUpdateURL
   private var appId: String?
   private var channel: String?
+  private var runtimeVersion: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
   private var checkIntervalMs: Int = 600_000
@@ -61,6 +62,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     )
     appId = getConfig().getString("appId")
     channel = trimToNil(getConfig().getString("channel"))
+    runtimeVersion = trimToNil(getConfig().getString("runtimeVersion"))
+    store.appRuntimeVersion = runtimeVersion
     allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false)
     let updateModeRaw = getConfig().getString("updateMode", UpdateMode.nextLaunch.rawValue)
     updateMode = resolveUpdateMode(configured: updateModeRaw)
@@ -88,6 +91,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedServer(updateUrl) {
       manifestKeys = HostedManifestKeys.defaults
     }
+
+    pruneIncompatibleBundles()
 
     var current = store.getCurrentBundle()
     if current.status == .trial {
@@ -307,6 +312,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           "size": 0,
           "downloaded": true,
         ]
+        if let runtimeVersion = staged.runtimeVersion {
+          payload["runtimeVersion"] = runtimeVersion
+        }
         if let releaseId = staged.releaseId {
           payload["releaseId"] = releaseId
         }
@@ -503,7 +511,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       channel: channel,
       currentVersion: current.version,
       currentReleaseId: current.releaseId,
-      nativeBuild: store.nativeBuild,
+      runtimeVersion: runtimeVersion,
       platform: "ios",
       allowInsecureUrls: allowInsecureUrls,
       manifestKeys: manifestKeys.map {
@@ -524,6 +532,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("noUpdateAvailable", data: [:])
       }
       return nil
+    }
+
+    guard isCompatibleRuntime(manifest.runtimeVersion) else {
+      throw NSError(
+        domain: "OtaKit",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Manifest runtimeVersion does not match the installed app runtime"]
+      )
     }
 
     let staged = findMatchingStagedBundle(latest: manifest, targetChannel: targetChannel)
@@ -549,6 +565,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         version: manifest.version,
         expectedSha256: manifest.sha256,
         expectedSize: manifest.size,
+        runtimeVersion: manifest.runtimeVersion,
         channel: targetChannel,
         releaseId: manifest.releaseId
       )
@@ -568,6 +585,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         version: manifest.version,
         expectedSha256: manifest.sha256,
         expectedSize: manifest.size,
+        runtimeVersion: manifest.runtimeVersion,
         channel: targetChannel,
         releaseId: manifest.releaseId
       )
@@ -588,6 +606,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     version: String,
     expectedSha256: String,
     expectedSize: Int? = nil,
+    runtimeVersion: String? = nil,
     channel: String? = nil,
     releaseId: String? = nil
   ) async throws -> BundleInfo {
@@ -652,6 +671,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       let info = BundleInfo(
         id: bundleId,
         version: version,
+        runtimeVersion: runtimeVersion,
         status: .pending,
         downloadedAt: Date(),
         sha256: expectedSha256,
@@ -723,6 +743,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       store.setStagedBundleId(nil)
       return store.getCurrentBundle()
     }
+    guard isCompatibleRuntime(staged) else {
+      try? store.deleteBundle(id: staged.id)
+      return store.getCurrentBundle()
+    }
 
     store.setCurrentBundleId(staged.id)
     store.setStagedBundleId(nil)
@@ -735,6 +759,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     guard var staged = store.getBundle(id: stagedId) else {
       store.setStagedBundleId(nil)
+      return
+    }
+    guard isCompatibleRuntime(staged) else {
+      try? store.deleteBundle(id: staged.id)
       return
     }
 
@@ -795,6 +823,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     let failed = BundleInfo(
       id: current.id,
       version: current.version,
+      runtimeVersion: current.runtimeVersion,
       status: .error,
       downloadedAt: current.downloadedAt,
       sha256: current.sha256,
@@ -901,11 +930,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       "size": latest.size,
       "downloaded": downloaded,
     ]
+    if let runtimeVersion = latest.runtimeVersion {
+      payload["runtimeVersion"] = runtimeVersion
+    }
     if let releaseId = latest.releaseId {
       payload["releaseId"] = releaseId
-    }
-    if let minNativeBuild = latest.minNativeBuild {
-      payload["minNativeBuild"] = minNativeBuild
     }
     return payload
   }
@@ -926,6 +955,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return nil
     }
 
+    if trimToNil(staged.runtimeVersion) != trimToNil(latest.runtimeVersion) {
+      return nil
+    }
+
     if let latestReleaseId = latest.releaseId,
        let stagedReleaseId = staged.releaseId,
        latestReleaseId == stagedReleaseId {
@@ -938,6 +971,24 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     return nil
+  }
+
+  private func pruneIncompatibleBundles() {
+    for bundle in store.listDownloadedBundles() where !isCompatibleRuntime(bundle) {
+      try? store.deleteBundle(id: bundle.id)
+    }
+
+    if let failed = store.getFailedBundle(), !isCompatibleRuntime(failed) {
+      store.setFailedBundle(nil)
+    }
+  }
+
+  private func isCompatibleRuntime(_ runtimeVersion: String?) -> Bool {
+    trimToNil(runtimeVersion) == self.runtimeVersion
+  }
+
+  private func isCompatibleRuntime(_ bundle: BundleInfo) -> Bool {
+    isCompatibleRuntime(bundle.runtimeVersion)
   }
 
   private func buildBundleId(from version: String) -> String {

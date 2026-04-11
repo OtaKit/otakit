@@ -78,7 +78,7 @@ export async function GET(
       skip: offset,
       take: limit,
       include: {
-        bundle: { select: { version: true } },
+        bundle: { select: { version: true, runtimeVersion: true } },
         previousBundle: { select: { version: true } },
       },
     }),
@@ -122,6 +122,7 @@ export async function GET(
     releases: releases.map((release) => ({
       id: release.id,
       channel: release.channel,
+      runtimeVersion: release.bundle.runtimeVersion,
       bundleId: release.bundleId,
       bundleVersion: release.bundle.version,
       previousBundleId: release.previousBundleId,
@@ -177,16 +178,25 @@ export async function POST(
 
   const bundle = await db.bundle.findUnique({
     where: { id: bundleId },
-    select: { id: true, appId: true, version: true },
+    select: { id: true, appId: true, version: true, runtimeVersion: true },
   });
   if (!bundle || bundle.appId !== appId) {
     return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
   }
 
   const currentLatest = await db.release.findFirst({
-    where: { appId, channel, revertedAt: null },
+    where: {
+      appId,
+      channel,
+      revertedAt: null,
+      bundle: {
+        is: {
+          runtimeVersion: bundle.runtimeVersion,
+        },
+      },
+    },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    include: { bundle: { select: { version: true } } },
+    include: { bundle: { select: { version: true, runtimeVersion: true } } },
   });
 
   if (currentLatest?.bundleId === bundle.id) {
@@ -204,12 +214,13 @@ export async function POST(
     channel,
     promotedBy,
   });
-  await invalidateManifestReleaseCache(appId, channel);
+  await invalidateManifestReleaseCache(appId, channel, bundle.runtimeVersion);
 
   return NextResponse.json({
     release: {
       id: release.id,
       channel: release.channel,
+      runtimeVersion: bundle.runtimeVersion,
       bundleId: release.bundleId,
       bundleVersion: bundle.version,
       previousBundleId: release.previousBundleId,
@@ -222,6 +233,7 @@ export async function POST(
       ? {
           id: currentLatest.id,
           channel: currentLatest.channel,
+          runtimeVersion: currentLatest.bundle.runtimeVersion,
           bundleId: currentLatest.bundleId,
           bundleVersion: currentLatest.bundle.version,
           promotedAt: currentLatest.promotedAt.toISOString(),

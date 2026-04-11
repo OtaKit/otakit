@@ -40,7 +40,7 @@ export async function GET(
       version: bundle.version,
       sha256: bundle.sha256,
       size: bundle.size,
-      minNativeBuild: bundle.minNativeBuild,
+      runtimeVersion: bundle.runtimeVersion,
       createdAt: bundle.createdAt.toISOString(),
     })),
     total,

@@ -5,9 +5,15 @@ import {
   getCachedLatestManifestRelease,
   getCachedManifestAppAccess,
 } from '@/lib/cache/manifest-cache';
-import { signManifest } from '@/lib/manifest-signing';
+import { signLegacyManifest, signManifest } from '@/lib/manifest-signing';
 import { createSignedDownloadUrl } from '@/lib/storage';
-import { isValidChannelName, normalizeOptionalChannel, parsePlatform } from '@/lib/validation';
+import {
+  isValidChannelName,
+  isValidRuntimeVersion,
+  normalizeOptionalChannel,
+  normalizeOptionalRuntimeVersion,
+  parsePlatform,
+} from '@/lib/validation';
 
 export const runtime = 'nodejs';
 
@@ -32,6 +38,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid X-Channel header' }, { status: 400 });
   }
 
+  const rawRuntimeVersion = request.headers.get('X-Runtime-Version');
+  const runtimeVersion = normalizeOptionalRuntimeVersion(rawRuntimeVersion);
+  if (
+    typeof rawRuntimeVersion === 'string' &&
+    rawRuntimeVersion.trim().length > 0 &&
+    (!runtimeVersion || !isValidRuntimeVersion(runtimeVersion))
+  ) {
+    return NextResponse.json({ error: 'Invalid X-Runtime-Version header' }, { status: 400 });
+  }
+
   const app = await getCachedManifestAppAccess(appId);
   if (!app) {
     return NextResponse.json({ error: 'Invalid app ID' }, { status: 401 });
@@ -42,9 +58,7 @@ export async function GET(request: NextRequest) {
   }
 
   const currentVersion = request.headers.get('X-Current-Version');
-  const nativeBuild = request.headers.get('X-Native-Build');
-
-  const latestRelease = await getCachedLatestManifestRelease(app.appId, channel);
+  const latestRelease = await getCachedLatestManifestRelease(app.appId, channel, runtimeVersion);
 
   if (!latestRelease) {
     return new NextResponse(null, { status: 204 });
@@ -55,47 +69,35 @@ export async function GET(request: NextRequest) {
     return new NextResponse(null, { status: 204 });
   }
 
-  if (bundle.minNativeBuild !== null) {
-    if (!nativeBuild) {
-      return NextResponse.json({ error: 'Missing X-Native-Build header' }, { status: 400 });
-    }
-
-    const clientBuild = Number.parseInt(nativeBuild, 10);
-    if (!Number.isInteger(clientBuild) || clientBuild <= 0) {
-      return NextResponse.json({ error: 'Invalid X-Native-Build header' }, { status: 400 });
-    }
-
-    if (clientBuild < bundle.minNativeBuild) {
-      return NextResponse.json(
-        {
-          error: 'native_build_too_old',
-          minNativeBuild: bundle.minNativeBuild,
-          message: `Native build ${clientBuild} is below minimum ${bundle.minNativeBuild}`,
-        },
-        { status: 406 },
-      );
-    }
-  }
-
   const downloadUrl = await createSignedDownloadUrl(bundle.storageKey);
-  const signature = signManifest({
+  const signature = signLegacyManifest({
     appId: app.appId,
     channel,
     platform,
     version: bundle.version,
     sha256: bundle.sha256,
     size: bundle.size,
-    minNativeBuild: bundle.minNativeBuild,
+    runtimeVersion: bundle.runtimeVersion,
+  });
+  const signatureV2 = signManifest({
+    appId: app.appId,
+    channel,
+    platform,
+    version: bundle.version,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    runtimeVersion: bundle.runtimeVersion,
   });
 
   return NextResponse.json({
     version: bundle.version,
     channel,
+    runtimeVersion: bundle.runtimeVersion,
     releaseId: latestRelease.id,
     url: downloadUrl,
     sha256: bundle.sha256,
     size: bundle.size,
-    minNativeBuild: bundle.minNativeBuild,
     signature,
+    signatureV2,
   });
 }

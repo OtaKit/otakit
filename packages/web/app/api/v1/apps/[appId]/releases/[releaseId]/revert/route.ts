@@ -23,7 +23,7 @@ export async function POST(
   const targetRelease = await db.release.findFirst({
     where: { id: releaseId, appId },
     include: {
-      bundle: { select: { version: true } },
+      bundle: { select: { version: true, runtimeVersion: true } },
       previousBundle: { select: { version: true } },
     },
   });
@@ -41,6 +41,11 @@ export async function POST(
       appId,
       channel: targetRelease.channel,
       revertedAt: null,
+      bundle: {
+        is: {
+          runtimeVersion: targetRelease.bundle.runtimeVersion,
+        },
+      },
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
     select: { id: true },
@@ -66,21 +71,31 @@ export async function POST(
         appId,
         channel: targetRelease.channel,
         revertedAt: null,
+        bundle: {
+          is: {
+            runtimeVersion: targetRelease.bundle.runtimeVersion,
+          },
+        },
       },
       orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
       include: {
-        bundle: { select: { version: true } },
+        bundle: { select: { version: true, runtimeVersion: true } },
         previousBundle: { select: { version: true } },
       },
     }),
   ]);
 
-  await invalidateManifestReleaseCache(appId, targetRelease.channel);
+  await invalidateManifestReleaseCache(
+    appId,
+    targetRelease.channel,
+    targetRelease.bundle.runtimeVersion,
+  );
 
   return NextResponse.json({
     release: {
       id: revertedRelease.id,
       channel: revertedRelease.channel,
+      runtimeVersion: targetRelease.bundle.runtimeVersion,
       bundleId: revertedRelease.bundleId,
       bundleVersion: targetRelease.bundle.version,
       previousBundleId: revertedRelease.previousBundleId,
@@ -94,6 +109,7 @@ export async function POST(
       ? {
           id: nextCurrentRelease.id,
           channel: nextCurrentRelease.channel,
+          runtimeVersion: nextCurrentRelease.bundle.runtimeVersion,
           bundleId: nextCurrentRelease.bundleId,
           bundleVersion: nextCurrentRelease.bundle.version,
           previousBundleId: nextCurrentRelease.previousBundleId,

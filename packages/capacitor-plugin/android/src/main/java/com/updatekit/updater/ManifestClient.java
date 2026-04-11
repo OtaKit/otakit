@@ -30,26 +30,23 @@ final class ManifestClient {
     final String url;
     final String sha256;
     final int size;
-    final Integer minNativeBuild;
+    final String runtimeVersion;
     final String releaseId;
-    final ManifestSignature signature;
 
     LatestManifest(
       String version,
       String url,
       String sha256,
       int size,
-      Integer minNativeBuild,
-      String releaseId,
-      ManifestSignature signature
+      String runtimeVersion,
+      String releaseId
     ) {
       this.version = version;
       this.url = url;
       this.sha256 = sha256;
       this.size = size;
-      this.minNativeBuild = minNativeBuild;
+      this.runtimeVersion = runtimeVersion;
       this.releaseId = releaseId;
-      this.signature = signature;
     }
   }
 
@@ -71,7 +68,7 @@ final class ManifestClient {
     String channel,
     String currentVersion,
     String currentReleaseId,
-    String nativeBuild,
+    String runtimeVersion,
     String platform,
     boolean allowInsecureUrls,
     java.util.List<ManifestVerifier.KeyEntry> manifestKeys
@@ -93,7 +90,9 @@ final class ManifestClient {
       if (currentReleaseId != null && !currentReleaseId.trim().isEmpty()) {
         connection.setRequestProperty("X-Release-Id", currentReleaseId);
       }
-      connection.setRequestProperty("X-Native-Build", nativeBuild);
+      if (runtimeVersion != null && !runtimeVersion.trim().isEmpty()) {
+        connection.setRequestProperty("X-Runtime-Version", runtimeVersion);
+      }
       connection.setConnectTimeout(15_000);
       connection.setReadTimeout(30_000);
 
@@ -118,31 +117,15 @@ final class ManifestClient {
       String sha256 = json.getString("sha256");
       int size = json.getInt("size");
 
-      Integer minNativeBuild = null;
-      if (json.has("minNativeBuild") && !json.isNull("minNativeBuild")) {
-        Object raw = json.get("minNativeBuild");
-        if (raw instanceof Number) {
-          minNativeBuild = ((Number) raw).intValue();
-        } else if (raw instanceof String) {
-          String value = ((String) raw).trim();
-          if (!value.isEmpty()) {
-            minNativeBuild = Integer.parseInt(value);
-          }
-        }
+      String responseRuntimeVersion = json.has("runtimeVersion") && !json.isNull("runtimeVersion")
+        ? json.getString("runtimeVersion").trim()
+        : null;
+      if (responseRuntimeVersion != null && responseRuntimeVersion.isEmpty()) {
+        responseRuntimeVersion = null;
       }
 
-      ManifestSignature signature = null;
-      if (json.has("signature") && !json.isNull("signature")) {
-        JSONObject sigObj = json.getJSONObject("signature");
-        if (sigObj.has("kid") && sigObj.has("sig") && sigObj.has("iat") && sigObj.has("exp")) {
-          signature = new ManifestSignature(
-            sigObj.getString("kid"),
-            sigObj.getString("sig"),
-            sigObj.getInt("iat"),
-            sigObj.getInt("exp")
-          );
-        }
-      }
+      ManifestSignature signature = parseSignature(json.optJSONObject("signature"));
+      ManifestSignature signatureV2 = parseSignature(json.optJSONObject("signatureV2"));
 
       String releaseId = null;
       if (json.has("releaseId") && !json.isNull("releaseId")) {
@@ -161,22 +144,34 @@ final class ManifestClient {
 
       // Verify manifest signature if signing keys are configured
       if (manifestKeys != null && !manifestKeys.isEmpty()) {
-        if (signature == null) {
+        if (signatureV2 != null) {
+          ManifestVerifier.verify(
+            appId,
+            channel,
+            platform,
+            version,
+            sha256,
+            size,
+            responseRuntimeVersion,
+            signatureV2,
+            manifestKeys
+          );
+        } else if (signature != null) {
+          ManifestVerifier.verifyLegacy(
+            appId,
+            channel,
+            platform,
+            version,
+            sha256,
+            size,
+            signature,
+            manifestKeys
+          );
+        } else {
           throw new IllegalStateException(
             "Manifest signature missing but signing keys are configured"
           );
         }
-        ManifestVerifier.verify(
-          appId,
-          channel,
-          platform,
-          version,
-          sha256,
-          size,
-          minNativeBuild,
-          signature,
-          manifestKeys
-        );
       }
 
       return new LatestManifest(
@@ -184,9 +179,8 @@ final class ManifestClient {
         downloadUrl,
         sha256,
         size,
-        minNativeBuild,
-        releaseId,
-        signature
+        responseRuntimeVersion,
+        releaseId
       );
     } finally {
       connection.disconnect();
@@ -205,5 +199,20 @@ final class ManifestClient {
       }
       return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
+  }
+
+  private static ManifestSignature parseSignature(JSONObject sigObj) {
+    if (sigObj == null) {
+      return null;
+    }
+    if (!sigObj.has("kid") || !sigObj.has("sig") || !sigObj.has("iat") || !sigObj.has("exp")) {
+      return null;
+    }
+    return new ManifestSignature(
+      sigObj.getString("kid"),
+      sigObj.getString("sig"),
+      sigObj.getInt("iat"),
+      sigObj.getInt("exp")
+    );
   }
 }

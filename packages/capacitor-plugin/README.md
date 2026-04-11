@@ -10,6 +10,7 @@ Capacitor OTA updater plugin for OtaKit.
 - activates them on the next launch, next resume, or immediately
 - checks for updates on cold start and app resume (configurable interval)
 - also supports fully manual update prompts when the app wants control
+- supports optional `runtimeVersion` lanes for native compatibility boundaries
 - requires `notifyAppReady()` as the success handshake
 - rolls back automatically if the new bundle does not prove healthy
 
@@ -46,6 +47,7 @@ plugins: {
     appReadyTimeout: 10000,
     // Optional:
     // channel: "staging",
+    // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
     // updateMode: "manual",
     // updateMode: "immediate",
@@ -61,6 +63,22 @@ Advanced overrides for self-hosting or custom trust only:
 
 Hosted OtaKit already points at `https://otakit.app/api/v1` and already trusts
 the managed manifest signing keys.
+
+## Channels vs runtimeVersion
+
+- `channel` answers "who should get this rollout?"
+- `runtimeVersion` answers "which native app shell can safely run this bundle?"
+
+Use channels for rollout tracks such as `beta`, `staging`, or `production`.
+
+Use `runtimeVersion` when a new store build creates a new compatibility boundary and you do not
+want devices on that new native shell to keep receiving older OTA bundles.
+
+When `runtimeVersion` is set:
+
+- the plugin requests bundle updates only for that runtime lane
+- bundle uploads inherit the same runtime value automatically through the CLI
+- releases stay simple: publish the bundle, and it naturally stays inside its own runtime lane
 
 ## Trust model
 

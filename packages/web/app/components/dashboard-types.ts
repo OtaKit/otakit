@@ -65,10 +65,15 @@ export type BundleSummaryItem = {
   id: string;
   size: number;
   createdAt: string;
+  runtimeVersion: string | null;
   isLive: boolean;
-  currentChannels: Array<string | null>;
-  deployedChannels: Array<{
+  currentTargets: Array<{
     channel: string | null;
+    runtimeVersion: string | null;
+  }>;
+  deployedTargets: Array<{
+    channel: string | null;
+    runtimeVersion: string | null;
     deployedAt: string;
   }>;
   eventCounts: EventCountSummary;
@@ -77,6 +82,7 @@ export type BundleSummaryItem = {
 export type ReleaseHistoryItem = {
   id: string;
   channel: string | null;
+  runtimeVersion: string | null;
   bundleId: string;
   bundleVersion: string;
   previousBundleId: string | null;

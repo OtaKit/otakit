@@ -12,7 +12,7 @@ function serializeBundle(bundle: {
   version: string;
   sha256: string;
   size: number;
-  minNativeBuild: number | null;
+  runtimeVersion: string | null;
   createdAt: Date;
 }) {
   return {
@@ -20,7 +20,7 @@ function serializeBundle(bundle: {
     version: bundle.version,
     sha256: bundle.sha256,
     size: bundle.size,
-    minNativeBuild: bundle.minNativeBuild,
+    runtimeVersion: bundle.runtimeVersion,
     createdAt: bundle.createdAt.toISOString(),
   };
 }
@@ -60,7 +60,7 @@ export async function POST(
           version: true,
           sha256: true,
           size: true,
-          minNativeBuild: true,
+          runtimeVersion: true,
           createdAt: true,
         },
       },
@@ -124,7 +124,7 @@ export async function POST(
           sha256: session.expectedSha256,
           storageKey: session.storageKey,
           size: uploadInfo.size,
-          minNativeBuild: session.minNativeBuild,
+          runtimeVersion: session.runtimeVersion,
           metadata:
             session.metadata === null
               ? Prisma.JsonNull
@@ -160,7 +160,7 @@ export async function POST(
           version: true,
           sha256: true,
           size: true,
-          minNativeBuild: true,
+          runtimeVersion: true,
           createdAt: true,
         },
       });

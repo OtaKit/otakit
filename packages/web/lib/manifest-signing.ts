@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
-const MANIFEST_PAYLOAD_VERSION = 'MANIFEST_V1';
+const LEGACY_MANIFEST_PAYLOAD_VERSION = 'MANIFEST_V1';
+const MANIFEST_PAYLOAD_VERSION = 'MANIFEST_V2';
 const DEFAULT_MANIFEST_TTL_SECONDS = 600; // 10 minutes
 
 export interface ManifestSignatureInput {
@@ -10,7 +11,7 @@ export interface ManifestSignatureInput {
   version: string;
   sha256: string;
   size: number;
-  minNativeBuild: number | null;
+  runtimeVersion: string | null;
 }
 
 export interface ManifestSignature {
@@ -71,7 +72,28 @@ export function buildCanonicalPayload(
     `version:${fields.version}`,
     `sha256:${fields.sha256}`,
     `size:${fields.size}`,
-    `minNativeBuild:${fields.minNativeBuild ?? 'null'}`,
+    `runtimeVersion:${fields.runtimeVersion ?? 'null'}`,
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
+export function buildLegacyCanonicalPayload(
+  fields: ManifestSignatureInput,
+  kid: string,
+  iat: number,
+  exp: number,
+): string {
+  return [
+    LEGACY_MANIFEST_PAYLOAD_VERSION,
+    `appId:${fields.appId}`,
+    `channel:${fields.channel ?? 'null'}`,
+    `platform:${fields.platform}`,
+    `version:${fields.version}`,
+    `sha256:${fields.sha256}`,
+    `size:${fields.size}`,
+    'minNativeBuild:null',
     `kid:${kid}`,
     `iat:${iat}`,
     `exp:${exp}`,
@@ -91,6 +113,31 @@ export function signManifest(fields: ManifestSignatureInput): ManifestSignature 
   const exp = iat + DEFAULT_MANIFEST_TTL_SECONDS;
 
   const payload = buildCanonicalPayload(fields, key.kid, iat, exp);
+  const payloadBuffer = Buffer.from(payload, 'utf-8');
+
+  const signature = crypto.sign('sha256', payloadBuffer, key.privateKey);
+  const sig = signature
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  return {
+    kid: key.kid,
+    sig,
+    iat,
+    exp,
+  };
+}
+
+export function signLegacyManifest(fields: ManifestSignatureInput): ManifestSignature | null {
+  const key = getSigningKey();
+  if (!key) return null;
+
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + DEFAULT_MANIFEST_TTL_SECONDS;
+
+  const payload = buildLegacyCanonicalPayload(fields, key.kid, iat, exp);
   const payloadBuffer = Buffer.from(payload, 'utf-8');
 
   const signature = crypto.sign('sha256', payloadBuffer, key.privateKey);

@@ -187,7 +187,7 @@ model Bundle {
   sha256             String
   storageKey         String
   size               Int
-  minNativeBuild     Int?
+  runtimeVersion     String?
   metadata           Json?
   createdAt          DateTime        @default(now())
   releases           Release[]       @relation("ReleaseBundle")
@@ -224,7 +224,7 @@ model UploadSession {
   expectedSha256 String
   expectedSize   Int
   actualSize     Int?
-  minNativeBuild Int?
+  runtimeVersion String?
   metadata       Json?
   storageKey     String
   status         UploadSessionStatus @default(initiated)

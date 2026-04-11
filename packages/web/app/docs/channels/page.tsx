@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 export const metadata = {
   title: 'Channels — OtaKit Docs',
   description:
-    'Use the base channel by default, then add named channels only when you need separate rollout tracks.',
+    'Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.',
 };
 
 export default function ChannelsPage() {
@@ -11,9 +11,29 @@ export default function ChannelsPage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Channels</h1>
       <P>
-        Most apps should start with the base channel only. Channels are optional named release
-        tracks such as <Code>staging</Code> or <Code>production</Code>.
+        Channels and runtime version solve different problems. Channels decide who gets
+        a rollout. Runtime version decides which native app shell can safely run it.
       </P>
+
+      <Separator className="my-10" />
+
+      <H2>Channel vs runtime version</H2>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          <Code>channel</Code> answers: who should get this rollout?
+        </li>
+        <li>
+          <Code>runtimeVersion</Code> answers: which native app shell can safely run this bundle?
+        </li>
+        <li>
+          Use channels for rollout tracks such as <Code>beta</Code>, <Code>staging</Code>, or{' '}
+          <Code>production</Code>.
+        </li>
+        <li>
+          Use <Code>runtimeVersion</Code> when a new store build creates a compatibility boundary
+          and must stop receiving older OTA bundles.
+        </li>
+      </ul>
 
       <Separator className="my-10" />
 
@@ -33,8 +53,8 @@ export default function ChannelsPage() {
 
       <H2>Named channels</H2>
       <P>
-        Add a channel only when you want a separate rollout track for a specific build, such as
-        internal QA or staged production rollout.
+        Add a channel only when you want a separate rollout track, such as internal QA, beta, or a
+        staged production rollout.
       </P>
       <Pre>{`plugins: {
   OtaKit: {
@@ -44,6 +64,34 @@ export default function ChannelsPage() {
 }`}</Pre>
       <P>Release to that channel with:</P>
       <Pre>{`otakit upload --release staging`}</Pre>
+
+      <Separator className="my-10" />
+
+      <H2>Runtime version for store updates</H2>
+      <P>
+        <Code>runtimeVersion</Code> is optional, but it is the right tool when a new App Store or
+        Play Store submission creates a new OTA baseline.
+      </P>
+      <Pre>{`plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    channel: "production",
+    runtimeVersion: "2026.04"
+  }
+}`}</Pre>
+      <P>With that config:</P>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          the plugin only asks for releases on <Code>(channel, runtimeVersion)</Code>
+        </li>
+        <li>
+          bundle uploads inherit <Code>runtimeVersion</Code> automatically from the same plugin config
+        </li>
+        <li>
+          releases stay simple: publish the bundle, and it naturally stays inside its own runtime
+          lane
+        </li>
+      </ul>
 
       <Separator className="my-10" />
 
@@ -63,8 +111,12 @@ otakit release <bundle-id> --channel production`}</Pre>
           One stream only: no channel in the app config, release everything to the base channel.
         </li>
         <li>
-          Staging and production: internal builds the base channel or the{' '}
-          <Code>channel: "staging"</Code>, production builds use <Code>channel: "production"</Code>.
+          Beta and production: use channels like <Code>beta</Code> and <Code>production</Code> to
+          split rollout audiences.
+        </li>
+        <li>
+          New store baseline: keep the same channels, but bump <Code>runtimeVersion</Code> so the
+          new native build starts a fresh OTA lane.
         </li>
       </ul>
 
@@ -78,7 +130,14 @@ otakit release <bundle-id> --channel production`}</Pre>
         <li>
           Omit <Code>channel</Code> to use the base channel.
         </li>
-        <li>Add named channels only when you really need separate release tracks.</li>
+        <li>
+          <Code>runtimeVersion</Code> is also a build-time setting. Leave it unset unless you need
+          a compatibility boundary.
+        </li>
+        <li>
+          The same named channel can have parallel current releases across different runtime
+          versions.
+        </li>
       </ul>
     </>
   );

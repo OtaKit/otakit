@@ -46,7 +46,7 @@ export default function DocsOverviewPage() {
         </li>
         <li>
           On device, the plugin checks for updates, verifies the downloaded bundle, and by default
-          activates it on the next cold launch.
+          activates it on the next cold launch by default.
         </li>
       </ol>
 
@@ -59,12 +59,12 @@ export default function DocsOverviewPage() {
           description="Build your web app, then release with otakit upload --release."
         />
         <Feature
-          title="Channels & staged rollouts"
-          description="Ship on the base channel by default, then add named channels when you need separate rollout tracks."
+          title="Channels & runtime lanes"
+          description="Use channels for rollout tracks and runtimeVersion for native compatibility boundaries."
         />
         <Feature
           title="Automatic update delivery"
-          description="The normal flow downloads updates in the background and activates them on the next cold launch."
+          description="The normal flow checks and downloads automatically, then activates based on updateMode."
         />
         <Feature
           title="Manual update control"
@@ -106,7 +106,7 @@ export default function DocsOverviewPage() {
         <NavCard
           href="/docs/channels"
           title="Channels"
-          description="Stay on the base channel first, then add named channels only when needed."
+          description="Rollout tracks vs runtime compatibility lanes, and when to use each."
         />
         <NavCard
           href="/docs/ci"

@@ -2,6 +2,7 @@ import { Platform } from '@prisma/client';
 
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const APP_SLUG_REGEX = /^[A-Za-z0-9._-]{3,120}$/;
+const RUNTIME_VERSION_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 
 export function parsePlatform(value: unknown): Platform | null {
@@ -49,6 +50,23 @@ export function normalizeOptionalChannel(channel: unknown): string | null {
   }
 
   const trimmed = channel.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+export function isValidRuntimeVersion(runtimeVersion: string): boolean {
+  return RUNTIME_VERSION_REGEX.test(runtimeVersion);
+}
+
+export function normalizeOptionalRuntimeVersion(runtimeVersion: unknown): string | null {
+  if (typeof runtimeVersion !== 'string') {
+    return null;
+  }
+
+  const trimmed = runtimeVersion.trim();
   if (trimmed.length === 0) {
     return null;
   }

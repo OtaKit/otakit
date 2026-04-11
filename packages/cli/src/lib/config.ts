@@ -33,6 +33,7 @@ export interface ServerAuthConfig {
 export interface ProjectConfig {
   appId?: string;
   channel?: string;
+  runtimeVersion?: string;
   configuredServerUrl?: string;
   outputDir?: string;
 }
@@ -40,6 +41,7 @@ export interface ProjectConfig {
 export interface CliConfig extends ServerAuthConfig {
   appId: string;
   channel?: string;
+  runtimeVersion?: string;
   outputDir?: string;
 }
 
@@ -61,6 +63,7 @@ export interface ConfigResolveSnapshot {
   serverUrl: ResolvedValue<string>;
   outputDir: ResolvedValue<string | null>;
   channel: ResolvedValue<string | null>;
+  runtimeVersion: ResolvedValue<string | null>;
   authToken: ResolvedValue<string | null>;
   authSource: AuthSource | null;
 }
@@ -176,6 +179,7 @@ export function readProjectConfig(cwd: string = process.cwd()): ProjectConfig | 
   return {
     appId: projectConfig.appId,
     channel: projectConfig.channel,
+    runtimeVersion: projectConfig.runtimeVersion,
     configuredServerUrl: projectConfig.configuredServerUrl
       ? parseServerUrl(projectConfig.configuredServerUrl, cwd)
       : undefined,
@@ -254,6 +258,10 @@ export async function resolveConfigSnapshot(
       ? 'config'
       : 'none';
 
+  const runtimeVersionFromConfig = projectConfig?.runtimeVersion;
+  const runtimeVersionValue = runtimeVersionFromConfig ?? null;
+  const runtimeVersionSource: ConfigValueSource = runtimeVersionFromConfig ? 'config' : 'none';
+
   const outputDirFromFlag = toNonEmptyString(options?.outputDir);
   const outputDirFromEnv = resolveEnvOutputDir();
   const outputDirFromConfig = projectConfig?.outputDir;
@@ -304,6 +312,10 @@ export async function resolveConfigSnapshot(
       value: channelValue,
       source: channelSource,
     },
+    runtimeVersion: {
+      value: runtimeVersionValue,
+      source: runtimeVersionSource,
+    },
     authToken: {
       value: authTokenValue,
       source: authTokenSource,
@@ -340,6 +352,7 @@ export async function requireConfig(options?: ConfigResolveOptions): Promise<Cli
   return {
     appId: snapshot.appId.value,
     channel: snapshot.channel.value ?? undefined,
+    runtimeVersion: snapshot.runtimeVersion.value ?? undefined,
     outputDir: snapshot.outputDir.value ?? undefined,
     serverUrl: snapshot.serverUrl.value,
     authToken: snapshot.authToken.value,

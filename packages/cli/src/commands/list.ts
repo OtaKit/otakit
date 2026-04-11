@@ -34,7 +34,8 @@ export const listCommand = new Command('list')
       }
 
       for (const bundle of response.bundles) {
-        console.log(`${bundle.id}  ${bundle.version}  ${bundle.size} bytes`);
+        const runtimeLabel = bundle.runtimeVersion ? `  runtime=${bundle.runtimeVersion}` : '';
+        console.log(`${bundle.id}  ${bundle.version}  ${bundle.size} bytes${runtimeLabel}`);
       }
       console.log(`Total: ${response.total}`);
     });

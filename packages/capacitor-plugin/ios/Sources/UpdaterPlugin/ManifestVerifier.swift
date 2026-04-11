@@ -19,7 +19,7 @@ enum ManifestVerifier {
   ///
   /// - Parameters:
   ///   - appId, channel, platform: Request context (known by plugin).
-  ///   - version, sha256, size, minNativeBuild: Response fields.
+  ///   - version, sha256, size, runtimeVersion: Response fields.
   ///   - signature: The signature object from the manifest response.
   ///   - trustedKeys: Array of verification keys configured in the plugin.
   ///
@@ -31,7 +31,51 @@ enum ManifestVerifier {
     version: String,
     sha256: String,
     size: Int,
-    minNativeBuild: Int?,
+    runtimeVersion: String?,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
+    let payload = buildCanonicalPayload(
+      appId: appId,
+      channel: channel,
+      platform: platform,
+      version: version,
+      sha256: sha256,
+      size: size,
+      runtimeVersion: runtimeVersion,
+      kid: signature.kid,
+      iat: signature.iat,
+      exp: signature.exp
+    )
+    try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
+  static func verifyLegacy(
+    appId: String,
+    channel: String?,
+    platform: String,
+    version: String,
+    sha256: String,
+    size: Int,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
+    let payload = buildLegacyCanonicalPayload(
+      appId: appId,
+      channel: channel,
+      platform: platform,
+      version: version,
+      sha256: sha256,
+      size: size,
+      kid: signature.kid,
+      iat: signature.iat,
+      exp: signature.exp
+    )
+    try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
+  private static func verifyPayload(
+    _ payload: String,
     signature: ManifestSignature,
     trustedKeys: [ManifestKey]
   ) throws {
@@ -45,20 +89,6 @@ enum ManifestVerifier {
     guard let keyEntry = trustedKeys.first(where: { $0.kid == signature.kid }) else {
       throw ManifestVerifierError.unknownKid(signature.kid)
     }
-
-    // Build canonical payload (must match server exactly)
-    let payload = buildCanonicalPayload(
-      appId: appId,
-      channel: channel,
-      platform: platform,
-      version: version,
-      sha256: sha256,
-      size: size,
-      minNativeBuild: minNativeBuild,
-      kid: signature.kid,
-      iat: signature.iat,
-      exp: signature.exp
-    )
 
     // Decode base64url signature
     guard let sigData = base64UrlDecode(signature.sig) else {
@@ -81,12 +111,37 @@ enum ManifestVerifier {
     version: String,
     sha256: String,
     size: Int,
-    minNativeBuild: Int?,
+    runtimeVersion: String?,
     kid: String,
     iat: Int,
     exp: Int
   ) -> String {
-    let minBuildStr = minNativeBuild.map { String($0) } ?? "null"
+    return [
+      "MANIFEST_V2",
+      "appId:\(appId)",
+      "channel:\(channel ?? "null")",
+      "platform:\(platform)",
+      "version:\(version)",
+      "sha256:\(sha256)",
+      "size:\(size)",
+      "runtimeVersion:\(runtimeVersion ?? "null")",
+      "kid:\(kid)",
+      "iat:\(iat)",
+      "exp:\(exp)",
+    ].joined(separator: "\n")
+  }
+
+  private static func buildLegacyCanonicalPayload(
+    appId: String,
+    channel: String?,
+    platform: String,
+    version: String,
+    sha256: String,
+    size: Int,
+    kid: String,
+    iat: Int,
+    exp: Int
+  ) -> String {
     return [
       "MANIFEST_V1",
       "appId:\(appId)",
@@ -95,7 +150,7 @@ enum ManifestVerifier {
       "version:\(version)",
       "sha256:\(sha256)",
       "size:\(size)",
-      "minNativeBuild:\(minBuildStr)",
+      "minNativeBuild:null",
       "kid:\(kid)",
       "iat:\(iat)",
       "exp:\(exp)",

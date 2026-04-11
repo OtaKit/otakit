@@ -39,6 +39,7 @@ public class UpdaterPlugin extends Plugin {
   private String updateUrl;
   private String appId;
   private String channel;
+  private String runtimeVersion;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
@@ -71,13 +72,14 @@ public class UpdaterPlugin extends Plugin {
       }
     } catch (PackageManager.NameNotFoundException ignored) {}
 
-    this.store = new BundleStore(getContext(), builtinVersion, nativeBuild);
     this.updateUrl = resolveUpdateUrl(
       getConfig().getString("serverUrl"),
       System.getenv("OTAKIT_SERVER_URL")
     );
     this.appId = getConfig().getString("appId");
     this.channel = trimToNull(getConfig().getString("channel"));
+    this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
+    this.store = new BundleStore(getContext(), builtinVersion, nativeBuild, this.runtimeVersion);
     this.allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false);
     String configuredUpdateMode = getConfig().getString("updateMode", UPDATE_MODE_NEXT_LAUNCH);
     this.updateMode = resolveUpdateMode(configuredUpdateMode);
@@ -120,6 +122,8 @@ public class UpdaterPlugin extends Plugin {
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
     this.checkIntervalMs = Math.max(600_000, getConfig().getInt("checkInterval", 600_000));
+
+    pruneIncompatibleBundles();
 
     BundleInfo current = store.getCurrentBundle();
     if (current.status == BundleStatus.TRIAL) {
@@ -290,6 +294,9 @@ public class UpdaterPlugin extends Plugin {
           result.put("sha256", staged.sha256 != null ? staged.sha256 : "");
           result.put("size", 0);
           result.put("downloaded", true);
+          if (staged.runtimeVersion != null) {
+            result.put("runtimeVersion", staged.runtimeVersion);
+          }
           if (staged.releaseId != null) {
             result.put("releaseId", staged.releaseId);
           }
@@ -513,7 +520,7 @@ public class UpdaterPlugin extends Plugin {
       channel,
       current.version,
       current.releaseId,
-      store.getNativeBuild(),
+      runtimeVersion,
       "android",
       allowInsecureUrls,
       manifestKeys
@@ -528,6 +535,12 @@ public class UpdaterPlugin extends Plugin {
         notifyListeners("noUpdateAvailable", new JSObject());
       }
       return null;
+    }
+
+    if (!isCompatibleRuntime(latest.runtimeVersion)) {
+      throw new IllegalStateException(
+        "Manifest runtimeVersion does not match the installed app runtime"
+      );
     }
 
     BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
@@ -545,6 +558,7 @@ public class UpdaterPlugin extends Plugin {
         latest.version,
         latest.sha256,
         latest.size,
+        latest.runtimeVersion,
         targetChannel,
         latest.releaseId
       );
@@ -558,6 +572,7 @@ public class UpdaterPlugin extends Plugin {
           refreshed.version,
           refreshed.sha256,
           refreshed.size,
+          refreshed.runtimeVersion,
           targetChannel,
           refreshed.releaseId
         );
@@ -580,7 +595,7 @@ public class UpdaterPlugin extends Plugin {
 
   private BundleInfo downloadAndStage(URL url, String version, String expectedSha256)
     throws Exception {
-    return downloadAndStage(url, version, expectedSha256, 0, null, null);
+    return downloadAndStage(url, version, expectedSha256, 0, null, null, null);
   }
 
   private BundleInfo downloadAndStage(
@@ -588,6 +603,7 @@ public class UpdaterPlugin extends Plugin {
     String version,
     String expectedSha256,
     int expectedSize,
+    String runtimeVersion,
     String channel,
     String releaseId
   ) throws Exception {
@@ -635,6 +651,7 @@ public class UpdaterPlugin extends Plugin {
       BundleInfo info = new BundleInfo(
         bundleId,
         version,
+        runtimeVersion,
         BundleStatus.PENDING,
         System.currentTimeMillis(),
         expectedSha256,
@@ -730,6 +747,12 @@ public class UpdaterPlugin extends Plugin {
       store.setStagedBundleId(null);
       return store.getCurrentBundle();
     }
+    if (!isCompatibleRuntime(staged)) {
+      try {
+        store.deleteBundle(staged.id);
+      } catch (Exception ignored) {}
+      return store.getCurrentBundle();
+    }
 
     store.setCurrentBundleId(staged.id);
     store.setStagedBundleId(null);
@@ -745,6 +768,12 @@ public class UpdaterPlugin extends Plugin {
     BundleInfo staged = store.getBundle(stagedId);
     if (staged == null) {
       store.setStagedBundleId(null);
+      return;
+    }
+    if (!isCompatibleRuntime(staged)) {
+      try {
+        store.deleteBundle(staged.id);
+      } catch (Exception ignored) {}
       return;
     }
 
@@ -874,11 +903,11 @@ public class UpdaterPlugin extends Plugin {
     object.put("sha256", latest.sha256);
     object.put("size", latest.size);
     object.put("downloaded", downloaded);
+    if (latest.runtimeVersion != null) {
+      object.put("runtimeVersion", latest.runtimeVersion);
+    }
     if (latest.releaseId != null) {
       object.put("releaseId", latest.releaseId);
-    }
-    if (latest.minNativeBuild != null) {
-      object.put("minNativeBuild", latest.minNativeBuild);
     }
     return object;
   }
@@ -899,6 +928,10 @@ public class UpdaterPlugin extends Plugin {
     }
 
     if (!java.util.Objects.equals(trimToNull(staged.channel), targetChannel)) {
+      return null;
+    }
+
+    if (!java.util.Objects.equals(trimToNull(staged.runtimeVersion), trimToNull(latest.runtimeVersion))) {
       return null;
     }
 
@@ -1059,6 +1092,29 @@ public class UpdaterPlugin extends Plugin {
       store.getNativeBuild(),
       errorMessage
     );
+  }
+
+  private void pruneIncompatibleBundles() {
+    for (BundleInfo bundle : store.listDownloadedBundleInfos()) {
+      if (!isCompatibleRuntime(bundle)) {
+        try {
+          store.deleteBundle(bundle.id);
+        } catch (Exception ignored) {}
+      }
+    }
+
+    BundleInfo failed = store.getFailedBundle();
+    if (failed != null && !isCompatibleRuntime(failed)) {
+      store.setFailedBundle(null);
+    }
+  }
+
+  private boolean isCompatibleRuntime(String bundleRuntimeVersion) {
+    return java.util.Objects.equals(trimToNull(bundleRuntimeVersion), runtimeVersion);
+  }
+
+  private boolean isCompatibleRuntime(BundleInfo bundle) {
+    return isCompatibleRuntime(bundle.runtimeVersion);
   }
 
   private long getFreeDiskSpace() {

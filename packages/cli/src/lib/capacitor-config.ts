@@ -15,6 +15,7 @@ export interface CapacitorProjectConfig {
   configPath: string;
   appId?: string;
   channel?: string;
+  runtimeVersion?: string;
   configuredServerUrl?: string;
   outputDir?: string;
 }
@@ -114,6 +115,10 @@ function extractProjectConfig(configPath: string, rawConfig: unknown): Capacitor
     configPath,
     appId: readOptionalString(otaKitConfig?.appId, `${configPath}.plugins.OtaKit.appId`),
     channel: readOptionalString(otaKitConfig?.channel, `${configPath}.plugins.OtaKit.channel`),
+    runtimeVersion: readOptionalString(
+      otaKitConfig?.runtimeVersion,
+      `${configPath}.plugins.OtaKit.runtimeVersion`,
+    ),
     configuredServerUrl: readOptionalString(
       otaKitConfig?.serverUrl,
       `${configPath}.plugins.OtaKit.serverUrl`,

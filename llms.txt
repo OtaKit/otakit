@@ -29,12 +29,12 @@ Start with setup
 1. Create an app in the OtaKit dashboard and copy its `appId` into your `capacitor.config.ts` file.
 2. Call `notifyAppReady()` when your app finishes loading, so newly activated updates can be confirmed healthy.
 3. Build your web app and run `otakit upload --release` to upload and publish a new bundle.
-4. On device, the plugin checks for updates, verifies the downloaded bundle, and by default activates it on the next cold launch.
+4. On device, the plugin checks its configured `appId` + `channel` + `runtimeVersion` lane, verifies the downloaded bundle, and activates it according to `updateMode`.
 
 ### Features
 - **One-command shipping**: Build your web app, then release with otakit upload --release.
-- **Channels & staged rollouts**: Ship on the base channel by default, then add named channels when you need separate rollout tracks.
-- **Automatic update delivery**: The normal flow downloads updates in the background and activates them on the next cold launch.
+- **Channels & runtime lanes**: Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
+- **Automatic update delivery**: The normal flow checks and downloads automatically, then activates based on updateMode.
 - **Manual update control**: Switch to manual mode when your app wants to show its own update prompt or control install timing.
 - **Safe activation & rollback**: A newly activated bundle must call notifyAppReady() or OtaKit rolls back automatically.
 - **SHA-256 verification**: Downloaded bundles are verified before activation so corrupted or tampered files are rejected.
@@ -44,7 +44,7 @@ Start with setup
 ### Getting started
 - **Setup**: Connect the default hosted OtaKit flow to your Capacitor app.
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
-- **Channels**: Stay on the base channel first, then add named channels only when needed.
+- **Channels**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, events, and configuration.
@@ -172,12 +172,16 @@ const config: CapacitorConfig = {
       appId: "app_xxxxxxxx",
       // Optional named channel:
       // channel: "staging"
+      // Optional compatibility lane:
+      // runtimeVersion: "2026.04"
     }
   }
 };
 
 export default config;
 ```
+
+The CLI reads `plugins.OtaKit.runtimeVersion` automatically during upload. You set compatibility once in plugin config, and the uploaded bundle keeps that runtime lane.
 
 ### Authentication
 
@@ -206,6 +210,7 @@ The CLI resolves values in a deterministic order.
 - Auth token: `OTAKIT_TOKEN` -> `OTAKIT_ACCESS_TOKEN` -> stored login token -> `OTAKIT_SECRET_KEY`
 - Upload path: CLI path argument -> `OTAKIT_BUILD_DIR` -> `capacitor.config.* webDir`
 - Release channel: `--release` -> base channel, `--release <channel>` -> named channel
+- Runtime version: `plugins.OtaKit.runtimeVersion` -> bundle metadata during upload
 - Upload version: `--version` -> `OTAKIT_VERSION` -> auto-generated version
 
 ### Command reference
@@ -220,7 +225,6 @@ Options
 - `--server <url>`: Server URL override.
 - `--version <version>`: Version string. Otherwise OTAKIT_VERSION, then auto-generated.
 - `--strict-version`: Require explicit or env-provided version.
-- `--min-native-build <n>`: Minimum native build required for this update.
 - `--release [channel]`: Release after upload. Omit channel to release to the base channel.
 
 Example
@@ -231,7 +235,7 @@ otakit upload --release
 
 ### otakit release [bundleId]
 
-Release a bundle to the base channel or a named channel. If bundleId is omitted, releases the latest bundle.
+Release a bundle to the base channel or a named channel. The bundle already carries its runtimeVersion, so release only chooses the rollout channel.
 
 Options
 - `--channel <channel>`: Target named channel. Omit it to use the base channel.
@@ -407,17 +411,27 @@ plugins: {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
+    // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
   }
 }
 ```
 - `appId` (string): OtaKit app ID for manifest and stats access.
 - `channel` (string): Named release track to check. Omit it to use the base channel.
+- `runtimeVersion` (string): Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles.
 - `updateMode` ('manual' | 'next-launch' | 'next-resume' | 'immediate'): Overall update behavior. Optional, defaults to next-launch.
 - `checkInterval` (number): Milliseconds between automatic update checks. Optional, defaults to 600000 (10 min).
 - `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000.
 
 Hosted OtaKit points at the managed server automatically. Do not set `serverUrl` or `manifestKeys` unless you intentionally want custom server or verification behavior.
+
+### Compatibility lanes
+
+`channel` is for rollout audience. `runtimeVersion` is for native compatibility.
+
+If you ship a new store build and do not want it to keep consuming older OTA bundles, bump `runtimeVersion` in the plugin config before uploading the next OTA bundle.
+
+The CLI reads that same value automatically during upload, so releases stay simple: release the bundle and it naturally stays inside its own runtime lane.
 
 ### Update Modes
 
@@ -435,7 +449,7 @@ You only need `manifestKeys` when you intentionally override trust for a custom 
 
 ### Automatic Flow (Default)
 
-This is the normal OtaKit flow. Leave `updateMode` unset or set it to `next-launch`. The plugin checks automatically on startup, downloads in the background, and activates the new bundle on the next cold app launch.
+This is the normal OtaKit flow. Leave `updateMode` unset or set it to `next-launch`. The plugin checks automatically on startup, downloads in the background, and activates the new bundle according to the selected update mode.
 
 In this mode, your app code usually only needs to call `notifyAppReady()`.
 - `notifyAppReady()` -> `void`: Confirm the current bundle is working. Call this once when your app has fully loaded. If it is not called within appReadyTimeout, the plugin rolls back.
@@ -566,6 +580,7 @@ await OtaKit.removeAllListeners();
 interface BundleInfo {
   id: string;
   version: string;
+  runtimeVersion?: string;
   status: "builtin" | "pending"
     | "trial" | "success" | "error";
   downloadedAt?: string;
@@ -585,9 +600,9 @@ interface LatestVersion {
   url: string;
   sha256: string;
   size: number;
+  runtimeVersion?: string;
   downloaded?: boolean;
   releaseId?: string;
-  minNativeBuild?: number;
 }
 ```
 
@@ -647,7 +662,7 @@ Request body
   "version": "1.0.1",       // semver string
   "size": 1048576,          // bundle size in bytes
   "sha256": "64-char hex checksum of the zip file",
-  "minNativeBuild": 100     // optional
+  "runtimeVersion": "2026.04" // optional compatibility lane
 }
 ```
 
@@ -683,7 +698,7 @@ Response
   "version": "1.0.1",
   "sha256": "...",
   "size": 1048576,
-  "minNativeBuild": null,
+  "runtimeVersion": "2026.04",
   "createdAt": "ISO timestamp"
 }
 ```
@@ -718,7 +733,7 @@ Response
 
 ### POST /api/v1/apps/:appId/releases
 
-Release a bundle to the base channel or a named channel. One bundle = one release event.
+Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion).
 - Auth: Bearer
 
 Request body
@@ -737,6 +752,7 @@ Response
   "release": {
     "id": "uuid",
     "channel": null,
+    "runtimeVersion": "2026.04",
     "bundleId": "uuid",
     "bundleVersion": "1.0.1",
     "promotedAt": "ISO timestamp"
@@ -756,7 +772,7 @@ Response
 ```txt
 {
   "releases": [{
-    id, channel, bundleId, bundleVersion, promotedAt
+    id, channel, runtimeVersion, bundleId, bundleVersion, promotedAt
   }],
   "total": 12
 }
@@ -1055,9 +1071,15 @@ Relaunch the app on your device. By default, OtaKit downloads the update in the 
 
 Route: /docs/channels
 
-Use the base channel by default, then add named channels only when you need separate rollout tracks.
+Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
 
-Most apps should start with the base channel only. Channels are optional named release tracks such as `staging` or `production`.
+Channels and `runtimeVersion` solve different problems. Channels decide who gets a rollout. `runtimeVersion` decides which native app shell can safely run it.
+
+### Channel vs runtimeVersion
+- `channel` answers: who should get this rollout?
+- `runtimeVersion` answers: which native app shell can safely run this bundle?
+- Use channels for rollout tracks such as `beta`, `staging`, or `production`.
+- Use `runtimeVersion` when a new store build creates a compatibility boundary and must stop receiving older OTA bundles.
 
 ### Base channel first
 
@@ -1079,7 +1101,7 @@ otakit upload --release
 
 ### Named channels
 
-Add a channel only when you want a separate rollout track for a specific build, such as internal QA or staged production rollout.
+Add a channel only when you want a separate rollout track, such as internal QA, beta, or a staged production rollout.
 
 ```txt
 plugins: {
@@ -1096,6 +1118,25 @@ Release to that channel with:
 otakit upload --release staging
 ```
 
+### runtimeVersion for store updates
+
+`runtimeVersion` is optional, but it is the right tool when a new App Store or Play Store submission creates a new OTA baseline.
+
+```txt
+plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    channel: "production",
+    runtimeVersion: "2026.04"
+  }
+}
+```
+
+With that config:
+- the plugin only asks for releases on `(channel, runtimeVersion)`
+- uploads inherit `runtimeVersion` automatically from the same plugin config
+- releases stay simple: publish the bundle, and it naturally stays inside its own runtime lane
+
 ### Promote an existing bundle
 
 You can upload once, test it, then promote the same bundle to another channel later.
@@ -1110,12 +1151,14 @@ otakit release <bundle-id> --channel production
 
 ### Common setups
 - One stream only: no channel in the app config, release everything to the base channel.
-- Staging and production: internal builds the base channel or the `channel: "staging"`, production builds use `channel: "production"`.
+- Beta and production: use channels like `beta` and `production` to split rollout audiences.
+- New store baseline: keep the same channels, but bump `runtimeVersion` so the new native build starts a fresh OTA lane.
 
 ### Rules
 - Channel is a build-time setting in `capacitor.config.ts`.
 - Omit `channel` to use the base channel.
-- Add named channels only when you really need separate release tracks.
+- `runtimeVersion` is also a build-time setting. Leave it unset unless you need a compatibility boundary.
+- The same named channel can have parallel current releases across different runtime versions.
 
 ## CI Automation
 

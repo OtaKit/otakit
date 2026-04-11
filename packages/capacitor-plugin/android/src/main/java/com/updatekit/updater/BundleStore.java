@@ -27,12 +27,14 @@ final class BundleStore {
   private final File bundlesDirectory;
   private final String builtinVersion;
   private final String nativeBuild;
+  private final String appRuntimeVersion;
 
-  BundleStore(Context context, String builtinVersion, String nativeBuild) {
+  BundleStore(Context context, String builtinVersion, String nativeBuild, String appRuntimeVersion) {
     this.context = context.getApplicationContext();
     this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     this.builtinVersion = builtinVersion;
     this.nativeBuild = nativeBuild;
+    this.appRuntimeVersion = appRuntimeVersion;
     this.bundlesDirectory = new File(this.context.getFilesDir(), "otakit_bundles");
     if (!bundlesDirectory.exists()) {
       //noinspection ResultOfMethodCallIgnored
@@ -56,6 +58,7 @@ final class BundleStore {
     return new BundleInfo(
       "builtin",
       builtinVersion,
+      appRuntimeVersion,
       BundleStatus.BUILTIN,
       null,
       null,
@@ -229,7 +232,7 @@ final class BundleStore {
     }
   }
 
-  synchronized JSArray listDownloadedBundles() {
+  synchronized List<BundleInfo> listDownloadedBundleInfos() {
     List<BundleInfo> result = new ArrayList<>();
     File[] entries = bundlesDirectory.listFiles();
     if (entries != null) {
@@ -241,7 +244,11 @@ final class BundleStore {
         }
       }
     }
+    return result;
+  }
 
+  synchronized JSArray listDownloadedBundles() {
+    List<BundleInfo> result = listDownloadedBundleInfos();
     JSArray array = new JSArray();
     for (BundleInfo bundle : result) {
       array.put(bundle.toJSObject());

@@ -17,6 +17,11 @@ function formatReleaseTarget(channel: string | null): string {
   return channel ?? 'base channel';
 }
 
+function formatReleaseLane(channel: string | null, runtimeVersion: string | null | undefined): string {
+  const target = formatReleaseTarget(channel);
+  return runtimeVersion ? `${target} (runtime ${runtimeVersion})` : target;
+}
+
 export const releasesCommand = new Command('releases')
   .description('Show release history across all streams or a specific target')
   .option('--app-id <id>', 'App ID override')
@@ -57,7 +62,7 @@ export const releasesCommand = new Command('releases')
       for (const release of response.releases) {
         const bundleVersion = release.bundleVersion ? ` (${release.bundleVersion})` : '';
         console.log(
-          `${formatReleaseTarget(release.channel)}: ${release.bundleId}${bundleVersion} at ${release.promotedAt}`,
+          `${formatReleaseLane(release.channel, release.runtimeVersion)}: ${release.bundleId}${bundleVersion} at ${release.promotedAt}`,
         );
       }
       console.log(`Total: ${response.total}`);
