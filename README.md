@@ -1,12 +1,14 @@
 # OtaKit
 
-Hosted-first OTA updates for Capacitor apps.
+Fully open-source, self-hostable OTA update framework for Capacitor apps.
 
 This repo has three main pieces:
 
 - `packages/capacitor-plugin`: the runtime that lives inside the mobile app
 - `packages/cli`: the publishing CLI used locally and in CI
 - `packages/web`: the managed API, dashboard, auth, billing, and docs app
+
+Try it for free: [OtaKit.app](https://www.otakit.app/)
 
 ## Core concepts
 
@@ -80,7 +82,6 @@ pnpm dev
 Useful commands:
 
 ```bash
-npm run build
 pnpm --filter @otakit/web dev
 pnpm --filter @otakit/cli build
 pnpm --filter @otakit/capacitor-updater build
