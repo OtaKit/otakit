@@ -29,14 +29,14 @@ Try it for free: [OtaKit.app](https://www.otakit.app/)
 2. Put the returned `appId` into `plugins.OtaKit` in `capacitor.config.*`.
 3. Build the app web assets.
 4. Run `otakit upload --release`.
-5. Let the plugin check `/api/v1/manifest`, download the bundle, verify it, activate it, and wait for `notifyAppReady()`.
+5. Let the server publish the signed lane manifest to object storage behind the CDN, then let the plugin fetch it, compare it against the current or staged bundle locally, download only if it is newer, activate it, and wait for `notifyAppReady()`.
 
 ## How it works
 
 1. The CLI uploads a build and creates a `Bundle`.
 2. Releasing that bundle creates a `Release` for one channel.
-3. The plugin asks `/api/v1/manifest` for the newest release on its app + channel.
-4. If a newer bundle exists, the plugin downloads it, verifies it, stages it, and activates it according to `updateMode`.
+3. The server materializes the current lane manifest into object storage and serves it through the CDN.
+4. The plugin fetches that manifest, verifies it, compares it against the current and staged bundle locally, and only downloads when it actually points at something newer.
 5. The app confirms the new bundle with `notifyAppReady()`, or the plugin rolls back automatically.
 
 ## Workspace layout

@@ -95,8 +95,8 @@ otakit login`}</Pre>
       <Pre>{`npm run build
 otakit upload --release`}</Pre>
       <P>
-        That publishes the bundle to the base channel. By default, devices download it in the
-        background and activate it on the next cold app launch.
+        That publishes the bundle to the base channel. By default, OtaKit downloads it in the
+        background and activates it on the next cold app launch.
       </P>
 
       <Separator className="my-10" />

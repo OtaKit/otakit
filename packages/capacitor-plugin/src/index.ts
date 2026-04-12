@@ -92,10 +92,6 @@ const OtaKit: OtaKitPlugin = {
   update,
   notifyAppReady: () => NativeOtaKit.notifyAppReady(),
   debug: {
-    check: async (options?: { channel?: string }): Promise<LatestVersion | null> =>
-      normalizeNullable(await NativeOtaKit.debugCheck(options)),
-    download: async (options?: { channel?: string }): Promise<BundleInfo | null> =>
-      normalizeNullable(await NativeOtaKit.debugDownload(options)),
     reset: () => NativeOtaKit.debugReset(),
     listBundles: () => NativeOtaKit.debugListBundles(),
     deleteBundle: (options: { bundleId: string }) => NativeOtaKit.debugDeleteBundle(options),

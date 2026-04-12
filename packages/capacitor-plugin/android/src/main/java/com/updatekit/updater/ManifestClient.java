@@ -9,6 +9,9 @@ import org.json.JSONObject;
 
 final class ManifestClient {
 
+  private static final String BASE_CHANNEL_KEY = "__base__";
+  private static final String DEFAULT_RUNTIME_KEY = "__default__";
+
   static final class ManifestSignature {
 
     final String kid;
@@ -63,41 +66,33 @@ final class ManifestClient {
   }
 
   static LatestManifest fetchLatest(
-    String updateUrl,
+    String cdnUrl,
     String appId,
     String channel,
-    String currentVersion,
-    String currentReleaseId,
     String runtimeVersion,
-    String platform,
     boolean allowInsecureUrls,
     java.util.List<ManifestVerifier.KeyEntry> manifestKeys
   ) throws Exception {
-    String base = updateUrl.replaceAll("/+$", "");
-    URL url = new URL(base + "/manifest");
+    String base = cdnUrl.replaceAll("/+$", "");
+    String channelKey = channel != null && !channel.trim().isEmpty() ? channel.trim() : BASE_CHANNEL_KEY;
+    String runtimeKey =
+      runtimeVersion != null && !runtimeVersion.trim().isEmpty()
+        ? runtimeVersion.trim()
+        : DEFAULT_RUNTIME_KEY;
+    URL url = new URL(
+      base + "/manifests/" + appId + "/" + channelKey + "/" + runtimeKey + "/manifest.json"
+    );
 
     requireHTTPS(url, allowInsecureUrls);
 
     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
     try {
       connection.setRequestMethod("GET");
-      connection.setRequestProperty("X-App-Id", appId);
-      connection.setRequestProperty("X-Platform", platform);
-      if (channel != null && !channel.trim().isEmpty()) {
-        connection.setRequestProperty("X-Channel", channel);
-      }
-      connection.setRequestProperty("X-Current-Version", currentVersion);
-      if (currentReleaseId != null && !currentReleaseId.trim().isEmpty()) {
-        connection.setRequestProperty("X-Release-Id", currentReleaseId);
-      }
-      if (runtimeVersion != null && !runtimeVersion.trim().isEmpty()) {
-        connection.setRequestProperty("X-Runtime-Version", runtimeVersion);
-      }
       connection.setConnectTimeout(15_000);
       connection.setReadTimeout(30_000);
 
       int status = connection.getResponseCode();
-      if (status == 204) {
+      if (status == 404 || status == 204) {
         return null;
       }
       if (status != 200) {
@@ -125,14 +120,12 @@ final class ManifestClient {
       }
 
       ManifestSignature signature = parseSignature(json.optJSONObject("signature"));
-      ManifestSignature signatureV2 = parseSignature(json.optJSONObject("signatureV2"));
 
       String releaseId = null;
       if (json.has("releaseId") && !json.isNull("releaseId")) {
         releaseId = json.getString("releaseId");
       }
 
-      // Validate download URL scheme
       requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
 
       if (manifestKeys == null || manifestKeys.isEmpty()) {
@@ -142,36 +135,23 @@ final class ManifestClient {
         );
       }
 
-      // Verify manifest signature if signing keys are configured
       if (manifestKeys != null && !manifestKeys.isEmpty()) {
-        if (signatureV2 != null) {
-          ManifestVerifier.verify(
-            appId,
-            channel,
-            platform,
-            version,
-            sha256,
-            size,
-            responseRuntimeVersion,
-            signatureV2,
-            manifestKeys
-          );
-        } else if (signature != null) {
-          ManifestVerifier.verifyLegacy(
-            appId,
-            channel,
-            platform,
-            version,
-            sha256,
-            size,
-            signature,
-            manifestKeys
-          );
-        } else {
+        if (signature == null) {
           throw new IllegalStateException(
             "Manifest signature missing but signing keys are configured"
           );
         }
+
+        ManifestVerifier.verify(
+          appId,
+          channel,
+          version,
+          sha256,
+          size,
+          responseRuntimeVersion,
+          signature,
+          manifestKeys
+        );
       }
 
       return new LatestManifest(

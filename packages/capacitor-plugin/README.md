@@ -4,7 +4,7 @@ Capacitor OTA updater plugin for OtaKit.
 
 ## What it does
 
-- checks the manifest endpoint for a newer bundle
+- fetches the latest manifest for its release lane from the CDN
 - downloads and verifies OTA bundles
 - stages updates safely
 - activates them on the next launch, next resume, or immediately
@@ -13,6 +13,11 @@ Capacitor OTA updater plugin for OtaKit.
 - supports optional `runtimeVersion` lanes for native compatibility boundaries
 - requires `notifyAppReady()` as the success handshake
 - rolls back automatically if the new bundle does not prove healthy
+
+OtaKit publishes signed static manifests into object storage behind a CDN. The
+plugin fetches the manifest for its `appId + channel + runtimeVersion` lane,
+verifies it, compares it against the current and staged bundle locally, and
+only downloads when the manifest actually points at something newer.
 
 For normal app code, the main public methods are:
 
@@ -57,12 +62,13 @@ plugins: {
 
 Advanced overrides for self-hosting or custom trust only:
 
-- `serverUrl`
+- `cdnUrl` for manifest and bundle delivery
+- `serverUrl` for stats and control-plane requests
 - `manifestKeys`
 - `allowInsecureUrls`
 
-Hosted OtaKit already points at `https://otakit.app/api/v1` and already trusts
-the managed manifest signing keys.
+Hosted OtaKit already points at the managed control-plane API and CDN and already
+trusts the managed manifest signing keys.
 
 ## Channels vs runtimeVersion
 
@@ -84,11 +90,12 @@ When `runtimeVersion` is set:
 
 The plugin does not just download from a URL and trust the result.
 
-1. it fetches a manifest from the server
+1. it fetches the latest manifest from the CDN for its app + channel + runtimeVersion lane
 2. it verifies the manifest signature when manifest keys are configured
-3. it downloads the bundle zip
-4. it verifies the zip against the manifest `sha256`
-5. it stages and activates the bundle
+3. it compares that manifest against the current and staged bundle already on the device
+4. if the manifest is newer, it downloads the bundle zip
+5. it verifies the zip against the manifest `sha256`
+6. it stages and activates the bundle
 
 In the hosted path, managed signing keys are already built in.
 
@@ -165,8 +172,9 @@ await OtaKit.notifyAppReady();
 ```
 
 The plugin handles checking, downloading, activation, and rollback based on
-`updateMode`. It checks on cold start and every time the app comes back from
-the background (throttled by `checkInterval`).
+`updateMode`. In `next-launch` and `next-resume`, it checks on cold start and
+every time the app comes back from the background, throttled by `checkInterval`.
+`immediate` bypasses that throttle.
 
 For most apps, this is the entire runtime integration.
 
@@ -195,10 +203,9 @@ only after explicit user confirmation.
 
 ## Throttle
 
-All server checks are rate-limited by `checkInterval` (default 10 min).
-This applies to automatic resume checks and to manual `check()` / `download()`
-calls. Within the interval, calls return the staged bundle if one exists, or
-null.
+`checkInterval` (default 10 min) only applies to automatic checks in
+`next-launch` and `next-resume`. Manual `check()` / `download()` calls are
+always live, and `immediate` mode ignores the interval entirely.
 
 ## Retention and deletion
 

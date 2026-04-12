@@ -87,14 +87,16 @@ export interface OtaKitConfig {
   updateMode?: OtaKitUpdateMode;
   /**
    * Minimum milliseconds between automatic update checks.
-   * Applies to both resume-triggered and manual check()/download() calls.
-   * Debug APIs bypass this throttle. Defaults to 600000 (10 min).
+   * Applies only to automatic checks in `next-launch` and `next-resume`.
+   * Manual APIs and `immediate` mode bypass this throttle. Defaults to 600000 (10 min).
    */
   checkInterval?: number;
   /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
   appReadyTimeout?: number;
-  /** Custom API base URL for self-hosted or custom servers. */
+  /** Custom API base URL for stats and other control-plane requests. */
   serverUrl?: string;
+  /** Custom CDN base URL for manifest and bundle delivery. */
+  cdnUrl?: string;
   /** Custom manifest verification keys for self-hosted or custom trust. */
   manifestKeys?: OtaKitManifestKey[];
   /** Allow HTTP only for localhost development. Defaults to false. */
@@ -102,18 +104,6 @@ export interface OtaKitConfig {
 }
 
 export interface OtaKitDebugApi {
-  /**
-   * Check the server for a newer version without downloading it.
-   * You can optionally pass { channel } for a one-off debug override.
-   */
-  check(options?: { channel?: string }): Promise<LatestVersion | null>;
-
-  /**
-   * Check the server and download the latest bundle if available.
-   * Ensures the latest bundle is staged for later activation.
-   */
-  download(options?: { channel?: string }): Promise<BundleInfo | null>;
-
   /**
    * Reset to the builtin bundle and reload the WebView.
    *
@@ -248,8 +238,6 @@ export interface OtaKitBridgePlugin {
   apply(): Promise<void>;
   notifyAppReady(): Promise<void>;
   debugGetState(): Promise<OtaKitDebugState>;
-  debugCheck(options?: { channel?: string }): Promise<LatestVersion | null>;
-  debugDownload(options?: { channel?: string }): Promise<BundleInfo | null>;
   debugReset(): Promise<void>;
   debugListBundles(): Promise<BundleListResult>;
   debugDeleteBundle(options: { bundleId: string }): Promise<void>;

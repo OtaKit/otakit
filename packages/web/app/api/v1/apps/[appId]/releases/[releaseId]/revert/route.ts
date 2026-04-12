@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { invalidateManifestReleaseCache } from '@/lib/cache/manifest-cache';
 import { db } from '@/lib/db';
+import { syncManifestFileForLane } from '@/lib/manifest-files';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 
@@ -85,11 +85,7 @@ export async function POST(
     }),
   ]);
 
-  await invalidateManifestReleaseCache(
-    appId,
-    targetRelease.channel,
-    targetRelease.bundle.runtimeVersion,
-  );
+  await syncManifestFileForLane(appId, targetRelease.channel, targetRelease.bundle.runtimeVersion);
 
   return NextResponse.json({
     release: {

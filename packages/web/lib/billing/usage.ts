@@ -1,10 +1,12 @@
 import type { PlanKey, UsageWarningSent } from '@prisma/client';
 
-import { invalidateManifestAppAccessCacheForApps } from '@/lib/cache/manifest-cache';
 import { db } from '@/lib/db';
 import { sendUsageWarningEmail } from '@/lib/email';
+import {
+  deleteAllManifestFilesForApp,
+  restoreManifestFilesForApp,
+} from '@/lib/manifest-files';
 import { getPolar } from '@/lib/polar';
-import { isRedisConfigured } from '@/lib/redis';
 
 import { getExternalCustomerId, getPlanLimits } from './config';
 
@@ -22,6 +24,7 @@ type UsageOrganizationRecord = {
   id: string;
   name: string;
   planKey: PlanKey;
+  usageBlocked: boolean;
   overageEnabled: boolean;
   usagePeriodStart: Date | null;
   usageCalculatedAt: Date | null;
@@ -55,6 +58,23 @@ function nextMonthStartUTC(monthStart: Date): Date {
 function isSameMonth(a: Date | null, b: Date): boolean {
   if (!a) return false;
   return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
+}
+
+async function syncManifestFilesForOrganization(
+  organizationId: string,
+  usageBlocked: boolean,
+): Promise<void> {
+  const apps = await db.app.findMany({
+    where: { organizationId },
+    select: { id: true },
+  });
+
+  if (usageBlocked) {
+    await Promise.all(apps.map((app) => deleteAllManifestFilesForApp(app.id)));
+    return;
+  }
+
+  await Promise.all(apps.map((app) => restoreManifestFilesForApp(app.id)));
 }
 
 async function countDownloadsForKeys(args: {
@@ -126,6 +146,7 @@ export async function updateOrganizationOverageEnabled(
     select: {
       id: true,
       planKey: true,
+      usageBlocked: true,
       usagePeriodStart: true,
       usageCalculatedAt: true,
       downloadsCount: true,
@@ -146,15 +167,7 @@ export async function updateOrganizationOverageEnabled(
 
   const limit = getPlanLimits(organization.planKey).downloads;
   const usageBlocked = !overageEnabled && downloadsCount >= limit;
-
-  const appIds = isRedisConfigured()
-    ? (
-        await db.app.findMany({
-          where: { organizationId },
-          select: { id: true },
-        })
-      ).map((app) => app.id)
-    : [];
+  const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({
     where: { id: organizationId },
@@ -167,7 +180,9 @@ export async function updateOrganizationOverageEnabled(
       warningSent,
     },
   });
-  await invalidateManifestAppAccessCacheForApps(appIds);
+  if (usageBlockedChanged) {
+    await syncManifestFilesForOrganization(organizationId, usageBlocked);
+  }
 
   return {
     periodStart: currentPeriodStart.toISOString(),
@@ -357,6 +372,7 @@ async function refreshUsageForOrganization(
   }
 
   const usageBlocked = !organization.overageEnabled && downloadsCount >= limit;
+  const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({
     where: { id: organization.id },
@@ -368,7 +384,9 @@ async function refreshUsageForOrganization(
       warningSent,
     },
   });
-  await invalidateManifestAppAccessCacheForApps(appIds);
+  if (usageBlockedChanged) {
+    await syncManifestFilesForOrganization(organization.id, usageBlocked);
+  }
 
   const polarSynced = syncPolar
     ? await syncOrganizationUsageToPolar({
@@ -404,6 +422,7 @@ export async function refreshOrganizationUsageSnapshot(
       id: true,
       name: true,
       planKey: true,
+      usageBlocked: true,
       overageEnabled: true,
       usagePeriodStart: true,
       usageCalculatedAt: true,
@@ -427,6 +446,7 @@ export async function runUsageAggregationCron(): Promise<UsageRunStats> {
       id: true,
       name: true,
       planKey: true,
+      usageBlocked: true,
       overageEnabled: true,
       usagePeriodStart: true,
       usageCalculatedAt: true,

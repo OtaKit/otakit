@@ -29,7 +29,7 @@ Start with setup
 1. Create an app in the OtaKit dashboard and copy its `appId` into your `capacitor.config.ts` file.
 2. Call `notifyAppReady()` when your app finishes loading, so newly activated updates can be confirmed healthy.
 3. Build your web app and run `otakit upload --release` to upload and publish a new bundle.
-4. On device, the plugin checks its configured `appId` + `channel` + `runtimeVersion` lane, verifies the downloaded bundle, and activates it according to `updateMode`.
+4. On device, the plugin checks for updates, verifies the downloaded bundle, and by default activates it on the next cold launch by default.
 
 ### Features
 - **One-command shipping**: Build your web app, then release with otakit upload --release.
@@ -136,7 +136,7 @@ npm run build
 otakit upload --release
 ```
 
-That publishes the bundle to the base channel. By default, devices download it in the background and activate it on the next cold app launch.
+That publishes the bundle to the base channel. By default, OtaKit downloads it in the background and activates it on the next cold app launch.
 
 Next, continue with the Next.js guide or the React guide if you want a full walkthrough. Use the Plugin API and CLI reference for advanced flows and exact command details.
 
@@ -180,8 +180,6 @@ const config: CapacitorConfig = {
 
 export default config;
 ```
-
-The CLI reads `plugins.OtaKit.runtimeVersion` automatically during upload. You set compatibility once in plugin config, and the uploaded bundle keeps that runtime lane.
 
 ### Authentication
 
@@ -393,9 +391,11 @@ otakit generate-signing-key
 
 Route: /docs/plugin
 
-Capacitor plugin setup, default automatic updates, manual advanced flows, and debug methods.
+Capacitor plugin setup, default automatic updates, and manual advanced flows.
 
 Import from `@otakit/capacitor-updater`. For normal app code, the normal hosted flow usually only needs `notifyAppReady()`. The other public methods exist for advanced manual update flows where your app decides when to check, download, and apply an update.
+
+At runtime, OtaKit serves signed static manifests from object storage through the CDN. The plugin fetches the manifest for its current lane, verifies it, compares it against the current and staged bundle locally, and only downloads when the manifest actually points at something newer.
 
 ```txt
 import { OtaKit } from "@otakit/capacitor-updater";
@@ -420,10 +420,13 @@ plugins: {
 - `channel` (string): Named release track to check. Omit it to use the base channel.
 - `runtimeVersion` (string): Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles.
 - `updateMode` ('manual' | 'next-launch' | 'next-resume' | 'immediate'): Overall update behavior. Optional, defaults to next-launch.
-- `checkInterval` (number): Milliseconds between automatic update checks. Optional, defaults to 600000 (10 min).
+- `checkInterval` (number): Milliseconds between automatic checks in next-launch and next-resume. Manual APIs and immediate mode ignore it. Optional, defaults to 600000 (10 min).
 - `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000.
+- `cdnUrl` (string): Optional CDN base URL for static manifest and bundle delivery. Leave unset for the hosted default.
+- `serverUrl` (string): Optional API base URL for stats and control-plane requests. Leave unset for the hosted default.
+- `manifestKeys` (array): Optional public verification keys for custom or self-hosted manifest signing.
 
-Hosted OtaKit points at the managed server automatically. Do not set `serverUrl` or `manifestKeys` unless you intentionally want custom server or verification behavior.
+Hosted OtaKit points at the managed API and CDN automatically. Do not set `cdnUrl`, `serverUrl`, or `manifestKeys` unless you intentionally want custom hosting or verification behavior.
 
 ### Compatibility lanes
 
@@ -435,7 +438,7 @@ The CLI reads that same value automatically during upload, so releases stay simp
 
 ### Update Modes
 
-All automatic modes check for updates on cold start (always) and app resume (throttled by checkInterval, default 10 minutes).
+`next-launch` and `next-resume` check on cold start and app resume, throttled by `checkInterval`. `immediate` ignores the interval, and manual APIs always perform a live check.
 - `next-launch` (default): Check and download in the background. Activate the staged bundle only on the next cold start. Zero disruption during a session.
 - `next-resume` (recommended): Check and download in the background. Activate the staged bundle on the next resume or cold start. Brief reload when returning to the app.
 - `immediate` (dev/debug): Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing.
@@ -443,9 +446,9 @@ All automatic modes check for updates on cold start (always) and app resume (thr
 
 ### Manifest Verification
 
-Hosted OtaKit verifies manifests automatically. The native plugin ships with built-in trusted public keys for the managed service and uses them by default when you stay on the hosted server.
+Hosted OtaKit verifies manifests automatically. The native plugin ships with built-in trusted public keys for the managed service and uses them by default when you stay on the hosted CDN.
 
-You only need `manifestKeys` when you intentionally override trust for a custom or self-hosted server. In that case, also set `serverUrl` to your own API base URL.
+You only need `manifestKeys` when you intentionally override trust for a custom or self-hosted setup. In that case, set `cdnUrl` to your manifest CDN and `serverUrl` to your own API base URL for stats.
 
 ### Automatic Flow (Default)
 
@@ -524,16 +527,6 @@ await OtaKit.download();
 await OtaKit.apply();
 ```
 
-### Debug API
-
-Manual inspection and control methods live under `OtaKit.debug`. These are for diagnostics, support, and test flows, not normal app code.
-- `debug.check(options?)` -> `LatestVersion | null`: Check the server for a newer bundle without downloading it. You can optionally pass { channel } for a one-off debug override.
-- `debug.download(options?)` -> `BundleInfo | null`: Debug version of download() that ensures the latest bundle is staged for a one-off { channel } override.
-- `debug.reset()` -> `void`: Clear active updater state, return to the builtin bundle, clear fallback and last failure state, and reload the WebView. Terminal operation.
-- `debug.listBundles()` -> `{ bundles: BundleInfo[] }`: List downloaded OTA bundles stored on the device.
-- `debug.deleteBundle({ bundleId })` -> `void`: Delete a downloaded bundle that is not current, fallback, or staged.
-- `debug.getLastFailure()` -> `BundleInfo | null`: Return the last failed update metadata for diagnostics. The failed bundle files themselves are cleaned up automatically after rollback.
-
 ### Advanced Overrides
 
 Use these only when you run a custom server or need custom verification behavior.
@@ -543,6 +536,7 @@ plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
     // Optional advanced overrides
+    // cdnUrl: "https://cdn.your-domain.com",
     // serverUrl: "https://your-server.com/api/v1",
     // allowInsecureUrls: false,
     // manifestKeys: [
@@ -551,7 +545,8 @@ plugins: {
   }
 }
 ```
-- `serverUrl` (string): Custom OtaKit server URL. Leave unset for the hosted service default.
+- `cdnUrl` (string): Custom CDN base URL for static manifest and bundle delivery.
+- `serverUrl` (string): Custom OtaKit API URL used for stats and control-plane requests.
 - `allowInsecureUrls` (boolean): Allow HTTP for localhost development only. Default: false.
 - `manifestKeys` (array): Public verification keys for manifest signature verification on custom/self-hosted setups.
 
@@ -1073,9 +1068,9 @@ Route: /docs/channels
 
 Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
 
-Channels and `runtimeVersion` solve different problems. Channels decide who gets a rollout. `runtimeVersion` decides which native app shell can safely run it.
+Channels and runtime version solve different problems. Channels decide who gets a rollout. Runtime version decides which native app shell can safely run it.
 
-### Channel vs runtimeVersion
+### Channel vs runtime version
 - `channel` answers: who should get this rollout?
 - `runtimeVersion` answers: which native app shell can safely run this bundle?
 - Use channels for rollout tracks such as `beta`, `staging`, or `production`.
@@ -1118,7 +1113,7 @@ Release to that channel with:
 otakit upload --release staging
 ```
 
-### runtimeVersion for store updates
+### Runtime version for store updates
 
 `runtimeVersion` is optional, but it is the right tool when a new App Store or Play Store submission creates a new OTA baseline.
 
@@ -1134,7 +1129,7 @@ plugins: {
 
 With that config:
 - the plugin only asks for releases on `(channel, runtimeVersion)`
-- uploads inherit `runtimeVersion` automatically from the same plugin config
+- bundle uploads inherit `runtimeVersion` automatically from the same plugin config
 - releases stay simple: publish the bundle, and it naturally stays inside its own runtime lane
 
 ### Promote an existing bundle
@@ -1262,13 +1257,15 @@ Run OtaKit on your own infrastructure.
 
 OtaKit is fully open source and can run on your own infrastructure. You'll need PostgreSQL and any S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
 
+In the self-hosted architecture, manifests and bundle zips are served directly from object storage through your CDN. The plugin fetches the manifest for its lane and decides locally whether it should download anything newer.
+
 If you want the managed OtaKit service, use the standard hosted setup guide instead.
 
 ### Requirements
 - Node.js 23+
 - PostgreSQL 14+
 - S3-compatible storage (R2, MinIO, AWS S3)
-- Upstash Redis (recommended for manifest cache)
+- A public CDN in front of your bundle and manifest bucket
 
 ### Environment variables
 
@@ -1285,10 +1282,11 @@ R2_BUCKET=otakit-bundles
 R2_ACCESS_KEY=...
 R2_SECRET_KEY=...
 R2_ENDPOINT=https://....r2.cloudflarestorage.com
+CDN_BASE_URL=https://cdn.your-domain.com
 
-# Optional but recommended: Upstash Redis for manifest cache
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
+# Optional: Cloudflare purge support for manifest changes
+CF_ZONE_ID=...
+CF_API_TOKEN=...
 
 # Optional: upload size limit (bytes, default 200MB)
 MAX_BUNDLE_SIZE=209715200
@@ -1324,17 +1322,6 @@ pnpm start
 ```
 
 The server runs on port 3000 by default. Point your reverse proxy (nginx, Caddy) to it and ensure HTTPS is configured.
-
-### Redis cache (recommended)
-
-Self-hosted OtaKit can use Upstash Redis to cache the hot manifest lookup path. This reduces repeated Postgres reads when devices check for updates.
-
-The cache is optional, but recommended for production. OtaKit still works without it and falls back to direct database reads.
-
-```txt
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
-```
 
 ### Docker
 
@@ -1375,6 +1362,7 @@ This outputs the server environment variables (`MANIFEST_SIGNING_KID`, `MANIFEST
 ```txt
 plugins: {
   OtaKit: {
+    cdnUrl: "https://cdn.your-domain.com",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     manifestKeys: [
@@ -1397,11 +1385,12 @@ export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
 export OTAKIT_SECRET_KEY=otakit_sk_...
 ```
 
-In your Capacitor plugin config, set `serverUrl` to your server:
+In your Capacitor plugin config, set `cdnUrl` to your manifest CDN and `serverUrl` to your API server:
 
 ```txt
 plugins: {
   OtaKit: {
+    cdnUrl: "https://cdn.your-domain.com",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     // manifestKeys: [{ kid, key }]
@@ -1409,4 +1398,4 @@ plugins: {
 }
 ```
 
-The `serverUrl` is only needed for self-hosting — it defaults to `https://otakit.app/api/v1` when omitted. Follow the standard setup guide for the rest of the plugin and CLI configuration.
+The hosted defaults are `https://cdn.otakit.app` for manifests/bundles and `https://www.otakit.app/api/v1` for stats. Follow the standard setup guide for the rest of the plugin and CLI configuration.

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { purgeCdnUrls } from '@/lib/cdn-purge';
 import { db } from '@/lib/db';
-import { deleteBundleObject } from '@/lib/storage';
+import { buildPublicObjectUrl, deleteBundleObject } from '@/lib/storage';
 
 export const runtime = 'nodejs';
 
@@ -52,6 +53,7 @@ export async function DELETE(
 
   try {
     await deleteBundleObject(bundle.storageKey);
+    await purgeCdnUrls([buildPublicObjectUrl(bundle.storageKey)]);
   } catch (error) {
     console.error('Failed to delete storage object for bundle', bundle.id, error);
   }

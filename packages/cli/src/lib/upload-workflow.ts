@@ -108,6 +108,7 @@ async function uploadFileToPresignedUrl(filePath: string, presignedUrl: string):
     headers: {
       'Content-Type': 'application/zip',
       'Content-Length': String(fileStat.size),
+      'Cache-Control': 'public, max-age=31536000, immutable',
       'User-Agent': getCliUserAgent(),
     },
     duplex: 'half',

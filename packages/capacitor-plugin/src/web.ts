@@ -44,16 +44,6 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
     throw new Error('OtaKit.apply() is not supported on web');
   }
 
-  async debugCheck(): Promise<LatestVersion | null> {
-    console.warn('OtaKit.debug.check() is not supported on web');
-    return null;
-  }
-
-  async debugDownload(_options?: { channel?: string }): Promise<BundleInfo | null> {
-    console.warn('OtaKit.debug.download() is not supported on web');
-    return null;
-  }
-
   async notifyAppReady(): Promise<void> {
     // No-op on web, but don't warn - apps should call this unconditionally
   }

@@ -18,7 +18,7 @@ enum ManifestVerifier {
   /// Verify a manifest signature using ES256 (ECDSA P-256 + SHA-256).
   ///
   /// - Parameters:
-  ///   - appId, channel, platform: Request context (known by plugin).
+  ///   - appId, channel: Request context (known by plugin).
   ///   - version, sha256, size, runtimeVersion: Response fields.
   ///   - signature: The signature object from the manifest response.
   ///   - trustedKeys: Array of verification keys configured in the plugin.
@@ -27,7 +27,6 @@ enum ManifestVerifier {
   static func verify(
     appId: String,
     channel: String?,
-    platform: String,
     version: String,
     sha256: String,
     size: Int,
@@ -38,35 +37,10 @@ enum ManifestVerifier {
     let payload = buildCanonicalPayload(
       appId: appId,
       channel: channel,
-      platform: platform,
       version: version,
       sha256: sha256,
       size: size,
       runtimeVersion: runtimeVersion,
-      kid: signature.kid,
-      iat: signature.iat,
-      exp: signature.exp
-    )
-    try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
-  }
-
-  static func verifyLegacy(
-    appId: String,
-    channel: String?,
-    platform: String,
-    version: String,
-    sha256: String,
-    size: Int,
-    signature: ManifestSignature,
-    trustedKeys: [ManifestKey]
-  ) throws {
-    let payload = buildLegacyCanonicalPayload(
-      appId: appId,
-      channel: channel,
-      platform: platform,
-      version: version,
-      sha256: sha256,
-      size: size,
       kid: signature.kid,
       iat: signature.iat,
       exp: signature.exp
@@ -107,7 +81,6 @@ enum ManifestVerifier {
   private static func buildCanonicalPayload(
     appId: String,
     channel: String?,
-    platform: String,
     version: String,
     sha256: String,
     size: Int,
@@ -117,40 +90,13 @@ enum ManifestVerifier {
     exp: Int
   ) -> String {
     return [
-      "MANIFEST_V2",
+      "MANIFEST",
       "appId:\(appId)",
       "channel:\(channel ?? "null")",
-      "platform:\(platform)",
       "version:\(version)",
       "sha256:\(sha256)",
       "size:\(size)",
       "runtimeVersion:\(runtimeVersion ?? "null")",
-      "kid:\(kid)",
-      "iat:\(iat)",
-      "exp:\(exp)",
-    ].joined(separator: "\n")
-  }
-
-  private static func buildLegacyCanonicalPayload(
-    appId: String,
-    channel: String?,
-    platform: String,
-    version: String,
-    sha256: String,
-    size: Int,
-    kid: String,
-    iat: Int,
-    exp: Int
-  ) -> String {
-    return [
-      "MANIFEST_V1",
-      "appId:\(appId)",
-      "channel:\(channel ?? "null")",
-      "platform:\(platform)",
-      "version:\(version)",
-      "sha256:\(sha256)",
-      "size:\(size)",
-      "minNativeBuild:null",
       "kid:\(kid)",
       "iat:\(iat)",
       "exp:\(exp)",

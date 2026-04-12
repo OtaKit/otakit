@@ -1,7 +1,7 @@
 import Foundation
 
 enum HostedManifestKeys {
-  static let managedServerURL = "https://www.otakit.app/api/v1"
+  static let managedCdnURL = "https://cdn.otakit.app"
 
   static let defaults: [(kid: String, key: Data)] = [
     (
@@ -12,12 +12,12 @@ enum HostedManifestKeys {
     )
   ]
 
-  static func matchesManagedServer(_ updateUrl: String) -> Bool {
-    let normalized = updateUrl
+  static func matchesManagedManifestURL(_ cdnUrl: String) -> Bool {
+    let normalized = cdnUrl
       .trimmingCharacters(in: .whitespacesAndNewlines)
       .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
       .lowercased()
-    return normalized == managedServerURL
-        || normalized == "https://otakit.app/api/v1"
+    return normalized == managedCdnURL
+        || normalized == "https://www.otakit.app"
   }
 }

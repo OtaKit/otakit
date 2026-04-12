@@ -30,7 +30,6 @@ final class ManifestVerifier {
   static void verify(
     String appId,
     String channel,
-    String platform,
     String version,
     String sha256,
     int size,
@@ -41,35 +40,10 @@ final class ManifestVerifier {
     String payload = buildCanonicalPayload(
       appId,
       channel,
-      platform,
       version,
       sha256,
       size,
       runtimeVersion,
-      signature.kid,
-      signature.iat,
-      signature.exp
-    );
-    verifyPayload(payload, signature, trustedKeys);
-  }
-
-  static void verifyLegacy(
-    String appId,
-    String channel,
-    String platform,
-    String version,
-    String sha256,
-    int size,
-    ManifestClient.ManifestSignature signature,
-    List<KeyEntry> trustedKeys
-  ) throws Exception {
-    String payload = buildLegacyCanonicalPayload(
-      appId,
-      channel,
-      platform,
-      version,
-      sha256,
-      size,
       signature.kid,
       signature.iat,
       signature.exp
@@ -120,7 +94,6 @@ final class ManifestVerifier {
   private static String buildCanonicalPayload(
     String appId,
     String channel,
-    String platform,
     String version,
     String sha256,
     int size,
@@ -130,15 +103,12 @@ final class ManifestVerifier {
     int exp
   ) {
     return (
-      "MANIFEST_V2\n" +
+      "MANIFEST\n" +
       "appId:" +
       appId +
       "\n" +
       "channel:" +
       (channel != null ? channel : "null") +
-      "\n" +
-      "platform:" +
-      platform +
       "\n" +
       "version:" +
       version +
@@ -151,50 +121,6 @@ final class ManifestVerifier {
       "\n" +
       "runtimeVersion:" +
       (runtimeVersion != null ? runtimeVersion : "null") +
-      "\n" +
-      "kid:" +
-      kid +
-      "\n" +
-      "iat:" +
-      iat +
-      "\n" +
-      "exp:" +
-      exp
-    );
-  }
-
-  private static String buildLegacyCanonicalPayload(
-    String appId,
-    String channel,
-    String platform,
-    String version,
-    String sha256,
-    int size,
-    String kid,
-    int iat,
-    int exp
-  ) {
-    return (
-      "MANIFEST_V1\n" +
-      "appId:" +
-      appId +
-      "\n" +
-      "channel:" +
-      (channel != null ? channel : "null") +
-      "\n" +
-      "platform:" +
-      platform +
-      "\n" +
-      "version:" +
-      version +
-      "\n" +
-      "sha256:" +
-      sha256 +
-      "\n" +
-      "size:" +
-      size +
-      "\n" +
-      "minNativeBuild:null" +
       "\n" +
       "kid:" +
       kid +

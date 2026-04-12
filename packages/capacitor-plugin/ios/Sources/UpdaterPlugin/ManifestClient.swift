@@ -1,5 +1,8 @@
 import Foundation
 
+private let baseChannelKey = "__base__"
+private let defaultRuntimeKey = "__default__"
+
 struct LatestManifest {
   let version: String
   let url: String
@@ -38,43 +41,34 @@ enum ManifestClient {
   }
 
   static func fetchLatest(
-    updateUrl: String,
+    cdnUrl: String,
     appId: String,
     channel: String?,
-    currentVersion: String,
-    currentReleaseId: String?,
     runtimeVersion: String?,
-    platform: String,
     allowInsecureUrls: Bool = false,
     manifestKeys: [ManifestKey] = []
   ) async throws -> LatestManifest? {
-    let sanitizedBase = updateUrl.replacingOccurrences(
+    let sanitizedBase = cdnUrl.replacingOccurrences(
       of: "/+$",
       with: "",
       options: .regularExpression
     )
 
-    guard let baseURL = URL(string: sanitizedBase) else {
+    let channelKey = channel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+      ?? baseChannelKey
+    let runtimeKey = runtimeVersion?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+      ?? defaultRuntimeKey
+
+    guard let url = URL(
+      string: "\(sanitizedBase)/manifests/\(appId)/\(channelKey)/\(runtimeKey)/manifest.json"
+    ) else {
       throw ManifestClientError.invalidURL
     }
-    let url = baseURL.appendingPathComponent("manifest")
 
     try requireHTTPS(url: url, allowInsecure: allowInsecureUrls)
 
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
-    request.setValue(appId, forHTTPHeaderField: "X-App-Id")
-    request.setValue(platform, forHTTPHeaderField: "X-Platform")
-    if let channel, !channel.isEmpty {
-      request.setValue(channel, forHTTPHeaderField: "X-Channel")
-    }
-    request.setValue(currentVersion, forHTTPHeaderField: "X-Current-Version")
-    if let currentReleaseId, !currentReleaseId.isEmpty {
-      request.setValue(currentReleaseId, forHTTPHeaderField: "X-Release-Id")
-    }
-    if let runtimeVersion, !runtimeVersion.isEmpty {
-      request.setValue(runtimeVersion, forHTTPHeaderField: "X-Runtime-Version")
-    }
     request.timeoutInterval = 30
 
     let (data, response) = try await URLSession.shared.data(for: request)
@@ -82,7 +76,7 @@ enum ManifestClient {
       throw ManifestClientError.invalidResponse
     }
 
-    if httpResponse.statusCode == 204 {
+    if httpResponse.statusCode == 404 || httpResponse.statusCode == 204 {
       return nil
     }
 
@@ -108,11 +102,8 @@ enum ManifestClient {
       .nilIfEmpty
 
     let signature = parseSignature(object["signature"])
-    let signatureV2 = parseSignature(object["signatureV2"])
-
     let releaseId = object["releaseId"] as? String
 
-    // Validate download URL scheme
     guard let dlURL = URL(string: downloadUrl) else {
       throw ManifestClientError.invalidURL
     }
@@ -122,36 +113,21 @@ enum ManifestClient {
       print("[UpdateKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
     }
 
-    // Verify manifest signature if signing keys are configured.
-    // New manifests carry signatureV2 with runtimeVersion in the signed payload.
-    // Older servers only return the legacy signature field.
     if !manifestKeys.isEmpty {
-      if let sigV2 = signatureV2 {
-        try ManifestVerifier.verify(
-          appId: appId,
-          channel: channel,
-          platform: platform,
-          version: version,
-          sha256: sha256,
-          size: size,
-          runtimeVersion: runtimeVersion,
-          signature: sigV2,
-          trustedKeys: manifestKeys
-        )
-      } else if let sig = signature {
-        try ManifestVerifier.verifyLegacy(
-          appId: appId,
-          channel: channel,
-          platform: platform,
-          version: version,
-          sha256: sha256,
-          size: size,
-          signature: sig,
-          trustedKeys: manifestKeys
-        )
-      } else {
+      guard let signature else {
         throw ManifestVerifierError.missingSignature
       }
+
+      try ManifestVerifier.verify(
+        appId: appId,
+        channel: channel,
+        version: version,
+        sha256: sha256,
+        size: size,
+        runtimeVersion: runtimeVersion,
+        signature: signature,
+        trustedKeys: manifestKeys
+      )
     }
 
     return LatestManifest(

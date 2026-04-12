@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { invalidateManifestReleaseCache } from '@/lib/cache/manifest-cache';
 import { db } from '@/lib/db';
+import { syncManifestFileForLane } from '@/lib/manifest-files';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 import { createRelease } from '@/lib/releases';
@@ -214,7 +214,7 @@ export async function POST(
     channel,
     promotedBy,
   });
-  await invalidateManifestReleaseCache(appId, channel, bundle.runtimeVersion);
+  await syncManifestFileForLane(appId, channel, bundle.runtimeVersion);
 
   return NextResponse.json({
     release: {

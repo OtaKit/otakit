@@ -7,14 +7,14 @@ This package contains:
 - the hosted dashboard UI
 - auth and organization management
 - bundle upload and release APIs
-- public update endpoints used by the plugin
+- manifest materialization and public update delivery
 - billing, docs, and operational endpoints
 
 ## What lives here
 
 - landing page and docs
 - dashboard, login, organizations, members, invites, and API keys
-- bundle upload, finalize, release, revert, events, and manifest APIs
+- bundle upload, finalize, release, revert, events, and manifest publishing
 - billing and usage enforcement
 - admin and webhook endpoints
 
@@ -48,11 +48,11 @@ The main server-side models are:
 
 ### Manifest
 
-1. resolve the latest non-reverted release for the app + channel + runtimeVersion
-2. compare against the device's current version
-3. mint a fresh download URL
-4. sign the manifest
-5. return update metadata to the plugin
+1. resolve the current non-reverted release for each `(appId, channel, runtimeVersion)` lane
+2. build a signed static manifest JSON object
+3. write it to R2 at a deterministic CDN path
+4. purge the exact CDN URL on publish, revert, or billing changes
+5. let the plugin fetch that lane manifest directly from the CDN and compare locally
 
 ### Compatibility model
 
@@ -99,6 +99,7 @@ pnpm --filter @otakit/web db:studio
 - `BETTER_AUTH_SECRET`
 - `BETTER_AUTH_URL`
 - `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_ENDPOINT`
+- `CDN_BASE_URL`, `CF_ZONE_ID`, `CF_API_TOKEN`
 - `MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`
 - optional `MANIFEST_SIGNING_DISABLED`
 - `POLAR_*`
@@ -106,10 +107,9 @@ pnpm --filter @otakit/web db:studio
 
 ## Cache
 
-- manifest lookup supports an optional Upstash Redis cache
-- only stable manifest descriptor data is cached
-- download URLs and manifest signatures are generated fresh on every request
-- cache invalidation happens on release creation and usage-block changes
+- manifest reads are served as static CDN objects from R2
+- bundle objects are served from public immutable CDN URLs
+- explicit CDN purge happens on release creation, revert, bundle delete, and manifest lifecycle changes
 
 ## Product shape
 

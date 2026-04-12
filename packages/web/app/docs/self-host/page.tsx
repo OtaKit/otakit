@@ -16,6 +16,11 @@ export default function SelfHostPage() {
         PostgreSQL and any S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
       </P>
       <P>
+        In the self-hosted architecture, manifests and bundle zips are served directly from object
+        storage through your CDN. The plugin fetches the manifest for its lane and decides locally
+        whether it should download anything newer.
+      </P>
+      <P>
         If you want the managed OtaKit service, use the standard hosted{' '}
         <Link
           href="/docs/setup"
@@ -33,7 +38,7 @@ export default function SelfHostPage() {
         <li>Node.js 23+</li>
         <li>PostgreSQL 14+</li>
         <li>S3-compatible storage (R2, MinIO, AWS S3)</li>
-        <li>Upstash Redis (recommended for manifest cache)</li>
+        <li>A public CDN in front of your bundle and manifest bucket</li>
       </ul>
 
       <Separator className="my-10" />
@@ -51,10 +56,11 @@ R2_BUCKET=otakit-bundles
 R2_ACCESS_KEY=...
 R2_SECRET_KEY=...
 R2_ENDPOINT=https://....r2.cloudflarestorage.com
+CDN_BASE_URL=https://cdn.your-domain.com
 
-# Optional but recommended: Upstash Redis for manifest cache
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
+# Optional: Cloudflare purge support for manifest changes
+CF_ZONE_ID=...
+CF_API_TOKEN=...
 
 # Optional: upload size limit (bytes, default 200MB)
 MAX_BUNDLE_SIZE=209715200
@@ -90,21 +96,6 @@ pnpm start`}</Pre>
         The server runs on port 3000 by default. Point your reverse proxy (nginx, Caddy) to it and
         ensure HTTPS is configured.
       </P>
-
-      <Separator className="my-10" />
-
-      <H2>Redis cache (recommended)</H2>
-      <P>
-        Self-hosted OtaKit can use Upstash Redis to cache the hot manifest lookup path. This reduces
-        repeated Postgres reads when devices check for updates.
-      </P>
-      <P>
-        The cache is optional, but recommended for production. OtaKit still works without it and
-        falls back to direct database reads.
-      </P>
-      <Pre>{`UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...`}</Pre>
-
       <Separator className="my-10" />
 
       <H2>Docker</H2>
@@ -149,6 +140,7 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       </P>
       <Pre>{`plugins: {
   OtaKit: {
+    cdnUrl: "https://cdn.your-domain.com",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     manifestKeys: [
@@ -175,18 +167,20 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       <Pre>{`export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
 export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       <P>
-        In your Capacitor plugin config, set <Code>serverUrl</Code> to your server:
+        In your Capacitor plugin config, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
+        <Code>serverUrl</Code> to your API server:
       </P>
       <Pre>{`plugins: {
   OtaKit: {
+    cdnUrl: "https://cdn.your-domain.com",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     // manifestKeys: [{ kid, key }]
   }
 }`}</Pre>
       <P>
-        The <Code>serverUrl</Code> is only needed for self-hosting — it defaults to{' '}
-        <Code>https://otakit.app/api/v1</Code> when omitted. Follow the standard{' '}
+        The hosted defaults are <Code>https://cdn.otakit.app</Code> for manifests/bundles and{' '}
+        <Code>https://www.otakit.app/api/v1</Code> for stats. Follow the standard{' '}
         <Link
           href="/docs/setup"
           className="font-medium text-foreground underline underline-offset-4"

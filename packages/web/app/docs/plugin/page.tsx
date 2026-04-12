@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 export const metadata = {
   title: 'Plugin API — OtaKit Docs',
   description:
-    'Capacitor plugin setup, default automatic updates, manual advanced flows, and debug methods.',
+    'Capacitor plugin setup, default automatic updates, and manual advanced flows.',
 };
 
 export default function PluginReferencePage() {
@@ -15,6 +15,12 @@ export default function PluginReferencePage() {
         flow usually only needs <Code>notifyAppReady()</Code>. The other public methods exist for
         advanced manual update flows where your app decides when to check, download, and apply an
         update.
+      </P>
+      <P>
+        At runtime, OtaKit serves signed static manifests from object storage through the CDN. The
+        plugin fetches the manifest for its current lane, verifies it, compares it against the
+        current and staged bundle locally, and only downloads when the manifest actually points at
+        something newer.
       </P>
       <Pre>{`import { OtaKit } from "@otakit/capacitor-updater";`}</Pre>
 
@@ -55,20 +61,35 @@ export default function PluginReferencePage() {
         <ConfigRow
           field="checkInterval"
           type="number"
-          description="Milliseconds between automatic update checks. Optional, defaults to 600000 (10 min)."
+          description="Milliseconds between automatic checks in next-launch and next-resume. Manual APIs and immediate mode ignore it. Optional, defaults to 600000 (10 min)."
         />
         <ConfigRow
           field="appReadyTimeout"
           type="number"
           description="Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000."
+        />
+        <ConfigRow
+          field="cdnUrl"
+          type="string"
+          description="Optional CDN base URL for static manifest and bundle delivery. Leave unset for the hosted default."
+        />
+        <ConfigRow
+          field="serverUrl"
+          type="string"
+          description="Optional API base URL for stats and control-plane requests. Leave unset for the hosted default."
+        />
+        <ConfigRow
+          field="manifestKeys"
+          type="array"
+          description="Optional public verification keys for custom or self-hosted manifest signing."
           last
         />
       </div>
 
       <P>
-        Hosted OtaKit points at the managed server automatically. Do not set <Code>serverUrl</Code>{' '}
-        or <Code>manifestKeys</Code> unless you intentionally want custom server or verification
-        behavior.
+        Hosted OtaKit points at the managed API and CDN automatically. Do not set <Code>cdnUrl</Code>,{' '}
+        <Code>serverUrl</Code>, or <Code>manifestKeys</Code> unless you intentionally want custom
+        hosting or verification behavior.
       </P>
 
       <Separator className="my-10" />
@@ -90,7 +111,11 @@ export default function PluginReferencePage() {
       <Separator className="my-10" />
 
       <H2>Update Modes</H2>
-      <P>All automatic modes check for updates on cold start (always) and app resume (throttled by checkInterval, default 10 minutes).</P>
+      <P>
+        <Code>next-launch</Code> and <Code>next-resume</Code> check on cold start and app
+        resume, throttled by <Code>checkInterval</Code>. <Code>immediate</Code> ignores the
+        interval, and manual APIs always perform a live check.
+      </P>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
         <ConfigRow
           field="next-launch"
@@ -121,12 +146,12 @@ export default function PluginReferencePage() {
       <P>
         Hosted OtaKit verifies manifests automatically. The native plugin ships with built-in
         trusted public keys for the managed service and uses them by default when you stay on the
-        hosted server.
+        hosted CDN.
       </P>
       <P>
         You only need <Code>manifestKeys</Code> when you intentionally override trust for a custom
-        or self-hosted server. In that case, also set <Code>serverUrl</Code> to your own API base
-        URL.
+        or self-hosted setup. In that case, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
+        <Code>serverUrl</Code> to your own API base URL for stats.
       </P>
 
       <Separator className="my-10" />
@@ -242,52 +267,13 @@ await OtaKit.apply();`}</Pre>
 
       <Separator className="my-10" />
 
-      <H2>Debug API</H2>
-      <P>
-        Manual inspection and control methods live under <Code>OtaKit.debug</Code>. These are for
-        diagnostics, support, and test flows, not normal app code.
-      </P>
-      <div className="mt-4 space-y-4">
-        <Method
-          name="debug.check(options?)"
-          returns="LatestVersion | null"
-          description="Check the server for a newer bundle without downloading it. You can optionally pass { channel } for a one-off debug override."
-        />
-        <Method
-          name="debug.download(options?)"
-          returns="BundleInfo | null"
-          description="Debug version of download() that ensures the latest bundle is staged for a one-off { channel } override."
-        />
-        <Method
-          name="debug.reset()"
-          returns="void"
-          description="Clear active updater state, return to the builtin bundle, clear fallback and last failure state, and reload the WebView. Terminal operation."
-        />
-        <Method
-          name="debug.listBundles()"
-          returns="{ bundles: BundleInfo[] }"
-          description="List downloaded OTA bundles stored on the device."
-        />
-        <Method
-          name="debug.deleteBundle({ bundleId })"
-          returns="void"
-          description="Delete a downloaded bundle that is not current, fallback, or staged."
-        />
-        <Method
-          name="debug.getLastFailure()"
-          returns="BundleInfo | null"
-          description="Return the last failed update metadata for diagnostics. The failed bundle files themselves are cleaned up automatically after rollback."
-        />
-      </div>
-
-      <Separator className="my-10" />
-
       <H2>Advanced Overrides</H2>
       <P>Use these only when you run a custom server or need custom verification behavior.</P>
       <Pre>{`plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
     // Optional advanced overrides
+    // cdnUrl: "https://cdn.your-domain.com",
     // serverUrl: "https://your-server.com/api/v1",
     // allowInsecureUrls: false,
     // manifestKeys: [
@@ -297,9 +283,14 @@ await OtaKit.apply();`}</Pre>
 }`}</Pre>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
         <ConfigRow
+          field="cdnUrl"
+          type="string"
+          description="Custom CDN base URL for static manifest and bundle delivery."
+        />
+        <ConfigRow
           field="serverUrl"
           type="string"
-          description="Custom OtaKit server URL. Leave unset for the hosted service default."
+          description="Custom OtaKit API URL used for stats and control-plane requests."
         />
         <ConfigRow
           field="allowInsecureUrls"

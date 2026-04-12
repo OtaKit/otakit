@@ -7,18 +7,17 @@ import java.util.Locale;
 
 final class HostedManifestKeys {
 
-  private static final String MANAGED_SERVER_URL = "https://www.otakit.app/api/v1";
+  private static final String MANAGED_CDN_URL = "https://cdn.otakit.app";
 
   private HostedManifestKeys() {}
 
-  static boolean matchesManagedServer(String updateUrl) {
-    if (updateUrl == null) {
+  static boolean matchesManagedManifestUrl(String cdnUrl) {
+    if (cdnUrl == null) {
       return false;
     }
 
-    String normalized = updateUrl.trim().replaceAll("/+$", "").toLowerCase(Locale.ROOT);
-    return normalized.equals(MANAGED_SERVER_URL)
-        || normalized.equals("https://otakit.app/api/v1");
+    String normalized = cdnUrl.trim().replaceAll("/+$", "").toLowerCase(Locale.ROOT);
+    return normalized.equals(MANAGED_CDN_URL) || normalized.equals("https://www.otakit.app");
   }
 
   static List<ManifestVerifier.KeyEntry> createDefaultKeys() {

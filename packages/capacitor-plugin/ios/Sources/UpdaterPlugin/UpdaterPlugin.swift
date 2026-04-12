@@ -23,8 +23,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "apply", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "debugGetState", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugCheck", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugDownload", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "notifyAppReady", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "debugReset", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "debugListBundles", returnType: CAPPluginReturnPromise),
@@ -41,6 +39,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var allowInsecureUrls = false
   private var updateMode: UpdateMode = .nextLaunch
   private var updateUrl = UpdaterPlugin.defaultUpdateURL
+  private var cdnUrl = UpdaterPlugin.defaultCdnURL
   private var appId: String?
   private var channel: String?
   private var runtimeVersion: String?
@@ -51,14 +50,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var checkInProgress = false
   private var foregroundObserver: NSObjectProtocol?
   private static let defaultUpdateURL = "https://www.otakit.app/api/v1"
+  private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let apiPathSuffix = "/api/v1"
   private static let lastCheckTimestampKey = "otakit_last_check_timestamp"
 
   public override func load() {
     let envUpdateUrl = ProcessInfo.processInfo.environment["OTAKIT_SERVER_URL"]
+    let envCdnUrl = ProcessInfo.processInfo.environment["OTAKIT_CDN_URL"]
     updateUrl = resolveUpdateUrl(
       configured: getConfig().getString("serverUrl"),
       env: envUpdateUrl
+    )
+    cdnUrl = resolveCdnUrl(
+      configured: getConfig().getString("cdnUrl"),
+      env: envCdnUrl,
+      resolvedUpdateUrl: updateUrl
     )
     appId = getConfig().getString("appId")
     channel = trimToNil(getConfig().getString("channel"))
@@ -88,7 +94,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       manifestKeys = [(kid: "_invalid_", key: Data())]
     }
 
-    if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedServer(updateUrl) {
+    if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults
     }
 
@@ -154,7 +160,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return
       }
 
-      if shouldThrottleCheck() { return }
+      if updateMode != .immediate && shouldThrottleCheck() { return }
+    }
+
+    if trigger == .launch && updateMode != .immediate && shouldThrottleCheck() {
+      return
     }
 
     // Acquire in-flight guard (submit-time)
@@ -166,7 +176,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         defer { releaseCheckInProgress() }
         do {
           let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          recordCheckTimestamp()
           if result != nil {
             activateStagedBundleForReload()
             reloadWebView()
@@ -184,7 +193,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         defer { releaseCheckInProgress() }
         do {
           let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          recordCheckTimestamp()
           if result != nil {
             activateStagedBundleForReload()
             reloadWebView()
@@ -282,27 +290,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve(payload)
   }
 
-  @objc func debugCheck(_ call: CAPPluginCall) {
-    let requestedChannel = call.getString("channel")
-    let targetChannel = resolveTargetChannel(requestedChannel)
-    Task {
-      do {
-        let latest = try await fetchLatest(channel: targetChannel)
-        if let latest {
-          let staged = findMatchingStagedBundle(latest: latest, targetChannel: targetChannel)
-          call.resolve(manifestToDictionary(latest, downloaded: staged != nil))
-        } else {
-          call.resolve()
-        }
-      } catch {
-        call.reject("debugCheck failed: \(error.localizedDescription)")
-      }
-    }
-  }
-
   @objc func check(_ call: CAPPluginCall) {
-    // Respect throttle — return staged bundle as a LatestVersion if available, else null
-    if shouldThrottleCheck() || !claimCheckInProgress() {
+    if !claimCheckInProgress() {
       if let stagedId = store.getStagedBundleId(),
          let staged = store.getBundle(id: stagedId) {
         var payload: [String: Any] = [
@@ -329,9 +318,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       defer { releaseCheckInProgress() }
       do {
         let latest = try await fetchLatest(channel: targetChannel)
-        // check() does NOT record timestamp — only download() and automatic paths do.
-        // This keeps check() -> download() working without the throttle blocking download().
         if let latest {
+          if isCurrentBundleLatest(latest: latest, targetChannel: targetChannel) {
+            call.resolve()
+            return
+          }
           let staged = findMatchingStagedBundle(latest: latest, targetChannel: targetChannel)
           call.resolve(manifestToDictionary(latest, downloaded: staged != nil))
         } else {
@@ -343,28 +334,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
-  @objc func debugDownload(_ call: CAPPluginCall) {
-    let requestedChannel = call.getString("channel")
-    Task {
-      do {
-        let bundle = try await performCheckAndDownload(
-          channel: requestedChannel,
-          emitEvents: true
-        )
-        if let bundle {
-          call.resolve(bundle.toDictionary())
-        } else {
-          call.resolve()
-        }
-      } catch {
-        call.reject("debugDownload failed: \(error.localizedDescription)")
-      }
-    }
-  }
-
   @objc func download(_ call: CAPPluginCall) {
-    // Respect throttle — return staged info if available, else null
-    if shouldThrottleCheck() || !claimCheckInProgress() {
+    if !claimCheckInProgress() {
       if let stagedId = store.getStagedBundleId(),
          let staged = store.getBundle(id: stagedId) {
         call.resolve(staged.toDictionary())
@@ -377,7 +348,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       defer { releaseCheckInProgress() }
       do {
         let bundle = try await performCheckAndDownload(channel: nil, emitEvents: true)
-        recordCheckTimestamp()
         if let bundle {
           call.resolve(bundle.toDictionary())
         } else {
@@ -504,15 +474,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       throw NSError(domain: "OtaKit", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing appId in plugin config"])
     }
 
-    let current = store.getCurrentBundle()
     return try await ManifestClient.fetchLatest(
-      updateUrl: updateUrl,
+      cdnUrl: cdnUrl,
       appId: appId,
       channel: channel,
-      currentVersion: current.version,
-      currentReleaseId: current.releaseId,
       runtimeVersion: runtimeVersion,
-      platform: "ios",
       allowInsecureUrls: allowInsecureUrls,
       manifestKeys: manifestKeys.map {
         ManifestKey(kid: $0.kid, derData: $0.key)
@@ -540,6 +506,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         code: 1,
         userInfo: [NSLocalizedDescriptionKey: "Manifest runtimeVersion does not match the installed app runtime"]
       )
+    }
+
+    if isCurrentBundleLatest(latest: manifest, targetChannel: targetChannel) {
+      if emitEvents {
+        notifyListeners("noUpdateAvailable", data: [:])
+      }
+      return nil
     }
 
     let staged = findMatchingStagedBundle(latest: manifest, targetChannel: targetChannel)
@@ -939,6 +912,42 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return payload
   }
 
+  private func isCurrentBundleLatest(
+    latest: LatestManifest,
+    targetChannel: String?
+  ) -> Bool {
+    doesBundleMatchLatest(store.getCurrentBundle(), latest: latest, targetChannel: targetChannel)
+  }
+
+  private func doesBundleMatchLatest(
+    _ bundle: BundleInfo,
+    latest: LatestManifest,
+    targetChannel: String?
+  ) -> Bool {
+    if trimToNil(bundle.channel) != targetChannel {
+      return false
+    }
+
+    if trimToNil(bundle.runtimeVersion) != trimToNil(latest.runtimeVersion) {
+      return false
+    }
+
+    if let latestReleaseId = latest.releaseId,
+       let bundleReleaseId = bundle.releaseId,
+       latestReleaseId == bundleReleaseId {
+      return true
+    }
+
+    if !latest.sha256.isEmpty,
+       let bundleSha = bundle.sha256,
+       !bundleSha.isEmpty,
+       latest.sha256 == bundleSha {
+      return true
+    }
+
+    return latest.version == bundle.version
+  }
+
   private func findMatchingStagedBundle(
     latest: LatestManifest,
     targetChannel: String?
@@ -959,18 +968,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return nil
     }
 
-    if let latestReleaseId = latest.releaseId,
-       let stagedReleaseId = staged.releaseId,
-       latestReleaseId == stagedReleaseId {
-      return staged
-    }
-
-    if latest.version == staged.version,
-       latest.sha256 == staged.sha256 {
-      return staged
-    }
-
-    return nil
+    return doesBundleMatchLatest(staged, latest: latest, targetChannel: targetChannel) ? staged : nil
   }
 
   private func pruneIncompatibleBundles() {
@@ -1077,6 +1075,25 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return UpdaterPlugin.defaultUpdateURL
   }
 
+  private func resolveCdnUrl(configured: String?, env: String?, resolvedUpdateUrl: String) -> String {
+    let configuredValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let configuredValue, !configuredValue.isEmpty {
+      return normalizeCdnUrl(configuredValue)
+    }
+
+    let envValue = env?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let envValue, !envValue.isEmpty {
+      return normalizeCdnUrl(envValue)
+    }
+
+    if resolvedUpdateUrl.lowercased() != UpdaterPlugin.defaultUpdateURL.lowercased(),
+       resolvedUpdateUrl.lowercased().hasSuffix(UpdaterPlugin.apiPathSuffix) {
+      return String(resolvedUpdateUrl.dropLast(UpdaterPlugin.apiPathSuffix.count))
+    }
+
+    return UpdaterPlugin.defaultCdnURL
+  }
+
   private func normalizeUpdateUrl(_ raw: String) -> String {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     let withoutTrailingSlash = trimmed.replacingOccurrences(
@@ -1090,6 +1107,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     return withoutTrailingSlash + UpdaterPlugin.apiPathSuffix
+  }
+
+  private func normalizeCdnUrl(_ raw: String) -> String {
+    raw
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
   }
 
   private func getFreeDiskSpace() -> Int64 {

@@ -37,6 +37,7 @@ public class UpdaterPlugin extends Plugin {
   private boolean allowInsecureUrls = false;
   private String updateMode = UPDATE_MODE_NEXT_LAUNCH;
   private String updateUrl;
+  private String cdnUrl;
   private String appId;
   private String channel;
   private String runtimeVersion;
@@ -44,6 +45,7 @@ public class UpdaterPlugin extends Plugin {
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
   private static final String DEFAULT_UPDATE_URL = "https://www.otakit.app/api/v1";
+  private static final String DEFAULT_CDN_URL = "https://cdn.otakit.app";
   private static final String API_PATH_SUFFIX = "/api/v1";
   private static final String UPDATE_MODE_MANUAL = "manual";
   private static final String UPDATE_MODE_NEXT_LAUNCH = "next-launch";
@@ -75,6 +77,11 @@ public class UpdaterPlugin extends Plugin {
     this.updateUrl = resolveUpdateUrl(
       getConfig().getString("serverUrl"),
       System.getenv("OTAKIT_SERVER_URL")
+    );
+    this.cdnUrl = resolveCdnUrl(
+      getConfig().getString("cdnUrl"),
+      System.getenv("OTAKIT_CDN_URL"),
+      this.updateUrl
     );
     this.appId = getConfig().getString("appId");
     this.channel = trimToNull(getConfig().getString("channel"));
@@ -116,7 +123,7 @@ public class UpdaterPlugin extends Plugin {
       manifestKeys.add(new ManifestVerifier.KeyEntry("_invalid_", new byte[0]));
     }
 
-    if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedServer(updateUrl)) {
+    if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
     }
 
@@ -174,7 +181,15 @@ public class UpdaterPlugin extends Plugin {
         }
       }
 
-      if (shouldThrottleCheck()) return;
+      if (!UPDATE_MODE_IMMEDIATE.equals(updateMode) && shouldThrottleCheck()) return;
+    }
+
+    if (
+      TRIGGER_LAUNCH.equals(trigger) &&
+      !UPDATE_MODE_IMMEDIATE.equals(updateMode) &&
+      shouldThrottleCheck()
+    ) {
+      return;
     }
 
     // Acquire in-flight guard (submit-time)
@@ -185,7 +200,6 @@ public class UpdaterPlugin extends Plugin {
       executor.execute(() -> {
         try {
           BundleInfo result = performCheckAndDownload(null, true);
-          recordCheckTimestamp();
           if (result != null) {
             activateStagedBundleForReload();
             reloadWebView();
@@ -282,8 +296,7 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void check(PluginCall call) {
-    // Respect throttle — return staged bundle as a LatestVersion if available, else null
-    if (shouldThrottleCheck() || !checkInProgress.compareAndSet(false, true)) {
+    if (!checkInProgress.compareAndSet(false, true)) {
       String stagedId = store.getStagedBundleId();
       if (stagedId != null) {
         BundleInfo staged = store.getBundle(stagedId);
@@ -311,9 +324,9 @@ public class UpdaterPlugin extends Plugin {
     executor.execute(() -> {
       try {
         ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
-        // check() does NOT record timestamp — only download() and automatic paths do.
-        // This keeps check() -> download() working without the throttle blocking download().
         if (latest == null) {
+          call.resolve((JSObject) null);
+        } else if (isCurrentBundleLatest(latest, targetChannel)) {
           call.resolve((JSObject) null);
         } else {
           BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
@@ -329,8 +342,7 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void download(PluginCall call) {
-    // Respect throttle — return staged info if available, else null
-    if (shouldThrottleCheck() || !checkInProgress.compareAndSet(false, true)) {
+    if (!checkInProgress.compareAndSet(false, true)) {
       String stagedId = store.getStagedBundleId();
       if (stagedId != null) {
         BundleInfo staged = store.getBundle(stagedId);
@@ -345,7 +357,6 @@ public class UpdaterPlugin extends Plugin {
     executor.execute(() -> {
       try {
         BundleInfo bundle = performCheckAndDownload(null, true);
-        recordCheckTimestamp();
         if (bundle == null) {
           call.resolve((JSObject) null);
         } else {
@@ -355,42 +366,6 @@ public class UpdaterPlugin extends Plugin {
         call.reject("download failed: " + e.getMessage());
       } finally {
         checkInProgress.set(false);
-      }
-    });
-  }
-
-  @PluginMethod
-  public void debugCheck(PluginCall call) {
-    String requestedChannel = call.getString("channel");
-    String targetChannel = resolveTargetChannel(requestedChannel);
-    executor.execute(() -> {
-      try {
-        ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
-        if (latest == null) {
-          call.resolve((JSObject) null);
-        } else {
-          BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
-          call.resolve(manifestToJSObject(latest, staged != null));
-        }
-      } catch (Exception e) {
-        call.reject("debugCheck failed: " + e.getMessage());
-      }
-    });
-  }
-
-  @PluginMethod
-  public void debugDownload(PluginCall call) {
-    String requestedChannel = call.getString("channel");
-    executor.execute(() -> {
-      try {
-        BundleInfo bundle = performCheckAndDownload(requestedChannel, true);
-        if (bundle == null) {
-          call.resolve((JSObject) null);
-        } else {
-          call.resolve(bundle.toJSObject());
-        }
-      } catch (Exception e) {
-        call.reject("debugDownload failed: " + e.getMessage());
       }
     });
   }
@@ -512,16 +487,11 @@ public class UpdaterPlugin extends Plugin {
       throw new IllegalStateException("Missing appId in plugin config");
     }
 
-    BundleInfo current = store.getCurrentBundle();
-
     return ManifestClient.fetchLatest(
-      updateUrl,
+      cdnUrl,
       appId,
       channel,
-      current.version,
-      current.releaseId,
       runtimeVersion,
-      "android",
       allowInsecureUrls,
       manifestKeys
     );
@@ -541,6 +511,13 @@ public class UpdaterPlugin extends Plugin {
       throw new IllegalStateException(
         "Manifest runtimeVersion does not match the installed app runtime"
       );
+    }
+
+    if (isCurrentBundleLatest(latest, targetChannel)) {
+      if (emitEvents) {
+        notifyListeners("noUpdateAvailable", new JSObject());
+      }
+      return null;
     }
 
     BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
@@ -912,6 +889,54 @@ public class UpdaterPlugin extends Plugin {
     return object;
   }
 
+  private boolean isCurrentBundleLatest(
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) {
+    return doesBundleMatchLatest(store.getCurrentBundle(), latest, targetChannel);
+  }
+
+  private boolean doesBundleMatchLatest(
+    BundleInfo bundle,
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) {
+    if (bundle == null) {
+      return false;
+    }
+
+    if (!java.util.Objects.equals(trimToNull(bundle.channel), targetChannel)) {
+      return false;
+    }
+
+    if (
+      !java.util.Objects.equals(
+        trimToNull(bundle.runtimeVersion),
+        trimToNull(latest.runtimeVersion)
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      latest.releaseId != null &&
+      bundle.releaseId != null &&
+      latest.releaseId.equals(bundle.releaseId)
+    ) {
+      return true;
+    }
+
+    if (
+      latest.sha256 != null &&
+      bundle.sha256 != null &&
+      latest.sha256.equals(bundle.sha256)
+    ) {
+      return true;
+    }
+
+    return latest.version != null && latest.version.equals(bundle.version);
+  }
+
   private BundleInfo findMatchingStagedBundle(
     ManifestClient.LatestManifest latest,
     String targetChannel
@@ -935,24 +960,7 @@ public class UpdaterPlugin extends Plugin {
       return null;
     }
 
-    if (
-      latest.releaseId != null &&
-      staged.releaseId != null &&
-      latest.releaseId.equals(staged.releaseId)
-    ) {
-      return staged;
-    }
-
-    if (
-      latest.version != null &&
-      latest.version.equals(staged.version) &&
-      latest.sha256 != null &&
-      latest.sha256.equals(staged.sha256)
-    ) {
-      return staged;
-    }
-
-    return null;
+    return doesBundleMatchLatest(staged, latest, targetChannel) ? staged : null;
   }
 
   private void moveDirectory(File source, File destination) throws Exception {
@@ -1049,12 +1057,38 @@ public class UpdaterPlugin extends Plugin {
     return DEFAULT_UPDATE_URL;
   }
 
+  private String resolveCdnUrl(String configured, String env, String resolvedUpdateUrl) {
+    String configuredValue = trimToNull(configured);
+    if (configuredValue != null) {
+      return normalizeCdnUrl(configuredValue);
+    }
+
+    String envValue = trimToNull(env);
+    if (envValue != null) {
+      return normalizeCdnUrl(envValue);
+    }
+
+    if (
+      resolvedUpdateUrl != null &&
+      !DEFAULT_UPDATE_URL.equalsIgnoreCase(resolvedUpdateUrl) &&
+      resolvedUpdateUrl.toLowerCase(java.util.Locale.ROOT).endsWith(API_PATH_SUFFIX)
+    ) {
+      return resolvedUpdateUrl.substring(0, resolvedUpdateUrl.length() - API_PATH_SUFFIX.length());
+    }
+
+    return DEFAULT_CDN_URL;
+  }
+
   private String normalizeUpdateUrl(String raw) {
     String trimmed = raw.trim().replaceAll("/+$", "");
     if (trimmed.toLowerCase(java.util.Locale.ROOT).endsWith(API_PATH_SUFFIX)) {
       return trimmed;
     }
     return trimmed + API_PATH_SUFFIX;
+  }
+
+  private String normalizeCdnUrl(String raw) {
+    return raw.trim().replaceAll("/+$", "");
   }
 
   private String trimToNull(String value) {

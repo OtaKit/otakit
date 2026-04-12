@@ -1,14 +1,15 @@
 import {
   S3Client,
   PutObjectCommand,
-  GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const DEFAULT_MAX_BUNDLE_SIZE = 100 * 1024 * 1024; // 100 MB
 const DEFAULT_PRESIGN_EXPIRES_SECONDS = 3600; // 1 hour
+export const BUNDLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export class UploadedObjectNotFoundError extends Error {
   constructor(message: string = 'Uploaded bundle object not found in storage') {
@@ -94,6 +95,7 @@ export async function createPresignedUpload(
     Key: storageKey,
     ContentType: 'application/zip',
     ContentLength: size,
+    CacheControl: BUNDLE_CACHE_CONTROL,
   });
 
   const presignedUrl = await getSignedUrl(client, command, {
@@ -150,23 +152,40 @@ export async function inspectUploadedObject(storageKey: string): Promise<{ size:
   return { size };
 }
 
-const DEFAULT_DOWNLOAD_URL_TTL = 600; // 10 minutes
-
-export async function createSignedDownloadUrl(
-  storageKey: string,
-  ttlSeconds: number = DEFAULT_DOWNLOAD_URL_TTL,
-): Promise<string> {
-  const { client, bucket } = getStorageConfig();
-
-  const command = new GetObjectCommand({
-    Bucket: bucket,
-    Key: storageKey,
-  });
-
-  return getSignedUrl(client, command, { expiresIn: ttlSeconds });
+function getCdnBaseUrl(): string {
+  return requiredEnv('CDN_BASE_URL').trim().replace(/\/+$/, '');
 }
 
-export async function deleteBundleObject(storageKey: string): Promise<void> {
+function encodeStorageKeyForUrl(storageKey: string): string {
+  return storageKey
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+export function buildPublicObjectUrl(storageKey: string): string {
+  return `${getCdnBaseUrl()}/${encodeStorageKeyForUrl(storageKey)}`;
+}
+
+export async function putTextObject(args: {
+  storageKey: string;
+  body: string;
+  contentType: string;
+  cacheControl?: string;
+}): Promise<void> {
+  const { client, bucket } = getStorageConfig();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: args.storageKey,
+      Body: args.body,
+      ContentType: args.contentType,
+      CacheControl: args.cacheControl,
+    }),
+  );
+}
+
+export async function deleteStorageObject(storageKey: string): Promise<void> {
   const { client, bucket } = getStorageConfig();
   await client.send(
     new DeleteObjectCommand({
@@ -174,4 +193,34 @@ export async function deleteBundleObject(storageKey: string): Promise<void> {
       Key: storageKey,
     }),
   );
+}
+
+export async function listStorageKeys(prefix: string): Promise<string[]> {
+  const { client, bucket } = getStorageConfig();
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    for (const entry of response.Contents ?? []) {
+      if (entry.Key) {
+        keys.push(entry.Key);
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return keys;
+}
+
+export async function deleteBundleObject(storageKey: string): Promise<void> {
+  await deleteStorageObject(storageKey);
 }
