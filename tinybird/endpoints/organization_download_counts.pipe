@@ -1,0 +1,17 @@
+DESCRIPTION >
+    Exact deduped downloaded-event counts for an organization billing window.
+
+TOKEN otakit_web READ
+
+NODE count_organization_downloads
+SQL >
+    %
+    SELECT
+        uniqExactMerge(event_ids_uniq_exact_state) AS downloads_count
+    FROM device_event_daily_counts
+    WHERE action = 'downloaded'
+      AND has(splitByChar(',', {{ String(app_ids, '') }}), app_id)
+      AND bucket_date >= toDate({{ String(start_date, '1970-01-01') }})
+      AND bucket_date < toDate({{ String(end_date_exclusive, '2100-01-01') }})
+
+TYPE ENDPOINT

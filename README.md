@@ -2,11 +2,12 @@
 
 Fully open-source, self-hostable OTA update framework for Capacitor apps.
 
-This repo has three main pieces:
+This repo has four main pieces:
 
 - `packages/capacitor-plugin`: the runtime that lives inside the mobile app
 - `packages/cli`: the publishing CLI used locally and in CI
-- `packages/web`: the managed API, dashboard, auth, billing, and docs app
+- `packages/web`: the managed control plane, dashboard, auth, billing, and docs app
+- `packages/ingest`: the Cloudflare Worker event ingest service
 
 Try it for free: [OtaKit.app](https://www.otakit.app/)
 
@@ -45,7 +46,8 @@ Try it for free: [OtaKit.app](https://www.otakit.app/)
 packages/
   capacitor-plugin/   Capacitor OTA plugin
   cli/                Upload + release CLI
-  web/                Next.js dashboard, API, auth, billing, docs
+  ingest/             Cloudflare Worker event ingest service
+  web/                Next.js control plane, dashboard, API, auth, billing, docs
 examples/
   demo-app/           Demo Capacitor app wired to the local plugin
 ```
@@ -54,7 +56,9 @@ examples/
 
 - [`packages/capacitor-plugin/README.md`](packages/capacitor-plugin/README.md)
 - [`packages/cli/README.md`](packages/cli/README.md)
+- [`packages/ingest/README.md`](packages/ingest/README.md)
 - [`packages/web/README.md`](packages/web/README.md)
+- [`tinybird/README.md`](tinybird/README.md)
 - [`examples/demo-app/README.md`](examples/demo-app/README.md)
 
 ## Product shape

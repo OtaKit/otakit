@@ -9,7 +9,7 @@ struct LatestManifest {
   let sha256: String
   let size: Int
   let runtimeVersion: String?
-  let releaseId: String?
+  let releaseId: String
 }
 
 struct ManifestSignature {
@@ -102,7 +102,11 @@ enum ManifestClient {
       .nilIfEmpty
 
     let signature = parseSignature(object["signature"])
-    let releaseId = object["releaseId"] as? String
+    guard let releaseId = (object["releaseId"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty else {
+      throw ManifestClientError.invalidResponse
+    }
 
     guard let dlURL = URL(string: downloadUrl) else {
       throw ManifestClientError.invalidURL

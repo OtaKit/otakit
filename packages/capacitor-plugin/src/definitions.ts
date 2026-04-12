@@ -49,7 +49,7 @@ export interface LatestVersion {
   /** True when this exact update is already staged locally. */
   downloaded?: boolean;
   /** Release history ID associated with this manifest */
-  releaseId?: string;
+  releaseId: string;
 }
 
 export interface BundleListResult {
@@ -77,7 +77,7 @@ export interface OtaKitManifestKey {
  * Plugin configuration for capacitor.config.ts.
  */
 export interface OtaKitConfig {
-  /** OtaKit app ID used for manifest and stats requests. */
+  /** OtaKit app ID used for manifest fetches and event ingest. */
   appId: string;
   /** Optional named release track. Omit to use the base channel. */
   channel?: string;
@@ -93,7 +93,9 @@ export interface OtaKitConfig {
   checkInterval?: number;
   /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
   appReadyTimeout?: number;
-  /** Custom API base URL for stats and other control-plane requests. */
+  /** Custom event ingest base URL. Hosted default: https://ingest.otakit.app/v1 */
+  ingestUrl?: string;
+  /** Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime does not use it. */
   serverUrl?: string;
   /** Custom CDN base URL for manifest and bundle delivery. */
   cdnUrl?: string;

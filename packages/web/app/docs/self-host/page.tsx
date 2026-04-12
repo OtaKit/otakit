@@ -62,6 +62,11 @@ CDN_BASE_URL=https://cdn.your-domain.com
 CF_ZONE_ID=...
 CF_API_TOKEN=...
 
+# Tinybird reads for dashboard analytics and billing
+# Must match your Tinybird workspace region
+TINYBIRD_API_HOST=https://api.tinybird.co
+TINYBIRD_READ_TOKEN=...
+
 # Optional: upload size limit (bytes, default 200MB)
 MAX_BUNDLE_SIZE=209715200
 
@@ -108,6 +113,8 @@ pnpm start`}</Pre>
   -e R2_ACCESS_KEY=... \\
   -e R2_SECRET_KEY=... \\
   -e R2_ENDPOINT=https://... \\
+  -e TINYBIRD_API_HOST=https://api.tinybird.co \\
+  -e TINYBIRD_READ_TOKEN=... \\
   ghcr.io/nicepkg/otakit:latest`}</Pre>
 
       <Separator className="my-10" />
@@ -141,6 +148,7 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       <Pre>{`plugins: {
   OtaKit: {
     cdnUrl: "https://cdn.your-domain.com",
+    ingestUrl: "https://ingest.your-domain.com/v1",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     manifestKeys: [
@@ -168,11 +176,14 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
 export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       <P>
         In your Capacitor plugin config, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
-        <Code>serverUrl</Code> to your API server:
+        <Code>ingestUrl</Code> to your event ingest service. Keep <Code>serverUrl</Code> pointed
+        at your control-plane API base if you want the CLI to keep reading it from Capacitor
+        config. The native runtime uses <Code>cdnUrl</Code> and <Code>ingestUrl</Code> instead:
       </P>
       <Pre>{`plugins: {
   OtaKit: {
     cdnUrl: "https://cdn.your-domain.com",
+    ingestUrl: "https://ingest.your-domain.com/v1",
     serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
     // manifestKeys: [{ kid, key }]
@@ -180,7 +191,7 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
 }`}</Pre>
       <P>
         The hosted defaults are <Code>https://cdn.otakit.app</Code> for manifests/bundles and{' '}
-        <Code>https://www.otakit.app/api/v1</Code> for stats. Follow the standard{' '}
+        <Code>https://ingest.otakit.app/v1</Code> for event ingest. Follow the standard{' '}
         <Link
           href="/docs/setup"
           className="font-medium text-foreground underline underline-offset-4"
@@ -188,6 +199,10 @@ export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
           setup guide
         </Link>{' '}
         for the rest of the plugin and CLI configuration.
+      </P>
+      <P>
+        The web app also needs a Tinybird read token for dashboard analytics and billing queries.
+        Keep that separate from the Tinybird append token used by your ingest Worker.
       </P>
     </>
   );

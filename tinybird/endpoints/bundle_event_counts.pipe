@@ -1,0 +1,20 @@
+DESCRIPTION >
+    Exact event counts grouped by bundle version and action for a single app.
+
+TOKEN otakit_web READ
+
+NODE count_bundle_events
+SQL >
+    %
+    SELECT
+        bundle_version,
+        action,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events_count
+    FROM device_event_daily_counts
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND bundle_version != ''
+      AND has(splitByChar(',', {{ String(bundle_versions, '') }}), bundle_version)
+    GROUP BY bundle_version, action
+    ORDER BY bundle_version, action
+
+TYPE ENDPOINT

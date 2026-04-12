@@ -1,0 +1,20 @@
+DESCRIPTION >
+    Exact event counts grouped by release and action for a single app.
+
+TOKEN otakit_web READ
+
+NODE count_release_events
+SQL >
+    %
+    SELECT
+        release_id,
+        action,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events_count
+    FROM device_event_daily_counts
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND release_id != ''
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), release_id)
+    GROUP BY release_id, action
+    ORDER BY release_id, action
+
+TYPE ENDPOINT

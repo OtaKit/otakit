@@ -1,0 +1,31 @@
+DESCRIPTION >
+    Recent device-event timeline for a single app.
+
+TOKEN otakit_web READ
+
+NODE fetch_recent_events
+SQL >
+    %
+    SELECT
+        event_id,
+        app_id,
+        action,
+        platform,
+        bundle_version,
+        channel,
+        runtime_version,
+        release_id,
+        detail,
+        received_at
+    FROM device_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+      AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+      AND ({{ String(action, '') }} = '' OR action = {{ String(action, '') }})
+      AND ({{ String(bundle_version, '') }} = '' OR bundle_version = {{ String(bundle_version, '') }})
+      AND ({{ String(channel, '') }} = '' OR channel = {{ String(channel, '') }})
+      AND ({{ String(release_id, '') }} = '' OR release_id = {{ String(release_id, '') }})
+    ORDER BY received_at DESC
+    LIMIT {{ UInt32(limit, 100) }}
+
+TYPE ENDPOINT

@@ -1,52 +1,52 @@
 import Foundation
 
-enum StatsAction: String {
+enum DeviceEventAction: String {
     case downloaded
     case applied
     case downloadError = "download_error"
     case rollback
 }
 
-enum StatsClient {
+enum DeviceEventClient {
     static func send(
-        updateUrl: String,
+        ingestUrl: String,
         appId: String,
         platform: String,
-        action: StatsAction,
-        bundleVersion: String?,
+        action: DeviceEventAction,
+        bundleVersion: String,
         channel: String?,
-        releaseId: String?,
-        nativeBuild: String?,
-        errorMessage: String?
+        runtimeVersion: String?,
+        releaseId: String,
+        nativeBuild: String,
+        detail: String?
     ) {
-        let sanitizedBase = updateUrl.replacingOccurrences(
+        let sanitizedBase = ingestUrl.replacingOccurrences(
             of: "/+$",
             with: "",
             options: .regularExpression
         )
 
-        guard let url = URL(string: "\(sanitizedBase)/stats") else {
+        guard let url = URL(string: "\(sanitizedBase)/events") else {
             return
         }
 
         var payload: [String: Any] = [
+            "eventId": UUID().uuidString.lowercased(),
+            "sentAt": ISO8601DateFormatter().string(from: Date()),
             "platform": platform,
             "action": action.rawValue,
+            "bundleVersion": bundleVersion,
+            "releaseId": releaseId,
+            "nativeBuild": nativeBuild,
         ]
-        if let bundleVersion {
-            payload["bundleVersion"] = bundleVersion
-        }
         if let channel, !channel.isEmpty {
             payload["channel"] = channel
         }
-        if let releaseId, !releaseId.isEmpty {
-            payload["releaseId"] = releaseId
+        if let runtimeVersion, !runtimeVersion.isEmpty {
+            payload["runtimeVersion"] = runtimeVersion
         }
-        if let nativeBuild {
-            payload["nativeBuild"] = nativeBuild
-        }
-        if let errorMessage {
-            payload["errorMessage"] = String(errorMessage.prefix(500))
+        if let detail {
+            payload["detail"] = String(detail.prefix(500))
         }
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
@@ -60,7 +60,7 @@ enum StatsClient {
         request.httpBody = body
         request.timeoutInterval = 10
 
-        // Fire and forget - don't block on response
+        // Device events are best-effort and should never block the update flow.
         URLSession.shared.dataTask(with: request).resume()
     }
 }

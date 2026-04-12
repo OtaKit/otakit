@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { db } from '@/lib/db';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { listRecentAppEvents } from '@/lib/tinybird/events';
 import { isValidChannelName, parseNonNegativeInteger, parsePlatform } from '@/lib/validation';
 
 export const runtime = 'nodejs';
@@ -42,12 +42,15 @@ export async function GET(
   }
 
   const rawAction = searchParams.get('action');
-  const action = rawAction && rawAction !== 'all' ? rawAction : null;
-  if (action && !isValidAction(action)) {
-    return NextResponse.json(
-      { error: `Invalid action filter. Must be one of: ${VALID_ACTIONS.join(', ')}` },
-      { status: 400 },
-    );
+  let action: ValidAction | null = null;
+  if (rawAction && rawAction !== 'all') {
+    if (!isValidAction(rawAction)) {
+      return NextResponse.json(
+        { error: `Invalid action filter. Must be one of: ${VALID_ACTIONS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    action = rawAction;
   }
 
   const rawBundleVersion = searchParams.get('bundle');
@@ -80,31 +83,18 @@ export async function GET(
   const limit = Math.max(1, Math.min(parseNonNegativeInteger(searchParams.get('limit'), 50), 200));
   const createdAtFrom = new Date(Date.now() - timeframeMs);
 
-  const events = await db.deviceEvent.findMany({
-    where: {
-      appId,
-      createdAt: { gte: createdAtFrom },
-      ...(platform ? { platform } : {}),
-      ...(action ? { action } : {}),
-      ...(bundleVersion ? { bundleVersion } : {}),
-      ...(channel ? { channel } : {}),
-      ...(releaseId ? { releaseId } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
+  const events = await listRecentAppEvents({
+    appId,
+    from: createdAtFrom,
+    limit,
+    platform,
+    action,
+    bundleVersion,
+    channel,
+    releaseId,
   });
 
   return NextResponse.json({
-    events: events.map((event) => ({
-      id: event.id,
-      appId,
-      action: event.action,
-      platform: event.platform,
-      bundleVersion: event.bundleVersion,
-      channel: event.channel,
-      releaseId: event.releaseId,
-      errorMessage: event.errorMessage,
-      createdAt: event.createdAt.toISOString(),
-    })),
+    events,
   });
 }

@@ -38,7 +38,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var appReadyTimeoutMs = 10_000
   private var allowInsecureUrls = false
   private var updateMode: UpdateMode = .nextLaunch
-  private var updateUrl = UpdaterPlugin.defaultUpdateURL
+  private var ingestUrl = UpdaterPlugin.defaultIngestURL
   private var cdnUrl = UpdaterPlugin.defaultCdnURL
   private var appId: String?
   private var channel: String?
@@ -49,22 +49,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private let isCheckInProgress = NSLock()
   private var checkInProgress = false
   private var foregroundObserver: NSObjectProtocol?
-  private static let defaultUpdateURL = "https://www.otakit.app/api/v1"
+  private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
-  private static let apiPathSuffix = "/api/v1"
+  private static let ingestPathSuffix = "/v1"
   private static let lastCheckTimestampKey = "otakit_last_check_timestamp"
 
   public override func load() {
-    let envUpdateUrl = ProcessInfo.processInfo.environment["OTAKIT_SERVER_URL"]
+    let envIngestUrl = ProcessInfo.processInfo.environment["OTAKIT_INGEST_URL"]
     let envCdnUrl = ProcessInfo.processInfo.environment["OTAKIT_CDN_URL"]
-    updateUrl = resolveUpdateUrl(
-      configured: getConfig().getString("serverUrl"),
-      env: envUpdateUrl
+    ingestUrl = resolveIngestUrl(
+      configured: getConfig().getString("ingestUrl"),
+      env: envIngestUrl
     )
     cdnUrl = resolveCdnUrl(
       configured: getConfig().getString("cdnUrl"),
-      env: envCdnUrl,
-      resolvedUpdateUrl: updateUrl
+      env: envCdnUrl
     )
     appId = getConfig().getString("appId")
     channel = trimToNil(getConfig().getString("channel"))
@@ -394,9 +393,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("appReady", data: current.toDictionary())
       }
 
-      sendStats(
+      sendDeviceEvent(
         action: .applied,
         bundleVersion: current.version,
+        runtimeVersion: current.runtimeVersion,
         channel: current.channel,
         releaseId: current.releaseId
       )
@@ -593,12 +593,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           code: 1,
           userInfo: [NSLocalizedDescriptionKey: "Insufficient disk space"]
         )
-        sendStats(
+        sendDeviceEvent(
           action: .downloadError,
           bundleVersion: version,
+          runtimeVersion: runtimeVersion,
           channel: channel,
           releaseId: releaseId,
-          errorMessage: "insufficient_disk_space"
+          detail: "insufficient_disk_space"
         )
         throw error
       }
@@ -659,9 +660,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       cleanupSupersededStagedBundle(previousStagedId: previousStagedId, replacementId: bundleId)
 
       notifyListeners("downloadComplete", data: info.toDictionary())
-      sendStats(
+      sendDeviceEvent(
         action: .downloaded,
         bundleVersion: version,
+        runtimeVersion: runtimeVersion,
         channel: channel,
         releaseId: releaseId
       )
@@ -671,12 +673,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         "version": version,
         "error": error.localizedDescription,
       ])
-      sendStats(
+      sendDeviceEvent(
         action: .downloadError,
         bundleVersion: version,
+        runtimeVersion: runtimeVersion,
         channel: channel,
         releaseId: releaseId,
-        errorMessage: error.localizedDescription
+        detail: error.localizedDescription
       )
       throw error
     }
@@ -808,12 +811,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     store.setFailedBundle(failed)
     store.setStagedBundleId(nil)
 
-    sendStats(
+    sendDeviceEvent(
       action: .rollback,
       bundleVersion: current.version,
+      runtimeVersion: current.runtimeVersion,
       channel: current.channel,
       releaseId: current.releaseId,
-      errorMessage: reason
+      detail: reason
     )
 
     let fallback = store.getFallbackBundle()
@@ -906,9 +910,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     if let runtimeVersion = latest.runtimeVersion {
       payload["runtimeVersion"] = runtimeVersion
     }
-    if let releaseId = latest.releaseId {
-      payload["releaseId"] = releaseId
-    }
+    payload["releaseId"] = latest.releaseId
     return payload
   }
 
@@ -1023,26 +1025,41 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return "\(normalized)-\(suffix)"
   }
 
-  private func sendStats(
-    action: StatsAction,
+  private func sendDeviceEvent(
+    action: DeviceEventAction,
     bundleVersion: String? = nil,
+    runtimeVersion: String? = nil,
     channel: String? = nil,
     releaseId: String? = nil,
-    errorMessage: String? = nil
+    detail: String? = nil
   ) {
     guard let appId else {
       return
     }
-    StatsClient.send(
-      updateUrl: updateUrl,
+    guard let bundleVersion = trimToNil(bundleVersion) else {
+      print("[UpdateKit] Skipping device event without bundleVersion")
+      return
+    }
+    guard let releaseId = trimToNil(releaseId) else {
+      print("[UpdateKit] Skipping device event without releaseId")
+      return
+    }
+    let nativeBuild = store.nativeBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !nativeBuild.isEmpty else {
+      print("[UpdateKit] Skipping device event without nativeBuild")
+      return
+    }
+    DeviceEventClient.send(
+      ingestUrl: ingestUrl,
       appId: appId,
       platform: "ios",
       action: action,
       bundleVersion: bundleVersion,
       channel: channel,
+      runtimeVersion: trimToNil(runtimeVersion),
       releaseId: releaseId,
-      nativeBuild: store.nativeBuild,
-      errorMessage: errorMessage
+      nativeBuild: nativeBuild,
+      detail: detail
     )
   }
 
@@ -1061,21 +1078,27 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return trimmed.isEmpty ? nil : trimmed
   }
 
-  private func resolveUpdateUrl(configured: String?, env: String?) -> String {
+  private func resolveIngestUrl(
+    configured: String?,
+    env: String?
+  ) -> String {
     let configuredValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let configuredValue, !configuredValue.isEmpty {
-      return normalizeUpdateUrl(configuredValue)
+      return normalizeIngestUrl(configuredValue)
     }
 
     let envValue = env?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let envValue, !envValue.isEmpty {
-      return normalizeUpdateUrl(envValue)
+      return normalizeIngestUrl(envValue)
     }
 
-    return UpdaterPlugin.defaultUpdateURL
+    return UpdaterPlugin.defaultIngestURL
   }
 
-  private func resolveCdnUrl(configured: String?, env: String?, resolvedUpdateUrl: String) -> String {
+  private func resolveCdnUrl(
+    configured: String?,
+    env: String?
+  ) -> String {
     let configuredValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let configuredValue, !configuredValue.isEmpty {
       return normalizeCdnUrl(configuredValue)
@@ -1086,15 +1109,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return normalizeCdnUrl(envValue)
     }
 
-    if resolvedUpdateUrl.lowercased() != UpdaterPlugin.defaultUpdateURL.lowercased(),
-       resolvedUpdateUrl.lowercased().hasSuffix(UpdaterPlugin.apiPathSuffix) {
-      return String(resolvedUpdateUrl.dropLast(UpdaterPlugin.apiPathSuffix.count))
-    }
-
     return UpdaterPlugin.defaultCdnURL
   }
 
-  private func normalizeUpdateUrl(_ raw: String) -> String {
+  private func normalizeIngestUrl(_ raw: String) -> String {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     let withoutTrailingSlash = trimmed.replacingOccurrences(
       of: "/+$",
@@ -1102,11 +1120,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       options: .regularExpression
     )
 
-    if withoutTrailingSlash.lowercased().hasSuffix(UpdaterPlugin.apiPathSuffix) {
+    if withoutTrailingSlash.lowercased().hasSuffix(UpdaterPlugin.ingestPathSuffix) {
       return withoutTrailingSlash
     }
 
-    return withoutTrailingSlash + UpdaterPlugin.apiPathSuffix
+    return withoutTrailingSlash + UpdaterPlugin.ingestPathSuffix
   }
 
   private func normalizeCdnUrl(_ raw: String) -> String {

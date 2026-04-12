@@ -1,0 +1,15 @@
+DESCRIPTION >
+    Exact daily aggregate counts for dashboard reads and billing.
+
+SCHEMA >
+    `bucket_date` Date,
+    `app_id` String,
+    `action` LowCardinality(String),
+    `bundle_version` String,
+    `channel` String,
+    `release_id` String,
+    `event_ids_uniq_exact_state` AggregateFunction(uniqExact, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(bucket_date)"
+ENGINE_SORTING_KEY "app_id, bucket_date, action, bundle_version, channel, release_id"

@@ -48,8 +48,9 @@ export type DeviceEvent = {
   platform: Platform;
   bundleVersion: string | null;
   channel: string | null;
+  runtimeVersion: string | null;
   releaseId?: string | null;
-  errorMessage: string | null;
+  detail: string | null;
   createdAt: string;
 };
 

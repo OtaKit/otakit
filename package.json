@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @otakit/web dev",
+    "dev:ingest": "pnpm --filter @otakit/ingest dev",
     "dev:cli": "pnpm --filter @otakit/cli dev",
     "docs:llms": "node scripts/generate-llms-txt.mjs",
     "build": "pnpm -r build",

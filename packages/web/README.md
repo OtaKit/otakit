@@ -8,15 +8,18 @@ This package contains:
 - auth and organization management
 - bundle upload and release APIs
 - manifest materialization and public update delivery
-- billing, docs, and operational endpoints
+- billing, docs, dashboard query APIs, and operational endpoints
 
 ## What lives here
 
 - landing page and docs
 - dashboard, login, organizations, members, invites, and API keys
-- bundle upload, finalize, release, revert, events, and manifest publishing
+- bundle upload, finalize, release, revert, and manifest publishing
 - billing and usage enforcement
 - admin and webhook endpoints
+
+Plugin event ingestion no longer lives here. The ingest edge service is in
+`packages/ingest`.
 
 ## Core models
 
@@ -30,7 +33,8 @@ The main server-side models are:
 - `Bundle`
 - `Release`
 - `UploadSession`
-- `DeviceEvent`
+
+Device events are stored in Tinybird and read through the web app query layer.
 
 ## Main flows
 
@@ -64,6 +68,7 @@ The main server-side models are:
 ### Usage
 
 - usage snapshots are stored on the organization row
+- monthly download counts are recomputed from Tinybird event aggregates
 - a cron job still aggregates across all orgs
 - opening settings also refreshes and persists the current org snapshot
 - the settings refresh does not send warning emails or sync Polar usage
@@ -100,6 +105,8 @@ pnpm --filter @otakit/web db:studio
 - `BETTER_AUTH_URL`
 - `R2_BUCKET`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_ENDPOINT`
 - `CDN_BASE_URL`, `CF_ZONE_ID`, `CF_API_TOKEN`
+- `TINYBIRD_API_HOST`, `TINYBIRD_READ_TOKEN`
+- optional `TINYBIRD_*_PIPE` overrides
 - `MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`
 - optional `MANIFEST_SIGNING_DISABLED`
 - `POLAR_*`
@@ -110,6 +117,12 @@ pnpm --filter @otakit/web db:studio
 - manifest reads are served as static CDN objects from R2
 - bundle objects are served from public immutable CDN URLs
 - explicit CDN purge happens on release creation, revert, bundle delete, and manifest lifecycle changes
+
+## Tinybird
+
+- the deployable Tinybird project lives in [`/tinybird`](/Users/gergo.miklos/Documents/otakit/tinybird)
+- `TINYBIRD_API_HOST` must match your Tinybird workspace region
+- web reads use the shared `otakit_web` read token created by the Tinybird datafiles
 
 ## Product shape
 

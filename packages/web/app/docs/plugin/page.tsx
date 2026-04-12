@@ -41,7 +41,7 @@ export default function PluginReferencePage() {
         <ConfigRow
           field="appId"
           type="string"
-          description="OtaKit app ID for manifest and stats access."
+          description="OtaKit app ID for manifest fetches and event ingest."
         />
         <ConfigRow
           field="channel"
@@ -74,9 +74,14 @@ export default function PluginReferencePage() {
           description="Optional CDN base URL for static manifest and bundle delivery. Leave unset for the hosted default."
         />
         <ConfigRow
+          field="ingestUrl"
+          type="string"
+          description="Optional event ingest base URL. Leave unset for the hosted default."
+        />
+        <ConfigRow
           field="serverUrl"
           type="string"
-          description="Optional API base URL for stats and control-plane requests. Leave unset for the hosted default."
+          description="Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime uses cdnUrl and ingestUrl instead."
         />
         <ConfigRow
           field="manifestKeys"
@@ -87,9 +92,9 @@ export default function PluginReferencePage() {
       </div>
 
       <P>
-        Hosted OtaKit points at the managed API and CDN automatically. Do not set <Code>cdnUrl</Code>,{' '}
-        <Code>serverUrl</Code>, or <Code>manifestKeys</Code> unless you intentionally want custom
-        hosting or verification behavior.
+        Hosted OtaKit points at the managed CDN and ingest service automatically. Do not set{' '}
+        <Code>cdnUrl</Code>, <Code>ingestUrl</Code>, or <Code>manifestKeys</Code> unless you
+        intentionally want custom hosting or verification behavior.
       </P>
 
       <Separator className="my-10" />
@@ -129,7 +134,7 @@ export default function PluginReferencePage() {
         />
         <ConfigRow
           field="immediate"
-          type="dev/debug"
+          type="development"
           description="Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing."
         />
         <ConfigRow
@@ -151,7 +156,7 @@ export default function PluginReferencePage() {
       <P>
         You only need <Code>manifestKeys</Code> when you intentionally override trust for a custom
         or self-hosted setup. In that case, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
-        <Code>serverUrl</Code> to your own API base URL for stats.
+        <Code>ingestUrl</Code> to your own event ingest base URL.
       </P>
 
       <Separator className="my-10" />
@@ -274,7 +279,8 @@ await OtaKit.apply();`}</Pre>
     appId: "YOUR_OTAKIT_APP_ID",
     // Optional advanced overrides
     // cdnUrl: "https://cdn.your-domain.com",
-    // serverUrl: "https://your-server.com/api/v1",
+    // ingestUrl: "https://ingest.your-domain.com/v1",
+    // serverUrl: "https://your-domain.com/api/v1",
     // allowInsecureUrls: false,
     // manifestKeys: [
     //   { kid: "key-2026-01", key: "MFkwEwYH..." }
@@ -288,9 +294,14 @@ await OtaKit.apply();`}</Pre>
           description="Custom CDN base URL for static manifest and bundle delivery."
         />
         <ConfigRow
+          field="ingestUrl"
+          type="string"
+          description="Custom event ingest base URL used for plugin event writes."
+        />
+        <ConfigRow
           field="serverUrl"
           type="string"
-          description="Custom OtaKit API URL used for stats and control-plane requests."
+          description="Control-plane API URL used by self-host tooling such as the CLI. The native runtime does not read it."
         />
         <ConfigRow
           field="allowInsecureUrls"

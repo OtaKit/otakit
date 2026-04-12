@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { EventCountSummary } from '@/app/components/dashboard-types';
 
 import { db } from '@/lib/db';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { createEmptyEventCounts, getBundleEventCounts } from '@/lib/tinybird/events';
 
 export const runtime = 'nodejs';
-
-type EventCountSummary = {
-  downloads: number;
-  applied: number;
-  downloadErrors: number;
-  rollbacks: number;
-};
 
 type BundleSummary = {
   version: string;
@@ -30,10 +25,6 @@ type BundleSummary = {
   }>;
   eventCounts: EventCountSummary;
 };
-
-function createEmptyCounts(): EventCountSummary {
-  return { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0 };
-}
 
 function toTargetKey(channel: string | null, runtimeVersion: string | null): string {
   return `${channel ?? '__base__'}::${runtimeVersion ?? '__runtime_null__'}`;
@@ -109,14 +100,7 @@ export async function GET(
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
   });
 
-  const actionCounts = await db.deviceEvent.groupBy({
-    by: ['bundleVersion', 'action'],
-    where: {
-      appId,
-      bundleVersion: { in: versions },
-    },
-    _count: { _all: true },
-  });
+  const countsByBundleVersion = await getBundleEventCounts(appId, versions);
 
   const byVersion = new Map<
     string,
@@ -148,7 +132,7 @@ export async function GET(
           string,
           { channel: string | null; runtimeVersion: string | null; deployedAt: Date }
         >(),
-        eventCounts: createEmptyCounts(),
+        eventCounts: createEmptyEventCounts(),
       });
     }
   }
@@ -205,22 +189,8 @@ export async function GET(
     }
   }
 
-  for (const entry of actionCounts) {
-    const version = entry.bundleVersion;
-    if (!version) continue;
-
-    const row = byVersion.get(version);
-    if (!row) continue;
-
-    if (entry.action === 'downloaded') {
-      row.eventCounts.downloads += entry._count._all;
-    } else if (entry.action === 'applied') {
-      row.eventCounts.applied += entry._count._all;
-    } else if (entry.action === 'download_error') {
-      row.eventCounts.downloadErrors += entry._count._all;
-    } else if (entry.action === 'rollback') {
-      row.eventCounts.rollbacks += entry._count._all;
-    }
+  for (const [version, row] of byVersion.entries()) {
+    row.eventCounts = countsByBundleVersion.get(version) ?? createEmptyEventCounts();
   }
 
   const summaries: BundleSummary[] = Array.from(byVersion.entries())

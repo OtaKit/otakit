@@ -1,0 +1,24 @@
+DESCRIPTION >
+    Materialized daily exact rollup of raw device events.
+
+NODE rollup_daily_counts
+SQL >
+    SELECT
+        toDate(received_at) AS bucket_date,
+        app_id,
+        action,
+        ifNull(bundle_version, '') AS bundle_version,
+        ifNull(channel, '') AS channel,
+        ifNull(release_id, '') AS release_id,
+        uniqExactState(event_id) AS event_ids_uniq_exact_state
+    FROM device_events_raw
+    GROUP BY
+        bucket_date,
+        app_id,
+        action,
+        bundle_version,
+        channel,
+        release_id
+
+TYPE MATERIALIZED
+DATASOURCE device_event_daily_counts

@@ -7,6 +7,7 @@ import {
   restoreManifestFilesForApp,
 } from '@/lib/manifest-files';
 import { getPolar } from '@/lib/polar';
+import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
 import { getExternalCustomerId, getPlanLimits } from './config';
 
@@ -75,27 +76,6 @@ async function syncManifestFilesForOrganization(
   }
 
   await Promise.all(apps.map((app) => restoreManifestFilesForApp(app.id)));
-}
-
-async function countDownloadsForKeys(args: {
-  appIds: string[];
-  from: Date;
-  to: Date;
-}): Promise<number> {
-  if (args.appIds.length === 0) {
-    return 0;
-  }
-
-  return db.deviceEvent.count({
-    where: {
-      appId: { in: args.appIds },
-      action: 'downloaded',
-      createdAt: {
-        gt: args.from,
-        lte: args.to,
-      },
-    },
-  });
 }
 
 export async function getOrganizationUsageSnapshot(
@@ -310,17 +290,6 @@ async function refreshUsageForOrganization(
   const periodEnd = nextMonthStartUTC(periodStart);
   const inCurrentPeriod = isSameMonth(organization.usagePeriodStart, periodStart);
   const previousWarning: UsageWarningSent = inCurrentPeriod ? organization.warningSent : 'none';
-  const baseDownloads = inCurrentPeriod ? organization.downloadsCount : 0;
-
-  let from = inCurrentPeriod
-    ? (organization.usageCalculatedAt ?? (baseDownloads > 0 ? now : periodStart))
-    : periodStart;
-  if (from < periodStart) {
-    from = periodStart;
-  }
-  if (from > now) {
-    from = now;
-  }
 
   const apps = await db.app.findMany({
     where: { organizationId: organization.id },
@@ -328,13 +297,11 @@ async function refreshUsageForOrganization(
   });
   const appIds = apps.map((app) => app.id);
 
-  const deltaDownloads = await countDownloadsForKeys({
+  const downloadsCount = await getCurrentPeriodDownloadCountFromEvents({
     appIds,
-    from,
-    to: now,
+    periodStart,
+    periodEndExclusive: periodEnd,
   });
-
-  const downloadsCount = baseDownloads + deltaDownloads;
   const limit = getPlanLimits(organization.planKey).downloads;
   const percentage = limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0;
 

@@ -85,7 +85,7 @@ function event(
   bundleVersion: string | null,
   channel: string | null,
   minutesAgo: number,
-  errorMessage: string | null = null,
+  detail: string | null = null,
 ): DeviceEvent {
   return {
     id,
@@ -94,7 +94,8 @@ function event(
     platform,
     bundleVersion,
     channel,
-    errorMessage,
+    runtimeVersion: null,
+    detail,
     createdAt: atOffset(minutesAgo),
   };
 }

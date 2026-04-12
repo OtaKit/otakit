@@ -36,7 +36,7 @@ public class UpdaterPlugin extends Plugin {
   private int appReadyTimeoutMs = 10_000;
   private boolean allowInsecureUrls = false;
   private String updateMode = UPDATE_MODE_NEXT_LAUNCH;
-  private String updateUrl;
+  private String ingestUrl;
   private String cdnUrl;
   private String appId;
   private String channel;
@@ -44,9 +44,9 @@ public class UpdaterPlugin extends Plugin {
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
-  private static final String DEFAULT_UPDATE_URL = "https://www.otakit.app/api/v1";
+  private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
   private static final String DEFAULT_CDN_URL = "https://cdn.otakit.app";
-  private static final String API_PATH_SUFFIX = "/api/v1";
+  private static final String INGEST_PATH_SUFFIX = "/v1";
   private static final String UPDATE_MODE_MANUAL = "manual";
   private static final String UPDATE_MODE_NEXT_LAUNCH = "next-launch";
   private static final String UPDATE_MODE_NEXT_RESUME = "next-resume";
@@ -74,14 +74,13 @@ public class UpdaterPlugin extends Plugin {
       }
     } catch (PackageManager.NameNotFoundException ignored) {}
 
-    this.updateUrl = resolveUpdateUrl(
-      getConfig().getString("serverUrl"),
-      System.getenv("OTAKIT_SERVER_URL")
+    this.ingestUrl = resolveIngestUrl(
+      getConfig().getString("ingestUrl"),
+      System.getenv("OTAKIT_INGEST_URL")
     );
     this.cdnUrl = resolveCdnUrl(
       getConfig().getString("cdnUrl"),
-      System.getenv("OTAKIT_CDN_URL"),
-      this.updateUrl
+      System.getenv("OTAKIT_CDN_URL")
     );
     this.appId = getConfig().getString("appId");
     this.channel = trimToNull(getConfig().getString("channel"));
@@ -402,7 +401,14 @@ public class UpdaterPlugin extends Plugin {
       BundleInfo updated = store.getBundle(current.id);
       notifyListeners("appReady", updated != null ? updated.toJSObject() : current.toJSObject());
 
-      sendStats("applied", current.version, current.channel, current.releaseId, null);
+      sendDeviceEvent(
+        "applied",
+        current.version,
+        current.runtimeVersion,
+        current.channel,
+        current.releaseId,
+        null
+      );
 
       if (!oldFallback.isBuiltin() && !oldFallback.id.equals(current.id)) {
         try {
@@ -589,7 +595,14 @@ public class UpdaterPlugin extends Plugin {
       long requiredSpace = (long) (expectedSize * 2.5); // zip + extracted + buffer
       long availableSpace = getFreeDiskSpace();
       if (availableSpace < requiredSpace) {
-        sendStats("download_error", version, channel, releaseId, "insufficient_disk_space");
+        sendDeviceEvent(
+          "download_error",
+          version,
+          runtimeVersion,
+          channel,
+          releaseId,
+          "insufficient_disk_space"
+        );
         throw new IllegalStateException("Insufficient disk space");
       }
     }
@@ -642,14 +655,14 @@ public class UpdaterPlugin extends Plugin {
       cleanupSupersededStagedBundle(previousStagedId, bundleId);
 
       notifyListeners("downloadComplete", info.toJSObject());
-      sendStats("downloaded", version, channel, releaseId, null);
+      sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
       return info;
     } catch (Exception e) {
       JSObject failed = new JSObject();
       failed.put("version", version);
       failed.put("error", e.getMessage());
       notifyListeners("downloadFailed", failed);
-      sendStats("download_error", version, channel, releaseId, e.getMessage());
+      sendDeviceEvent("download_error", version, runtimeVersion, channel, releaseId, e.getMessage());
       throw e;
     } finally {
       if (downloadedZip != null && downloadedZip.exists()) {
@@ -803,7 +816,14 @@ public class UpdaterPlugin extends Plugin {
     store.setFailedBundle(failed);
     store.setStagedBundleId(null);
 
-    sendStats("rollback", current.version, current.channel, current.releaseId, reason);
+    sendDeviceEvent(
+      "rollback",
+      current.version,
+      current.runtimeVersion,
+      current.channel,
+      current.releaseId,
+      reason
+    );
 
     BundleInfo fallback = store.getFallbackBundle();
     JSObject payload = new JSObject();
@@ -883,9 +903,7 @@ public class UpdaterPlugin extends Plugin {
     if (latest.runtimeVersion != null) {
       object.put("runtimeVersion", latest.runtimeVersion);
     }
-    if (latest.releaseId != null) {
-      object.put("releaseId", latest.releaseId);
-    }
+    object.put("releaseId", latest.releaseId);
     return object;
   }
 
@@ -1043,21 +1061,21 @@ public class UpdaterPlugin extends Plugin {
     return normalized + "-" + suffix;
   }
 
-  private String resolveUpdateUrl(String configured, String env) {
+  private String resolveIngestUrl(String configured, String env) {
     String configuredValue = trimToNull(configured);
     if (configuredValue != null) {
-      return normalizeUpdateUrl(configuredValue);
+      return normalizeIngestUrl(configuredValue);
     }
 
     String envValue = trimToNull(env);
     if (envValue != null) {
-      return normalizeUpdateUrl(envValue);
+      return normalizeIngestUrl(envValue);
     }
 
-    return DEFAULT_UPDATE_URL;
+    return DEFAULT_INGEST_URL;
   }
 
-  private String resolveCdnUrl(String configured, String env, String resolvedUpdateUrl) {
+  private String resolveCdnUrl(String configured, String env) {
     String configuredValue = trimToNull(configured);
     if (configuredValue != null) {
       return normalizeCdnUrl(configuredValue);
@@ -1068,23 +1086,15 @@ public class UpdaterPlugin extends Plugin {
       return normalizeCdnUrl(envValue);
     }
 
-    if (
-      resolvedUpdateUrl != null &&
-      !DEFAULT_UPDATE_URL.equalsIgnoreCase(resolvedUpdateUrl) &&
-      resolvedUpdateUrl.toLowerCase(java.util.Locale.ROOT).endsWith(API_PATH_SUFFIX)
-    ) {
-      return resolvedUpdateUrl.substring(0, resolvedUpdateUrl.length() - API_PATH_SUFFIX.length());
-    }
-
     return DEFAULT_CDN_URL;
   }
 
-  private String normalizeUpdateUrl(String raw) {
+  private String normalizeIngestUrl(String raw) {
     String trimmed = raw.trim().replaceAll("/+$", "");
-    if (trimmed.toLowerCase(java.util.Locale.ROOT).endsWith(API_PATH_SUFFIX)) {
+    if (trimmed.toLowerCase(java.util.Locale.ROOT).endsWith(INGEST_PATH_SUFFIX)) {
       return trimmed;
     }
-    return trimmed + API_PATH_SUFFIX;
+    return trimmed + INGEST_PATH_SUFFIX;
   }
 
   private String normalizeCdnUrl(String raw) {
@@ -1105,26 +1115,43 @@ public class UpdaterPlugin extends Plugin {
     return resolved != null ? resolved : this.channel;
   }
 
-  private void sendStats(
+  private void sendDeviceEvent(
     String action,
     String bundleVersion,
+    String runtimeVersion,
     String channel,
     String releaseId,
-    String errorMessage
+    String detail
   ) {
     if (appId == null) {
       return;
     }
-    StatsClient.send(
-      updateUrl,
+    String normalizedBundleVersion = trimToNull(bundleVersion);
+    if (normalizedBundleVersion == null) {
+      android.util.Log.w("UpdateKit", "Skipping device event without bundleVersion");
+      return;
+    }
+    String normalizedReleaseId = trimToNull(releaseId);
+    if (normalizedReleaseId == null) {
+      android.util.Log.w("UpdateKit", "Skipping device event without releaseId");
+      return;
+    }
+    String nativeBuild = trimToNull(store.getNativeBuild());
+    if (nativeBuild == null) {
+      android.util.Log.w("UpdateKit", "Skipping device event without nativeBuild");
+      return;
+    }
+    DeviceEventClient.send(
+      ingestUrl,
       appId,
       "android",
       action,
-      bundleVersion,
+      normalizedBundleVersion,
       channel,
-      releaseId,
-      store.getNativeBuild(),
-      errorMessage
+      trimToNull(runtimeVersion),
+      normalizedReleaseId,
+      nativeBuild,
+      detail
     );
   }
 

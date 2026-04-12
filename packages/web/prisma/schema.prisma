@@ -238,22 +238,3 @@ model UploadSession {
   @@index([expiresAt, status])
   @@index([bundleId])
 }
-
-model DeviceEvent {
-  id            String   @id @default(uuid())
-  appId         String
-  platform      Platform
-  action        String   // downloaded, applied, download_error, rollback
-  bundleVersion String?
-  channel       String?
-  releaseId     String?
-  nativeBuild   String?
-  errorMessage  String?
-  createdAt     DateTime @default(now())
-
-  @@index([appId, action, createdAt(sort: Desc)])
-  @@index([appId, channel, createdAt(sort: Desc)])
-  @@index([appId, releaseId, createdAt(sort: Desc)])
-  @@index([appId, bundleVersion, createdAt(sort: Desc)])
-  @@index([createdAt(sort: Desc)])
-}

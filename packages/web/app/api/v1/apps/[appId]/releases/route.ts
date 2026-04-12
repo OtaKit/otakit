@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { EventCountSummary } from '@/app/components/dashboard-types';
 
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 import { createRelease } from '@/lib/releases';
+import { createEmptyEventCounts, getReleaseEventCounts } from '@/lib/tinybird/events';
 import {
   isValidChannelName,
   normalizeOptionalChannel,
@@ -12,17 +14,6 @@ import {
 } from '@/lib/validation';
 
 export const runtime = 'nodejs';
-
-type EventCountSummary = {
-  downloads: number;
-  applied: number;
-  downloadErrors: number;
-  rollbacks: number;
-};
-
-function createEmptyCounts(): EventCountSummary {
-  return { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0 };
-}
 
 function resolveChannelFilter(request: NextRequest): {
   present: boolean;
@@ -86,37 +77,7 @@ export async function GET(
   ]);
 
   const releaseIds = releases.map((release) => release.id);
-  const actionCounts = releaseIds.length
-    ? await db.deviceEvent.groupBy({
-        by: ['releaseId', 'action'],
-        where: {
-          appId,
-          releaseId: { in: releaseIds },
-        },
-        _count: { _all: true },
-      })
-    : [];
-
-  const countsByReleaseId = new Map<string, EventCountSummary>();
-  for (const release of releases) {
-    countsByReleaseId.set(release.id, createEmptyCounts());
-  }
-
-  for (const entry of actionCounts) {
-    if (!entry.releaseId) continue;
-    const counts = countsByReleaseId.get(entry.releaseId);
-    if (!counts) continue;
-
-    if (entry.action === 'downloaded') {
-      counts.downloads += entry._count._all;
-    } else if (entry.action === 'applied') {
-      counts.applied += entry._count._all;
-    } else if (entry.action === 'download_error') {
-      counts.downloadErrors += entry._count._all;
-    } else if (entry.action === 'rollback') {
-      counts.rollbacks += entry._count._all;
-    }
-  }
+  const countsByReleaseId = await getReleaseEventCounts(appId, releaseIds);
 
   return NextResponse.json({
     releases: releases.map((release) => ({
@@ -131,7 +92,7 @@ export async function GET(
       promotedBy: release.promotedBy,
       revertedAt: release.revertedAt?.toISOString() ?? null,
       revertedBy: release.revertedBy,
-      eventCounts: countsByReleaseId.get(release.id) ?? createEmptyCounts(),
+      eventCounts: countsByReleaseId.get(release.id) ?? createEmptyEventCounts(),
     })),
     total,
   });

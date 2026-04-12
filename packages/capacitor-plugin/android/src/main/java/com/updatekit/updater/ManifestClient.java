@@ -123,7 +123,13 @@ final class ManifestClient {
 
       String releaseId = null;
       if (json.has("releaseId") && !json.isNull("releaseId")) {
-        releaseId = json.getString("releaseId");
+        releaseId = json.getString("releaseId").trim();
+      }
+      if (releaseId != null && releaseId.isEmpty()) {
+        releaseId = null;
+      }
+      if (releaseId == null) {
+        throw new IllegalStateException("Manifest response missing required releaseId");
       }
 
       requireHTTPS(new URL(downloadUrl), allowInsecureUrls);

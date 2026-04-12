@@ -1,0 +1,23 @@
+DESCRIPTION >
+    Raw append-only device events sent by the ingest Worker.
+
+TOKEN otakit_ingest APPEND
+
+SCHEMA >
+    `event_id` String `json:$.event_id`,
+    `sent_at` DateTime64(3) `json:$.sent_at`,
+    `received_at` DateTime64(3) `json:$.received_at`,
+    `app_id` String `json:$.app_id`,
+    `platform` LowCardinality(String) `json:$.platform`,
+    `action` LowCardinality(String) `json:$.action`,
+    `bundle_version` String `json:$.bundle_version`,
+    `channel` Nullable(String) `json:$.channel`,
+    `runtime_version` Nullable(String) `json:$.runtime_version`,
+    `release_id` Nullable(String) `json:$.release_id`,
+    `native_build` String `json:$.native_build`,
+    `detail` Nullable(String) `json:$.detail`
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(received_at)"
+ENGINE_SORTING_KEY "app_id, received_at, event_id"
+ENGINE_TTL "toDateTime(received_at) + toIntervalDay(90)"

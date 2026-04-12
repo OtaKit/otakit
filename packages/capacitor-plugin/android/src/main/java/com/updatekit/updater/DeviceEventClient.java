@@ -4,52 +4,57 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.UUID;
 import org.json.JSONObject;
 
-final class StatsClient {
+final class DeviceEventClient {
 
   private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-  private StatsClient() {}
+  private DeviceEventClient() {}
 
   static void send(
-    String updateUrl,
+    String ingestUrl,
     String appId,
     String platform,
     String action,
     String bundleVersion,
     String channel,
+    String runtimeVersion,
     String releaseId,
     String nativeBuild,
-    String errorMessage
+    String detail
   ) {
     executor.execute(() -> {
       HttpURLConnection connection = null;
       try {
-        String base = updateUrl.replaceAll("/+$", "");
-        URL url = new URL(base + "/stats");
+        String base = ingestUrl.replaceAll("/+$", "");
+        URL url = new URL(base + "/events");
 
         JSONObject payload = new JSONObject();
+        payload.put("eventId", UUID.randomUUID().toString());
+        payload.put("sentAt", iso8601Now());
         payload.put("platform", platform);
         payload.put("action", action);
-        if (bundleVersion != null) {
-          payload.put("bundleVersion", bundleVersion);
-        }
+        payload.put("bundleVersion", bundleVersion);
         if (channel != null && !channel.isEmpty()) {
           payload.put("channel", channel);
         }
-        if (releaseId != null && !releaseId.isEmpty()) {
-          payload.put("releaseId", releaseId);
+        if (runtimeVersion != null && !runtimeVersion.isEmpty()) {
+          payload.put("runtimeVersion", runtimeVersion);
         }
-        if (nativeBuild != null) {
-          payload.put("nativeBuild", nativeBuild);
-        }
-        if (errorMessage != null) {
+        payload.put("releaseId", releaseId);
+        payload.put("nativeBuild", nativeBuild);
+        if (detail != null) {
           String truncated =
-            errorMessage.length() > 500 ? errorMessage.substring(0, 500) : errorMessage;
-          payload.put("errorMessage", truncated);
+            detail.length() > 500 ? detail.substring(0, 500) : detail;
+          payload.put("detail", truncated);
         }
 
         byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
@@ -66,15 +71,21 @@ final class StatsClient {
           output.write(body);
         }
 
-        // Fire and forget - just trigger the request
+        // Device events are best-effort and should never block the update flow.
         connection.getResponseCode();
       } catch (Exception ignored) {
-        // Stats are best-effort, don't fail on errors
+        // Device events are best-effort, don't fail on errors
       } finally {
         if (connection != null) {
           connection.disconnect();
         }
       }
     });
+  }
+
+  private static String iso8601Now() {
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+    formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+    return formatter.format(new Date());
   }
 }

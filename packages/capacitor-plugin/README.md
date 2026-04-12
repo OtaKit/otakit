@@ -40,9 +40,6 @@ For manual mode, `getState()` tells you if something is already staged,
 `check()` tells you whether a newer update exists, `download()` stages it, and
 `update()` is the one-shot helper that downloads and applies the newest update.
 
-Manual inspection and support methods like state inspection and reset live under
-`OtaKit.debug`.
-
 ## Hosted config
 
 ```ts
@@ -63,11 +60,12 @@ plugins: {
 Advanced overrides for self-hosting or custom trust only:
 
 - `cdnUrl` for manifest and bundle delivery
-- `serverUrl` for stats and control-plane requests
+- `ingestUrl` for event ingest requests
+- `serverUrl` for self-hosted control-plane tooling such as the CLI. The native runtime uses `cdnUrl` and `ingestUrl` instead.
 - `manifestKeys`
 - `allowInsecureUrls`
 
-Hosted OtaKit already points at the managed control-plane API and CDN and already
+Hosted OtaKit already points at the managed ingest service and CDN and already
 trusts the managed manifest signing keys.
 
 ## Channels vs runtimeVersion
@@ -121,7 +119,7 @@ resume**.
   no automatic checks, no automatic staged activation.
   the app integration drives everything via `check()`, `download()`, `apply()`, or `update()`.
 
-### Dev/debug mode
+### Development mode
 
 - `immediate`
   checks, downloads, and activates in one shot as soon as possible on cold start and resume (the user may briefly see the previous version before a reload).

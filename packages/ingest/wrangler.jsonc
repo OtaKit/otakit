@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "otakit-ingest",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-12",
+  "routes": [
+    {
+      "pattern": "ingest.otakit.app",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "TINYBIRD_API_HOST": "https://api.us-east.aws.tinybird.co",
+    "TINYBIRD_EVENTS_DATASOURCE": "device_events_raw"
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "EVENTS_QUEUE",
+        "queue": "otakit-events"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "otakit-events",
+        "max_batch_size": 100,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "otakit-events-dlq"
+      }
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "EVENTS_RATE_LIMITER",
+      "namespace_id": "2026041201",
+      "simple": {
+        "limit": 5000,
+        "period": 60
+      }
+    }
+  ]
+}

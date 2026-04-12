@@ -13,6 +13,10 @@ out/
 .env
 .env.local
 .env.*.local
+.tinyb
+.dev.vars
+.dev.vars.*
+tinybird.config.json
 
 # IDE
 .idea/
@@ -33,6 +37,7 @@ coverage/
 
 # TypeScript
 *.tsbuildinfo
+.wrangler/
 
 # Native builds
 packages/capacitor-plugin/ios/Pods/
