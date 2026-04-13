@@ -9,9 +9,11 @@ import { sendOtpEmail } from './email';
 const isDev = process.env.NODE_ENV === 'development';
 const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 const appleEnabled = Boolean(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET);
+const githubEnabled = Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
 const trustedSocialProviders = [
   ...(googleEnabled ? ['google'] : []),
   ...(appleEnabled ? ['apple'] : []),
+  ...(githubEnabled ? ['github'] : []),
 ];
 const trustedOrigins = Array.from(
   new Set(
@@ -37,6 +39,14 @@ const socialProviders = {
         apple: {
           clientId: process.env.APPLE_CLIENT_ID!,
           clientSecret: process.env.APPLE_CLIENT_SECRET!,
+        },
+      }
+    : {}),
+  ...(githubEnabled
+    ? {
+        github: {
+          clientId: process.env.GITHUB_CLIENT_ID!,
+          clientSecret: process.env.GITHUB_CLIENT_SECRET!,
         },
       }
     : {}),
