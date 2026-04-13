@@ -934,9 +934,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return false
     }
 
-    if let latestReleaseId = latest.releaseId,
-       let bundleReleaseId = bundle.releaseId,
-       latestReleaseId == bundleReleaseId {
+    if let bundleReleaseId = bundle.releaseId,
+       latest.releaseId == bundleReleaseId {
       return true
     }
 
