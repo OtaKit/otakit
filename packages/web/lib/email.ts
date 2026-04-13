@@ -33,17 +33,15 @@ type SendEmailArgs = {
   replyTo?: string;
 };
 
+export function isEmailConfigured(): boolean {
+  return !!process.env.RESEND_API_KEY?.trim();
+}
+
 async function sendEmail({ to, subject, html, text, replyTo }: SendEmailArgs): Promise<void> {
-  const hasResendKey = Boolean(process.env.RESEND_API_KEY?.trim());
-
-  // Dev fallback for local environments without a configured Resend key.
-  if (!hasResendKey && process.env.NODE_ENV === 'development') {
-    console.log(`[Email:dev:fallback]\nTo: ${to}\nSubject: ${subject}\n\n${text}\n`);
+  if (!isEmailConfigured()) {
+    console.warn(`[OtaKit] Email not configured (RESEND_API_KEY not set). Logging email instead:`);
+    console.warn(`[OtaKit:email] To: ${to} | Subject: ${subject}\n${text}\n`);
     return;
-  }
-
-  if (!hasResendKey) {
-    throw new Error('RESEND_API_KEY is not set');
   }
 
   const response = await getResendClient().emails.send({

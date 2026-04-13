@@ -3,206 +3,162 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'Self-hosting (Advanced) — OtaKit Docs',
+  title: 'Self-hosting — OtaKit Docs',
   description: 'Run OtaKit on your own infrastructure.',
 };
 
 export default function SelfHostPage() {
   return (
     <>
-      <H1>Self-hosting (Advanced)</H1>
+      <H1>Self-hosting</H1>
       <P>
-        OtaKit is fully open source and can run on your own infrastructure. You&apos;ll need
-        PostgreSQL and any S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
-      </P>
-      <P>
-        In the self-hosted architecture, manifests and bundle zips are served directly from object
-        storage through your CDN. The plugin fetches the manifest for its lane and decides locally
-        whether it should download anything newer.
-      </P>
-      <P>
-        If you want the managed OtaKit service, use the standard hosted{' '}
+        OtaKit is fully open source and can run on your own infrastructure. The managed service at{' '}
         <Link
           href="/docs/setup"
           className="font-medium text-foreground underline underline-offset-4"
         >
-          setup guide
+          otakit.app
         </Link>{' '}
-        instead.
+        runs everything for you — self-hosting is the advanced path.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>Requirements</H2>
+      <H2>What you deploy</H2>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>Node.js 23+</li>
+        <li>
+          <strong>Dashboard</strong> (<Code>packages/web</Code>) — Next.js control plane: auth,
+          uploads, releases, manifest publishing, and dashboard UI.
+        </li>
+        <li>
+          <strong>Ingest Worker</strong> (<Code>packages/ingest</Code>) — Cloudflare Worker that
+          receives device events and writes them to Tinybird. Required if you want to use the dashboard analytics.
+          analytics.
+        </li>
+        <li>
+          <strong>CDN bucket</strong> — public R2 or S3 bucket with a CDN domain. Serves manifest
+          files and bundle zips directly to devices.
+        </li>
+      </ul>
+      <P>
+        The <strong>CLI</strong> (<Code>packages/cli</Code>) and{' '}
+        <strong>Capacitor plugin</strong> (<Code>packages/capacitor-plugin</Code>) are client-side
+        tools — they can be configured to point at your self-hosted services.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Required services</H2>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>PostgreSQL 14+</li>
-        <li>S3-compatible storage (R2, MinIO, AWS S3)</li>
-        <li>A public CDN in front of your bundle and manifest bucket</li>
+        <li>S3-compatible object storage (Cloudflare R2, AWS S3)</li>
+        <li>A public CDN domain in front of the storage bucket</li>
+        <li>At least one provider (Google, Apple, Github, or Email OTP via Resend) for sign-in</li>
       </ul>
 
       <Separator className="my-10" />
 
       <H2>Environment variables</H2>
-      <Pre>{`# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/otakit
 
-# Auth
+      <H3>Dashboard — required</H3>
+      <Pre>{`DATABASE_URL=postgresql://user:pass@localhost:5432/otakit
+
 BETTER_AUTH_SECRET=your-random-secret    # openssl rand -hex 32
 BETTER_AUTH_URL=https://your-domain.com
+# At least one provider for sign-in
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=....
+RESEND_API_KEY=...
+EMAIL_FROM=...
 
-# S3-compatible storage
-R2_BUCKET=otakit-bundles
+R2_BUCKET=...
 R2_ACCESS_KEY=...
 R2_SECRET_KEY=...
 R2_ENDPOINT=https://....r2.cloudflarestorage.com
 CDN_BASE_URL=https://cdn.your-domain.com
 
-# Optional: Cloudflare purge support for manifest changes
+# Cloudflare CDN purge — instant cache invalidation after releases.
+# Without this, stale manifests may be served until CDN TTL expires.
 CF_ZONE_ID=...
 CF_API_TOKEN=...
 
-# Tinybird reads for dashboard analytics and billing
-# Must match your Tinybird workspace region
+# Tinybird — device event analytics and dashboard counts.
+# Without this, the dashboard shows empty analytics and download counts return 0.
 TINYBIRD_API_HOST=https://api.tinybird.co
 TINYBIRD_READ_TOKEN=...
 
-# Optional: upload size limit (bytes, default 200MB)
-MAX_BUNDLE_SIZE=209715200
-
-# Manifest signing is enabled by default
+# Manifest signing — ES256 signatures on manifest JSON.
 # Generate with: otakit generate-signing-key
 MANIFEST_SIGNING_KID=key-2026-01
 MANIFEST_SIGNING_KEY=-----BEGIN EC PRIVATE KEY-----...
+# Set MANIFEST_SIGNING_DISABLED=true to skip signing entirely.`}</Pre>
 
-# Only set this if you intentionally want unsigned manifests
-# MANIFEST_SIGNING_DISABLED=true
-
-# Optional: global admin key for organization management
-ADMIN_SECRET_KEY=your-admin-key`}</Pre>
+      <H3>Ingest Worker</H3>
+      <P>
+        Only needed if you want to use analytics. See{' '}
+        <Code>packages/ingest/wrangler.jsonc</Code> and{' '}
+        <Code>packages/ingest/.env.example</Code> for the full config. The Worker needs a Tinybird
+        append token and a Cloudflare Queue.
+      </P>
 
       <Separator className="my-10" />
 
       <H2>Deploy</H2>
-      <Pre>{`git clone https://github.com/nicepkg/otakit
-cd otakit
 
-# Install dependencies
+      <H3>Dashboard</H3>
+      <Pre>{`git clone https://github.com/OtaKit/otakit
+cd otakit
 pnpm install
 
-# Run database migrations
 cd packages/web
 npx prisma migrate deploy
-
-# Build and start
 pnpm build
 pnpm start`}</Pre>
       <P>
-        The server runs on port 3000 by default. Point your reverse proxy (nginx, Caddy) to it and
-        ensure HTTPS is configured.
+        Runs on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS.
       </P>
-      <Separator className="my-10" />
 
-      <H2>Docker</H2>
-      <Pre>{`docker run -d \\
-  -p 3000:3000 \\
-  -e DATABASE_URL=postgresql://... \\
-  -e BETTER_AUTH_SECRET=... \\
-  -e BETTER_AUTH_URL=https://your-domain.com \\
-  -e R2_BUCKET=otakit-bundles \\
-  -e R2_ACCESS_KEY=... \\
-  -e R2_SECRET_KEY=... \\
-  -e R2_ENDPOINT=https://... \\
-  -e TINYBIRD_API_HOST=https://api.tinybird.co \\
-  -e TINYBIRD_READ_TOKEN=... \\
-  ghcr.io/nicepkg/otakit:latest`}</Pre>
+      <H3>Ingest Worker</H3>
+      <Pre>{`cd packages/ingest
+npx wrangler deploy`}</Pre>
 
-      <Separator className="my-10" />
-
-      <H2>Initial setup</H2>
-      <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>
-          Open your domain in a browser and sign in — the first user account is created
-          automatically via email OTP.
-        </li>
-        <li>Create an organization from the Account tab.</li>
-        <li>Generate an API key from the Organization tab — you&apos;ll need this for the CLI.</li>
-        <li>Point the CLI to your server:</li>
-      </ol>
-      <Pre>{`export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
-export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
+      <H3>Tinybird project</H3>
+      <Pre>{`cd tinybird
+tb login
+tb deploy`}</Pre>
 
       <Separator className="my-10" />
 
       <H2>Manifest signing</H2>
-      <P>
-        Manifest signing is enabled by default. For a normal self-hosted setup, generate an ES256
-        key pair and set these on the server:
-      </P>
       <Pre>{`otakit generate-signing-key`}</Pre>
       <P>
-        This outputs the server environment variables (<Code>MANIFEST_SIGNING_KID</Code>,{' '}
-        <Code>MANIFEST_SIGNING_KEY</Code>) and the plugin config (<Code>manifestKeys</Code>). Add
-        them to your server and Capacitor config respectively.
+        Add the private key to the dashboard env (<Code>MANIFEST_SIGNING_KID</Code>,{' '}
+        <Code>MANIFEST_SIGNING_KEY</Code>). Add the public key to the Capacitor plugin config (
+        <Code>manifestKeys</Code>).
       </P>
+
+      <Separator className="my-10" />
+
+      <H2>Configure the plugin</H2>
       <Pre>{`plugins: {
   OtaKit: {
-    cdnUrl: "https://cdn.your-domain.com",
-    ingestUrl: "https://ingest.your-domain.com/v1",
-    serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
+    cdnUrl: "https://cdn.your-domain.com",
+    ingestUrl: "https://ingest.your-domain.com/v1",  // omit if not using Tinybird
     manifestKeys: [
       { kid: "key-2026-01", key: "MFkwEwYH..." }
     ]
   }
 }`}</Pre>
-      <P>
-        Keep the private signing key on the server only. The plugin should only receive the public
-        verification keys in <Code>manifestKeys</Code>.
-      </P>
-      <P>
-        If you intentionally want unsigned manifests on a custom server, set{' '}
-        <Code>MANIFEST_SIGNING_DISABLED=true</Code>. When signing is not disabled, missing signing
-        env vars are treated as a server misconfiguration and manifest requests will fail.
-      </P>
 
       <Separator className="my-10" />
 
-      <H2>Connecting CLI and plugin</H2>
-      <P>
-        Point the CLI to your server with <Code>OTAKIT_SERVER_URL</Code>:
-      </P>
+      <H2>Configure the CLI</H2>
       <Pre>{`export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
 export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
       <P>
-        In your Capacitor plugin config, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
-        <Code>ingestUrl</Code> to your event ingest service. Keep <Code>serverUrl</Code> pointed
-        at your control-plane API base if you want the CLI to keep reading it from Capacitor
-        config. The native runtime uses <Code>cdnUrl</Code> and <Code>ingestUrl</Code> instead:
-      </P>
-      <Pre>{`plugins: {
-  OtaKit: {
-    cdnUrl: "https://cdn.your-domain.com",
-    ingestUrl: "https://ingest.your-domain.com/v1",
-    serverUrl: "https://your-domain.com/api/v1",
-    appId: "YOUR_OTAKIT_APP_ID",
-    // manifestKeys: [{ kid, key }]
-  }
-}`}</Pre>
-      <P>
-        The hosted defaults are <Code>https://cdn.otakit.app</Code> for manifests/bundles and{' '}
-        <Code>https://ingest.otakit.app/v1</Code> for event ingest. Follow the standard{' '}
-        <Link
-          href="/docs/setup"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          setup guide
-        </Link>{' '}
-        for the rest of the plugin and CLI configuration.
-      </P>
-      <P>
-        The web app also needs a Tinybird read token for dashboard analytics and billing queries.
-        Keep that separate from the Tinybird append token used by your ingest Worker.
+        Or set <Code>serverUrl</Code> in the Capacitor plugin config so the CLI can read it
+        automatically.
       </P>
     </>
   );
@@ -214,6 +170,10 @@ function H1({ children }: { children: React.ReactNode }) {
 
 function H2({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg font-semibold tracking-tight">{children}</h2>;
+}
+
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 className="mt-6 text-sm font-semibold tracking-tight">{children}</h3>;
 }
 
 function P({ children }: { children: React.ReactNode }) {

@@ -34,8 +34,6 @@ import type {
   AppSummary,
   BundleSummaryItem,
   DashboardInitialData,
-  DashboardPreviewAppData,
-  DashboardPreviewData,
   DeviceEvent,
   Platform,
   ReleaseHistoryItem,
@@ -304,21 +302,6 @@ function findCurrentVersionOnTarget(
   return currentBundle?.version ?? null;
 }
 
-function findCurrentReleaseOnTarget(
-  releases: ReleaseHistoryItem[],
-  channel: string | null,
-  runtimeVersion: string | null,
-): ReleaseHistoryItem | null {
-  return (
-    releases.find(
-      (release) =>
-        release.channel === channel &&
-        release.runtimeVersion === runtimeVersion &&
-        release.revertedAt === null,
-    ) ?? null
-  );
-}
-
 function getReleaseTargetsForRuntime(
   targets: ReleaseTarget[],
   runtimeVersion: string | null,
@@ -347,45 +330,6 @@ function getDefaultReleaseTargetKey(
   return firstAvailableTarget === undefined
     ? NEW_RELEASE_STREAM_KEY
     : getReleaseTargetKey(firstAvailableTarget.channel, firstAvailableTarget.runtimeVersion);
-}
-
-function rebuildPreviewCurrentReleaseState(
-  bundles: BundleSummaryItem[],
-  releases: ReleaseHistoryItem[],
-): BundleSummaryItem[] {
-  const currentTargetsByBundleId = new Map<string, ReleaseTarget[]>();
-  const seenTargets = new Set<string>();
-
-  for (const release of releases) {
-    if (release.revertedAt !== null) {
-      continue;
-    }
-
-    const targetKey = getReleaseTargetKey(release.channel, release.runtimeVersion);
-    if (seenTargets.has(targetKey)) {
-      continue;
-    }
-
-    seenTargets.add(targetKey);
-    const currentTargets = currentTargetsByBundleId.get(release.bundleId) ?? [];
-    currentTargets.push({
-      channel: release.channel,
-      runtimeVersion: release.runtimeVersion,
-    });
-    currentTargetsByBundleId.set(release.bundleId, currentTargets);
-  }
-
-  return bundles.map((bundle) => {
-    const currentTargets = [...(currentTargetsByBundleId.get(bundle.id) ?? [])].sort(
-      compareReleaseTargets,
-    );
-
-    return {
-      ...bundle,
-      currentTargets,
-      isLive: currentTargets.some((target) => target.channel === null),
-    };
-  });
 }
 
 function createEmptyEventCounts() {
@@ -460,7 +404,6 @@ const EVENT_TIMEFRAME_OPTIONS: Array<{
 
 type ProductDashboardProps = {
   initialData: DashboardInitialData;
-  previewData?: DashboardPreviewData;
   shellClassName?: string;
   brandHref?: string;
   dashboardHref?: string;
@@ -478,37 +421,10 @@ function getEventTimeframeStart(timeframe: EventTimeframeFilter): number {
   return now - 30 * 24 * hour;
 }
 
-function filterPreviewEvents(
-  events: DeviceEvent[],
-  {
-    platform,
-    bundle,
-    action,
-    timeframe,
-  }: {
-    platform: EventPlatformFilter;
-    bundle: string;
-    action: EventActionFilter;
-    timeframe: EventTimeframeFilter;
-  },
-): DeviceEvent[] {
-  const timeframeStart = getEventTimeframeStart(timeframe);
-
-  return events
-    .filter((event) => {
-      if (platform !== 'all' && event.platform !== platform) return false;
-      if (bundle !== 'all' && event.bundleVersion !== bundle) return false;
-      if (action !== 'all' && event.action !== action) return false;
-      return new Date(event.createdAt).getTime() >= timeframeStart;
-    })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
-
 /* ─── Main Component ───────────────────────────────────────────────── */
 
 export function ProductDashboard({
   initialData,
-  previewData,
   shellClassName,
   brandHref,
   dashboardHref,
@@ -516,12 +432,8 @@ export function ProductDashboard({
   docsHref,
 }: ProductDashboardProps) {
   const router = useRouter();
-  const isPreview = previewData !== undefined;
-  const selectionStorageKey = isPreview ? 'selectedPreviewAppId' : 'selectedAppId';
+  const selectionStorageKey = 'selectedAppId';
   const [apps, setApps] = useState<AppSummary[]>(initialData.apps);
-  const [previewAppsById, setPreviewAppsById] = useState<Record<string, DashboardPreviewAppData>>(
-    previewData?.appsById ?? {},
-  );
 
   // App — persist selection in localStorage
   const [selectedAppId, setSelectedAppId] = useState<string | null>(() => {
@@ -536,10 +448,8 @@ export function ProductDashboard({
   }, [selectedAppId, selectionStorageKey]);
 
   useEffect(() => {
-    if (!isPreview) {
-      setApps(initialData.apps);
-    }
-  }, [initialData.apps, isPreview]);
+    setApps(initialData.apps);
+  }, [initialData.apps]);
 
   // Bundles (one row per version)
   const [bundles, setBundles] = useState<BundleSummaryItem[]>([]);
@@ -781,12 +691,6 @@ export function ProductDashboard({
     async (appId: string) => {
       setLoadingBundles(true);
       try {
-        if (isPreview) {
-          const previewApp = previewAppsById[appId];
-          setBundles(previewApp?.bundles ?? []);
-          return;
-        }
-
         const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/bundles/summary`);
         const data = await parseJson<{ bundles?: BundleSummaryItem[] } & ApiError>(res);
         if (!res.ok) throw new Error(data.error ?? 'Failed to load bundles');
@@ -799,26 +703,13 @@ export function ProductDashboard({
         setBundlesLoadedOnce(true);
       }
     },
-    [isPreview, previewAppsById],
+    [],
   );
 
   const loadEvents = useCallback(
     async (appId: string) => {
       setLoadingEvents(true);
       try {
-        if (isPreview) {
-          const previewApp = previewAppsById[appId];
-          setAppEvents(
-            filterPreviewEvents(previewApp?.events ?? [], {
-              platform: eventPlatform,
-              bundle: eventBundle,
-              action: eventAction,
-              timeframe: eventTimeframe,
-            }),
-          );
-          return;
-        }
-
         const params = new URLSearchParams({
           platform: eventPlatform,
           bundle: eventBundle,
@@ -839,19 +730,13 @@ export function ProductDashboard({
         setLoadingEvents(false);
       }
     },
-    [eventAction, eventBundle, eventPlatform, eventTimeframe, isPreview, previewAppsById],
+    [eventAction, eventBundle, eventPlatform, eventTimeframe],
   );
 
   const loadReleaseHistory = useCallback(
     async (appId: string) => {
       setLoadingReleaseHistory(true);
       try {
-        if (isPreview) {
-          const previewApp = previewAppsById[appId];
-          setReleaseHistory(previewApp?.releases ?? []);
-          return;
-        }
-
         const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/releases?limit=100`);
         const data = await parseJson<{ releases?: ReleaseHistoryItem[] } & ApiError>(res);
         if (!res.ok) throw new Error(data.error ?? 'Failed to load release history');
@@ -864,7 +749,7 @@ export function ProductDashboard({
         setReleasesLoadedOnce(true);
       }
     },
-    [isPreview, previewAppsById],
+    [],
   );
 
   useEffect(() => {
@@ -991,87 +876,6 @@ export function ProductDashboard({
       targetKey: getReleaseTargetKey(target.channel, target.runtimeVersion),
     });
     try {
-      if (isPreview) {
-        const promotedAt = new Date().toISOString();
-
-        setPreviewAppsById((current) => {
-          const previewApp = current[selectedAppId];
-          if (!previewApp) {
-            return current;
-          }
-
-          const previousRelease = findCurrentReleaseOnTarget(
-            previewApp.releases,
-            target.channel,
-            target.runtimeVersion,
-          );
-          const bundlesWithDeployment = previewApp.bundles.map((item) => {
-            if (item.id === bundle.id) {
-              return {
-                ...item,
-                deployedTargets: [
-                  {
-                    channel: target.channel,
-                    runtimeVersion: target.runtimeVersion,
-                    deployedAt: promotedAt,
-                  },
-                  ...item.deployedTargets.filter(
-                    (entry) =>
-                      !(
-                        entry.channel === target.channel &&
-                        entry.runtimeVersion === target.runtimeVersion
-                      ),
-                  ),
-                ].sort(
-                  (a, b) => new Date(b.deployedAt).getTime() - new Date(a.deployedAt).getTime(),
-                ),
-              };
-            }
-
-            return {
-              ...item,
-            };
-          });
-
-          const nextReleases: ReleaseHistoryItem[] = [
-            {
-              id: `preview-release-${Date.now()}`,
-              channel: target.channel,
-              runtimeVersion: target.runtimeVersion,
-              bundleId: bundle.id,
-              bundleVersion: bundle.version,
-              previousBundleId: previousRelease?.bundleId ?? null,
-              previousBundleVersion: previousRelease?.bundleVersion ?? null,
-              promotedAt,
-              promotedBy: 'preview@otakit.app',
-              revertedAt: null,
-              revertedBy: null,
-              eventCounts: createEmptyEventCounts(),
-            },
-            ...previewApp.releases,
-          ];
-          const bundlesForApp = rebuildPreviewCurrentReleaseState(
-            bundlesWithDeployment,
-            nextReleases,
-          );
-
-          return {
-            ...current,
-            [selectedAppId]: {
-              ...previewApp,
-              bundles: bundlesForApp,
-              releases: nextReleases,
-            },
-          };
-        });
-
-        toast.success(
-          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
-        );
-        setReleaseConfirm(null);
-        return true;
-      }
-
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1120,42 +924,6 @@ export function ProductDashboard({
     if (!selectedAppId || !revertConfirm || revertBusy) return;
     setRevertBusy(true);
     try {
-      if (isPreview) {
-        const revertedAt = new Date().toISOString();
-        setPreviewAppsById((current) => {
-          const previewApp = current[selectedAppId];
-          if (!previewApp) {
-            return current;
-          }
-
-          const nextReleases = previewApp.releases.map((release) =>
-            release.id === revertConfirm.releaseId
-              ? {
-                  ...release,
-                  revertedAt,
-                  revertedBy: 'preview@otakit.app',
-                }
-              : release,
-          );
-          const nextBundles = rebuildPreviewCurrentReleaseState(previewApp.bundles, nextReleases);
-
-          return {
-            ...current,
-            [selectedAppId]: {
-              ...previewApp,
-              bundles: nextBundles,
-              releases: nextReleases,
-            },
-          };
-        });
-
-        toast.success(
-          `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
-        );
-        setRevertConfirm(null);
-        return;
-      }
-
       const res = await fetch(
         `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(revertConfirm.releaseId)}/revert`,
         {
@@ -1183,26 +951,6 @@ export function ProductDashboard({
     setCreatingApp(true);
     toast.dismiss();
     try {
-      if (isPreview) {
-        const createdAt = new Date().toISOString();
-        const id = `preview-app-${slug.replace(/[^a-z0-9.-]/gi, '-').toLowerCase()}-${Date.now()}`;
-
-        setApps((current) => [{ id, slug, createdAt, bundleCount: 0 }, ...current]);
-        setPreviewAppsById((current) => ({
-          ...current,
-          [id]: {
-            bundles: [],
-            releases: [],
-            events: [],
-          },
-        }));
-        setSelectedAppId(id);
-        setCreateDialogOpen(false);
-        setNewAppSlug('');
-        toast.success('Preview app created');
-        return;
-      }
-
       const res = await fetch('/api/v1/apps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

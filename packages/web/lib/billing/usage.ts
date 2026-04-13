@@ -6,7 +6,7 @@ import {
   deleteAllManifestFilesForApp,
   restoreManifestFilesForApp,
 } from '@/lib/manifest-files';
-import { getPolar } from '@/lib/polar';
+import { getPolar, isPolarConfigured, warnPolarNotConfigured } from '@/lib/polar';
 import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
 import { getExternalCustomerId, getPlanLimits } from './config';
@@ -146,7 +146,7 @@ export async function updateOrganizationOverageEnabled(
     : currentPeriodStart;
 
   const limit = getPlanLimits(organization.planKey).downloads;
-  const usageBlocked = !overageEnabled && downloadsCount >= limit;
+  const usageBlocked = isPolarConfigured() ? !overageEnabled && downloadsCount >= limit : false;
   const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({
@@ -225,6 +225,7 @@ async function syncOrganizationUsageToPolar(args: {
   periodEnd: Date;
   downloadsCount: number;
 }): Promise<boolean> {
+  if (!isPolarConfigured()) return false;
   const meterId = process.env.POLAR_METER_DOWNLOADS_ID;
   if (!meterId) return false;
 
@@ -338,7 +339,7 @@ async function refreshUsageForOrganization(
     }
   }
 
-  const usageBlocked = !organization.overageEnabled && downloadsCount >= limit;
+  const usageBlocked = isPolarConfigured() ? !organization.overageEnabled && downloadsCount >= limit : false;
   const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({

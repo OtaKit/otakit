@@ -101,16 +101,8 @@ export type DashboardInitialData = {
   memberships: OrganizationMembership[];
   apps: AppSummary[];
   organizationApiKeys: OrganizationApiKey[];
-};
-
-export type DashboardPreviewAppData = {
-  bundles: BundleSummaryItem[];
-  releases: ReleaseHistoryItem[];
-  events: DeviceEvent[];
-};
-
-export type DashboardPreviewData = {
-  appsById: Record<string, DashboardPreviewAppData>;
+  billingEnabled: boolean;
+  analyticsEnabled: boolean;
 };
 
 export type ApiError = { error?: string };

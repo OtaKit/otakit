@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { PlanKey } from '@prisma/client';
 
 import { db } from '@/lib/db';
-import { getPolar } from '@/lib/polar';
+import { getPolar, isPolarConfigured } from '@/lib/polar';
 import { getSessionContext } from '@/lib/session';
 import { getExternalCustomerId, planKeyToProductId } from '@/lib/billing/config';
 
@@ -11,6 +11,10 @@ export const runtime = 'nodejs';
 const VALID_PLAN_KEYS = new Set<string>(['pro', 'scale']);
 
 export async function POST(request: NextRequest) {
+  if (!isPolarConfigured()) {
+    return NextResponse.json({ error: 'Billing is not configured on this instance' }, { status: 404 });
+  }
+
   const ctx = await getSessionContext();
   if (!ctx) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

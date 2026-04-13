@@ -1258,124 +1258,111 @@ Route: /docs/self-host
 
 Run OtaKit on your own infrastructure.
 
-OtaKit is fully open source and can run on your own infrastructure. You'll need PostgreSQL and any S3-compatible object storage (AWS S3, Cloudflare R2, MinIO).
+OtaKit is fully open source and can run on your own infrastructure. The managed service at otakit.app runs everything for you — self-hosting is the advanced path.
 
-In the self-hosted architecture, manifests and bundle zips are served directly from object storage through your CDN. The plugin fetches the manifest for its lane and decides locally whether it should download anything newer.
+### What you deploy
+- Dashboard (`packages/web`) — Next.js control plane: auth, uploads, releases, manifest publishing, and dashboard UI.
+- Ingest Worker (`packages/ingest`) — Cloudflare Worker that receives device events and writes them to Tinybird. Required if you want to use the dashboard analytics. analytics.
+- CDN bucket — public R2 or S3 bucket with a CDN domain. Serves manifest files and bundle zips directly to devices.
 
-If you want the managed OtaKit service, use the standard hosted setup guide instead.
+The CLI (`packages/cli`) and Capacitor plugin (`packages/capacitor-plugin`) are client-side tools — they can be configured to point at your self-hosted services.
 
-### Requirements
-- Node.js 23+
+### Required services
 - PostgreSQL 14+
-- S3-compatible storage (R2, MinIO, AWS S3)
-- A public CDN in front of your bundle and manifest bucket
+- S3-compatible object storage (Cloudflare R2, AWS S3)
+- A public CDN domain in front of the storage bucket
+- At least one provider (Google, Apple, Github, or Email OTP via Resend) for sign-in
 
 ### Environment variables
 
+#### Dashboard — required
+
 ```txt
-# Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/otakit
 
-# Auth
 BETTER_AUTH_SECRET=your-random-secret    # openssl rand -hex 32
 BETTER_AUTH_URL=https://your-domain.com
+# At least one provider for sign-in
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=....
+RESEND_API_KEY=...
+EMAIL_FROM=...
 
-# S3-compatible storage
-R2_BUCKET=otakit-bundles
+R2_BUCKET=...
 R2_ACCESS_KEY=...
 R2_SECRET_KEY=...
 R2_ENDPOINT=https://....r2.cloudflarestorage.com
 CDN_BASE_URL=https://cdn.your-domain.com
 
-# Optional: Cloudflare purge support for manifest changes
+# Cloudflare CDN purge — instant cache invalidation after releases.
+# Without this, stale manifests may be served until CDN TTL expires.
 CF_ZONE_ID=...
 CF_API_TOKEN=...
 
-# Tinybird reads for dashboard analytics and billing
-# Must match your Tinybird workspace region
+# Tinybird — device event analytics and dashboard counts.
+# Without this, the dashboard shows empty analytics and download counts return 0.
 TINYBIRD_API_HOST=https://api.tinybird.co
 TINYBIRD_READ_TOKEN=...
 
-# Optional: upload size limit (bytes, default 200MB)
-MAX_BUNDLE_SIZE=209715200
-
-# Manifest signing is enabled by default
+# Manifest signing — ES256 signatures on manifest JSON.
 # Generate with: otakit generate-signing-key
 MANIFEST_SIGNING_KID=key-2026-01
 MANIFEST_SIGNING_KEY=-----BEGIN EC PRIVATE KEY-----...
-
-# Only set this if you intentionally want unsigned manifests
-# MANIFEST_SIGNING_DISABLED=true
-
-# Optional: global admin key for organization management
-ADMIN_SECRET_KEY=your-admin-key
+# Set MANIFEST_SIGNING_DISABLED=true to skip signing entirely.
 ```
+
+#### Ingest Worker
+
+Only needed if you want to use analytics. See `packages/ingest/wrangler.jsonc` and `packages/ingest/.env.example` for the full config. The Worker needs a Tinybird append token and a Cloudflare Queue.
 
 ### Deploy
 
-```txt
-git clone https://github.com/nicepkg/otakit
-cd otakit
+#### Dashboard
 
-# Install dependencies
+```txt
+git clone https://github.com/OtaKit/otakit
+cd otakit
 pnpm install
 
-# Run database migrations
 cd packages/web
 npx prisma migrate deploy
-
-# Build and start
 pnpm build
 pnpm start
 ```
 
-The server runs on port 3000 by default. Point your reverse proxy (nginx, Caddy) to it and ensure HTTPS is configured.
+Runs on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS.
 
-### Docker
+#### Ingest Worker
 
 ```txt
-docker run -d \
-  -p 3000:3000 \
-  -e DATABASE_URL=postgresql://... \
-  -e BETTER_AUTH_SECRET=... \
-  -e BETTER_AUTH_URL=https://your-domain.com \
-  -e R2_BUCKET=otakit-bundles \
-  -e R2_ACCESS_KEY=... \
-  -e R2_SECRET_KEY=... \
-  -e R2_ENDPOINT=https://... \
-  -e TINYBIRD_API_HOST=https://api.tinybird.co \
-  -e TINYBIRD_READ_TOKEN=... \
-  ghcr.io/nicepkg/otakit:latest
+cd packages/ingest
+npx wrangler deploy
 ```
 
-### Initial setup
-1. Open your domain in a browser and sign in — the first user account is created automatically via email OTP.
-2. Create an organization from the Account tab.
-3. Generate an API key from the Organization tab — you'll need this for the CLI.
-4. Point the CLI to your server:
+#### Tinybird project
 
 ```txt
-export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
-export OTAKIT_SECRET_KEY=otakit_sk_...
+cd tinybird
+tb login
+tb deploy
 ```
 
 ### Manifest signing
-
-Manifest signing is enabled by default. For a normal self-hosted setup, generate an ES256 key pair and set these on the server:
 
 ```txt
 otakit generate-signing-key
 ```
 
-This outputs the server environment variables (`MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`) and the plugin config (`manifestKeys`). Add them to your server and Capacitor config respectively.
+Add the private key to the dashboard env (`MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`). Add the public key to the Capacitor plugin config ( `manifestKeys`).
+
+### Configure the plugin
 
 ```txt
 plugins: {
   OtaKit: {
-    cdnUrl: "https://cdn.your-domain.com",
-    ingestUrl: "https://ingest.your-domain.com/v1",
-    serverUrl: "https://your-domain.com/api/v1",
     appId: "YOUR_OTAKIT_APP_ID",
+    cdnUrl: "https://cdn.your-domain.com",
+    ingestUrl: "https://ingest.your-domain.com/v1",  // omit if not using Tinybird
     manifestKeys: [
       { kid: "key-2026-01", key: "MFkwEwYH..." }
     ]
@@ -1383,33 +1370,11 @@ plugins: {
 }
 ```
 
-Keep the private signing key on the server only. The plugin should only receive the public verification keys in `manifestKeys`.
-
-If you intentionally want unsigned manifests on a custom server, set `MANIFEST_SIGNING_DISABLED=true`. When signing is not disabled, missing signing env vars are treated as a server misconfiguration and manifest requests will fail.
-
-### Connecting CLI and plugin
-
-Point the CLI to your server with `OTAKIT_SERVER_URL`:
+### Configure the CLI
 
 ```txt
 export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
 export OTAKIT_SECRET_KEY=otakit_sk_...
 ```
 
-In your Capacitor plugin config, set `cdnUrl` to your manifest CDN and `ingestUrl` to your event ingest service. Keep `serverUrl` pointed at your control-plane API base if you want the CLI to keep reading it from Capacitor config. The native runtime uses `cdnUrl` and `ingestUrl` instead:
-
-```txt
-plugins: {
-  OtaKit: {
-    cdnUrl: "https://cdn.your-domain.com",
-    ingestUrl: "https://ingest.your-domain.com/v1",
-    serverUrl: "https://your-domain.com/api/v1",
-    appId: "YOUR_OTAKIT_APP_ID",
-    // manifestKeys: [{ kid, key }]
-  }
-}
-```
-
-The hosted defaults are `https://cdn.otakit.app` for manifests/bundles and `https://ingest.otakit.app/v1` for event ingest. Follow the standard setup guide for the rest of the plugin and CLI configuration.
-
-The web app also needs a Tinybird read token for dashboard analytics and billing queries. Keep that separate from the Tinybird append token used by your ingest Worker.
+Or set `serverUrl` in the Capacitor plugin config so the CLI can read it automatically.

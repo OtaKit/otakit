@@ -6,6 +6,22 @@ type TinybirdResponseEnvelope<T> = {
 
 const DEFAULT_TINYBIRD_API_HOST = 'https://api.tinybird.co';
 
+let _warnedMissing = false;
+
+export function isTinybirdConfigured(): boolean {
+  return !!process.env.TINYBIRD_READ_TOKEN?.trim();
+}
+
+export function warnTinybirdNotConfigured(context: string): void {
+  if (!_warnedMissing) {
+    console.warn(
+      '[OtaKit] Tinybird is not configured — device event analytics are disabled. Set TINYBIRD_READ_TOKEN to enable.',
+    );
+    _warnedMissing = true;
+  }
+  console.warn(`[OtaKit] Skipping ${context}: Tinybird not configured`);
+}
+
 export class TinybirdConfigError extends Error {
   constructor(message: string) {
     super(message);

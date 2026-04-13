@@ -5,7 +5,7 @@ import type {
   Platform,
 } from '@/app/components/dashboard-types';
 
-import { TinybirdConfigError, queryTinybirdPipe } from './client';
+import { TinybirdConfigError, isTinybirdConfigured, warnTinybirdNotConfigured, queryTinybirdPipe } from './client';
 
 type RecentEventRow = {
   event_id?: string | null;
@@ -156,6 +156,10 @@ function logDashboardAnalyticsFailure(context: string, metadata: Record<string, 
 }
 
 export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<DeviceEvent[]> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('listRecentAppEvents');
+    return [];
+  }
   try {
     const rows = await queryTinybirdPipe<RecentEventRow>(APP_EVENTS_RECENT_PIPE, {
       app_id: args.appId,
@@ -185,6 +189,10 @@ export async function getReleaseEventCounts(
   appId: string,
   releaseIds: string[],
 ): Promise<Map<string, EventCountSummary>> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getReleaseEventCounts');
+    return new Map();
+  }
   const uniqueReleaseIds = Array.from(new Set(releaseIds.map((value) => value.trim()).filter(Boolean)));
   if (uniqueReleaseIds.length === 0) {
     return new Map();
@@ -225,6 +233,10 @@ export async function getBundleEventCounts(
   appId: string,
   bundleVersions: string[],
 ): Promise<Map<string, EventCountSummary>> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getBundleEventCounts');
+    return new Map();
+  }
   const uniqueBundleVersions = Array.from(
     new Set(bundleVersions.map((value) => value.trim()).filter(Boolean)),
   );
@@ -266,6 +278,10 @@ export async function getBundleEventCounts(
 export async function getCurrentPeriodDownloadCountFromEvents(
   args: CurrentPeriodDownloadCountArgs,
 ): Promise<number> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getCurrentPeriodDownloadCountFromEvents');
+    return 0;
+  }
   const uniqueAppIds = Array.from(new Set(args.appIds.map((value) => value.trim()).filter(Boolean)));
   if (uniqueAppIds.length === 0) {
     return 0;

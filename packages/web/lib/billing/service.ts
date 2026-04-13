@@ -1,6 +1,6 @@
 import { PlanKey } from '@prisma/client';
 import { db } from '@/lib/db';
-import { getPolar } from '@/lib/polar';
+import { getPolar, isPolarConfigured, warnPolarNotConfigured } from '@/lib/polar';
 import {
   productIdToPlanKey,
   getExternalCustomerId,
@@ -72,6 +72,11 @@ export async function getBillingState(organizationId: string): Promise<BillingSt
 // ── Refresh via Customer State API ──────────────────────────────────
 
 export async function refreshBillingState(organizationId: string): Promise<BillingState> {
+  if (!isPolarConfigured()) {
+    warnPolarNotConfigured('billing state refresh');
+    return getBillingState(organizationId);
+  }
+
   const externalId = getExternalCustomerId(organizationId);
 
   let planKey: PlanKey = 'starter';

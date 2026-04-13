@@ -1,6 +1,11 @@
 import { Polar } from '@polar-sh/sdk';
 
 let _polar: Polar | null = null;
+let _warnedMissing = false;
+
+export function isPolarConfigured(): boolean {
+  return !!process.env.POLAR_ACCESS_TOKEN?.trim();
+}
 
 export function getPolar(): Polar {
   if (!_polar) {
@@ -14,4 +19,14 @@ export function getPolar(): Polar {
     });
   }
   return _polar;
+}
+
+export function warnPolarNotConfigured(context: string): void {
+  if (!_warnedMissing) {
+    console.warn(
+      '[OtaKit] Polar is not configured — billing features are disabled. Set POLAR_ACCESS_TOKEN to enable.',
+    );
+    _warnedMissing = true;
+  }
+  console.warn(`[OtaKit] Skipping ${context}: Polar not configured`);
 }

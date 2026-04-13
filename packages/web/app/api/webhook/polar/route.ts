@@ -1,7 +1,9 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { Webhooks } from '@polar-sh/nextjs';
 
 import { refreshBillingState } from '@/lib/billing/service';
 import { parseOrganizationIdFromExternalId } from '@/lib/billing/config';
+import { isPolarConfigured } from '@/lib/polar';
 
 export const runtime = 'nodejs';
 
@@ -64,7 +66,16 @@ async function handleBillingWebhook(payload: PolarWebhookPayload): Promise<void>
   );
 }
 
-export const POST = Webhooks({
-  webhookSecret: process.env.POLAR_WEBHOOK_SECRET!,
-  onPayload: (payload) => handleBillingWebhook(payload),
-});
+const polarWebhookHandler = isPolarConfigured() && process.env.POLAR_WEBHOOK_SECRET
+  ? Webhooks({
+      webhookSecret: process.env.POLAR_WEBHOOK_SECRET,
+      onPayload: (payload) => handleBillingWebhook(payload),
+    })
+  : null;
+
+export async function POST(request: NextRequest) {
+  if (!polarWebhookHandler) {
+    return NextResponse.json({ error: 'Billing webhooks are not configured on this instance' }, { status: 404 });
+  }
+  return polarWebhookHandler(request);
+}

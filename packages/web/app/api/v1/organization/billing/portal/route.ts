@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSessionContext } from '@/lib/session';
-import { getPolar } from '@/lib/polar';
+import { getPolar, isPolarConfigured } from '@/lib/polar';
 import { getExternalCustomerId } from '@/lib/billing/config';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
+  if (!isPolarConfigured()) {
+    return NextResponse.json({ error: 'Billing is not configured on this instance' }, { status: 404 });
+  }
+
   const ctx = await getSessionContext();
   if (!ctx) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
