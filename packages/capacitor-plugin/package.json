@@ -1,6 +1,6 @@
 {
   "name": "@otakit/capacitor-updater",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Capacitor plugin for OTA updates",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
