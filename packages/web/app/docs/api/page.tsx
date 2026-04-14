@@ -29,7 +29,7 @@ export default function ApiReferencePage() {
         </div>
       </div>
       <Pre>{`# CLI / server operations
-Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN`}</Pre>
+Authorization: Bearer otakit_sk_...`}</Pre>
 
       <Separator className="my-10" />
 

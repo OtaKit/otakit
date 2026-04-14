@@ -125,19 +125,9 @@ export async function resolveAuthToken(serverUrl: string): Promise<ResolvedAuthT
     return { token, source: 'env_token' };
   }
 
-  const accessToken = toNonEmptyString(process.env.OTAKIT_ACCESS_TOKEN);
-  if (accessToken) {
-    return { token: accessToken, source: 'env_access_token' };
-  }
-
   const storedToken = await readStoredAccessToken(serverUrl);
   if (storedToken) {
     return { token: storedToken, source: 'file' };
-  }
-
-  const secretKey = toNonEmptyString(process.env.OTAKIT_SECRET_KEY);
-  if (secretKey) {
-    return { token: secretKey, source: 'env_secret_key' };
   }
 
   return null;
@@ -156,9 +146,8 @@ export async function requireServerAndAuth(options?: {
     throw new Error(
       [
         'Missing authentication:',
-        '- Run `otakit login` (stores token in local config)',
+        '- Run `otakit login`',
         '- or set OTAKIT_TOKEN env var',
-        '- OTAKIT_ACCESS_TOKEN / OTAKIT_SECRET_KEY are also supported',
       ].join('\n'),
     );
   }
@@ -331,9 +320,8 @@ export async function requireConfig(options?: ConfigResolveOptions): Promise<Cli
     throw new Error(
       [
         'Missing authentication:',
-        '- Run `otakit login` (stores token in local config)',
+        '- Run `otakit login`',
         '- or set OTAKIT_TOKEN env var',
-        '- OTAKIT_ACCESS_TOKEN / OTAKIT_SECRET_KEY are also supported',
       ].join('\n'),
     );
   }

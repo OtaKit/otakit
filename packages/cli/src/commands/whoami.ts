@@ -36,7 +36,6 @@ export const whoamiCommand = new Command('whoami')
           [
             'Not authenticated.',
             'Run `otakit login`, or set OTAKIT_TOKEN.',
-            'OTAKIT_ACCESS_TOKEN / OTAKIT_SECRET_KEY are also supported.',
           ].join('\n'),
         );
       }

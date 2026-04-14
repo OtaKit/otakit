@@ -23,12 +23,6 @@ function formatAuthSource(source: string | null): string {
   if (!source) {
     return 'none';
   }
-  if (source === 'env_access_token') {
-    return 'env (OTAKIT_ACCESS_TOKEN)';
-  }
-  if (source === 'env_secret_key') {
-    return 'env (OTAKIT_SECRET_KEY)';
-  }
   if (source === 'env_token') {
     return 'env (OTAKIT_TOKEN)';
   }

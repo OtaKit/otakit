@@ -29,7 +29,7 @@ const NAV = [
     links: [
       { label: 'Next.js Guide', href: '/docs/guide' },
       { label: 'React Guide', href: '/docs/react' },
-      { label: 'Channels', href: '/docs/channels' },
+      { label: 'Channels & Runtime Version', href: '/docs/channels' },
       { label: 'CI automation', href: '/docs/ci' },
       { label: 'Self-hosting', href: '/docs/self-host' },
     ],

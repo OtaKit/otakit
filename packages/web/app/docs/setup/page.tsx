@@ -50,12 +50,14 @@ const config: CapacitorConfig = {
   plugins: {
     OtaKit: {
       appId: "YOUR_OTAKIT_APP_ID",
-      appReadyTimeout: 10000,
     }
   }
 };
 
 export default config;`}</Pre>
+
+      <P>Note: Your app must be published to the app store at least once with the OtaKit     
+      plugin configured before it can receive updates!</P>
 
       <Separator className="my-10" />
 

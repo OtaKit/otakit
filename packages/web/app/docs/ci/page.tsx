@@ -19,7 +19,7 @@ export default function CiAutomationPage() {
 
       <H2>1. Add repository secrets and variables</H2>
       <P>GitHub repository secrets:</P>
-      <Pre>{`OTAKIT_SECRET_KEY=otakit_sk_...
+      <Pre>{`OTAKIT_TOKEN=otakit_sk_...
 OTAKIT_APP_ID=app_...`}</Pre>
       <P>Optional GitHub repository variables:</P>
       <Pre>{`OTAKIT_RELEASE_CHANNEL=base
@@ -48,7 +48,7 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     env:
-      OTAKIT_SECRET_KEY: \${{ secrets.OTAKIT_SECRET_KEY }}
+      OTAKIT_TOKEN: \${{ secrets.OTAKIT_TOKEN }}
       OTAKIT_APP_ID: \${{ secrets.OTAKIT_APP_ID }}
       OTAKIT_RELEASE_CHANNEL: \${{ vars.OTAKIT_RELEASE_CHANNEL }}
 

@@ -12,7 +12,6 @@ type RegisterOptions = {
   slug: string;
   server?: string;
   token?: string;
-  secretKey?: string;
 };
 
 type RegisterResponse = {
@@ -25,8 +24,7 @@ export const registerCommand = new Command('register')
   .description('Create a new app')
   .requiredOption('--slug <slug>', 'App slug (for example: com.example.app)')
   .option('--server <url>', 'Server URL')
-  .option('--token <token>', 'Access token or organization secret key')
-  .option('--secret-key <key>', 'Organization secret API key')
+  .option('--token <token>', 'Auth token (or set OTAKIT_TOKEN env var)')
   .action(async (options: RegisterOptions) => {
     await runCommand(async () => {
       const slug = options.slug.trim();
@@ -37,7 +35,7 @@ export const registerCommand = new Command('register')
       }
 
       const serverUrl = resolveServerUrl(process.cwd(), options.server);
-      const explicitToken = options.token?.trim() || options.secretKey?.trim();
+      const explicitToken = options.token?.trim();
       const resolvedAuth = explicitToken
         ? { token: explicitToken }
         : await resolveAuthToken(serverUrl);
@@ -47,9 +45,8 @@ export const registerCommand = new Command('register')
           [
             'Authentication required. Use one of:',
             '  1. otakit login',
-            '  2. --token <token> (or --secret-key <key>)',
+            '  2. --token <token>',
             '  3. OTAKIT_TOKEN env var',
-            '  4. OTAKIT_ACCESS_TOKEN / OTAKIT_SECRET_KEY env vars',
           ].join('\n'),
         );
       }

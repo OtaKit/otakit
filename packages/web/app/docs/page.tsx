@@ -15,8 +15,8 @@ export default function DocsOverviewPage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Introduction</h1>
       <p className="mt-3 text-muted-foreground">
-        OtaKit ships over-the-air updates for Capacitor apps. You build your web app, upload a
-        bundle, and the plugin delivers that bundle to devices without waiting for a store review.
+        OtaKit ships over-the-air updates for Capacitor apps. You build your web app, upload its
+        bundle, and the plugin delivers that bundle to devices without store submissions or reviews.
       </p>
 
       <div className="mt-6">
@@ -105,7 +105,7 @@ export default function DocsOverviewPage() {
         />
         <NavCard
           href="/docs/channels"
-          title="Channels"
+          title="Channels & Runtimes"
           description="Rollout tracks vs runtime compatibility lanes, and when to use each."
         />
         <NavCard

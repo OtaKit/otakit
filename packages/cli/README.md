@@ -71,9 +71,7 @@ Main rules:
 Auth precedence:
 
 1. `OTAKIT_TOKEN`
-2. `OTAKIT_ACCESS_TOKEN`
-3. stored token from `otakit login`
-4. `OTAKIT_SECRET_KEY`
+2. stored token from `otakit login`
 
 Version precedence:
 
@@ -113,7 +111,7 @@ devices see on manifest checks.
 ## CI
 
 ```bash
-export OTAKIT_SECRET_KEY=otakit_sk_...
+export OTAKIT_TOKEN=otakit_sk_...
 export OTAKIT_APP_ID=app_xxxxxxxx
 export OTAKIT_BUILD_DIR=out
 

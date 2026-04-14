@@ -1,53 +1,42 @@
 # OtaKit
 
-Fully open-source, self-hostable OTA update framework for Capacitor apps.
-
-This repo has four main pieces:
-
-- `packages/capacitor-plugin`: the runtime that lives inside the mobile app
-- `packages/cli`: the publishing CLI used locally and in CI
-- `packages/web`: the managed control plane, dashboard, auth, billing, and docs app
-- `packages/ingest`: the Cloudflare Worker event ingest service
+Fully open-source, self-hostable over-the-air update framework for Capacitor apps. Release updates directly to your Capacitor app without app store reviews.
 
 Try it for free: [OtaKit.app](https://www.otakit.app/)
 
-## Core concepts
-
-- `App`
-  the OTA identity configured in `plugins.OtaKit.appId`
-- `Bundle`
-  one uploaded web build zip with a version, hash, and size
-- `Release`
-  an append-only promotion of a bundle to the unnamed channel or a named channel
-- `Channel`
-  a release track such as the unnamed default path or `staging`
-- `Runtime version`
-  an optional native compatibility lane configured in `plugins.OtaKit.runtimeVersion`
-
-## Managed flow
-
-1. Create an organization and app in the dashboard.
-2. Put the returned `appId` into `plugins.OtaKit` in `capacitor.config.*`.
-3. Build the app web assets.
-4. Run `otakit upload --release`.
-5. Let the server publish the signed lane manifest to object storage behind the CDN, then let the plugin fetch it, compare it against the current or staged bundle locally, download only if it is newer, activate it, and wait for `notifyAppReady()`.
-
 ## How it works
 
-1. The CLI uploads a build and creates a `Bundle`.
-2. Releasing that bundle creates a `Release` for one channel.
-3. The server materializes the current lane manifest into object storage and serves it through the CDN.
-4. The plugin fetches that manifest, verifies it, compares it against the current and staged bundle locally, and only downloads when it actually points at something newer.
-5. The app confirms the new bundle with `notifyAppReady()`, or the plugin rolls back automatically.
+1. Create an app in the dashboard.
+2. Copy its `appId` into `capacitor.config.*`.
+3. Build the app's web assets.
+4. Run `otakit upload --release` to upload the bundle and publish a release.
+5. The server writes the bundle and manifest to object storage behind the CDN.
+6. On the next app launch or resume, the plugin fetches the manifest from the CDN, compares it to the current bundle, and downloads the new version if available.
+7. If `notifyAppReady()` is called within the timeout, the new bundle is confirmed. Otherwise the plugin rolls back to the previous bundle automatically.
 
-## Workspace layout
+## Core concepts
+
+- **App** — the Capacitor app identified by its `appId`
+- **Bundle** — one uploaded web build zip with a version, hash, and size
+- **Release** — a promotion of a bundle to a channel, which publishes a manifest to the CDN
+- **Channel** — an optional release track such as `staging`
+- **Runtime version** — an optional native compatibility lane configured in the plugin
+
+## Packages
+
+- `packages/capacitor-plugin` — the runtime that lives inside the mobile app
+- `packages/cli` — CLI for uploading bundles and creating releases
+- `packages/web` — the dashboard, API, auth, billing, and docs
+- `packages/ingest` — Cloudflare Worker for device event ingestion
+- `tinybird/` — Tinybird datasources and pipes for event analytics
 
 ```text
 packages/
   capacitor-plugin/   Capacitor OTA plugin
   cli/                Upload + release CLI
   ingest/             Cloudflare Worker event ingest service
-  web/                Next.js control plane, dashboard, API, auth, billing, docs
+  web/                Next.js dashboard, API, auth, billing, docs
+tinybird/             Tinybird event analytics project
 examples/
   demo-app/           Demo Capacitor app wired to the local plugin
 ```
@@ -59,56 +48,18 @@ examples/
 - [`packages/ingest/README.md`](packages/ingest/README.md)
 - [`packages/web/README.md`](packages/web/README.md)
 - [`tinybird/README.md`](tinybird/README.md)
-- [`examples/demo-app/README.md`](examples/demo-app/README.md)
-
-## Product shape
-
-- Hosted SaaS is the default path.
-- The dashboard is the normal app-creation flow.
-- `capacitor.config.*` is the source of truth for plugin and CLI project config.
-- There is no `otakit init`.
-- The default release path is the unnamed channel.
-- Channels are rollout tracks. `runtimeVersion` is the optional compatibility lane.
-- Optionally set `runtimeVersion` when a new store build must stop receiving older OTA bundles.
-- Self-hosting exists, but it is the advanced path.
-- Uploads and releases are separate: you can upload first and promote later.
 
 ## Local development
 
-Requirements:
-
-- Node.js 20.9+
-- pnpm 9+
-
-Install and run:
+- Node.js 20.9+, pnpm 9+
+- The dashboard (`packages/web`) requires Postgres and R2-compatible storage. See [`packages/web/.env.example`](packages/web/.env.example).
+- Device event analytics optionally require the ingest service (`packages/ingest`) and a Tinybird workspace.
+- See each package README for setup details.
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev        # starts the dashboard in dev mode
 ```
-
-Useful commands:
-
-```bash
-pnpm --filter @otakit/web dev
-pnpm --filter @otakit/cli build
-pnpm --filter @otakit/capacitor-updater build
-```
-
-The public docs live in `packages/web/app/docs` and are served by the web app.
-
-## Verification
-
-The repo-level verification command is:
-
-```bash
-npm run build
-```
-
-For native demo app verification:
-
-- iOS: `pnpm exec cap sync && xcodebuild ...`
-- Android: `pnpm exec cap sync && ./gradlew assembleDebug`
 
 ## License
 

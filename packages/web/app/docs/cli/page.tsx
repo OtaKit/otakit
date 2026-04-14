@@ -17,26 +17,6 @@ export default function CliReferencePage() {
 
       <Separator className="my-10" />
 
-      <H2>Quick start</H2>
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>
-          Create an app in the OtaKit dashboard and copy its <Code>appId</Code>.
-        </li>
-        <li>
-          Add that <Code>appId</Code> to <Code>plugins.OtaKit</Code> in{' '}
-          <Code>capacitor.config.ts</Code>.
-        </li>
-        <li>
-          Log in: <Code>otakit login</Code>
-        </li>
-        <li>Build your web app.</li>
-        <li>
-          Ship it: <Code>otakit upload --release</Code>
-        </li>
-      </ol>
-
-      <Separator className="my-10" />
-
       <H2>Project config</H2>
       <P>
         Project commands read from <Code>capacitor.config.*</Code>.
@@ -72,7 +52,7 @@ export default config;`}</Pre>
 otakit login
 
 # CI / non-interactive
-export OTAKIT_SECRET_KEY=otakit_sk_...
+export OTAKIT_TOKEN=otakit_sk_...
 export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
 
       <Separator className="my-10" />
@@ -108,8 +88,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
           <Code>plugins.OtaKit.serverUrl</Code> {'->'} hosted default
         </li>
         <li>
-          Auth token: <Code>OTAKIT_TOKEN</Code> {'->'} <Code>OTAKIT_ACCESS_TOKEN</Code> {'->'}{' '}
-          stored login token {'->'} <Code>OTAKIT_SECRET_KEY</Code>
+          Auth token: <Code>OTAKIT_TOKEN</Code> {'->'} stored login token
         </li>
         <li>
           Upload path: CLI path argument {'->'} <Code>OTAKIT_BUILD_DIR</Code> {'->'}{' '}

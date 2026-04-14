@@ -21,7 +21,7 @@ Route: /docs
 
 How OtaKit works and where to start.
 
-OtaKit ships over-the-air updates for Capacitor apps. You build your web app, upload a bundle, and the plugin delivers that bundle to devices without waiting for a store review.
+OtaKit ships over-the-air updates for Capacitor apps. You build your web app, upload its bundle, and the plugin delivers that bundle to devices without store submissions or reviews.
 
 Start with setup
 
@@ -44,7 +44,7 @@ Start with setup
 ### Getting started
 - **Setup**: Connect the default hosted OtaKit flow to your Capacitor app.
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
-- **Channels**: Rollout tracks vs runtime compatibility lanes, and when to use each.
+- **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, events, and configuration.
@@ -85,13 +85,14 @@ const config: CapacitorConfig = {
   plugins: {
     OtaKit: {
       appId: "YOUR_OTAKIT_APP_ID",
-      appReadyTimeout: 10000,
     }
   }
 };
 
 export default config;
 ```
+
+Note: Your app must be published to the app store at least once with the OtaKit plugin configured before it can receive updates!
 
 ### 4. Add notifyAppReady()
 
@@ -148,13 +149,6 @@ Upload bundles, release them, inspect history, and manage apps with the OtaKit C
 
 Use the CLI to upload bundles, release them, inspect bundle and release history, and manage apps.
 
-### Quick start
-1. Create an app in the OtaKit dashboard and copy its `appId`.
-2. Add that `appId` to `plugins.OtaKit` in `capacitor.config.ts`.
-3. Log in: `otakit login`
-4. Build your web app.
-5. Ship it: `otakit upload --release`
-
 ### Project config
 
 Project commands read from `capacitor.config.*`.
@@ -190,7 +184,7 @@ For local development, sign in once and the CLI stores a token locally. For CI o
 otakit login
 
 # CI / non-interactive
-export OTAKIT_SECRET_KEY=otakit_sk_...
+export OTAKIT_TOKEN=otakit_sk_...
 export OTAKIT_APP_ID=app_xxxxxxxx
 ```
 
@@ -205,7 +199,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx
 The CLI resolves values in a deterministic order.
 - App ID: `--app-id` -> `OTAKIT_APP_ID` -> `capacitor.config.*`
 - Server URL: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> hosted default
-- Auth token: `OTAKIT_TOKEN` -> `OTAKIT_ACCESS_TOKEN` -> stored login token -> `OTAKIT_SECRET_KEY`
+- Auth token: `OTAKIT_TOKEN` -> stored login token
 - Upload path: CLI path argument -> `OTAKIT_BUILD_DIR` -> `capacitor.config.* webDir`
 - Release channel: `--release` -> base channel, `--release <channel>` -> named channel
 - Runtime version: `plugins.OtaKit.runtimeVersion` -> bundle metadata during upload
@@ -393,9 +387,7 @@ Route: /docs/plugin
 
 Capacitor plugin setup, default automatic updates, and manual advanced flows.
 
-Import from `@otakit/capacitor-updater`. For normal app code, the normal hosted flow usually only needs `notifyAppReady()`. The other public methods exist for advanced manual update flows where your app decides when to check, download, and apply an update.
-
-At runtime, OtaKit serves signed static manifests from object storage through the CDN. The plugin fetches the manifest for its current lane, verifies it, compares it against the current and staged bundle locally, and only downloads when the manifest actually points at something newer.
+Import from `@otakit/capacitor-updater`. The normal flow usually only needs `notifyAppReady()`. The other public methods exist for advanced manual update flows where your app decides when to check, download, and apply an update.
 
 ```txt
 import { OtaKit } from "@otakit/capacitor-updater";
@@ -411,6 +403,7 @@ plugins: {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
+    // channel: "production",
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
   }
@@ -620,7 +613,7 @@ Bearer token CLI / server operations — upload, release, list. Use your organiz
 
 ```txt
 # CLI / server operations
-Authorization: Bearer otakit_sk_...   # or OTAKIT_ACCESS_TOKEN
+Authorization: Bearer otakit_sk_...
 ```
 
 ### Apps
@@ -911,6 +904,8 @@ npx cap sync
 npx cap run ios       # or: npx cap run android
 ```
 
+Note: The app must be published to the App Store (and/or Play Store) at least once with the OtaKit plugin configured before end users&rsquo; devices can receive live updates.
+
 ### 10. Ship your first OTA update
 
 Make a visible change to your app, rebuild, and release:
@@ -1049,6 +1044,8 @@ npx cap sync
 npx cap run ios       # or: npx cap run android
 ```
 
+Note: The app must be published to the App Store (and/or Play Store) at least once with the OtaKit plugin configured before end users&rsquo; devices can receive live updates.
+
 ### 9. Ship your first OTA update
 
 Make a visible change, rebuild, and release:
@@ -1071,17 +1068,15 @@ Route: /docs/channels
 
 Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
 
-Channels and runtime version solve different problems. Channels decide who gets a rollout. Runtime version decides which native app shell can safely run it.
+Channels control which audience receives a release — for example, a `staging` channel for testers and the default channel for everyone else. Runtime version creates a compatibility boundary between native builds and OTA bundles — each side only sees releases meant for its version.
 
-### Channel vs runtime version
-- `channel` answers: who should get this rollout?
-- `runtimeVersion` answers: which native app shell can safely run this bundle?
-- Use channels for rollout tracks such as `beta`, `staging`, or `production`.
-- Use `runtimeVersion` when a new store build creates a compatibility boundary and must stop receiving older OTA bundles.
+Both are optional and build-time settings. Start with neither and add them when needed.
 
-### Base channel first
+### Channels
 
-If you omit `channel` from the plugin config, the app uses the base channel.
+#### Base channel
+
+If you omit `channel` from the plugin config, the app uses the unnamed base channel. This is the default and the simplest setup.
 
 ```txt
 plugins: {
@@ -1091,15 +1086,15 @@ plugins: {
 }
 ```
 
-Release to the base channel with:
+Release to the base channel:
 
 ```txt
 otakit upload --release
 ```
 
-### Named channels
+#### Named channels
 
-Add a channel only when you want a separate rollout track, such as internal QA, beta, or a staged production rollout.
+Add a channel when you want a separate rollout track — for example, internal QA, beta, or a staged production rollout.
 
 ```txt
 plugins: {
@@ -1110,34 +1105,15 @@ plugins: {
 }
 ```
 
-Release to that channel with:
+Release to that channel:
 
 ```txt
 otakit upload --release staging
 ```
 
-### Runtime version for store updates
+#### Promoting across channels
 
-`runtimeVersion` is optional, but it is the right tool when a new App Store or Play Store submission creates a new OTA baseline.
-
-```txt
-plugins: {
-  OtaKit: {
-    appId: "YOUR_OTAKIT_APP_ID",
-    channel: "production",
-    runtimeVersion: "2026.04"
-  }
-}
-```
-
-With that config:
-- the plugin only asks for releases on `(channel, runtimeVersion)`
-- bundle uploads inherit `runtimeVersion` automatically from the same plugin config
-- releases stay simple: publish the bundle, and it naturally stays inside its own runtime lane
-
-### Promote an existing bundle
-
-You can upload once, test it, then promote the same bundle to another channel later.
+You can upload once, test on one channel, then promote the same bundle to another.
 
 ```txt
 # Upload and release to staging
@@ -1147,16 +1123,36 @@ otakit upload --release staging
 otakit release <bundle-id> --channel production
 ```
 
-### Common setups
-- One stream only: no channel in the app config, release everything to the base channel.
-- Beta and production: use channels like `beta` and `production` to split rollout audiences.
-- New store baseline: keep the same channels, but bump `runtimeVersion` so the new native build starts a fresh OTA lane.
+### Runtime Version
 
-### Rules
-- Channel is a build-time setting in `capacitor.config.ts`.
-- Omit `channel` to use the base channel.
-- `runtimeVersion` is also a build-time setting. Leave it unset unless you need a compatibility boundary.
-- The same named channel can have parallel current releases across different runtime versions.
+#### When to use it
+
+`runtimeVersion` is optional. Use it when a new store submission changes what the native shell expects from the web bundle. Devices on the old native build won't receive bundles meant for the new one, and devices on the new build won't receive old bundles.
+
+Without `runtimeVersion`, all OTA releases share one lane per channel. With it, each runtime version gets its own lane.
+
+#### How to use it
+
+Set `runtimeVersion` in the plugin config before building.
+
+```txt
+plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    runtimeVersion: "2026.04"
+  }
+}
+```
+
+With that config:
+- The plugin only requests releases matching that runtime version.
+- CLI uploads inherit the same runtime version from the config.
+- Old cached OTA bundles from a different runtime are ignored on startup.
+
+### Common setups
+- Single stream — no channel, no runtime version. Everything goes to the base channel.
+- Beta + production — use channels like `beta` and `production` to split audiences.
+- New store baseline: — bump `runtimeVersion` so the new native build starts a fresh OTA lane.
 
 ## CI Automation
 
@@ -1171,7 +1167,7 @@ This workflow builds your app, uploads a bundle, and can either leave it uploade
 GitHub repository secrets:
 
 ```txt
-OTAKIT_SECRET_KEY=otakit_sk_...
+OTAKIT_TOKEN=otakit_sk_...
 OTAKIT_APP_ID=app_...
 ```
 
@@ -1204,7 +1200,7 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     env:
-      OTAKIT_SECRET_KEY: ${{ secrets.OTAKIT_SECRET_KEY }}
+      OTAKIT_TOKEN: ${{ secrets.OTAKIT_TOKEN }}
       OTAKIT_APP_ID: ${{ secrets.OTAKIT_APP_ID }}
       OTAKIT_RELEASE_CHANNEL: ${{ vars.OTAKIT_RELEASE_CHANNEL }}
 
@@ -1374,7 +1370,7 @@ plugins: {
 
 ```txt
 export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
-export OTAKIT_SECRET_KEY=otakit_sk_...
+export OTAKIT_TOKEN=otakit_sk_...
 ```
 
 Or set `serverUrl` in the Capacitor plugin config so the CLI can read it automatically.

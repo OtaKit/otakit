@@ -11,16 +11,9 @@ export default function PluginReferencePage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Plugin API</h1>
       <P>
-        Import from <Code>@otakit/capacitor-updater</Code>. For normal app code, the normal hosted
-        flow usually only needs <Code>notifyAppReady()</Code>. The other public methods exist for
-        advanced manual update flows where your app decides when to check, download, and apply an
-        update.
-      </P>
-      <P>
-        At runtime, OtaKit serves signed static manifests from object storage through the CDN. The
-        plugin fetches the manifest for its current lane, verifies it, compares it against the
-        current and staged bundle locally, and only downloads when the manifest actually points at
-        something newer.
+        Import from <Code>@otakit/capacitor-updater</Code>. The normal flow usually only 
+        needs <Code>notifyAppReady()</Code>. The other public methods exist for advanced manual 
+        update flows where your app decides when to check, download, and apply an update.
       </P>
       <Pre>{`import { OtaKit } from "@otakit/capacitor-updater";`}</Pre>
 
@@ -33,6 +26,7 @@ export default function PluginReferencePage() {
     appId: "YOUR_OTAKIT_APP_ID",
     appReadyTimeout: 10000,
     // Optional:
+    // channel: "production",
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
   }

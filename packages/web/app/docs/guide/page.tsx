@@ -127,6 +127,11 @@ export default function RootLayout({ children }) {
           <Pre>{`npm run build
 npx cap sync
 npx cap run ios       # or: npx cap run android`}</Pre>
+
+        <P>
+          Note: The app must be published to the App Store (and/or Play Store) at least once with the OtaKit plugin configured 
+          before end users&rsquo; devices can receive live updates.
+        </P>
         </Step>
 
         <Step number="10" title="Ship your first OTA update">

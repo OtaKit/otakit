@@ -155,7 +155,7 @@ tb deploy`}</Pre>
 
       <H2>Configure the CLI</H2>
       <Pre>{`export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
-export OTAKIT_SECRET_KEY=otakit_sk_...`}</Pre>
+export OTAKIT_TOKEN=otakit_sk_...`}</Pre>
       <P>
         Or set <Code>serverUrl</Code> in the Capacitor plugin config so the CLI can read it
         automatically.

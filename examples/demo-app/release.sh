@@ -10,7 +10,7 @@ set -euo pipefail
 #   ./release.sh --channel production   # target a specific channel
 #
 # Required env vars:
-#   OTAKIT_ACCESS_TOKEN   — OtaKit API key
+#   OTAKIT_TOKEN   — OtaKit API key
 #
 # The app ID and build dir are read from capacitor.config.ts automatically.
 
