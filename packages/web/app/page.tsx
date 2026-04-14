@@ -298,7 +298,7 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Lock}
                 title="Secure by default"
-                description="SHA-256 bundle verification, signed manifests, HTTPS enforcement, and scoped API keys per organization."
+                description="SHA-256 bundle verification, signed manifests, HTTPS enforcement, and delivieries via Cloudflare CDN."
               />
               <FeatureCard
                 icon={Users}
@@ -314,6 +314,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
 
       <Separator className="" />
 
@@ -460,6 +461,9 @@ export default function LandingPage() {
             </Link>
             <Link href="/contact" className="transition-colors hover:text-foreground">
               Contact
+            </Link>
+            <Link href="/docs/security" className="transition-colors hover:text-foreground">
+              Security
             </Link>
             <Link href="/terms" className="transition-colors hover:text-foreground">
               Terms

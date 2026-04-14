@@ -75,6 +75,17 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
       <Separator className="my-4" />
       <div className="px-5">
         <Link
+          href="/docs/security"
+          onClick={onClick}
+          className={`mb-1 block rounded-md px-2 py-1.5 text-sm transition-colors ${
+            pathname === '/docs/security'
+              ? 'bg-muted font-medium text-foreground'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          Security
+        </Link>
+        <Link
           href="/contact"
           onClick={onClick}
           className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

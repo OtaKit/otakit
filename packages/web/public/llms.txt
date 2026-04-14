@@ -13,6 +13,7 @@ Generated from the public docs pages in `packages/web/app/docs`.
 - React Guide: /docs/react
 - Channels: /docs/channels
 - CI Automation: /docs/ci
+- Security: /docs/security
 - Self-hosting: /docs/self-host
 
 ## Overview
@@ -1247,6 +1248,60 @@ OTAKIT_SERVER_URL: ${{ secrets.OTAKIT_SERVER_URL }}
 - Use branch protection so OTA uploads only run from trusted branches.
 
 Related docs: CLI reference and channels .
+
+## Security
+
+Route: /docs/security
+
+How OtaKit secures your OTA update delivery pipeline.
+
+OtaKit is designed so that a compromised CDN or network cannot push malicious code to your users. Every layer — from upload to delivery to activation — has a verification step.
+
+### Manifest signing
+
+Every manifest is signed with ES256 (ECDSA P-256) when a release is published. The plugin verifies the signature before trusting the manifest. A tampered manifest — whether modified in transit, at the CDN edge, or in storage — is rejected.
+
+The signing key stays on your server. The plugin only holds the public verification key. Self-hosters generate their own key pair with `otakit generate-signing-key`.
+
+### Bundle verification
+
+Every bundle download is verified against the SHA-256 hash in the signed manifest. If the hash does not match — due to corruption, tampering, or a partial download — the bundle is discarded and the update is not applied.
+
+### Automatic rollback
+
+After a new bundle is activated, the app must call `notifyAppReady()` within a configurable timeout (default 10 seconds). If the call does not arrive — because the new bundle crashes, hangs, or breaks — the plugin automatically rolls back to the last known-good bundle.
+
+This means a bad OTA release self-heals on the device without user intervention.
+
+### Infrastructure
+
+On the managed OtaKit service, manifests and bundles are served from Cloudflare's global CDN with 300+ edge locations. Download availability inherits Cloudflare's infrastructure SLA. Bundles are stored in Cloudflare R2 with encryption at rest.
+
+The dashboard and control plane run on isolated infrastructure. Device traffic (manifest fetches, bundle downloads) never touches the dashboard — it goes directly to the CDN.
+
+### Data collection
+
+OtaKit collects only device events (download, applied, rollback, error) for analytics and billing. Events include an app ID, platform, bundle version, and a random event ID. No persistent device identifiers, IP addresses, or personally identifiable information is stored.
+
+Self-hosters control the full data pipeline. The ingest service and analytics are optional and can be omitted entirely.
+
+### Open source
+
+The entire OtaKit codebase — plugin, CLI, dashboard, and ingest service — is open source under the MIT license. The signing and verification logic can be audited directly on GitHub .
+
+Self-hosting gives you full control over infrastructure, keys, and data. No vendor lock-in.
+
+### HTTPS enforcement
+
+The plugin enforces HTTPS for all manifest and bundle requests. HTTP is only allowed for `localhost` during development when explicitly opted in via `allowInsecureUrls`.
+
+### API authentication
+
+All dashboard and CLI operations require authentication via scoped API keys or session tokens. API keys are hashed before storage — the raw key is shown once at creation and never stored. Organization-level role-based access controls restrict who can upload bundles, create releases, or manage team members.
+
+### Reporting a vulnerability
+
+If you discover a security issue, please email security@otakit.app . We aim to respond within 7 business days.
 
 ## Self-hosting
 

@@ -17,6 +17,7 @@ const DOCS = [
   { label: 'React Guide', route: '/docs/react', file: 'packages/web/app/docs/react/page.tsx' },
   { label: 'Channels', route: '/docs/channels', file: 'packages/web/app/docs/channels/page.tsx' },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/web/app/docs/ci/page.tsx' },
+  { label: 'Security', route: '/docs/security', file: 'packages/web/app/docs/security/page.tsx' },
   {
     label: 'Self-hosting',
     route: '/docs/self-host',

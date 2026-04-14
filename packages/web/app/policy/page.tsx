@@ -90,14 +90,33 @@ export default function PrivacyPolicyPage() {
             </P>
           </Section>
 
-          <Section title="7. International Data Transfers">
+          <Section title="7. Sub-processors">
+            <P>
+              The managed OtaKit service uses the following third-party providers to operate:
+            </P>
+            <List
+              items={[
+                'Cloudflare — CDN, edge delivery, R2 object storage, Workers compute.',
+                'Neon — PostgreSQL database hosting.',
+                'Tinybird — Device event analytics and aggregation.',
+                'Resend — Transactional email delivery.',
+                'Polar — Subscription billing and payment processing.',
+                'Vercel — Dashboard and API hosting.',
+              ]}
+            />
+            <P>
+              Self-hosted deployments choose their own infrastructure providers.
+            </P>
+          </Section>
+
+          <Section title="8. International Data Transfers">
             <P>
               Personal data may be processed in countries other than your own. We use appropriate
               safeguards where required by law for cross-border transfers.
             </P>
           </Section>
 
-          <Section title="8. Data Retention">
+          <Section title="9. Data Retention">
             <P>
               We retain personal data for as long as needed to provide the Services, comply with
               legal obligations, resolve disputes, enforce agreements, and maintain security and
@@ -109,7 +128,7 @@ export default function PrivacyPolicyPage() {
             </P>
           </Section>
 
-          <Section title="9. Security">
+          <Section title="10. Security">
             <P>
               We use technical and organizational safeguards designed to protect personal data,
               including access controls, encrypted transport, and logging/monitoring practices. No
@@ -118,7 +137,7 @@ export default function PrivacyPolicyPage() {
             </P>
           </Section>
 
-          <Section title="10. Your Rights and Choices">
+          <Section title="11. Your Rights and Choices">
             <P>
               Depending on your location, you may have rights to access, correct, delete, restrict,
               object, or port your personal data, and to withdraw consent where processing relies on
@@ -137,7 +156,7 @@ export default function PrivacyPolicyPage() {
             </P>
           </Section>
 
-          <Section title="11. Cookies and Similar Technologies">
+          <Section title="12. Cookies and Similar Technologies">
             <P>
               We may use cookies or similar technologies necessary for authentication, security,
               session management, and service functionality. Where required by law, we request
@@ -145,21 +164,21 @@ export default function PrivacyPolicyPage() {
             </P>
           </Section>
 
-          <Section title="12. Children's Privacy">
+          <Section title="13. Children's Privacy">
             <P>
               The Services are not directed to children under 13, and we do not knowingly collect
               personal data from children under 13.
             </P>
           </Section>
 
-          <Section title="13. Changes to This Policy">
+          <Section title="14. Changes to This Policy">
             <P>
               We may update this Privacy Policy from time to time. The latest version will be posted
               at <strong>otakit.app/policy</strong> with an updated effective date.
             </P>
           </Section>
 
-          <Section title="14. Related Terms">
+          <Section title="15. Related Terms">
             <P>
               Use of the Services is also governed by our{' '}
               <Link className="underline underline-offset-4" href="/terms">
