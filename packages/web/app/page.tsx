@@ -465,6 +465,14 @@ export default function LandingPage() {
             <Link href="/docs/security" className="transition-colors hover:text-foreground">
               Security
             </Link>
+            <a
+              href="https://otakit.betteruptime.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              Status
+            </a>
             <Link href="/terms" className="transition-colors hover:text-foreground">
               Terms
             </Link>
