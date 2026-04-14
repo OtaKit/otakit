@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 enum BundleStatus {
   BUILTIN("builtin"),

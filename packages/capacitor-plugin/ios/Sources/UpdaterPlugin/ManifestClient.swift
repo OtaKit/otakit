@@ -114,7 +114,7 @@ enum ManifestClient {
     try requireHTTPS(url: dlURL, allowInsecure: allowInsecureUrls)
 
     if manifestKeys.isEmpty {
-      print("[UpdateKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
+      print("[OtaKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
     }
 
     if !manifestKeys.isEmpty {

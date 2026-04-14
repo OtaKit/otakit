@@ -78,7 +78,7 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
     }
 
     let temporaryZip = FileManager.default.temporaryDirectory
-      .appendingPathComponent("updatekit-\(UUID().uuidString).zip")
+      .appendingPathComponent("otakit-\(UUID().uuidString).zip")
 
     do {
       try FileManager.default.moveItem(at: location, to: temporaryZip)

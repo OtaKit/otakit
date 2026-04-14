@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;

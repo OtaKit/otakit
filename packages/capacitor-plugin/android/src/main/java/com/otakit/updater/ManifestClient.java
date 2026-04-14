@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -136,7 +136,7 @@ final class ManifestClient {
 
       if (manifestKeys == null || manifestKeys.isEmpty()) {
         android.util.Log.w(
-          "UpdateKit",
+          "OtaKit",
           "No manifest signing keys configured — signature verification is disabled for this request."
         );
       }
@@ -194,11 +194,15 @@ final class ManifestClient {
     if (!sigObj.has("kid") || !sigObj.has("sig") || !sigObj.has("iat") || !sigObj.has("exp")) {
       return null;
     }
-    return new ManifestSignature(
-      sigObj.getString("kid"),
-      sigObj.getString("sig"),
-      sigObj.getInt("iat"),
-      sigObj.getInt("exp")
-    );
+    try {
+      return new ManifestSignature(
+        sigObj.getString("kid"),
+        sigObj.getString("sig"),
+        sigObj.getInt("iat"),
+        sigObj.getInt("exp")
+      );
+    } catch (org.json.JSONException e) {
+      return null;
+    }
   }
 }

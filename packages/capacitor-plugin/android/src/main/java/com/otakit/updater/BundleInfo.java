@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import com.getcapacitor.JSObject;
 import org.json.JSONException;

@@ -16,7 +16,7 @@
     "dist/",
     "ios/Sources/",
     "ios/Tests/",
-    "UpdatekitUpdater.podspec"
+    "OtaKitUpdater.podspec"
   ],
   "author": "OtaKit",
   "license": "MIT",

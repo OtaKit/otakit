@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import android.content.Context;
 import android.content.SharedPreferences;

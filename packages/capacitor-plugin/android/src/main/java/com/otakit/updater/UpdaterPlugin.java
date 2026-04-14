@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -107,7 +107,7 @@ public class UpdaterPlugin extends Plugin {
         }
         if (manifestKeys.isEmpty()) {
           android.util.Log.e(
-            "UpdateKit",
+            "OtaKit",
             "manifestKeys configured but all entries are invalid. Manifest verification will reject all updates."
           );
           manifestKeys.add(new ManifestVerifier.KeyEntry("_invalid_", new byte[0]));
@@ -115,7 +115,7 @@ public class UpdaterPlugin extends Plugin {
       }
     } catch (Exception e) {
       android.util.Log.e(
-        "UpdateKit",
+        "OtaKit",
         "Failed to parse manifestKeys. Manifest verification will reject all updates.",
         e
       );
@@ -622,7 +622,7 @@ public class UpdaterPlugin extends Plugin {
 
       extractedDirectory = new File(
         getContext().getCacheDir(),
-        "updatekit-extract-" + System.currentTimeMillis()
+        "otakit-extract-" + System.currentTimeMillis()
       );
       if (!extractedDirectory.exists() && !extractedDirectory.mkdirs()) {
         throw new IllegalStateException("Cannot create temporary extraction directory");
@@ -690,7 +690,7 @@ public class UpdaterPlugin extends Plugin {
         throw new IllegalStateException("Download failed with HTTP " + status);
       }
 
-      File destination = File.createTempFile("updatekit-", ".zip", getContext().getCacheDir());
+      File destination = File.createTempFile("otakit-", ".zip", getContext().getCacheDir());
 
       try (
         InputStream input = connection.getInputStream();
@@ -1128,17 +1128,17 @@ public class UpdaterPlugin extends Plugin {
     }
     String normalizedBundleVersion = trimToNull(bundleVersion);
     if (normalizedBundleVersion == null) {
-      android.util.Log.w("UpdateKit", "Skipping device event without bundleVersion");
+      android.util.Log.w("OtaKit", "Skipping device event without bundleVersion");
       return;
     }
     String normalizedReleaseId = trimToNull(releaseId);
     if (normalizedReleaseId == null) {
-      android.util.Log.w("UpdateKit", "Skipping device event without releaseId");
+      android.util.Log.w("OtaKit", "Skipping device event without releaseId");
       return;
     }
     String nativeBuild = trimToNull(store.getNativeBuild());
     if (nativeBuild == null) {
-      android.util.Log.w("UpdateKit", "Skipping device event without nativeBuild");
+      android.util.Log.w("OtaKit", "Skipping device event without nativeBuild");
       return;
     }
     DeviceEventClient.send(

@@ -218,7 +218,7 @@ always live, and `immediate` mode ignores the interval entirely.
 - `src/index.ts`: Capacitor registration and JS wrapper
 - `src/web.ts`: web fallback implementation
 - `ios/Sources/UpdaterPlugin/*`: iOS implementation
-- `android/src/main/java/com/updatekit/updater/*`: Android implementation
+- `android/src/main/java/com/otakit/updater/*`: Android implementation
 
 ## Build locally
 

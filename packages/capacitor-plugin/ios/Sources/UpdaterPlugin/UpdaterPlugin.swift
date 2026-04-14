@@ -85,11 +85,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return (kid: kid, key: keyData)
       }
       if manifestKeys.isEmpty && !rawKeys.isEmpty {
-        print("[UpdateKit] ERROR: manifestKeys configured but all entries are invalid. Manifest verification will reject all updates.")
+        print("[OtaKit] ERROR: manifestKeys configured but all entries are invalid. Manifest verification will reject all updates.")
         manifestKeys = [(kid: "_invalid_", key: Data())]
       }
     } else if rawKeysValue != nil {
-      print("[UpdateKit] ERROR: manifestKeys has wrong format (expected array of {kid, key}). Manifest verification will reject all updates.")
+      print("[OtaKit] ERROR: manifestKeys has wrong format (expected array of {kid, key}). Manifest verification will reject all updates.")
       manifestKeys = [(kid: "_invalid_", key: Data())]
     }
 
@@ -609,7 +609,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     let zipURL = try await downloader.download(from: url)
 
     let extractDirectory = fileManager.temporaryDirectory
-      .appendingPathComponent("updatekit-extract-\(UUID().uuidString)", isDirectory: true)
+      .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)
     defer {
       try? fileManager.removeItem(at: zipURL)
       try? fileManager.removeItem(at: extractDirectory)
@@ -1036,16 +1036,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
     guard let bundleVersion = trimToNil(bundleVersion) else {
-      print("[UpdateKit] Skipping device event without bundleVersion")
+      print("[OtaKit] Skipping device event without bundleVersion")
       return
     }
     guard let releaseId = trimToNil(releaseId) else {
-      print("[UpdateKit] Skipping device event without releaseId")
+      print("[OtaKit] Skipping device event without releaseId")
       return
     }
     let nativeBuild = store.nativeBuild.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !nativeBuild.isEmpty else {
-      print("[UpdateKit] Skipping device event without nativeBuild")
+      print("[OtaKit] Skipping device event without nativeBuild")
       return
     }
     DeviceEventClient.send(

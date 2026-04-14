@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import android.util.Base64;
 import java.security.KeyFactory;

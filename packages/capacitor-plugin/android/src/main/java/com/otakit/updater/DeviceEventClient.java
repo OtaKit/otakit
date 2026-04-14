@@ -1,4 +1,4 @@
-package com.updatekit.updater;
+package com.otakit.updater;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
