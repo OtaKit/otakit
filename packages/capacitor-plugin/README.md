@@ -210,7 +210,6 @@ always live, and `immediate` mode ignores the interval entirely.
 - the builtin, current, fallback, and staged bundles are protected
 - superseded staged bundles are deleted automatically
 - failed trial bundles are deleted during rollback
-- `debug.deleteBundle()` only works for downloaded bundles outside runtime state
 
 ## Source areas
 

@@ -51,7 +51,6 @@ export default function Home() {
 
   const [runtimeState, setRuntimeState] = useState<OtaKitState | null>(null);
   const [latest, setLatest] = useState<LatestVersion | null>(null);
-  const [downloadedBundles, setDownloadedBundles] = useState<BundleInfo[]>([]);
   const [lastFailure, setLastFailure] = useState<BundleInfo | null>(null);
 
   const addLog = useCallback((level: LogLevel, message: string) => {
@@ -84,13 +83,11 @@ export default function Home() {
   );
 
   const refresh = useCallback(async () => {
-    const [state, bundles, failure] = await Promise.all([
+    const [state, failure] = await Promise.all([
       OtaKit.getState(),
-      OtaKit.debug.listBundles(),
-      OtaKit.debug.getLastFailure(),
+      OtaKit.getLastFailure(),
     ]);
     setRuntimeState(state);
-    setDownloadedBundles(bundles.bundles);
     setLastFailure(failure);
   }, []);
 
@@ -183,16 +180,6 @@ export default function Home() {
       return;
     }
     await withAction('update', () => OtaKit.update());
-  };
-
-  const resetToBuiltin = async () => {
-    if (!window.confirm('Reset to the builtin bundle and reload?')) return;
-    await withAction('debug.reset', () => OtaKit.debug.reset());
-  };
-
-  const deleteBundle = async (bundleId: string) => {
-    await withAction('debug.deleteBundle', () => OtaKit.debug.deleteBundle({ bundleId }));
-    await refresh();
   };
 
   return (
@@ -301,15 +288,8 @@ export default function Home() {
             </ul>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2">
               <h2 className="font-semibold text-cyan-200">Diagnostics</h2>
-              <button
-                className="rounded bg-rose-800 px-3 py-1.5 text-xs disabled:opacity-50"
-                onClick={() => void resetToBuiltin()}
-                disabled={isBusy}
-              >
-                Reset to Builtin
-              </button>
             </div>
             <ul className="space-y-1 text-sm">
               <li>Latest version: {latest?.version ?? '-'}</li>
@@ -319,39 +299,6 @@ export default function Home() {
               <li>Last failure: {bundleLabel(lastFailure)}</li>
             </ul>
           </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h2 className="mb-3 font-semibold text-cyan-200">Downloaded Bundles</h2>
-          {downloadedBundles.length === 0 ? (
-            <p className="text-sm text-slate-400">No downloaded bundles yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {downloadedBundles.map((bundle) => (
-                <div
-                  key={bundle.id}
-                  className="flex flex-col gap-2 rounded border border-slate-800 bg-slate-950 p-3 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="text-sm">
-                    <p>
-                      {bundle.version} · {bundle.status} · {shortId(bundle.id)}
-                    </p>
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      channel={bundle.channel ?? 'base'} releaseId=
-                      {shortId(bundle.releaseId)}
-                    </p>
-                  </div>
-                  <button
-                    className="rounded bg-slate-700 px-2 py-1 text-xs disabled:opacity-50"
-                    onClick={() => void deleteBundle(bundle.id)}
-                    disabled={isBusy}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">

@@ -471,12 +471,13 @@ plugins: {
   }
 }
 ```
-- `getState()` -> `OtaKitState`: Inspect the current app-facing updater state: current bundle, staged bundle, and builtin version.
+- `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, and builtin version.
 - `check()` -> `LatestVersion | null`: Check the configured channel for a newer bundle without downloading it. When downloaded=true, that exact update is already staged locally.
 - `download()` -> `BundleInfo | null`: Ensure the latest bundle is staged for later activation. If it is already staged, the staged bundle is returned without re-downloading it.
 - `update()` -> `void`: Recommended one-shot manual helper. Bring the app to the newest available update now. If the newest update is already staged, apply it. Otherwise download it and apply it. Terminal operation.
 - `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation.
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
+- `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 
 The simplest manual pattern is: check for updates, show your own prompt, then call `update()` if the user accepts.
 
@@ -583,6 +584,7 @@ interface BundleInfo {
 
 interface OtaKitState {
   current: BundleInfo;
+  fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
 }

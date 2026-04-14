@@ -194,7 +194,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="getState()"
           returns="OtaKitState"
-          description="Inspect the current app-facing updater state: current bundle, staged bundle, and builtin version."
+          description="Inspect the current updater state: current bundle, fallback bundle, staged bundle, and builtin version."
         />
         <Method
           name="check()"
@@ -220,6 +220,11 @@ await OtaKit.notifyAppReady();`}</Pre>
           name="notifyAppReady()"
           returns="void"
           description="Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy."
+        />
+        <Method
+          name="getLastFailure()"
+          returns="BundleInfo | null"
+          description="Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred."
         />
       </div>
       <P>
@@ -374,6 +379,7 @@ await OtaKit.removeAllListeners();`}</Pre>
 
 interface OtaKitState {
   current: BundleInfo;
+  fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
 }

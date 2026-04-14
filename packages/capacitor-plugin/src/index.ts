@@ -5,7 +5,6 @@ import type {
   OtaKitPlugin,
   BundleInfo,
   LatestVersion,
-  OtaKitDebugState,
   OtaKitState,
 } from './definitions';
 
@@ -28,16 +27,8 @@ function normalizeNullable<T>(value: T): T | null {
   return isEmptyObject(value) ? null : value;
 }
 
-function toPublicState(value: OtaKitDebugState): OtaKitState {
-  return {
-    current: value.current,
-    staged: value.staged,
-    builtinVersion: value.builtinVersion,
-  };
-}
-
 async function getState(): Promise<OtaKitState> {
-  return toPublicState(await NativeOtaKit.debugGetState());
+  return NativeOtaKit.getState();
 }
 
 async function check(): Promise<LatestVersion | null> {
@@ -91,13 +82,8 @@ const OtaKit: OtaKitPlugin = {
   apply,
   update,
   notifyAppReady: () => NativeOtaKit.notifyAppReady(),
-  debug: {
-    reset: () => NativeOtaKit.debugReset(),
-    listBundles: () => NativeOtaKit.debugListBundles(),
-    deleteBundle: (options: { bundleId: string }) => NativeOtaKit.debugDeleteBundle(options),
-    getLastFailure: async (): Promise<BundleInfo | null> =>
-      normalizeNullable(await NativeOtaKit.debugGetLastFailure()),
-  },
+  getLastFailure: async (): Promise<BundleInfo | null> =>
+    normalizeNullable(await NativeOtaKit.getLastFailure()),
   addListener: NativeOtaKit.addListener.bind(NativeOtaKit) as OtaKitPlugin['addListener'],
   removeAllListeners: () => NativeOtaKit.removeAllListeners(),
 };

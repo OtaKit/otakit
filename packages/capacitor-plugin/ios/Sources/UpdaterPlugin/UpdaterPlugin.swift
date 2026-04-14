@@ -19,15 +19,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   public let identifier = "UpdaterPlugin"
   public let jsName = "OtaKit"
   public let pluginMethods: [CAPPluginMethod] = [
+    CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "check", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "apply", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugGetState", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "notifyAppReady", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugReset", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugListBundles", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugDeleteBundle", returnType: CAPPluginReturnPromise),
-    CAPPluginMethod(name: "debugGetLastFailure", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getLastFailure", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -268,7 +265,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
-  @objc func debugGetState(_ call: CAPPluginCall) {
+  @objc func getState(_ call: CAPPluginCall) {
     let current = store.getCurrentBundle()
     let staged: [String: Any]? = {
       guard let stagedId = store.getStagedBundleId() else {
@@ -410,58 +407,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve()
   }
 
-  @objc func debugReset(_ call: CAPPluginCall) {
-    cancelTrialTimeout()
-    store.setCurrentBundleId(nil)
-    store.setStagedBundleId(nil)
-    store.setFallbackBundleId(nil)
-    store.setFailedBundle(nil)
-    applyServerBasePath(nil)
-    call.resolve()
-    reloadWebView()
-  }
-
-  @objc func debugListBundles(_ call: CAPPluginCall) {
-    let bundles = store.listDownloadedBundles().map { $0.toDictionary() }
-    call.resolve(["bundles": bundles])
-  }
-
-  @objc func debugDeleteBundle(_ call: CAPPluginCall) {
-    guard let bundleId = call.getString("bundleId") else {
-      call.reject("Missing bundleId")
-      return
-    }
-    guard store.bundleExists(id: bundleId) else {
-      call.reject("Bundle not found")
-      return
-    }
-
-    let current = store.getCurrentBundle()
-    if current.id == bundleId {
-      call.reject("Cannot delete current bundle")
-      return
-    }
-
-    let fallback = store.getFallbackBundle()
-    if fallback.id == bundleId {
-      call.reject("Cannot delete fallback bundle")
-      return
-    }
-
-    if store.getStagedBundleId() == bundleId {
-      call.reject("Cannot delete staged bundle")
-      return
-    }
-
-    do {
-      try store.deleteBundle(id: bundleId)
-      call.resolve()
-    } catch {
-      call.reject("Failed to delete bundle: \(error.localizedDescription)")
-    }
-  }
-
-  @objc func debugGetLastFailure(_ call: CAPPluginCall) {
+  @objc func getLastFailure(_ call: CAPPluginCall) {
     guard let failed = store.getFailedBundle() else {
       call.resolve()
       return

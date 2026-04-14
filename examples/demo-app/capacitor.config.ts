@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   plugins: {
     OtaKit: {
       appId: 'eb6cc4f5-c898-48a1-b6a4-cf66d24042a5',
-      updateMode: 'next-resume',
+      updateMode: 'immediate',
       appReadyTimeout: 10000,
     },
   },

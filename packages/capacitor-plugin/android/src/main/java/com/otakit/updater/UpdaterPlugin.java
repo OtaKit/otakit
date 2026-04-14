@@ -273,7 +273,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   @PluginMethod
-  public void debugGetState(PluginCall call) {
+  public void getState(PluginCall call) {
     JSObject result = new JSObject();
     result.put("current", store.getCurrentBundle().toJSObject());
     result.put("fallback", store.getFallbackBundle().toJSObject());
@@ -421,65 +421,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   @PluginMethod
-  public void debugReset(PluginCall call) {
-    cancelTrialTimeout();
-    store.setCurrentBundleId(null);
-    store.setStagedBundleId(null);
-    store.setFallbackBundleId(null);
-    store.setFailedBundle(null);
-    applyServerBasePath(null);
-    call.resolve();
-    reloadWebView();
-  }
-
-  @PluginMethod
-  public void debugListBundles(PluginCall call) {
-    JSObject result = new JSObject();
-    JSArray bundles = store.listDownloadedBundles();
-    result.put("bundles", bundles);
-    call.resolve(result);
-  }
-
-  @PluginMethod
-  public void debugDeleteBundle(PluginCall call) {
-    String bundleId = call.getString("bundleId");
-    if (bundleId == null) {
-      call.reject("Missing bundleId");
-      return;
-    }
-    if (!store.bundleExists(bundleId)) {
-      call.reject("Bundle not found");
-      return;
-    }
-
-    BundleInfo current = store.getCurrentBundle();
-    if (bundleId.equals(current.id)) {
-      call.reject("Cannot delete current bundle");
-      return;
-    }
-
-    BundleInfo fallback = store.getFallbackBundle();
-    if (bundleId.equals(fallback.id)) {
-      call.reject("Cannot delete fallback bundle");
-      return;
-    }
-
-    String stagedId = store.getStagedBundleId();
-    if (bundleId.equals(stagedId)) {
-      call.reject("Cannot delete staged bundle");
-      return;
-    }
-
-    try {
-      store.deleteBundle(bundleId);
-      call.resolve();
-    } catch (Exception e) {
-      call.reject("Delete failed: " + e.getMessage());
-    }
-  }
-
-  @PluginMethod
-  public void debugGetLastFailure(PluginCall call) {
+  public void getLastFailure(PluginCall call) {
     BundleInfo failed = store.getFailedBundle();
     if (failed == null) {
       call.resolve((JSObject) null);

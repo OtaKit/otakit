@@ -52,18 +52,11 @@ export interface LatestVersion {
   releaseId: string;
 }
 
-export interface BundleListResult {
-  bundles: BundleInfo[];
-}
-
 export interface OtaKitState {
   current: BundleInfo;
+  fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
-}
-
-export interface OtaKitDebugState extends OtaKitState {
-  fallback: BundleInfo;
 }
 
 export type OtaKitUpdateMode = 'manual' | 'next-launch' | 'next-resume' | 'immediate';
@@ -105,31 +98,6 @@ export interface OtaKitConfig {
   allowInsecureUrls?: boolean;
 }
 
-export interface OtaKitDebugApi {
-  /**
-   * Reset to the builtin bundle and reload the WebView.
-   *
-   * **WARNING: TERMINAL OPERATION**
-   * Code after this call may not execute. The WebView will reload.
-   */
-  reset(): Promise<void>;
-
-  /**
-   * List downloaded OTA bundles stored on the device.
-   */
-  listBundles(): Promise<BundleListResult>;
-
-  /**
-   * Delete a downloaded bundle that is not active or protected by rollback.
-   */
-  deleteBundle(options: { bundleId: string }): Promise<void>;
-
-  /**
-   * Get the most recent failed update information for diagnostics.
-   */
-  getLastFailure(): Promise<BundleInfo | null>;
-}
-
 export type OtaKitEvent =
   | 'downloadStarted'
   | 'downloadComplete'
@@ -141,7 +109,7 @@ export type OtaKitEvent =
 
 export interface OtaKitPlugin {
   /**
-   * Inspect the current updater state needed by normal app code.
+   * Inspect the current updater state.
    */
   getState(): Promise<OtaKitState>;
 
@@ -189,9 +157,10 @@ export interface OtaKitPlugin {
   notifyAppReady(): Promise<void>;
 
   /**
-   * Manual inspection and control methods intended for debugging and support.
+   * Get the most recent failed update information for diagnostics.
+   * Returns null if no failure has occurred.
    */
-  debug: OtaKitDebugApi;
+  getLastFailure(): Promise<BundleInfo | null>;
 
   /**
    * Add listener for update events
@@ -235,15 +204,12 @@ export interface OtaKitPlugin {
 }
 
 export interface OtaKitBridgePlugin {
+  getState(): Promise<OtaKitState>;
   check(): Promise<LatestVersion | null>;
   download(): Promise<BundleInfo | null>;
   apply(): Promise<void>;
   notifyAppReady(): Promise<void>;
-  debugGetState(): Promise<OtaKitDebugState>;
-  debugReset(): Promise<void>;
-  debugListBundles(): Promise<BundleListResult>;
-  debugDeleteBundle(options: { bundleId: string }): Promise<void>;
-  debugGetLastFailure(): Promise<BundleInfo | null>;
+  getLastFailure(): Promise<BundleInfo | null>;
   addListener(
     event: 'downloadStarted',
     callback: (data: { version: string }) => void,
