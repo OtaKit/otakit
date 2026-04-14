@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'out',
   plugins: {
     OtaKit: {
-      appId: 'eb6cc4f5-c898-48a1-b6a4-cf66d24042a5',
+      appId: '3fc984ea-73ba-4a30-b751-c7f93138945b',
       updateMode: 'immediate',
       appReadyTimeout: 10000,
     },

@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
 
+
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
@@ -234,8 +235,8 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Everything in one click
               </h2>
-              <p className="mt-4 max-w-lg text-muted-foreground">
-                A full-featured web dashboard to manage and monitor your releases.
+              <p className="mt-4 max-w-2xl text-muted-foreground">
+                A full-featured web dashboard to manage and monitor your releases in real-time.
               </p>
             </div>
             {/* Dashboard mockup */}
@@ -308,13 +309,12 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Globe}
                 title="Open source"
-                description="Fully open-source core. Self-host on your own infrastructure or use our managed service. No vendor lock-in."
+                description="Fully open-source core. Self-host on your own infrastructure or use our managed service."
               />
             </div>
           </div>
         </div>
       </section>
-
 
       <Separator className="" />
 
@@ -329,8 +329,8 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Simple, value-aligned pricing
               </h2>
-              <p className="mt-4 max-w-lg text-muted-foreground">
-                Pricing is based on real downloads - not seats or end-user tracking.
+              <p className="mt-4 max-w-3xl text-muted-foreground">
+                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth, or storage.
               </p>
             </div>
             <div className="grid gap-px bg-border sm:grid-cols-3">
@@ -339,13 +339,14 @@ export default function LandingPage() {
                 price="$0"
                 period="/mo"
                 description="Free tier for early usage."
-                allowance="1,000 downloads / month*"
+                allowance="1,000 updates / month*"
                 features={[
-                  'Unlimited updates',
+                  'Unlimited releases',
                   'Unlimited apps',
                   'Unlimited users',
                   'Channel-based deploys',
                   'Dashboard + CLI',
+                  'Real-time analytics'
                 ]}
                 cta="Get started free"
               />
@@ -354,7 +355,7 @@ export default function LandingPage() {
                 price="$19"
                 period="/mo"
                 description="For growing apps."
-                allowance="100,000 downloads / month*"
+                allowance="100,000 updates / month*"
                 features={['Everything in Starter', 'Team members & roles', 'Priority support']}
                 cta="Start with Pro"
                 highlighted
@@ -364,7 +365,7 @@ export default function LandingPage() {
                 price="$99"
                 period="/mo"
                 description="For apps at production scale."
-                allowance="1,000,000 downloads / month included*"
+                allowance="1,000,000 updates / month included"
                 features={[
                   'Everything in Pro',
                   'Best value for high-volume apps',
@@ -374,7 +375,7 @@ export default function LandingPage() {
               />
             </div>
             <p className="border-t border-border px-8 py-5 text-center text-sm text-muted-foreground/60">
-              Need more usage? Add an extra 1,000,000 downloads for $99, or{' '}
+              Need more usage? Enable overage pricing ($0.0001 per additional update), or{' '}
               <Link href="/contact" className="underline underline-offset-4 hover:text-foreground">
                 contact us
               </Link>{' '}
@@ -408,7 +409,7 @@ export default function LandingPage() {
           <p className="mt-4 text-lg text-muted-foreground">
             Push over-the-air updates directly to your users without delays.
           </p>
-          <div className="mt-20 flex flex-col items-center gap-4 sm:flex-row">
+          <div className="mt-20 flex flex-col gap-4 sm:flex-row">
             <Link href="/login">
               <Button size="lg" className="group rounded-full px-8">
                 Get started free
@@ -428,57 +429,26 @@ export default function LandingPage() {
       <Separator className="" />
 
       {/* Footer */}
-      <footer className="border-x border-border mx-auto max-w-screen-xl">
-        <div className="mx-auto flex max-w-screen-xl flex-col items-center gap-6 px-6 py-8 sm:flex-row sm:justify-between">
-          <div className="flex min-w-0 max-w-sm items-center gap-2.5 text-center sm:max-w-none sm:text-left">
+      <footer className="border-x border-t border-border mx-auto max-w-screen-xl px-8 py-10">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-2.5">
             <Image src="/logo.svg" alt="OtaKit" width={20} height={20} className="size-5 rounded" />
-            <span className="text-sm leading-relaxed text-muted-foreground">
-              OtaKit for Capacitor apps
-            </span>
+            <span className="text-sm font-medium text-foreground">OtaKit</span>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground sm:justify-end">
-            <Link
-              href="/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
-              Docs
-            </Link>
-            <Link
-              href="https://github.com/OtaKit/otakit"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
-              GitHub
-            </Link>
-            <Link href="#pricing" className="transition-colors hover:text-foreground">
-              Pricing
-            </Link>
-            <Link href="/dashboard" className="transition-colors hover:text-foreground">
-              Dashboard
-            </Link>
-            <Link href="/contact" className="transition-colors hover:text-foreground">
-              Contact
-            </Link>
-            <Link href="/docs/security" className="transition-colors hover:text-foreground">
-              Security
-            </Link>
-            <a
-              href="https://otakit.betteruptime.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
-              Status
-            </a>
-            <Link href="/terms" className="transition-colors hover:text-foreground">
-              Terms
-            </Link>
-            <Link href="/policy" className="transition-colors hover:text-foreground">
-              Privacy
-            </Link>
+          <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm text-muted-foreground">
+            <Link href="/docs" className="transition-colors hover:text-foreground">Docs</Link>
+            <Link href="#pricing" className="transition-colors hover:text-foreground">Pricing</Link>
+            <a href="https://github.com/OtaKit/otakit" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">GitHub</a>
+            <Link href="/contact" className="transition-colors hover:text-foreground">Contact</Link>
+            <Link href="/docs/security" className="transition-colors hover:text-foreground">Security</Link>
+            <a href="https://otakit.hyperping.app/" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">Status</a>
+          </div>
+        </div>
+        <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>© {new Date().getFullYear()} OtaKit. Open source under MIT.</span>
+          <div className="flex gap-6">
+            <Link href="/terms" className="transition-colors hover:text-foreground">Terms</Link>
+            <Link href="/policy" className="transition-colors hover:text-foreground">Privacy</Link>
           </div>
         </div>
       </footer>

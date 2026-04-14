@@ -1,6 +1,3 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
-
 -- CreateEnum
 CREATE TYPE "Platform" AS ENUM ('ios', 'android');
 
@@ -153,7 +150,7 @@ CREATE TABLE "Bundle" (
     "sha256" TEXT NOT NULL,
     "storageKey" TEXT NOT NULL,
     "size" INTEGER NOT NULL,
-    "minNativeBuild" INTEGER,
+    "runtimeVersion" TEXT,
     "metadata" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -165,9 +162,12 @@ CREATE TABLE "Release" (
     "id" TEXT NOT NULL,
     "appId" TEXT NOT NULL,
     "bundleId" TEXT NOT NULL,
+    "previousBundleId" TEXT,
     "channel" TEXT,
     "promotedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "promotedBy" TEXT,
+    "revertedAt" TIMESTAMP(3),
+    "revertedBy" TEXT,
 
     CONSTRAINT "Release_pkey" PRIMARY KEY ("id")
 );
@@ -180,7 +180,7 @@ CREATE TABLE "UploadSession" (
     "expectedSha256" TEXT NOT NULL,
     "expectedSize" INTEGER NOT NULL,
     "actualSize" INTEGER,
-    "minNativeBuild" INTEGER,
+    "runtimeVersion" TEXT,
     "metadata" JSONB,
     "storageKey" TEXT NOT NULL,
     "status" "UploadSessionStatus" NOT NULL DEFAULT 'initiated',
@@ -190,22 +190,6 @@ CREATE TABLE "UploadSession" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "UploadSession_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "DeviceEvent" (
-    "id" TEXT NOT NULL,
-    "appId" TEXT NOT NULL,
-    "platform" "Platform" NOT NULL,
-    "action" TEXT NOT NULL,
-    "bundleVersion" TEXT,
-    "channel" TEXT,
-    "releaseId" TEXT,
-    "nativeBuild" TEXT,
-    "errorMessage" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "DeviceEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -259,21 +243,6 @@ CREATE INDEX "UploadSession_expiresAt_status_idx" ON "UploadSession"("expiresAt"
 -- CreateIndex
 CREATE INDEX "UploadSession_bundleId_idx" ON "UploadSession"("bundleId");
 
--- CreateIndex
-CREATE INDEX "DeviceEvent_appId_action_createdAt_idx" ON "DeviceEvent"("appId", "action", "createdAt" DESC);
-
--- CreateIndex
-CREATE INDEX "DeviceEvent_appId_channel_createdAt_idx" ON "DeviceEvent"("appId", "channel", "createdAt" DESC);
-
--- CreateIndex
-CREATE INDEX "DeviceEvent_appId_releaseId_createdAt_idx" ON "DeviceEvent"("appId", "releaseId", "createdAt" DESC);
-
--- CreateIndex
-CREATE INDEX "DeviceEvent_appId_bundleVersion_createdAt_idx" ON "DeviceEvent"("appId", "bundleVersion", "createdAt" DESC);
-
--- CreateIndex
-CREATE INDEX "DeviceEvent_createdAt_idx" ON "DeviceEvent"("createdAt" DESC);
-
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_activeOrganizationId_fkey" FOREIGN KEY ("activeOrganizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -306,6 +275,9 @@ ALTER TABLE "Release" ADD CONSTRAINT "Release_appId_fkey" FOREIGN KEY ("appId") 
 
 -- AddForeignKey
 ALTER TABLE "Release" ADD CONSTRAINT "Release_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "Bundle"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Release" ADD CONSTRAINT "Release_previousBundleId_fkey" FOREIGN KEY ("previousBundleId") REFERENCES "Bundle"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UploadSession" ADD CONSTRAINT "UploadSession_appId_fkey" FOREIGN KEY ("appId") REFERENCES "App"("id") ON DELETE CASCADE ON UPDATE CASCADE;
