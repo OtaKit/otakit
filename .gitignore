@@ -57,8 +57,8 @@ examples/*/android/.gradle/
 examples/*/android/app/build/
 
 # Prisma
-packages/web/prisma/*.db
-packages/web/prisma/*.db-journal
+packages/console/prisma/*.db
+packages/console/prisma/*.db-journal
 
 # Documentation source files (keep only the compiled docs)
 *.md.bak

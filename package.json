@@ -8,7 +8,9 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @otakit/web dev",
+    "dev": "pnpm --filter @otakit/console dev",
+    "dev:site": "pnpm --filter @otakit/site dev",
+    "dev:console": "pnpm --filter @otakit/console dev",
     "dev:ingest": "pnpm --filter @otakit/ingest dev",
     "dev:cli": "pnpm --filter @otakit/cli dev",
     "docs:llms": "node scripts/generate-llms-txt.mjs",
@@ -23,9 +25,9 @@
     "ship": "git add -A && git commit -m 'ship' && git push",
     "demo:release": "bash examples/demo-app/release.sh",
     "demo:release:remote": "bash examples/demo-app/release.sh --remote",
-    "db:generate": "pnpm --filter @otakit/web db:generate",
-    "db:migrate": "pnpm --filter @otakit/web db:migrate",
-    "db:push": "pnpm --filter @otakit/web db:push"
+    "db:generate": "pnpm --filter @otakit/console db:generate",
+    "db:migrate": "pnpm --filter @otakit/console db:migrate",
+    "db:push": "pnpm --filter @otakit/console db:push"
   },
   "devDependencies": {
     "prettier": "^3.8.1",

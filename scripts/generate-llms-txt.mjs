@@ -8,24 +8,24 @@ import * as ts from 'typescript';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const DOCS = [
-  { label: 'Overview', route: '/docs', file: 'packages/web/app/docs/page.tsx' },
-  { label: 'Setup', route: '/docs/setup', file: 'packages/web/app/docs/setup/page.tsx' },
-  { label: 'CLI Reference', route: '/docs/cli', file: 'packages/web/app/docs/cli/page.tsx' },
-  { label: 'Plugin API', route: '/docs/plugin', file: 'packages/web/app/docs/plugin/page.tsx' },
-  { label: 'REST API', route: '/docs/api', file: 'packages/web/app/docs/api/page.tsx' },
-  { label: 'Next.js Guide', route: '/docs/guide', file: 'packages/web/app/docs/guide/page.tsx' },
-  { label: 'React Guide', route: '/docs/react', file: 'packages/web/app/docs/react/page.tsx' },
-  { label: 'Channels', route: '/docs/channels', file: 'packages/web/app/docs/channels/page.tsx' },
-  { label: 'CI Automation', route: '/docs/ci', file: 'packages/web/app/docs/ci/page.tsx' },
-  { label: 'Security', route: '/docs/security', file: 'packages/web/app/docs/security/page.tsx' },
+  { label: 'Overview', route: '/docs', file: 'packages/site/app/docs/page.tsx' },
+  { label: 'Setup', route: '/docs/setup', file: 'packages/site/app/docs/setup/page.tsx' },
+  { label: 'CLI Reference', route: '/docs/cli', file: 'packages/site/app/docs/cli/page.tsx' },
+  { label: 'Plugin API', route: '/docs/plugin', file: 'packages/site/app/docs/plugin/page.tsx' },
+  { label: 'REST API', route: '/docs/api', file: 'packages/site/app/docs/api/page.tsx' },
+  { label: 'Next.js Guide', route: '/docs/guide', file: 'packages/site/app/docs/guide/page.tsx' },
+  { label: 'React Guide', route: '/docs/react', file: 'packages/site/app/docs/react/page.tsx' },
+  { label: 'Channels', route: '/docs/channels', file: 'packages/site/app/docs/channels/page.tsx' },
+  { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
+  { label: 'Security', route: '/docs/security', file: 'packages/site/app/docs/security/page.tsx' },
   {
     label: 'Self-hosting',
     route: '/docs/self-host',
-    file: 'packages/web/app/docs/self-host/page.tsx',
+    file: 'packages/site/app/docs/self-host/page.tsx',
   },
 ];
 
-const OUTPUTS = [path.join(ROOT, 'llms.txt'), path.join(ROOT, 'packages/web/public/llms.txt')];
+const OUTPUTS = [path.join(ROOT, 'llms.txt'), path.join(ROOT, 'packages/site/public/llms.txt')];
 
 const ENTITY_MAP = new Map([
   ['&apos;', "'"],
@@ -87,7 +87,7 @@ function buildDocument(sections) {
   const lines = [
     '# OtaKit Docs',
     '',
-    'Generated from the public docs pages in `packages/web/app/docs`.',
+    'Generated from the public docs pages in `packages/site/app/docs`.',
     '',
     '## Pages',
     '',

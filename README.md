@@ -26,7 +26,8 @@ Try it for free: [OtaKit.app](https://www.otakit.app/)
 
 - `packages/capacitor-plugin` — the runtime that lives inside the mobile app
 - `packages/cli` — CLI for uploading bundles and creating releases
-- `packages/web` — the dashboard, API, auth, billing, and docs
+- `packages/site` — public site, docs, contact, legal pages
+- `packages/console` — dashboard, API, auth, billing, and Prisma schema
 - `packages/ingest` — Cloudflare Worker for device event ingestion
 - `tinybird/` — Tinybird datasources and pipes for event analytics
 
@@ -35,7 +36,8 @@ packages/
   capacitor-plugin/   Capacitor OTA plugin
   cli/                Upload + release CLI
   ingest/             Cloudflare Worker event ingest service
-  web/                Next.js dashboard, API, auth, billing, docs
+  site/               Next.js public site + docs
+  console/            Next.js dashboard + API + auth + billing
 tinybird/             Tinybird event analytics project
 examples/
   demo-app/           Demo Capacitor app wired to the local plugin
@@ -46,19 +48,20 @@ examples/
 - [`packages/capacitor-plugin/README.md`](packages/capacitor-plugin/README.md)
 - [`packages/cli/README.md`](packages/cli/README.md)
 - [`packages/ingest/README.md`](packages/ingest/README.md)
-- [`packages/web/README.md`](packages/web/README.md)
+- [`packages/site/README.md`](packages/site/README.md)
+- [`packages/console/README.md`](packages/console/README.md)
 - [`tinybird/README.md`](tinybird/README.md)
 
 ## Local development
 
 - Node.js 20.9+, pnpm 9+
-- The dashboard (`packages/web`) requires Postgres and R2-compatible storage. See [`packages/web/.env.example`](packages/web/.env.example).
+- The console app (`packages/console`) requires Postgres and R2-compatible storage. See [`packages/console/.env.example`](packages/console/.env.example).
 - Device event analytics optionally require the ingest service (`packages/ingest`) and a Tinybird workspace.
 - See each package README for setup details.
 
 ```bash
 pnpm install
-pnpm dev        # starts the dashboard in dev mode
+pnpm dev        # starts the console app in dev mode
 ```
 
 ## License
