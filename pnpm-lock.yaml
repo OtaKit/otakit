@@ -187,9 +187,6 @@ importers:
       '@upstash/redis':
         specifier: ^1.36.2
         version: 1.36.2
-      '@vercel/analytics':
-        specifier: ^1.5.0
-        version: 1.6.1(next@16.1.6(@babel/core@7.29.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

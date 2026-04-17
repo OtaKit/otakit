@@ -23,7 +23,6 @@
     "@prisma/client": "^6.19.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.2",
-    "@vercel/analytics": "^1.5.0",
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.4.18",
     "class-variance-authority": "^0.7.1",
