@@ -29,6 +29,8 @@ export default function PluginReferencePage() {
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
     // immediateUpdateOnRuntimeChange: true,
+    // autoSplashscreen: true,
+    // autoSplashscreenTimeout: 8000,
   }
 }`}</Pre>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
@@ -66,6 +68,16 @@ export default function PluginReferencePage() {
           field="appReadyTimeout"
           type="number"
           description="Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000."
+        />
+        <ConfigRow
+          field="autoSplashscreen"
+          type="boolean"
+          description="Optional cold-start launch splash handoff for inline update launches. Requires @capacitor/splash-screen, SplashScreen.launchAutoHide = false, and a reliable notifyAppReady() call."
+        />
+        <ConfigRow
+          field="autoSplashscreenTimeout"
+          type="number"
+          description="Milliseconds to keep the launch splash visible while OtaKit decides whether to apply an inline cold-start update. Optional, defaults to 10000."
         />
         <ConfigRow
           field="cdnUrl"
@@ -116,6 +128,44 @@ export default function PluginReferencePage() {
         <Code>immediateUpdateOnRuntimeChange</Code>. That override is launch-only: it bypasses{' '}
         <Code>checkInterval</Code>, performs a live check for the current runtime lane, and then
         returns to the normal update mode after the lane is resolved.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Launch Splash Handoff</H2>
+      <P>
+        If you want to mask the old-bundle flash during cold-start inline updates, enable{' '}
+        <Code>autoSplashscreen</Code>. OtaKit then owns the existing Capacitor launch splash only
+        for cold-start inline update launches.
+      </P>
+      <Pre>{`plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    updateMode: "immediate",
+    autoSplashscreen: true,
+    autoSplashscreenTimeout: 8000,
+  }
+}`}</Pre>
+      <P>Hard prerequisites:</P>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          Install <Code>@capacitor/splash-screen</Code>.
+        </li>
+        <li>
+          Set <Code>SplashScreen.launchAutoHide</Code> to <Code>false</Code>.
+        </li>
+        <li>
+          Call <Code>notifyAppReady()</Code> reliably after startup.
+        </li>
+      </ul>
+      <P>
+        Scope is intentionally narrow in v1: cold start only. Resume activations keep their normal
+        behavior, and manual update flows do not use this feature.
+      </P>
+      <P>
+        If <Code>autoSplashscreenTimeout</Code> fires, OtaKit hides the splash and does not apply
+        inline later on that same cold start. If the download finishes after that, the bundle stays
+        staged for the next normal activation path.
       </P>
 
       <Separator className="my-10" />

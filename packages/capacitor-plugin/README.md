@@ -52,6 +52,8 @@ plugins: {
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
     // immediateUpdateOnRuntimeChange: true,
+    // autoSplashscreen: true,
+    // autoSplashscreenTimeout: 8000,
     // updateMode: "manual",
     // updateMode: "immediate",
   }
@@ -96,6 +98,42 @@ install or a new `runtimeVersion` as a one-time startup override in automatic
 That gives new installs and new native shells a faster catch-up path without
 changing normal resume behavior.
 
+## Optional launch splash handoff
+
+If you use cold-start inline updates, OtaKit can also manage the Capacitor
+launch splash so users do not see an old-bundle frame before the reload.
+
+```ts
+plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    updateMode: "immediate",
+    autoSplashscreen: true,
+    autoSplashscreenTimeout: 8000,
+  }
+}
+```
+
+Hard prerequisites:
+
+1. install `@capacitor/splash-screen`
+2. set `SplashScreen.launchAutoHide: false`
+3. keep calling `notifyAppReady()` reliably
+
+Important scope and behavior:
+
+- v1 is cold-start only
+- it manages `updateMode: "immediate"` launches and cold-start
+  `immediateUpdateOnRuntimeChange` overrides
+- resume behavior is unchanged
+- if `autoSplashscreenTimeout` fires, OtaKit hides the splash and does not
+  apply inline later on that same launch
+- if a bundle already finished staging by then, it stays staged for the next
+  activation path
+
+This feature is intentionally optional. If you do not need cold-start masking,
+leave `autoSplashscreen` off.
+
 ## Trust model
 
 The plugin does not just download from a URL and trust the result.
@@ -134,8 +172,12 @@ resume**.
 ### Development mode
 
 - `immediate`
-  checks, downloads, and activates in one shot as soon as possible on cold start and resume (the user may briefly see the previous version before a reload).
+  checks, downloads, and activates in one shot as soon as possible on cold start and resume.
   primarily for development and testing — not recommended for production.
+
+If you also enable `autoSplashscreen`, the cold-start side of `immediate` can
+hold the launch splash across the reload instead of briefly showing the old
+bundle first.
 
 ## Runtime model
 

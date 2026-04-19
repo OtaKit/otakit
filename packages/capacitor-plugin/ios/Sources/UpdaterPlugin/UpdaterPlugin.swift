@@ -11,6 +11,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     case immediate
   }
 
+  private enum LaunchSplashState {
+    case inactive
+    case holdingForLaunchDecision
+    case timedOut
+    case waitingForAppReady
+  }
+
   private enum Trigger {
     case launch
     case resume
@@ -41,8 +48,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var channel: String?
   private var runtimeVersion: String?
   private var immediateUpdateOnRuntimeChange = false
+  private var autoSplashscreen = false
+  private var autoSplashscreenTimeoutMs = 10_000
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
+  private var launchSplashTimeoutWorkItem: DispatchWorkItem?
+  private var launchSplashState: LaunchSplashState = .inactive
+  private let launchSplashStateLock = NSLock()
   private var checkIntervalMs: Int = 600_000
   private let isCheckInProgress = NSLock()
   private var checkInProgress = false
@@ -72,9 +84,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     let updateModeRaw = getConfig().getString("updateMode", UpdateMode.nextLaunch.rawValue)
     updateMode = resolveUpdateMode(configured: updateModeRaw)
     immediateUpdateOnRuntimeChange = getConfig().getBoolean("immediateUpdateOnRuntimeChange", false)
+    autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false)
     downloader = Downloader(allowInsecureUrls: allowInsecureUrls)
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
+    autoSplashscreenTimeoutMs = max(
+      1000,
+      getConfig().getInt("autoSplashscreenTimeout", 10_000)
+    )
     checkIntervalMs = max(600_000, getConfig().getInt("checkInterval", 600_000))
+    logAutoSplashscreenConfigurationWarnings()
 
     let rawKeysValue = getConfig().getArray("manifestKeys")
     if let rawKeys = rawKeysValue as? [[String: String]] {
@@ -122,10 +140,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       scheduleTrialTimeout(for: current.id)
     }
 
+    let manageLaunchSplash = shouldManageLaunchSplash(
+      forceImmediateRuntimeChangeLaunch: forceImmediateRuntimeChangeLaunch
+    )
+    if manageLaunchSplash {
+      beginManagedLaunchSplash()
+    } else if autoSplashscreen {
+      hideLaunchSplashIfNeeded(reason: "cold start", allowDeferredRetry: true)
+    }
+
     if isAutomaticUpdateMode() {
       runAutomaticUpdate(
         trigger: .launch,
-        forceImmediateLaunch: forceImmediateRuntimeChangeLaunch
+        forceImmediateLaunch: forceImmediateRuntimeChangeLaunch,
+        manageLaunchSplash: manageLaunchSplash
       )
     }
 
@@ -147,10 +175,18 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func handleAppWillEnterForeground() {
-    runAutomaticUpdate(trigger: .resume, forceImmediateLaunch: false)
+    runAutomaticUpdate(
+      trigger: .resume,
+      forceImmediateLaunch: false,
+      manageLaunchSplash: false
+    )
   }
 
-  private func runAutomaticUpdate(trigger: Trigger, forceImmediateLaunch: Bool) {
+  private func runAutomaticUpdate(
+    trigger: Trigger,
+    forceImmediateLaunch: Bool,
+    manageLaunchSplash: Bool
+  ) {
     // Resume-only guards
     if trigger == .resume {
       if updateMode == .manual { return }
@@ -184,7 +220,23 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         defer { releaseCheckInProgress() }
         do {
           let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          if result != nil {
+          if manageLaunchSplash {
+            if result != nil {
+              recordCheckTimestamp()
+              if beginManagedLaunchReload() {
+                activateStagedBundleForReload()
+                reloadWebView()
+              }
+            } else {
+              if forceImmediateLaunch {
+                resolveCurrentRuntimeKey()
+              }
+              recordCheckTimestamp()
+              if finishManagedLaunchDecision() {
+                hideLaunchSplashIfNeeded(reason: "launch decision", allowDeferredRetry: false)
+              }
+            }
+          } else if result != nil {
             if forceImmediateLaunch {
               recordCheckTimestamp()
             }
@@ -195,6 +247,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
             recordCheckTimestamp()
           }
         } catch {
+          if manageLaunchSplash, finishManagedLaunchDecision() {
+            hideLaunchSplashIfNeeded(reason: "launch error", allowDeferredRetry: false)
+          }
           if forceImmediateLaunch {
             print("[OtaKit] runtime-change startup update failed: \(error.localizedDescription)")
           } else {
@@ -422,6 +477,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   @objc func notifyAppReady(_ call: CAPPluginCall) {
     let current = store.getCurrentBundle()
+    let shouldHideLaunchSplash = shouldHideLaunchSplashOnAppReady()
+
+    if shouldHideLaunchSplash {
+      hideLaunchSplashIfNeeded(reason: "notifyAppReady", allowDeferredRetry: false)
+    }
+
     guard !current.isBuiltin else {
       call.resolve()
       return
@@ -752,6 +813,191 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private func cancelTrialTimeout() {
     trialTimeoutWorkItem?.cancel()
     trialTimeoutWorkItem = nil
+  }
+
+  private func shouldManageLaunchSplash(forceImmediateRuntimeChangeLaunch: Bool) -> Bool {
+    guard autoSplashscreen else {
+      return false
+    }
+    return updateMode == .immediate || forceImmediateRuntimeChangeLaunch
+  }
+
+  private func beginManagedLaunchSplash() {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    cancelLaunchSplashTimeoutLocked()
+    launchSplashState = .holdingForLaunchDecision
+
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else {
+        return
+      }
+      if self.markManagedLaunchTimedOut() {
+        self.hideLaunchSplashIfNeeded(reason: "launch timeout", allowDeferredRetry: false)
+      }
+    }
+    launchSplashTimeoutWorkItem = workItem
+
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(autoSplashscreenTimeoutMs),
+      execute: workItem
+    )
+  }
+
+  private func cancelLaunchSplashTimeoutLocked() {
+    launchSplashTimeoutWorkItem?.cancel()
+    launchSplashTimeoutWorkItem = nil
+  }
+
+  private func markManagedLaunchTimedOut() -> Bool {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    guard launchSplashState == .holdingForLaunchDecision else {
+      return false
+    }
+
+    launchSplashState = .timedOut
+    launchSplashTimeoutWorkItem = nil
+    return true
+  }
+
+  private func beginManagedLaunchReload() -> Bool {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    switch launchSplashState {
+    case .holdingForLaunchDecision:
+      cancelLaunchSplashTimeoutLocked()
+      launchSplashState = .waitingForAppReady
+      return true
+    case .timedOut:
+      launchSplashState = .inactive
+      return false
+    case .inactive, .waitingForAppReady:
+      return false
+    }
+  }
+
+  private func finishManagedLaunchDecision() -> Bool {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    switch launchSplashState {
+    case .holdingForLaunchDecision:
+      cancelLaunchSplashTimeoutLocked()
+      launchSplashState = .inactive
+      return true
+    case .timedOut:
+      launchSplashState = .inactive
+      return false
+    case .inactive, .waitingForAppReady:
+      return false
+    }
+  }
+
+  private func shouldHideLaunchSplashOnAppReady() -> Bool {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    switch launchSplashState {
+    case .holdingForLaunchDecision:
+      return false
+    case .waitingForAppReady:
+      cancelLaunchSplashTimeoutLocked()
+      launchSplashState = .inactive
+      return true
+    case .timedOut:
+      launchSplashState = .inactive
+      return true
+    case .inactive:
+      return true
+    }
+  }
+
+  private func disableLaunchSplashManagement() {
+    launchSplashStateLock.lock()
+    defer { launchSplashStateLock.unlock() }
+
+    cancelLaunchSplashTimeoutLocked()
+    launchSplashState = .inactive
+  }
+
+  private func hideLaunchSplashIfNeeded(reason: String, allowDeferredRetry: Bool) {
+    guard autoSplashscreen else {
+      return
+    }
+
+    let work: () -> Void = { [weak self] in
+      self?.hideLaunchSplashOnMain(reason: reason, allowDeferredRetry: allowDeferredRetry)
+    }
+
+    if Thread.isMainThread {
+      work()
+    } else {
+      DispatchQueue.main.async(execute: work)
+    }
+  }
+
+  private func hideLaunchSplashOnMain(reason: String, allowDeferredRetry: Bool) {
+    guard autoSplashscreen else {
+      return
+    }
+
+    if invokeSplashScreenHide() {
+      return
+    }
+
+    if allowDeferredRetry {
+      DispatchQueue.main.async { [weak self] in
+        self?.hideLaunchSplashOnMain(reason: reason, allowDeferredRetry: false)
+      }
+      return
+    }
+
+    print(
+      "[OtaKit] ERROR: autoSplashscreen could not hide the Capacitor SplashScreen during \(reason). Install @capacitor/splash-screen and set SplashScreen.launchAutoHide to false."
+    )
+    disableLaunchSplashManagement()
+  }
+
+  @discardableResult
+  private func invokeSplashScreenHide() -> Bool {
+    guard let bridge,
+          let splashPlugin = bridge.plugin(withName: "SplashScreen") else {
+      return false
+    }
+
+    let selector = NSSelectorFromString("hide:")
+    guard splashPlugin.responds(to: selector) else {
+      return false
+    }
+
+    let call = CAPPluginCall(
+      callbackId: "-1",
+      methodName: "hide",
+      options: [:],
+      success: { _, _ in },
+      error: { _ in }
+    )
+    _ = splashPlugin.perform(selector, with: call)
+    return true
+  }
+
+  private func logAutoSplashscreenConfigurationWarnings() {
+    guard autoSplashscreen else {
+      return
+    }
+
+    if updateMode == .manual {
+      print("[OtaKit] autoSplashscreen is enabled, but updateMode is manual so no managed cold-start launch can occur.")
+      return
+    }
+
+    if updateMode != .immediate && !immediateUpdateOnRuntimeChange {
+      print("[OtaKit] autoSplashscreen is enabled, but this config never manages the launch splash unless updateMode is immediate or immediateUpdateOnRuntimeChange is true.")
+    }
   }
 
   private func rollbackCurrentBundle(reason: String) {

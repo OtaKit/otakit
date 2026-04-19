@@ -2,5 +2,8 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../../../node_modules/.pnpm/@capacitor+android@8.0.2_@capacitor+core@8.0.2/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-splash-screen'
+project(':capacitor-splash-screen').projectDir = new File('../../../node_modules/.pnpm/@capacitor+splash-screen@8.0.1_@capacitor+core@8.0.2/node_modules/@capacitor/splash-screen/android')
+
 include ':otakit-capacitor-updater'
 project(':otakit-capacitor-updater').projectDir = new File('../../../packages/capacitor-plugin/android')

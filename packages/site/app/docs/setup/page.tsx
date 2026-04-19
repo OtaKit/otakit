@@ -56,8 +56,25 @@ const config: CapacitorConfig = {
 
 export default config;`}</Pre>
 
-      <P>Note: Your app must be published to the app store at least once with the OtaKit     
-      plugin configured before it can receive updates!</P>
+      <P>
+        Note: Your app must be published to the app store at least once with the OtaKit plugin
+        configured before it can receive updates!
+      </P>
+
+      <P>
+        Optional: if you use <Code>updateMode: &quot;immediate&quot;</Code> or want runtime-lane
+        catch-up launches to stay under the launch splash, you can also enable{' '}
+        <Code>autoSplashscreen</Code>. That requires <Code>@capacitor/splash-screen</Code>,{' '}
+        <Code>SplashScreen.launchAutoHide = false</Code>, and a reliable{' '}
+        <Code>notifyAppReady()</Code> call. See the{' '}
+        <Link
+          href="/docs/plugin"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Plugin API
+        </Link>{' '}
+        page for the full config.
+      </P>
 
       <Separator className="my-10" />
 

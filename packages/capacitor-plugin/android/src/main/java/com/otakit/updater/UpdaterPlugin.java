@@ -9,6 +9,7 @@ import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginHandle;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
@@ -26,12 +27,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @CapacitorPlugin(name = "OtaKit")
 public class UpdaterPlugin extends Plugin {
 
+  private enum LaunchSplashState {
+    INACTIVE,
+    HOLDING_FOR_LAUNCH_DECISION,
+    TIMED_OUT,
+    WAITING_FOR_APP_READY,
+  }
+
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private final ZipUtils zipUtils = new ZipUtils();
+  private final Object launchSplashLock = new Object();
 
   private BundleStore store;
   private Runnable trialTimeoutRunnable;
+  private Runnable launchSplashTimeoutRunnable;
 
   private int appReadyTimeoutMs = 10_000;
   private boolean allowInsecureUrls = false;
@@ -42,9 +52,12 @@ public class UpdaterPlugin extends Plugin {
   private String channel;
   private String runtimeVersion;
   private boolean immediateUpdateOnRuntimeChange = false;
+  private boolean autoSplashscreen = false;
+  private int autoSplashscreenTimeoutMs = 10_000;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
+  private LaunchSplashState launchSplashState = LaunchSplashState.INACTIVE;
   private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
   private static final String DEFAULT_CDN_URL = "https://cdn.otakit.app";
   private static final String INGEST_PATH_SUFFIX = "/v1";
@@ -92,6 +105,7 @@ public class UpdaterPlugin extends Plugin {
       "immediateUpdateOnRuntimeChange",
       false
     );
+    this.autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false);
 
     try {
       org.json.JSONArray rawKeys = getConfig().getConfigJSON().optJSONArray("manifestKeys");
@@ -130,7 +144,12 @@ public class UpdaterPlugin extends Plugin {
     }
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
+    this.autoSplashscreenTimeoutMs = Math.max(
+      1000,
+      getConfig().getInt("autoSplashscreenTimeout", 10_000)
+    );
     this.checkIntervalMs = Math.max(600_000, getConfig().getInt("checkInterval", 600_000));
+    logAutoSplashscreenConfigurationWarnings();
 
     pruneIncompatibleBundles();
 
@@ -157,8 +176,15 @@ public class UpdaterPlugin extends Plugin {
       scheduleTrialTimeout(current.id);
     }
 
+    boolean manageLaunchSplash = shouldManageLaunchSplash(forceImmediateRuntimeChangeLaunch);
+    if (manageLaunchSplash) {
+      beginManagedLaunchSplash();
+    } else if (autoSplashscreen) {
+      hideLaunchSplashIfNeeded("cold start", true);
+    }
+
     if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_LAUNCH, forceImmediateRuntimeChangeLaunch);
+      runAutomaticUpdate(TRIGGER_LAUNCH, forceImmediateRuntimeChangeLaunch, manageLaunchSplash);
     }
   }
 
@@ -166,11 +192,15 @@ public class UpdaterPlugin extends Plugin {
   protected void handleOnResume() {
     super.handleOnResume();
     if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_RESUME, false);
+      runAutomaticUpdate(TRIGGER_RESUME, false, false);
     }
   }
 
-  private void runAutomaticUpdate(String trigger, boolean forceImmediateLaunch) {
+  private void runAutomaticUpdate(
+    String trigger,
+    boolean forceImmediateLaunch,
+    boolean manageLaunchSplash
+  ) {
     // Resume-only guards
     if (TRIGGER_RESUME.equals(trigger)) {
       if (UPDATE_MODE_MANUAL.equals(updateMode)) return;
@@ -207,7 +237,23 @@ public class UpdaterPlugin extends Plugin {
       executor.execute(() -> {
         try {
           BundleInfo result = performCheckAndDownload(null, true);
-          if (result != null) {
+          if (manageLaunchSplash) {
+            if (result != null) {
+              recordCheckTimestamp();
+              if (beginManagedLaunchReload()) {
+                activateStagedBundleForReload();
+                reloadWebView();
+              }
+            } else {
+              if (forceImmediateLaunch) {
+                resolveCurrentRuntimeKey();
+              }
+              recordCheckTimestamp();
+              if (finishManagedLaunchDecision()) {
+                hideLaunchSplashIfNeeded("launch decision", false);
+              }
+            }
+          } else if (result != null) {
             if (forceImmediateLaunch) {
               recordCheckTimestamp();
             }
@@ -218,6 +264,9 @@ public class UpdaterPlugin extends Plugin {
             recordCheckTimestamp();
           }
         } catch (Exception e) {
+          if (manageLaunchSplash && finishManagedLaunchDecision()) {
+            hideLaunchSplashIfNeeded("launch error", false);
+          }
           String reason = forceImmediateLaunch
             ? "runtime-change startup update failed"
             : "immediate update failed (" + trigger + ")";
@@ -433,6 +482,10 @@ public class UpdaterPlugin extends Plugin {
   @PluginMethod
   public void notifyAppReady(PluginCall call) {
     BundleInfo current = store.getCurrentBundle();
+    if (shouldHideLaunchSplashOnAppReady()) {
+      hideLaunchSplashIfNeeded("notifyAppReady", false);
+    }
+
     if (
       !current.isBuiltin() &&
       (current.status == BundleStatus.TRIAL || current.status == BundleStatus.PENDING)
@@ -776,6 +829,241 @@ public class UpdaterPlugin extends Plugin {
       mainHandler.removeCallbacks(trialTimeoutRunnable);
       trialTimeoutRunnable = null;
     }
+  }
+
+  private boolean shouldManageLaunchSplash(boolean forceImmediateRuntimeChangeLaunch) {
+    if (!autoSplashscreen) {
+      return false;
+    }
+    return UPDATE_MODE_IMMEDIATE.equals(updateMode) || forceImmediateRuntimeChangeLaunch;
+  }
+
+  private void beginManagedLaunchSplash() {
+    synchronized (launchSplashLock) {
+      cancelLaunchSplashTimeoutLocked();
+      launchSplashState = LaunchSplashState.HOLDING_FOR_LAUNCH_DECISION;
+      launchSplashTimeoutRunnable = () -> {
+        if (markManagedLaunchTimedOut()) {
+          hideLaunchSplashIfNeeded("launch timeout", false);
+        }
+      };
+      mainHandler.postDelayed(launchSplashTimeoutRunnable, autoSplashscreenTimeoutMs);
+    }
+  }
+
+  private void cancelLaunchSplashTimeoutLocked() {
+    if (launchSplashTimeoutRunnable != null) {
+      mainHandler.removeCallbacks(launchSplashTimeoutRunnable);
+      launchSplashTimeoutRunnable = null;
+    }
+  }
+
+  private boolean markManagedLaunchTimedOut() {
+    synchronized (launchSplashLock) {
+      if (launchSplashState != LaunchSplashState.HOLDING_FOR_LAUNCH_DECISION) {
+        return false;
+      }
+      launchSplashState = LaunchSplashState.TIMED_OUT;
+      launchSplashTimeoutRunnable = null;
+      return true;
+    }
+  }
+
+  private boolean beginManagedLaunchReload() {
+    synchronized (launchSplashLock) {
+      switch (launchSplashState) {
+        case HOLDING_FOR_LAUNCH_DECISION:
+          cancelLaunchSplashTimeoutLocked();
+          launchSplashState = LaunchSplashState.WAITING_FOR_APP_READY;
+          return true;
+        case TIMED_OUT:
+          launchSplashState = LaunchSplashState.INACTIVE;
+          return false;
+        case INACTIVE:
+        case WAITING_FOR_APP_READY:
+          return false;
+      }
+      return false;
+    }
+  }
+
+  private boolean finishManagedLaunchDecision() {
+    synchronized (launchSplashLock) {
+      switch (launchSplashState) {
+        case HOLDING_FOR_LAUNCH_DECISION:
+          cancelLaunchSplashTimeoutLocked();
+          launchSplashState = LaunchSplashState.INACTIVE;
+          return true;
+        case TIMED_OUT:
+          launchSplashState = LaunchSplashState.INACTIVE;
+          return false;
+        case INACTIVE:
+        case WAITING_FOR_APP_READY:
+          return false;
+      }
+      return false;
+    }
+  }
+
+  private boolean shouldHideLaunchSplashOnAppReady() {
+    synchronized (launchSplashLock) {
+      switch (launchSplashState) {
+        case HOLDING_FOR_LAUNCH_DECISION:
+          return false;
+        case WAITING_FOR_APP_READY:
+          cancelLaunchSplashTimeoutLocked();
+          launchSplashState = LaunchSplashState.INACTIVE;
+          return true;
+        case TIMED_OUT:
+          launchSplashState = LaunchSplashState.INACTIVE;
+          return true;
+        case INACTIVE:
+          return true;
+      }
+      return false;
+    }
+  }
+
+  private void disableLaunchSplashManagement() {
+    synchronized (launchSplashLock) {
+      cancelLaunchSplashTimeoutLocked();
+      launchSplashState = LaunchSplashState.INACTIVE;
+    }
+  }
+
+  private void hideLaunchSplashIfNeeded(String reason, boolean allowDeferredRetry) {
+    if (!autoSplashscreen) {
+      return;
+    }
+
+    Runnable hide = () -> hideLaunchSplashOnMain(reason, allowDeferredRetry);
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      hide.run();
+    } else {
+      mainHandler.post(hide);
+    }
+  }
+
+  private void hideLaunchSplashOnMain(String reason, boolean allowDeferredRetry) {
+    if (!autoSplashscreen) {
+      return;
+    }
+
+    if (invokeSplashScreenHide()) {
+      return;
+    }
+
+    if (allowDeferredRetry) {
+      mainHandler.post(() -> hideLaunchSplashOnMain(reason, false));
+      return;
+    }
+
+    android.util.Log.e(
+      "OtaKit",
+      "autoSplashscreen could not hide the Capacitor SplashScreen during " +
+        reason +
+        ". Install @capacitor/splash-screen and set SplashScreen.launchAutoHide to false."
+    );
+    disableLaunchSplashManagement();
+  }
+
+  private boolean invokeSplashScreenHide() {
+    if (bridge == null) {
+      return false;
+    }
+
+    PluginHandle splashPlugin = bridge.getPlugin("SplashScreen");
+    if (splashPlugin == null) {
+      return false;
+    }
+
+    try {
+      // SplashScreen.hide() only reads call settings and then resolves, so a
+      // no-op PluginCall is enough today. If this ever fails on a real device
+      // or a future Capacitor version due to the null MessageHandler, switch
+      // this path to a reflected Bridge.msgHandler-based PluginCall and add the
+      // matching keep rule for Bridge.msgHandler in release builds.
+      splashPlugin.invoke("hide", new NoOpPluginCall("SplashScreen", "hide"));
+      return true;
+    } catch (Exception ignored) {
+      return false;
+    }
+  }
+
+  private void logAutoSplashscreenConfigurationWarnings() {
+    if (!autoSplashscreen) {
+      return;
+    }
+
+    if (UPDATE_MODE_MANUAL.equals(updateMode)) {
+      android.util.Log.w(
+        "OtaKit",
+        "autoSplashscreen is enabled, but updateMode is manual so no managed cold-start launch can occur."
+      );
+      return;
+    }
+
+    if (!UPDATE_MODE_IMMEDIATE.equals(updateMode) && !immediateUpdateOnRuntimeChange) {
+      android.util.Log.w(
+        "OtaKit",
+        "autoSplashscreen is enabled, but this config never manages the launch splash unless updateMode is immediate or immediateUpdateOnRuntimeChange is true."
+      );
+    }
+  }
+
+  private static final class NoOpPluginCall extends PluginCall {
+
+    NoOpPluginCall(String pluginId, String methodName) {
+      super(null, pluginId, PluginCall.CALLBACK_ID_DANGLING, methodName, new JSObject());
+    }
+
+    @Override
+    public void successCallback(com.getcapacitor.PluginResult successResult) {}
+
+    @Override
+    public void resolve(JSObject data) {}
+
+    @Override
+    public void resolve() {}
+
+    @Override
+    public void errorCallback(String msg) {}
+
+    @Override
+    public void reject(String msg, String code, Exception ex, JSObject data) {}
+
+    @Override
+    public void reject(String msg, Exception ex, JSObject data) {}
+
+    @Override
+    public void reject(String msg, String code, JSObject data) {}
+
+    @Override
+    public void reject(String msg, String code, Exception ex) {}
+
+    @Override
+    public void reject(String msg, JSObject data) {}
+
+    @Override
+    public void reject(String msg, Exception ex) {}
+
+    @Override
+    public void reject(String msg, String code) {}
+
+    @Override
+    public void reject(String msg) {}
+
+    @Override
+    public void unimplemented() {}
+
+    @Override
+    public void unimplemented(String msg) {}
+
+    @Override
+    public void unavailable() {}
+
+    @Override
+    public void unavailable(String msg) {}
   }
 
   private void rollbackCurrentBundle(String reason) {

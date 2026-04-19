@@ -15,16 +15,6 @@ type TokenStorePayload = {
   tokens: Record<string, string>;
 };
 
-function getServerUrlAliases(serverUrl: string): string[] {
-  if (serverUrl === 'https://www.otakit.app') {
-    return ['https://otakit.app'];
-  }
-  if (serverUrl === 'https://otakit.app') {
-    return ['https://www.otakit.app'];
-  }
-  return [];
-}
-
 function getAuthFilePath(): string {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA?.trim();
@@ -86,13 +76,6 @@ export async function readStoredAccessToken(serverUrl: string): Promise<string |
     return direct;
   }
 
-  for (const alias of getServerUrlAliases(serverUrl)) {
-    const aliased = payload.tokens[alias];
-    if (aliased) {
-      return aliased;
-    }
-  }
-
   return null;
 }
 
@@ -147,9 +130,7 @@ export async function clearStoredAccessToken(serverUrl: string): Promise<TokenDe
     return { ok: true, deleted: false };
   }
 
-  const keysToDelete = [serverUrl, ...getServerUrlAliases(serverUrl)].filter(
-    (value, index, array) => array.indexOf(value) === index,
-  );
+  const keysToDelete = [serverUrl];
   let deleted = false;
   for (const key of keysToDelete) {
     if (payload.tokens[key]) {

@@ -7,7 +7,7 @@ import {
   type OtaKitState,
   OtaKit,
 } from '@otakit/capacitor-updater';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type LogLevel = 'info' | 'success' | 'error';
 
@@ -39,10 +39,22 @@ function bundleLabel(bundle: BundleInfo | null | undefined): string {
   return `${bundle.version} (${shortId(bundle.id)})`;
 }
 
+type EnvironmentState = {
+  isReady: boolean;
+  platform: string;
+  isNative: boolean;
+  pluginAvailable: boolean;
+};
+
+const INITIAL_ENVIRONMENT: EnvironmentState = {
+  isReady: false,
+  platform: '-',
+  isNative: false,
+  pluginAvailable: false,
+};
+
 export default function Home() {
-  const pluginAvailable = useMemo(() => Capacitor.isPluginAvailable('OtaKit'), []);
-  const [platform] = useState(() => Capacitor.getPlatform());
-  const [isNative] = useState(() => Capacitor.isNativePlatform());
+  const [environment, setEnvironment] = useState(INITIAL_ENVIRONMENT);
 
   const [status, setStatus] = useState('Booting...');
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -52,6 +64,15 @@ export default function Home() {
   const [runtimeState, setRuntimeState] = useState<OtaKitState | null>(null);
   const [latest, setLatest] = useState<LatestVersion | null>(null);
   const [lastFailure, setLastFailure] = useState<BundleInfo | null>(null);
+
+  useEffect(() => {
+    setEnvironment({
+      isReady: true,
+      platform: Capacitor.getPlatform(),
+      isNative: Capacitor.isNativePlatform(),
+      pluginAvailable: Capacitor.isPluginAvailable('OtaKit'),
+    });
+  }, []);
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     logSeqRef.current += 1;
@@ -92,7 +113,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!pluginAvailable) {
+    if (!environment.isReady) {
+      return;
+    }
+
+    if (!environment.pluginAvailable) {
       setStatus('OtaKit plugin unavailable ("OtaKit" not registered)');
       return;
     }
@@ -135,7 +160,7 @@ export default function Home() {
         void listener.remove();
       }
     };
-  }, [addLog, pluginAvailable, refresh, withAction]);
+  }, [addLog, environment.isReady, environment.pluginAvailable, refresh, withAction]);
 
   const isBusy = busyAction !== null;
 
@@ -191,15 +216,15 @@ export default function Home() {
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <h1 className="text-2xl font-bold text-cyan-300">OtaKit Demo v0.4.0</h1>
           <p className="mt-2 text-xs text-slate-400">
-            platform={platform} native={String(isNative)} plugin=
-            {String(pluginAvailable)} build={process.env.BUILD_TIME}
+            platform={environment.platform} native={String(environment.isNative)} plugin=
+            {String(environment.pluginAvailable)} build={process.env.BUILD_TIME}
           </p>
           <p className="mt-2 text-sm text-slate-200">Status: {status}</p>
           {busyAction ? <p className="mt-1 text-xs text-amber-300">Running: {busyAction}</p> : null}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          Placeholder text for demoing updates 5
+          Placeholder text for demoing updates 17
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
