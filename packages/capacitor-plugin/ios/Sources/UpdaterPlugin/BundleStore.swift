@@ -6,6 +6,7 @@ final class BundleStore {
     static let fallbackBundleId = "otakit_fallback_bundle_id"
     static let stagedBundleId = "otakit_staged_bundle_id"
     static let failedBundleInfo = "otakit_failed_bundle_info"
+    static let lastResolvedRuntimeKey = "otakit_last_resolved_runtime_key"
   }
 
   private let defaults = UserDefaults.standard
@@ -195,6 +196,19 @@ final class BundleStore {
       return nil
     }
     return try? decoder.decode(BundleInfo.self, from: data)
+  }
+
+  func getLastResolvedRuntimeKey() -> String? {
+    defaults.string(forKey: Keys.lastResolvedRuntimeKey)
+  }
+
+  func setLastResolvedRuntimeKey(_ runtimeKey: String?) {
+    if let runtimeKey {
+      defaults.set(runtimeKey, forKey: Keys.lastResolvedRuntimeKey)
+    } else {
+      // nil clears the key so the next cold start is treated as unresolved again
+      defaults.removeObject(forKey: Keys.lastResolvedRuntimeKey)
+    }
   }
 
   func markStatus(bundleId: String, status: BundleStatus) {

@@ -21,6 +21,7 @@ final class BundleStore {
   private static final String KEY_FALLBACK = "fallback_bundle_id";
   private static final String KEY_STAGED = "staged_bundle_id";
   private static final String KEY_FAILED_INFO = "failed_bundle_info";
+  private static final String KEY_LAST_RESOLVED_RUNTIME_KEY = "last_resolved_runtime_key";
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -29,7 +30,12 @@ final class BundleStore {
   private final String nativeBuild;
   private final String appRuntimeVersion;
 
-  BundleStore(Context context, String builtinVersion, String nativeBuild, String appRuntimeVersion) {
+  BundleStore(
+    Context context,
+    String builtinVersion,
+    String nativeBuild,
+    String appRuntimeVersion
+  ) {
     this.context = context.getApplicationContext();
     this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     this.builtinVersion = builtinVersion;
@@ -201,6 +207,21 @@ final class BundleStore {
     } catch (Exception e) {
       return null;
     }
+  }
+
+  synchronized String getLastResolvedRuntimeKey() {
+    return prefs.getString(KEY_LAST_RESOLVED_RUNTIME_KEY, null);
+  }
+
+  synchronized void setLastResolvedRuntimeKey(String runtimeKey) {
+    SharedPreferences.Editor editor = prefs.edit();
+    if (runtimeKey == null) {
+      // null clears the key so the next cold start is treated as unresolved again
+      editor.remove(KEY_LAST_RESOLVED_RUNTIME_KEY);
+    } else {
+      editor.putString(KEY_LAST_RESOLVED_RUNTIME_KEY, runtimeKey);
+    }
+    editor.commit();
   }
 
   synchronized void markStatus(String bundleId, BundleStatus status) {
