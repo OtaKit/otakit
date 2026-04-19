@@ -40,6 +40,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var appId: String?
   private var channel: String?
   private var runtimeVersion: String?
+  private var immediateUpdateOnRuntimeChange = false
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
   private var checkIntervalMs: Int = 600_000
@@ -50,6 +51,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
   private static let lastCheckTimestampKey = "otakit_last_check_timestamp"
+  private static let defaultRuntimeKey = "__default__"
 
   public override func load() {
     let envIngestUrl = ProcessInfo.processInfo.environment["OTAKIT_INGEST_URL"]
@@ -69,6 +71,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false)
     let updateModeRaw = getConfig().getString("updateMode", UpdateMode.nextLaunch.rawValue)
     updateMode = resolveUpdateMode(configured: updateModeRaw)
+    immediateUpdateOnRuntimeChange = getConfig().getBoolean("immediateUpdateOnRuntimeChange", false)
     downloader = Downloader(allowInsecureUrls: allowInsecureUrls)
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
     checkIntervalMs = max(600_000, getConfig().getInt("checkInterval", 600_000))
@@ -102,7 +105,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       current = store.getCurrentBundle()
     }
 
-    if shouldActivateStagedOnLaunch() {
+    let forceImmediateRuntimeChangeLaunch = shouldForceImmediateRuntimeChangeLaunch()
+
+    if !forceImmediateRuntimeChangeLaunch && shouldActivateStagedOnLaunch() {
       current = activateStagedBundleForLaunch()
     }
 
@@ -118,7 +123,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     if isAutomaticUpdateMode() {
-      runAutomaticUpdate(trigger: .launch)
+      runAutomaticUpdate(
+        trigger: .launch,
+        forceImmediateLaunch: forceImmediateRuntimeChangeLaunch
+      )
     }
 
     if isAutomaticUpdateMode() {
@@ -139,10 +147,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func handleAppWillEnterForeground() {
-    runAutomaticUpdate(trigger: .resume)
+    runAutomaticUpdate(trigger: .resume, forceImmediateLaunch: false)
   }
 
-  private func runAutomaticUpdate(trigger: Trigger) {
+  private func runAutomaticUpdate(trigger: Trigger, forceImmediateLaunch: Bool) {
     // Resume-only guards
     if trigger == .resume {
       if updateMode == .manual { return }
@@ -159,7 +167,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       if updateMode != .immediate && shouldThrottleCheck() { return }
     }
 
-    if trigger == .launch && updateMode != .immediate && shouldThrottleCheck() {
+    if trigger == .launch &&
+      !forceImmediateLaunch &&
+      updateMode != .immediate &&
+      shouldThrottleCheck()
+    {
       return
     }
 
@@ -167,17 +179,27 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     guard claimCheckInProgress() else { return }
 
     // Immediate mode on cold start: block until check+download+activate completes
-    if updateMode == .immediate && trigger == .launch {
+    if (updateMode == .immediate && trigger == .launch) || forceImmediateLaunch {
       Task {
         defer { releaseCheckInProgress() }
         do {
           let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
           if result != nil {
+            if forceImmediateLaunch {
+              recordCheckTimestamp()
+            }
             activateStagedBundleForReload()
             reloadWebView()
+          } else if forceImmediateLaunch {
+            resolveCurrentRuntimeKey()
+            recordCheckTimestamp()
           }
         } catch {
-          print("[OtaKit] immediate startup update failed: \(error.localizedDescription)")
+          if forceImmediateLaunch {
+            print("[OtaKit] runtime-change startup update failed: \(error.localizedDescription)")
+          } else {
+            print("[OtaKit] immediate startup update failed: \(error.localizedDescription)")
+          }
         }
       }
       return
@@ -248,6 +270,29 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     updateMode != .manual
   }
 
+  private func shouldForceImmediateRuntimeChangeLaunch() -> Bool {
+    guard immediateUpdateOnRuntimeChange else {
+      return false
+    }
+    if updateMode == .manual {
+      print("[OtaKit] immediateUpdateOnRuntimeChange is ignored when updateMode is manual")
+      return false
+    }
+    if updateMode == .immediate {
+      print("[OtaKit] immediateUpdateOnRuntimeChange is ignored when updateMode is immediate")
+      return false
+    }
+    return store.getLastResolvedRuntimeKey() != currentRuntimeKey()
+  }
+
+  private func currentRuntimeKey() -> String {
+    runtimeVersion ?? UpdaterPlugin.defaultRuntimeKey
+  }
+
+  private func resolveCurrentRuntimeKey() {
+    store.setLastResolvedRuntimeKey(currentRuntimeKey())
+  }
+
   private func resolveUpdateMode(configured: String?) -> UpdateMode {
     let raw = configured?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
     switch raw {
@@ -316,6 +361,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         let latest = try await fetchLatest(channel: targetChannel)
         if let latest {
           if isCurrentBundleLatest(latest: latest, targetChannel: targetChannel) {
+            call.resolve()
+            return
+          }
+          if shouldSuppressLatestManifest(latest: latest, targetChannel: targetChannel) {
             call.resolve()
             return
           }
@@ -437,7 +486,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     emitEvents: Bool
   ) async throws -> BundleInfo? {
     let targetChannel = resolveTargetChannel(channel)
-    var latest = try await fetchLatest(channel: targetChannel)
+    let latest = try await fetchLatest(channel: targetChannel)
 
     guard var manifest = latest else {
       if emitEvents {
@@ -461,6 +510,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return nil
     }
 
+    if shouldSuppressLatestManifest(latest: manifest, targetChannel: targetChannel) {
+      if emitEvents {
+        notifyListeners("noUpdateAvailable", data: [:])
+      }
+      return nil
+    }
+
     let staged = findMatchingStagedBundle(latest: manifest, targetChannel: targetChannel)
     if emitEvents {
       notifyListeners("updateAvailable", data: manifestToDictionary(manifest, downloaded: staged != nil))
@@ -470,45 +526,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return staged
     }
 
-    guard var url = URL(string: manifest.url) else {
-      throw NSError(
-        domain: "OtaKit",
-        code: 1,
-        userInfo: [NSLocalizedDescriptionKey: "Invalid download URL from manifest"]
-      )
-    }
-
-    do {
-      return try await downloadAndStage(
-        url: url,
-        version: manifest.version,
-        expectedSha256: manifest.sha256,
-        expectedSize: manifest.size,
-        runtimeVersion: manifest.runtimeVersion,
-        channel: targetChannel,
-        releaseId: manifest.releaseId
-      )
-    } catch let error as NSError where isExpiredURLError(error) {
-      // Download URL may have expired — re-fetch manifest once and retry
-      latest = try await fetchLatest(channel: targetChannel)
-      guard let refreshed = latest else {
-        throw error
-      }
-      manifest = refreshed
-      guard let retryUrl = URL(string: manifest.url) else {
-        throw error
-      }
-      url = retryUrl
-      return try await downloadAndStage(
-        url: url,
-        version: manifest.version,
-        expectedSha256: manifest.sha256,
-        expectedSize: manifest.size,
-        runtimeVersion: manifest.runtimeVersion,
-        channel: targetChannel,
-        releaseId: manifest.releaseId
-      )
-    }
+    return try await downloadLatestManifest(manifest, targetChannel: targetChannel)
   }
 
   private func isExpiredURLError(_ error: NSError) -> Bool {
@@ -670,6 +688,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return store.getCurrentBundle()
     }
 
+    resolveCurrentRuntimeKey()
     store.setCurrentBundleId(staged.id)
     store.setStagedBundleId(nil)
     return staged
@@ -688,6 +707,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
 
+    resolveCurrentRuntimeKey()
     store.setCurrentBundleId(staged.id)
     store.setStagedBundleId(nil)
 
@@ -867,6 +887,44 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     doesBundleMatchLatest(store.getCurrentBundle(), latest: latest, targetChannel: targetChannel)
   }
 
+  private func shouldSuppressLatestManifest(
+    latest: LatestManifest,
+    targetChannel: String?
+  ) -> Bool {
+    guard let failed = store.getFailedBundle() else {
+      return false
+    }
+    return doesFailedBundleMatchLatest(failed, latest: latest, targetChannel: targetChannel)
+  }
+
+  private func doesFailedBundleMatchLatest(
+    _ failed: BundleInfo,
+    latest: LatestManifest,
+    targetChannel: String?
+  ) -> Bool {
+    if trimToNil(failed.channel) != targetChannel {
+      return false
+    }
+
+    if trimToNil(failed.runtimeVersion) != trimToNil(latest.runtimeVersion) {
+      return false
+    }
+
+    if let failedReleaseId = failed.releaseId,
+       latest.releaseId == failedReleaseId {
+      return true
+    }
+
+    if !latest.sha256.isEmpty,
+       let failedSha = failed.sha256,
+       !failedSha.isEmpty,
+       latest.sha256 == failedSha {
+      return true
+    }
+
+    return false
+  }
+
   private func doesBundleMatchLatest(
     _ bundle: BundleInfo,
     latest: LatestManifest,
@@ -916,6 +974,47 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     return doesBundleMatchLatest(staged, latest: latest, targetChannel: targetChannel) ? staged : nil
+  }
+
+  private func downloadLatestManifest(
+    _ manifest: LatestManifest,
+    targetChannel: String?
+  ) async throws -> BundleInfo {
+    guard let url = URL(string: manifest.url) else {
+      throw NSError(
+        domain: "OtaKit",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Invalid download URL from manifest"]
+      )
+    }
+
+    do {
+      return try await downloadAndStage(
+        url: url,
+        version: manifest.version,
+        expectedSha256: manifest.sha256,
+        expectedSize: manifest.size,
+        runtimeVersion: manifest.runtimeVersion,
+        channel: targetChannel,
+        releaseId: manifest.releaseId
+      )
+    } catch let error as NSError where isExpiredURLError(error) {
+      guard let refreshed = try await fetchLatest(channel: targetChannel) else {
+        throw error
+      }
+      guard let retryURL = URL(string: refreshed.url) else {
+        throw error
+      }
+      return try await downloadAndStage(
+        url: retryURL,
+        version: refreshed.version,
+        expectedSha256: refreshed.sha256,
+        expectedSize: refreshed.size,
+        runtimeVersion: refreshed.runtimeVersion,
+        channel: targetChannel,
+        releaseId: refreshed.releaseId
+      )
+    }
   }
 
   private func pruneIncompatibleBundles() {

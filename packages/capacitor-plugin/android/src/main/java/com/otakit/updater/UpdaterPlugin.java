@@ -41,6 +41,7 @@ public class UpdaterPlugin extends Plugin {
   private String appId;
   private String channel;
   private String runtimeVersion;
+  private boolean immediateUpdateOnRuntimeChange = false;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
@@ -52,6 +53,7 @@ public class UpdaterPlugin extends Plugin {
   private static final String UPDATE_MODE_NEXT_RESUME = "next-resume";
   private static final String UPDATE_MODE_IMMEDIATE = "immediate";
   private static final String KEY_LAST_CHECK_TIMESTAMP = "last_check_timestamp";
+  private static final String DEFAULT_RUNTIME_KEY = "__default__";
   private static final String TRIGGER_LAUNCH = "launch";
   private static final String TRIGGER_RESUME = "resume";
 
@@ -78,10 +80,7 @@ public class UpdaterPlugin extends Plugin {
       getConfig().getString("ingestUrl"),
       System.getenv("OTAKIT_INGEST_URL")
     );
-    this.cdnUrl = resolveCdnUrl(
-      getConfig().getString("cdnUrl"),
-      System.getenv("OTAKIT_CDN_URL")
-    );
+    this.cdnUrl = resolveCdnUrl(getConfig().getString("cdnUrl"), System.getenv("OTAKIT_CDN_URL"));
     this.appId = getConfig().getString("appId");
     this.channel = trimToNull(getConfig().getString("channel"));
     this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
@@ -89,6 +88,10 @@ public class UpdaterPlugin extends Plugin {
     this.allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false);
     String configuredUpdateMode = getConfig().getString("updateMode", UPDATE_MODE_NEXT_LAUNCH);
     this.updateMode = resolveUpdateMode(configuredUpdateMode);
+    this.immediateUpdateOnRuntimeChange = getConfig().getBoolean(
+      "immediateUpdateOnRuntimeChange",
+      false
+    );
 
     try {
       org.json.JSONArray rawKeys = getConfig().getConfigJSON().optJSONArray("manifestKeys");
@@ -137,7 +140,9 @@ public class UpdaterPlugin extends Plugin {
       current = store.getCurrentBundle();
     }
 
-    if (shouldActivateStagedOnLaunch()) {
+    boolean forceImmediateRuntimeChangeLaunch = shouldForceImmediateRuntimeChangeLaunch();
+
+    if (!forceImmediateRuntimeChangeLaunch && shouldActivateStagedOnLaunch()) {
       current = activateStagedBundleForLaunch();
     }
 
@@ -153,7 +158,7 @@ public class UpdaterPlugin extends Plugin {
     }
 
     if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_LAUNCH);
+      runAutomaticUpdate(TRIGGER_LAUNCH, forceImmediateRuntimeChangeLaunch);
     }
   }
 
@@ -161,17 +166,19 @@ public class UpdaterPlugin extends Plugin {
   protected void handleOnResume() {
     super.handleOnResume();
     if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_RESUME);
+      runAutomaticUpdate(TRIGGER_RESUME, false);
     }
   }
 
-  private void runAutomaticUpdate(String trigger) {
+  private void runAutomaticUpdate(String trigger, boolean forceImmediateLaunch) {
     // Resume-only guards
     if (TRIGGER_RESUME.equals(trigger)) {
       if (UPDATE_MODE_MANUAL.equals(updateMode)) return;
 
       // next-resume and immediate: activate staged bundle on resume without server check
-      if ((UPDATE_MODE_NEXT_RESUME.equals(updateMode) || UPDATE_MODE_IMMEDIATE.equals(updateMode))) {
+      if (
+        (UPDATE_MODE_NEXT_RESUME.equals(updateMode) || UPDATE_MODE_IMMEDIATE.equals(updateMode))
+      ) {
         String stagedId = store.getStagedBundleId();
         if (stagedId != null && store.getBundle(stagedId) != null) {
           activateStagedBundleForReload();
@@ -185,6 +192,7 @@ public class UpdaterPlugin extends Plugin {
 
     if (
       TRIGGER_LAUNCH.equals(trigger) &&
+      !forceImmediateLaunch &&
       !UPDATE_MODE_IMMEDIATE.equals(updateMode) &&
       shouldThrottleCheck()
     ) {
@@ -194,17 +202,26 @@ public class UpdaterPlugin extends Plugin {
     // Acquire in-flight guard (submit-time)
     if (!checkInProgress.compareAndSet(false, true)) return;
 
-    if (UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
+    if (forceImmediateLaunch || UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
       // Immediate: check+download, activate if found
       executor.execute(() -> {
         try {
           BundleInfo result = performCheckAndDownload(null, true);
           if (result != null) {
+            if (forceImmediateLaunch) {
+              recordCheckTimestamp();
+            }
             activateStagedBundleForReload();
             reloadWebView();
+          } else if (forceImmediateLaunch) {
+            resolveCurrentRuntimeKey();
+            recordCheckTimestamp();
           }
         } catch (Exception e) {
-          android.util.Log.w("OtaKit", "immediate update failed (" + trigger + ")", e);
+          String reason = forceImmediateLaunch
+            ? "runtime-change startup update failed"
+            : "immediate update failed (" + trigger + ")";
+          android.util.Log.w("OtaKit", reason, e);
         } finally {
           checkInProgress.set(false);
         }
@@ -233,9 +250,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private void recordCheckTimestamp() {
-    store.getPrefs().edit()
-      .putLong(KEY_LAST_CHECK_TIMESTAMP, System.currentTimeMillis())
-      .apply();
+    store.getPrefs().edit().putLong(KEY_LAST_CHECK_TIMESTAMP, System.currentTimeMillis()).apply();
   }
 
   private boolean shouldActivateStagedOnLaunch() {
@@ -244,6 +259,35 @@ public class UpdaterPlugin extends Plugin {
 
   private boolean isAutomaticUpdateMode() {
     return !UPDATE_MODE_MANUAL.equals(updateMode);
+  }
+
+  private boolean shouldForceImmediateRuntimeChangeLaunch() {
+    if (!immediateUpdateOnRuntimeChange) {
+      return false;
+    }
+    if (UPDATE_MODE_MANUAL.equals(updateMode)) {
+      android.util.Log.w(
+        "OtaKit",
+        "immediateUpdateOnRuntimeChange is ignored when updateMode is manual"
+      );
+      return false;
+    }
+    if (UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
+      android.util.Log.w(
+        "OtaKit",
+        "immediateUpdateOnRuntimeChange is ignored when updateMode is immediate"
+      );
+      return false;
+    }
+    return !java.util.Objects.equals(store.getLastResolvedRuntimeKey(), currentRuntimeKey());
+  }
+
+  private String currentRuntimeKey() {
+    return runtimeVersion != null ? runtimeVersion : DEFAULT_RUNTIME_KEY;
+  }
+
+  private void resolveCurrentRuntimeKey() {
+    store.setLastResolvedRuntimeKey(currentRuntimeKey());
   }
 
   private String resolveUpdateMode(String configuredUpdateMode) {
@@ -265,10 +309,7 @@ public class UpdaterPlugin extends Plugin {
       return UPDATE_MODE_IMMEDIATE;
     }
 
-    android.util.Log.w(
-      "OtaKit",
-      "Unknown updateMode '" + raw + "', defaulting to 'next-launch'"
-    );
+    android.util.Log.w("OtaKit", "Unknown updateMode '" + raw + "', defaulting to 'next-launch'");
     return UPDATE_MODE_NEXT_LAUNCH;
   }
 
@@ -326,6 +367,8 @@ public class UpdaterPlugin extends Plugin {
         if (latest == null) {
           call.resolve((JSObject) null);
         } else if (isCurrentBundleLatest(latest, targetChannel)) {
+          call.resolve((JSObject) null);
+        } else if (shouldSuppressLatestManifest(latest, targetChannel)) {
           call.resolve((JSObject) null);
         } else {
           BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
@@ -468,6 +511,13 @@ public class UpdaterPlugin extends Plugin {
       return null;
     }
 
+    if (shouldSuppressLatestManifest(latest, targetChannel)) {
+      if (emitEvents) {
+        notifyListeners("noUpdateAvailable", new JSObject());
+      }
+      return null;
+    }
+
     BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
     if (emitEvents) {
       notifyListeners("updateAvailable", manifestToJSObject(latest, staged != null));
@@ -477,33 +527,7 @@ public class UpdaterPlugin extends Plugin {
       return staged;
     }
 
-    try {
-      return downloadAndStage(
-        new URL(latest.url),
-        latest.version,
-        latest.sha256,
-        latest.size,
-        latest.runtimeVersion,
-        targetChannel,
-        latest.releaseId
-      );
-    } catch (Exception e) {
-      if (isExpiredURLError(e)) {
-        // Download URL may have expired — re-fetch manifest once and retry
-        ManifestClient.LatestManifest refreshed = fetchLatest(targetChannel);
-        if (refreshed == null) throw e;
-        return downloadAndStage(
-          new URL(refreshed.url),
-          refreshed.version,
-          refreshed.sha256,
-          refreshed.size,
-          refreshed.runtimeVersion,
-          targetChannel,
-          refreshed.releaseId
-        );
-      }
-      throw e;
-    }
+    return downloadLatestManifest(latest, targetChannel);
   }
 
   private boolean isExpiredURLError(Exception e) {
@@ -604,7 +628,14 @@ public class UpdaterPlugin extends Plugin {
       failed.put("version", version);
       failed.put("error", e.getMessage());
       notifyListeners("downloadFailed", failed);
-      sendDeviceEvent("download_error", version, runtimeVersion, channel, releaseId, e.getMessage());
+      sendDeviceEvent(
+        "download_error",
+        version,
+        runtimeVersion,
+        channel,
+        releaseId,
+        e.getMessage()
+      );
       throw e;
     } finally {
       if (downloadedZip != null && downloadedZip.exists()) {
@@ -686,6 +717,7 @@ public class UpdaterPlugin extends Plugin {
       return store.getCurrentBundle();
     }
 
+    resolveCurrentRuntimeKey();
     store.setCurrentBundleId(staged.id);
     store.setStagedBundleId(null);
     return staged;
@@ -709,6 +741,7 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
 
+    resolveCurrentRuntimeKey();
     store.setCurrentBundleId(staged.id);
     store.setStagedBundleId(null);
 
@@ -856,6 +889,45 @@ public class UpdaterPlugin extends Plugin {
     return doesBundleMatchLatest(store.getCurrentBundle(), latest, targetChannel);
   }
 
+  private boolean shouldSuppressLatestManifest(
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) {
+    BundleInfo failed = store.getFailedBundle();
+    return failed != null && doesFailedBundleMatchLatest(failed, latest, targetChannel);
+  }
+
+  private boolean doesFailedBundleMatchLatest(
+    BundleInfo failed,
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) {
+    if (!java.util.Objects.equals(trimToNull(failed.channel), targetChannel)) {
+      return false;
+    }
+    if (
+      !java.util.Objects.equals(
+        trimToNull(failed.runtimeVersion),
+        trimToNull(latest.runtimeVersion)
+      )
+    ) {
+      return false;
+    }
+    if (
+      latest.releaseId != null &&
+      failed.releaseId != null &&
+      latest.releaseId.equals(failed.releaseId)
+    ) {
+      return true;
+    }
+    return (
+      latest.sha256 != null &&
+      failed.sha256 != null &&
+      !latest.sha256.isEmpty() &&
+      latest.sha256.equals(failed.sha256)
+    );
+  }
+
   private boolean doesBundleMatchLatest(
     BundleInfo bundle,
     ManifestClient.LatestManifest latest,
@@ -886,11 +958,7 @@ public class UpdaterPlugin extends Plugin {
       return true;
     }
 
-    if (
-      latest.sha256 != null &&
-      bundle.sha256 != null &&
-      latest.sha256.equals(bundle.sha256)
-    ) {
+    if (latest.sha256 != null && bundle.sha256 != null && latest.sha256.equals(bundle.sha256)) {
       return true;
     }
 
@@ -916,11 +984,50 @@ public class UpdaterPlugin extends Plugin {
       return null;
     }
 
-    if (!java.util.Objects.equals(trimToNull(staged.runtimeVersion), trimToNull(latest.runtimeVersion))) {
+    if (
+      !java.util.Objects.equals(
+        trimToNull(staged.runtimeVersion),
+        trimToNull(latest.runtimeVersion)
+      )
+    ) {
       return null;
     }
 
     return doesBundleMatchLatest(staged, latest, targetChannel) ? staged : null;
+  }
+
+  private BundleInfo downloadLatestManifest(
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) throws Exception {
+    try {
+      return downloadAndStage(
+        new URL(latest.url),
+        latest.version,
+        latest.sha256,
+        latest.size,
+        latest.runtimeVersion,
+        targetChannel,
+        latest.releaseId
+      );
+    } catch (Exception e) {
+      if (isExpiredURLError(e)) {
+        ManifestClient.LatestManifest refreshed = fetchLatest(targetChannel);
+        if (refreshed == null) {
+          throw e;
+        }
+        return downloadAndStage(
+          new URL(refreshed.url),
+          refreshed.version,
+          refreshed.sha256,
+          refreshed.size,
+          refreshed.runtimeVersion,
+          targetChannel,
+          refreshed.releaseId
+        );
+      }
+      throw e;
+    }
   }
 
   private void moveDirectory(File source, File destination) throws Exception {

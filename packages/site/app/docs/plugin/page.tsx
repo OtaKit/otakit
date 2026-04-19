@@ -2,8 +2,7 @@ import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
   title: 'Plugin API — OtaKit Docs',
-  description:
-    'Capacitor plugin setup, default automatic updates, and manual advanced flows.',
+  description: 'Capacitor plugin setup, default automatic updates, and manual advanced flows.',
 };
 
 export default function PluginReferencePage() {
@@ -11,9 +10,9 @@ export default function PluginReferencePage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Plugin API</h1>
       <P>
-        Import from <Code>@otakit/capacitor-updater</Code>. The normal flow usually only 
-        needs <Code>notifyAppReady()</Code>. The other public methods exist for advanced manual 
-        update flows where your app decides when to check, download, and apply an update.
+        Import from <Code>@otakit/capacitor-updater</Code>. The normal flow usually only needs{' '}
+        <Code>notifyAppReady()</Code>. The other public methods exist for advanced manual update
+        flows where your app decides when to check, download, and apply an update.
       </P>
       <Pre>{`import { OtaKit } from "@otakit/capacitor-updater";`}</Pre>
 
@@ -29,6 +28,7 @@ export default function PluginReferencePage() {
     // channel: "production",
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
+    // immediateUpdateOnRuntimeChange: true,
   }
 }`}</Pre>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
@@ -51,6 +51,11 @@ export default function PluginReferencePage() {
           field="updateMode"
           type="'manual' | 'next-launch' | 'next-resume' | 'immediate'"
           description="Overall update behavior. Optional, defaults to next-launch."
+        />
+        <ConfigRow
+          field="immediateUpdateOnRuntimeChange"
+          type="boolean"
+          description="One-time cold-start override for fresh installs or runtimeVersion changes. In next-launch/next-resume, it checks live, bypasses checkInterval, and applies immediately if needed."
         />
         <ConfigRow
           field="checkInterval"
@@ -106,14 +111,25 @@ export default function PluginReferencePage() {
         The CLI reads that same value automatically during upload, so releases stay simple: release
         the bundle and it naturally stays inside its own runtime lane.
       </P>
+      <P>
+        If you want fresh installs or new native shells to catch up on first launch, enable{' '}
+        <Code>immediateUpdateOnRuntimeChange</Code>. That override is launch-only: it bypasses{' '}
+        <Code>checkInterval</Code>, performs a live check for the current runtime lane, and then
+        returns to the normal update mode after the lane is resolved.
+      </P>
 
       <Separator className="my-10" />
 
       <H2>Update Modes</H2>
       <P>
-        <Code>next-launch</Code> and <Code>next-resume</Code> check on cold start and app
-        resume, throttled by <Code>checkInterval</Code>. <Code>immediate</Code> ignores the
-        interval, and manual APIs always perform a live check.
+        <Code>next-launch</Code> and <Code>next-resume</Code> check on cold start and app resume,
+        throttled by <Code>checkInterval</Code>. <Code>immediate</Code> ignores the interval, and
+        manual APIs always perform a live check.
+      </P>
+      <P>
+        <Code>immediateUpdateOnRuntimeChange</Code> only augments automatic <Code>next-launch</Code>{' '}
+        and <Code>next-resume</Code>. It is ignored in <Code>manual</Code> and redundant in{' '}
+        <Code>immediate</Code>.
       </P>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
         <ConfigRow

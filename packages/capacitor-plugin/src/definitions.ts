@@ -79,6 +79,12 @@ export interface OtaKitConfig {
   /** Overall update behavior. Defaults to next-launch. */
   updateMode?: OtaKitUpdateMode;
   /**
+   * On fresh install or after a runtimeVersion change, bypass the normal launch flow once:
+   * check live, download if needed, and apply immediately on cold start.
+   * Only affects automatic `next-launch` / `next-resume` mode. Ignored in `manual` and `immediate`.
+   */
+  immediateUpdateOnRuntimeChange?: boolean;
+  /**
    * Minimum milliseconds between automatic update checks.
    * Applies only to automatic checks in `next-launch` and `next-resume`.
    * Manual APIs and `immediate` mode bypass this throttle. Defaults to 600000 (10 min).

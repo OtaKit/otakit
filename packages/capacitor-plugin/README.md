@@ -51,6 +51,7 @@ plugins: {
     // channel: "staging",
     // runtimeVersion: "2026.04",
     // updateMode: "next-resume",
+    // immediateUpdateOnRuntimeChange: true,
     // updateMode: "manual",
     // updateMode: "immediate",
   }
@@ -83,6 +84,17 @@ When `runtimeVersion` is set:
 - the plugin requests bundle updates only for that runtime lane
 - bundle uploads inherit the same runtime value automatically through the CLI
 - releases stay simple: publish the bundle, and it naturally stays inside its own runtime lane
+
+If you also set `immediateUpdateOnRuntimeChange: true`, OtaKit treats a fresh
+install or a new `runtimeVersion` as a one-time startup override in automatic
+`next-launch` / `next-resume` mode:
+
+- it skips normal staged-on-launch activation once
+- it bypasses `checkInterval`
+- it checks live on cold start and applies immediately if a newer bundle exists
+
+That gives new installs and new native shells a faster catch-up path without
+changing normal resume behavior.
 
 ## Trust model
 
@@ -124,7 +136,6 @@ resume**.
 - `immediate`
   checks, downloads, and activates in one shot as soon as possible on cold start and resume (the user may briefly see the previous version before a reload).
   primarily for development and testing — not recommended for production.
-
 
 ## Runtime model
 
@@ -173,6 +184,10 @@ The plugin handles checking, downloading, activation, and rollback based on
 `updateMode`. In `next-launch` and `next-resume`, it checks on cold start and
 every time the app comes back from the background, throttled by `checkInterval`.
 `immediate` bypasses that throttle.
+
+If `immediateUpdateOnRuntimeChange` is enabled, the first cold start for a new
+runtime lane also bypasses the throttle and uses an immediate-style launch
+check. After that first lane resolution, normal mode behavior resumes.
 
 For most apps, this is the entire runtime integration.
 
