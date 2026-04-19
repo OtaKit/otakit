@@ -20,7 +20,6 @@
     "@capacitor/cli": "^8.0.2",
     "@capacitor/core": "^8.0.2",
     "@capacitor/ios": "^8.0.2",
-    "@capacitor/splash-screen": "8.0.1",
     "@otakit/capacitor-updater": "workspace:*",
     "next": "16.1.6",
     "react": "19.2.3",

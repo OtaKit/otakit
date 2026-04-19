@@ -2,14 +2,16 @@ package com.otakit.updater;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
+import android.view.ViewGroup;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
-import com.getcapacitor.PluginHandle;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
@@ -27,21 +29,23 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @CapacitorPlugin(name = "OtaKit")
 public class UpdaterPlugin extends Plugin {
 
-  private enum LaunchSplashState {
+  private enum ManagedOverlayState {
     INACTIVE,
     HOLDING_FOR_LAUNCH_DECISION,
-    TIMED_OUT,
+    HOLDING_FOR_RESUME_DECISION,
     WAITING_FOR_APP_READY,
+    TIMED_OUT_LAUNCH,
+    TIMED_OUT_RESUME,
   }
 
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private final ZipUtils zipUtils = new ZipUtils();
-  private final Object launchSplashLock = new Object();
+  private final Object managedOverlayLock = new Object();
 
   private BundleStore store;
   private Runnable trialTimeoutRunnable;
-  private Runnable launchSplashTimeoutRunnable;
+  private Runnable managedOverlayTimeoutRunnable;
 
   private int appReadyTimeoutMs = 10_000;
   private boolean allowInsecureUrls = false;
@@ -54,10 +58,13 @@ public class UpdaterPlugin extends Plugin {
   private boolean immediateUpdateOnRuntimeChange = false;
   private boolean autoSplashscreen = false;
   private int autoSplashscreenTimeoutMs = 10_000;
+  private int autoSplashscreenBackgroundColor = Color.BLACK;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
   private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
-  private LaunchSplashState launchSplashState = LaunchSplashState.INACTIVE;
+  private ManagedOverlayState managedOverlayState = ManagedOverlayState.INACTIVE;
+  private boolean skipNextResumeAutoUpdate = false;
+  private View otaOverlayView;
   private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
   private static final String DEFAULT_CDN_URL = "https://cdn.otakit.app";
   private static final String INGEST_PATH_SUFFIX = "/v1";
@@ -106,6 +113,9 @@ public class UpdaterPlugin extends Plugin {
       false
     );
     this.autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false);
+    this.autoSplashscreenBackgroundColor = parseAutoSplashscreenBackgroundColor(
+      getConfig().getString("autoSplashscreenBackgroundColor")
+    );
 
     try {
       org.json.JSONArray rawKeys = getConfig().getConfigJSON().optJSONArray("manifestKeys");
@@ -178,9 +188,8 @@ public class UpdaterPlugin extends Plugin {
 
     boolean manageLaunchSplash = shouldManageLaunchSplash(forceImmediateRuntimeChangeLaunch);
     if (manageLaunchSplash) {
+      showOtaKitOverlay();
       beginManagedLaunchSplash();
-    } else if (autoSplashscreen) {
-      hideLaunchSplashIfNeeded("cold start", true);
     }
 
     if (isAutomaticUpdateMode()) {
@@ -189,8 +198,30 @@ public class UpdaterPlugin extends Plugin {
   }
 
   @Override
+  protected void handleOnStart() {
+    super.handleOnStart();
+    skipNextResumeAutoUpdate = false;
+
+    if (!isAutomaticUpdateMode()) {
+      return;
+    }
+    if (!isManagedOverlayInactive()) {
+      skipNextResumeAutoUpdate = true;
+      return;
+    }
+    if (UPDATE_MODE_IMMEDIATE.equals(updateMode) && autoSplashscreen) {
+      skipNextResumeAutoUpdate = true;
+      handleManagedImmediateResumeOnStart();
+    }
+  }
+
+  @Override
   protected void handleOnResume() {
     super.handleOnResume();
+    if (skipNextResumeAutoUpdate) {
+      skipNextResumeAutoUpdate = false;
+      return;
+    }
     if (isAutomaticUpdateMode()) {
       runAutomaticUpdate(TRIGGER_RESUME, false, false);
     }
@@ -209,9 +240,7 @@ public class UpdaterPlugin extends Plugin {
       if (
         (UPDATE_MODE_NEXT_RESUME.equals(updateMode) || UPDATE_MODE_IMMEDIATE.equals(updateMode))
       ) {
-        String stagedId = store.getStagedBundleId();
-        if (stagedId != null && store.getBundle(stagedId) != null) {
-          activateStagedBundleForReload();
+        if (activateStagedBundleForReload()) {
           reloadWebView();
           return;
         }
@@ -241,8 +270,11 @@ public class UpdaterPlugin extends Plugin {
             if (result != null) {
               recordCheckTimestamp();
               if (beginManagedLaunchReload()) {
-                activateStagedBundleForReload();
-                reloadWebView();
+                if (activateStagedBundleForReload()) {
+                  reloadWebView();
+                } else if (cancelManagedOverlayAwaitingAppReady()) {
+                  hideOtaKitOverlay();
+                }
               }
             } else {
               if (forceImmediateLaunch) {
@@ -250,22 +282,23 @@ public class UpdaterPlugin extends Plugin {
               }
               recordCheckTimestamp();
               if (finishManagedLaunchDecision()) {
-                hideLaunchSplashIfNeeded("launch decision", false);
+                hideOtaKitOverlay();
               }
             }
           } else if (result != null) {
             if (forceImmediateLaunch) {
               recordCheckTimestamp();
             }
-            activateStagedBundleForReload();
-            reloadWebView();
+            if (activateStagedBundleForReload()) {
+              reloadWebView();
+            }
           } else if (forceImmediateLaunch) {
             resolveCurrentRuntimeKey();
             recordCheckTimestamp();
           }
         } catch (Exception e) {
           if (manageLaunchSplash && finishManagedLaunchDecision()) {
-            hideLaunchSplashIfNeeded("launch error", false);
+            hideOtaKitOverlay();
           }
           String reason = forceImmediateLaunch
             ? "runtime-change startup update failed"
@@ -285,6 +318,52 @@ public class UpdaterPlugin extends Plugin {
         recordCheckTimestamp();
       } catch (Exception ignored) {
         // Check failed — timestamp not recorded, will retry on next trigger
+      } finally {
+        checkInProgress.set(false);
+      }
+    });
+  }
+
+  private void handleManagedImmediateResumeOnStart() {
+    if (resolveValidStagedBundleForActivation() != null) {
+      if (!beginManagedResumeAppReadyWait()) {
+        return;
+      }
+      if (activateStagedBundleForReload()) {
+        reloadWebView();
+      } else if (cancelManagedOverlayAwaitingAppReady()) {
+        hideOtaKitOverlay();
+      }
+      return;
+    }
+
+    if (!checkInProgress.compareAndSet(false, true)) {
+      return;
+    }
+    if (!beginManagedResumeSplash()) {
+      checkInProgress.set(false);
+      return;
+    }
+
+    executor.execute(() -> {
+      try {
+        BundleInfo result = performCheckAndDownload(null, true);
+        if (result != null) {
+          if (beginManagedResumeReload()) {
+            if (activateStagedBundleForReload()) {
+              reloadWebView();
+            } else if (cancelManagedOverlayAwaitingAppReady()) {
+              hideOtaKitOverlay();
+            }
+          }
+        } else if (finishManagedResumeDecision()) {
+          hideOtaKitOverlay();
+        }
+      } catch (Exception e) {
+        if (finishManagedResumeDecision()) {
+          hideOtaKitOverlay();
+        }
+        android.util.Log.w("OtaKit", "immediate managed resume update failed", e);
       } finally {
         checkInProgress.set(false);
       }
@@ -463,18 +542,10 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void apply(PluginCall call) {
-    String stagedId = store.getStagedBundleId();
-    if (stagedId == null) {
-      call.reject("No staged update to apply");
+    if (!activateStagedBundleForReload()) {
+      call.reject("No valid staged update to apply");
       return;
     }
-    if (!store.bundleExists(stagedId)) {
-      store.setStagedBundleId(null);
-      call.reject("Staged bundle not found");
-      return;
-    }
-
-    activateStagedBundleForReload();
     call.resolve();
     reloadWebView();
   }
@@ -482,8 +553,8 @@ public class UpdaterPlugin extends Plugin {
   @PluginMethod
   public void notifyAppReady(PluginCall call) {
     BundleInfo current = store.getCurrentBundle();
-    if (shouldHideLaunchSplashOnAppReady()) {
-      hideLaunchSplashIfNeeded("notifyAppReady", false);
+    if (completeManagedOverlayOnAppReady()) {
+      hideOtaKitOverlay();
     }
 
     if (
@@ -753,20 +824,8 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private BundleInfo activateStagedBundleForLaunch() {
-    String stagedId = store.getStagedBundleId();
-    if (stagedId == null) {
-      return store.getCurrentBundle();
-    }
-
-    BundleInfo staged = store.getBundle(stagedId);
+    BundleInfo staged = resolveValidStagedBundleForActivation();
     if (staged == null) {
-      store.setStagedBundleId(null);
-      return store.getCurrentBundle();
-    }
-    if (!isCompatibleRuntime(staged)) {
-      try {
-        store.deleteBundle(staged.id);
-      } catch (Exception ignored) {}
       return store.getCurrentBundle();
     }
 
@@ -776,22 +835,10 @@ public class UpdaterPlugin extends Plugin {
     return staged;
   }
 
-  private void activateStagedBundleForReload() {
-    String stagedId = store.getStagedBundleId();
-    if (stagedId == null) {
-      return;
-    }
-
-    BundleInfo staged = store.getBundle(stagedId);
+  private boolean activateStagedBundleForReload() {
+    BundleInfo staged = resolveValidStagedBundleForActivation();
     if (staged == null) {
-      store.setStagedBundleId(null);
-      return;
-    }
-    if (!isCompatibleRuntime(staged)) {
-      try {
-        store.deleteBundle(staged.id);
-      } catch (Exception ignored) {}
-      return;
+      return false;
     }
 
     resolveCurrentRuntimeKey();
@@ -811,6 +858,7 @@ public class UpdaterPlugin extends Plugin {
     } else {
       applyServerBasePath(null);
     }
+    return true;
   }
 
   private void scheduleTrialTimeout(String bundleId) {
@@ -839,48 +887,77 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private void beginManagedLaunchSplash() {
-    synchronized (launchSplashLock) {
-      cancelLaunchSplashTimeoutLocked();
-      launchSplashState = LaunchSplashState.HOLDING_FOR_LAUNCH_DECISION;
-      launchSplashTimeoutRunnable = () -> {
+    synchronized (managedOverlayLock) {
+      cancelManagedOverlayTimeoutLocked();
+      managedOverlayState = ManagedOverlayState.HOLDING_FOR_LAUNCH_DECISION;
+      managedOverlayTimeoutRunnable = () -> {
         if (markManagedLaunchTimedOut()) {
-          hideLaunchSplashIfNeeded("launch timeout", false);
+          hideOtaKitOverlay();
         }
       };
-      mainHandler.postDelayed(launchSplashTimeoutRunnable, autoSplashscreenTimeoutMs);
+      mainHandler.postDelayed(managedOverlayTimeoutRunnable, autoSplashscreenTimeoutMs);
     }
   }
 
-  private void cancelLaunchSplashTimeoutLocked() {
-    if (launchSplashTimeoutRunnable != null) {
-      mainHandler.removeCallbacks(launchSplashTimeoutRunnable);
-      launchSplashTimeoutRunnable = null;
+  private void cancelManagedOverlayTimeoutLocked() {
+    if (managedOverlayTimeoutRunnable != null) {
+      mainHandler.removeCallbacks(managedOverlayTimeoutRunnable);
+      managedOverlayTimeoutRunnable = null;
     }
   }
 
   private boolean markManagedLaunchTimedOut() {
-    synchronized (launchSplashLock) {
-      if (launchSplashState != LaunchSplashState.HOLDING_FOR_LAUNCH_DECISION) {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
+        case HOLDING_FOR_LAUNCH_DECISION:
+          managedOverlayState = ManagedOverlayState.TIMED_OUT_LAUNCH;
+          managedOverlayTimeoutRunnable = null;
+          return true;
+        case WAITING_FOR_APP_READY:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
+          managedOverlayTimeoutRunnable = null;
+          return true;
+        case INACTIVE:
+        case HOLDING_FOR_RESUME_DECISION:
+        case TIMED_OUT_LAUNCH:
+        case TIMED_OUT_RESUME:
+          return false;
+      }
+      return false;
+    }
+  }
+
+  private boolean markManagedResumeTimedOut() {
+    synchronized (managedOverlayLock) {
+      if (managedOverlayState != ManagedOverlayState.HOLDING_FOR_RESUME_DECISION) {
         return false;
       }
-      launchSplashState = LaunchSplashState.TIMED_OUT;
-      launchSplashTimeoutRunnable = null;
+      managedOverlayState = ManagedOverlayState.TIMED_OUT_RESUME;
+      managedOverlayTimeoutRunnable = null;
       return true;
     }
   }
 
+  private boolean isManagedOverlayInactive() {
+    synchronized (managedOverlayLock) {
+      return managedOverlayState == ManagedOverlayState.INACTIVE;
+    }
+  }
+
   private boolean beginManagedLaunchReload() {
-    synchronized (launchSplashLock) {
-      switch (launchSplashState) {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
         case HOLDING_FOR_LAUNCH_DECISION:
-          cancelLaunchSplashTimeoutLocked();
-          launchSplashState = LaunchSplashState.WAITING_FOR_APP_READY;
+          cancelManagedOverlayTimeoutLocked();
+          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
           return true;
-        case TIMED_OUT:
-          launchSplashState = LaunchSplashState.INACTIVE;
+        case TIMED_OUT_LAUNCH:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
           return false;
         case INACTIVE:
+        case HOLDING_FOR_RESUME_DECISION:
         case WAITING_FOR_APP_READY:
+        case TIMED_OUT_RESUME:
           return false;
       }
       return false;
@@ -888,55 +965,207 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private boolean finishManagedLaunchDecision() {
-    synchronized (launchSplashLock) {
-      switch (launchSplashState) {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
         case HOLDING_FOR_LAUNCH_DECISION:
-          cancelLaunchSplashTimeoutLocked();
-          launchSplashState = LaunchSplashState.INACTIVE;
-          return true;
-        case TIMED_OUT:
-          launchSplashState = LaunchSplashState.INACTIVE;
+          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
+          return false;
+        case TIMED_OUT_LAUNCH:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
           return false;
         case INACTIVE:
+        case HOLDING_FOR_RESUME_DECISION:
         case WAITING_FOR_APP_READY:
+        case TIMED_OUT_RESUME:
           return false;
       }
       return false;
     }
   }
 
-  private boolean shouldHideLaunchSplashOnAppReady() {
-    synchronized (launchSplashLock) {
-      switch (launchSplashState) {
+  private boolean completeManagedOverlayOnAppReady() {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
         case HOLDING_FOR_LAUNCH_DECISION:
+        case HOLDING_FOR_RESUME_DECISION:
           return false;
         case WAITING_FOR_APP_READY:
-          cancelLaunchSplashTimeoutLocked();
-          launchSplashState = LaunchSplashState.INACTIVE;
+          cancelManagedOverlayTimeoutLocked();
+          managedOverlayState = ManagedOverlayState.INACTIVE;
           return true;
-        case TIMED_OUT:
-          launchSplashState = LaunchSplashState.INACTIVE;
-          return true;
+        case TIMED_OUT_LAUNCH:
+        case TIMED_OUT_RESUME:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
+          return false;
         case INACTIVE:
-          return true;
+          return false;
       }
       return false;
     }
   }
 
-  private void disableLaunchSplashManagement() {
-    synchronized (launchSplashLock) {
-      cancelLaunchSplashTimeoutLocked();
-      launchSplashState = LaunchSplashState.INACTIVE;
+  private boolean cancelManagedOverlayAwaitingAppReady() {
+    synchronized (managedOverlayLock) {
+      if (managedOverlayState != ManagedOverlayState.WAITING_FOR_APP_READY) {
+        return false;
+      }
+      cancelManagedOverlayTimeoutLocked();
+      managedOverlayState = ManagedOverlayState.INACTIVE;
+      return true;
     }
   }
 
-  private void hideLaunchSplashIfNeeded(String reason, boolean allowDeferredRetry) {
+  private boolean beginManagedResumeAppReadyWait() {
+    boolean shouldShowOverlay = false;
+    synchronized (managedOverlayLock) {
+      if (managedOverlayState == ManagedOverlayState.INACTIVE) {
+        managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
+        shouldShowOverlay = true;
+      }
+    }
+    if (!shouldShowOverlay) {
+      return false;
+    }
+    showOtaKitOverlay();
+    return true;
+  }
+
+  private boolean beginManagedResumeSplash() {
+    Runnable timeoutRunnable = null;
+    synchronized (managedOverlayLock) {
+      if (managedOverlayState == ManagedOverlayState.INACTIVE) {
+        cancelManagedOverlayTimeoutLocked();
+        managedOverlayState = ManagedOverlayState.HOLDING_FOR_RESUME_DECISION;
+        timeoutRunnable = () -> {
+          if (markManagedResumeTimedOut()) {
+            hideOtaKitOverlay();
+          }
+        };
+        managedOverlayTimeoutRunnable = timeoutRunnable;
+      }
+    }
+    if (timeoutRunnable == null) {
+      return false;
+    }
+    showOtaKitOverlay();
+    mainHandler.postDelayed(timeoutRunnable, autoSplashscreenTimeoutMs);
+    return true;
+  }
+
+  private boolean beginManagedResumeReload() {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
+        case HOLDING_FOR_RESUME_DECISION:
+          cancelManagedOverlayTimeoutLocked();
+          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
+          return true;
+        case TIMED_OUT_RESUME:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
+          return false;
+        case INACTIVE:
+        case HOLDING_FOR_LAUNCH_DECISION:
+        case WAITING_FOR_APP_READY:
+        case TIMED_OUT_LAUNCH:
+          return false;
+      }
+      return false;
+    }
+  }
+
+  private boolean finishManagedResumeDecision() {
+    synchronized (managedOverlayLock) {
+      switch (managedOverlayState) {
+        case HOLDING_FOR_RESUME_DECISION:
+          cancelManagedOverlayTimeoutLocked();
+          managedOverlayState = ManagedOverlayState.INACTIVE;
+          return true;
+        case TIMED_OUT_RESUME:
+          managedOverlayState = ManagedOverlayState.INACTIVE;
+          return false;
+        case INACTIVE:
+        case HOLDING_FOR_LAUNCH_DECISION:
+        case WAITING_FOR_APP_READY:
+        case TIMED_OUT_LAUNCH:
+          return false;
+      }
+      return false;
+    }
+  }
+
+  private BundleInfo resolveValidStagedBundleForActivation() {
+    String stagedId = store.getStagedBundleId();
+    if (stagedId == null) {
+      return null;
+    }
+
+    BundleInfo staged = store.getBundle(stagedId);
+    if (staged == null) {
+      store.setStagedBundleId(null);
+      return null;
+    }
+    if (!isCompatibleRuntime(staged)) {
+      try {
+        store.deleteBundle(staged.id);
+      } catch (Exception ignored) {}
+      store.setStagedBundleId(null);
+      return null;
+    }
+    return staged;
+  }
+
+  private void showOtaKitOverlay() {
     if (!autoSplashscreen) {
       return;
     }
 
-    Runnable hide = () -> hideLaunchSplashOnMain(reason, allowDeferredRetry);
+    Runnable show = () -> {
+      if (otaOverlayView != null) {
+        return;
+      }
+      if (bridge == null) {
+        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: bridge is not ready");
+        return;
+      }
+      if (bridge.getWebView() == null) {
+        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: WebView is not ready");
+        return;
+      }
+      View rootView = bridge.getWebView().getRootView();
+      if (!(rootView instanceof ViewGroup)) {
+        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: root view is not a ViewGroup");
+        return;
+      }
+      View overlay = new View(getContext());
+      overlay.setBackgroundColor(autoSplashscreenBackgroundColor);
+      ViewGroup decorView = (ViewGroup) rootView;
+      ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT
+      );
+      decorView.addView(overlay, params);
+      otaOverlayView = overlay;
+    };
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      show.run();
+    } else {
+      mainHandler.post(show);
+    }
+  }
+
+  private void hideOtaKitOverlay() {
+    Runnable hide = () -> {
+      View overlay = otaOverlayView;
+      if (overlay == null) {
+        return;
+      }
+      otaOverlayView = null;
+      overlay.animate().alpha(0f).setDuration(200).withEndAction(() -> {
+        ViewGroup parent = (ViewGroup) overlay.getParent();
+        if (parent != null) {
+          parent.removeView(overlay);
+        }
+      }).start();
+    };
     if (Looper.myLooper() == Looper.getMainLooper()) {
       hide.run();
     } else {
@@ -944,50 +1173,19 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private void hideLaunchSplashOnMain(String reason, boolean allowDeferredRetry) {
-    if (!autoSplashscreen) {
-      return;
+  private int parseAutoSplashscreenBackgroundColor(String raw) {
+    String normalized = trimToNull(raw);
+    if (normalized == null) {
+      return Color.BLACK;
     }
-
-    if (invokeSplashScreenHide()) {
-      return;
+    if (!normalized.matches("^#[0-9a-fA-F]{6}$")) {
+      android.util.Log.w(
+        "OtaKit",
+        "Invalid autoSplashscreenBackgroundColor '" + raw + "'. Expected #rrggbb."
+      );
+      return Color.BLACK;
     }
-
-    if (allowDeferredRetry) {
-      mainHandler.post(() -> hideLaunchSplashOnMain(reason, false));
-      return;
-    }
-
-    android.util.Log.e(
-      "OtaKit",
-      "autoSplashscreen could not hide the Capacitor SplashScreen during " +
-        reason +
-        ". Install @capacitor/splash-screen and set SplashScreen.launchAutoHide to false."
-    );
-    disableLaunchSplashManagement();
-  }
-
-  private boolean invokeSplashScreenHide() {
-    if (bridge == null) {
-      return false;
-    }
-
-    PluginHandle splashPlugin = bridge.getPlugin("SplashScreen");
-    if (splashPlugin == null) {
-      return false;
-    }
-
-    try {
-      // SplashScreen.hide() only reads call settings and then resolves, so a
-      // no-op PluginCall is enough today. If this ever fails on a real device
-      // or a future Capacitor version due to the null MessageHandler, switch
-      // this path to a reflected Bridge.msgHandler-based PluginCall and add the
-      // matching keep rule for Bridge.msgHandler in release builds.
-      splashPlugin.invoke("hide", new NoOpPluginCall("SplashScreen", "hide"));
-      return true;
-    } catch (Exception ignored) {
-      return false;
-    }
+    return Color.parseColor(normalized);
   }
 
   private void logAutoSplashscreenConfigurationWarnings() {
@@ -998,7 +1196,7 @@ public class UpdaterPlugin extends Plugin {
     if (UPDATE_MODE_MANUAL.equals(updateMode)) {
       android.util.Log.w(
         "OtaKit",
-        "autoSplashscreen is enabled, but updateMode is manual so no managed cold-start launch can occur."
+        "autoSplashscreen is enabled, but updateMode is manual so no managed overlay can occur."
       );
       return;
     }
@@ -1006,64 +1204,9 @@ public class UpdaterPlugin extends Plugin {
     if (!UPDATE_MODE_IMMEDIATE.equals(updateMode) && !immediateUpdateOnRuntimeChange) {
       android.util.Log.w(
         "OtaKit",
-        "autoSplashscreen is enabled, but this config never manages the launch splash unless updateMode is immediate or immediateUpdateOnRuntimeChange is true."
+        "autoSplashscreen is enabled, but this config never shows the OtaKit overlay unless updateMode is immediate or immediateUpdateOnRuntimeChange is true."
       );
     }
-  }
-
-  private static final class NoOpPluginCall extends PluginCall {
-
-    NoOpPluginCall(String pluginId, String methodName) {
-      super(null, pluginId, PluginCall.CALLBACK_ID_DANGLING, methodName, new JSObject());
-    }
-
-    @Override
-    public void successCallback(com.getcapacitor.PluginResult successResult) {}
-
-    @Override
-    public void resolve(JSObject data) {}
-
-    @Override
-    public void resolve() {}
-
-    @Override
-    public void errorCallback(String msg) {}
-
-    @Override
-    public void reject(String msg, String code, Exception ex, JSObject data) {}
-
-    @Override
-    public void reject(String msg, Exception ex, JSObject data) {}
-
-    @Override
-    public void reject(String msg, String code, JSObject data) {}
-
-    @Override
-    public void reject(String msg, String code, Exception ex) {}
-
-    @Override
-    public void reject(String msg, JSObject data) {}
-
-    @Override
-    public void reject(String msg, Exception ex) {}
-
-    @Override
-    public void reject(String msg, String code) {}
-
-    @Override
-    public void reject(String msg) {}
-
-    @Override
-    public void unimplemented() {}
-
-    @Override
-    public void unimplemented(String msg) {}
-
-    @Override
-    public void unavailable() {}
-
-    @Override
-    public void unavailable(String msg) {}
   }
 
   private void rollbackCurrentBundle(String reason) {

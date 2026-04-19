@@ -3,6 +3,17 @@
 This demo app is a native-capable Next.js diagnostics console for the
 `@otakit/capacitor-updater` plugin.
 
+The native config in `capacitor.config.ts` is set up to exercise OtaKit's
+managed overlay path:
+
+- `updateMode: "immediate"`
+- `autoSplashscreen: true`
+- `autoSplashscreenTimeout: 4000`
+- `autoSplashscreenBackgroundColor: "#ff0000"`
+
+That demo config is meant to make both cold-start masking and immediate resume
+masking obvious while testing the native app.
+
 ## Plugin API
 
 ```ts

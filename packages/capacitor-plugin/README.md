@@ -54,6 +54,7 @@ plugins: {
     // immediateUpdateOnRuntimeChange: true,
     // autoSplashscreen: true,
     // autoSplashscreenTimeout: 8000,
+    // autoSplashscreenBackgroundColor: "#000000",
     // updateMode: "manual",
     // updateMode: "immediate",
   }
@@ -98,10 +99,10 @@ install or a new `runtimeVersion` as a one-time startup override in automatic
 That gives new installs and new native shells a faster catch-up path without
 changing normal resume behavior.
 
-## Optional launch splash handoff
+## Optional managed overlay
 
-If you use cold-start inline updates, OtaKit can also manage the Capacitor
-launch splash so users do not see an old-bundle frame before the reload.
+If you use inline updates, OtaKit can show its own native overlay so users do
+not see an old-bundle frame before a managed reload.
 
 ```ts
 plugins: {
@@ -110,28 +111,28 @@ plugins: {
     updateMode: "immediate",
     autoSplashscreen: true,
     autoSplashscreenTimeout: 8000,
+    autoSplashscreenBackgroundColor: "#000000",
   }
 }
 ```
 
-Hard prerequisites:
-
-1. install `@capacitor/splash-screen`
-2. set `SplashScreen.launchAutoHide: false`
-3. keep calling `notifyAppReady()` reliably
-
 Important scope and behavior:
 
-- v1 is cold-start only
-- it manages `updateMode: "immediate"` launches and cold-start
+- OtaKit owns the overlay directly. `@capacitor/splash-screen` is not required.
+- it manages cold-start `updateMode: "immediate"` launches and cold-start
   `immediateUpdateOnRuntimeChange` overrides
-- resume behavior is unchanged
-- if `autoSplashscreenTimeout` fires, OtaKit hides the splash and does not
-  apply inline later on that same launch
+- in `updateMode: "immediate"`, it also manages resume end to end:
+  - if a valid staged bundle already exists, it reloads behind the overlay
+  - if no staged bundle exists yet, it can check/download behind the overlay and
+    either reload before timeout or defer the staged bundle to a later resume
+- if `autoSplashscreenTimeout` fires, OtaKit hides the overlay and does not
+  apply inline later during that same managed launch or resume decision attempt
 - if a bundle already finished staging by then, it stays staged for the next
   activation path
 
-This feature is intentionally optional. If you do not need cold-start masking,
+`autoSplashscreenBackgroundColor` accepts exact `#rrggbb` values.
+
+This feature is intentionally optional. If you do not need reload masking,
 leave `autoSplashscreen` off.
 
 ## Trust model
@@ -176,8 +177,9 @@ resume**.
   primarily for development and testing — not recommended for production.
 
 If you also enable `autoSplashscreen`, the cold-start side of `immediate` can
-hold the launch splash across the reload instead of briefly showing the old
-bundle first.
+hold the OtaKit overlay across the reload instead of briefly showing the old
+bundle first. On resume, `immediate` can also keep update application behind
+the OtaKit overlay instead of allowing a delayed visible switch.
 
 ## Runtime model
 

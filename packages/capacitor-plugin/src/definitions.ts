@@ -93,17 +93,23 @@ export interface OtaKitConfig {
   /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
   appReadyTimeout?: number;
   /**
-   * Manage the Capacitor launch splash during cold-start inline update launches.
-   * Requires `@capacitor/splash-screen`, `SplashScreen.launchAutoHide = false`,
-   * and a reliable `notifyAppReady()` call from the app. Defaults to false.
+   * Show an OtaKit-owned native overlay during managed inline update reloads.
+   * Covers cold-start `immediate` launches, cold-start `immediateUpdateOnRuntimeChange`,
+   * and fully managed `immediate` resume handling. Defaults to false.
    */
   autoSplashscreen?: boolean;
   /**
-   * Milliseconds to keep the launch splash visible while OtaKit decides whether
-   * to apply an inline cold-start update. When this timeout fires, OtaKit hides
-   * the splash and stops inline apply for the rest of that launch. Defaults to 10000.
+   * Milliseconds to keep the OtaKit overlay visible while OtaKit decides whether
+   * to apply an inline update during a managed cold-start or immediate-resume
+   * flow. When this timeout fires, OtaKit hides the overlay and does not apply
+   * inline later during that same decision attempt. Defaults to 10000.
    */
   autoSplashscreenTimeout?: number;
+  /**
+   * Overlay background color for autoSplashscreen in exact `#rrggbb` format.
+   * Defaults to `#000000`.
+   */
+  autoSplashscreenBackgroundColor?: string;
   /** Custom event ingest base URL. Hosted default: https://ingest.otakit.app/v1 */
   ingestUrl?: string;
   /** Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime does not use it. */

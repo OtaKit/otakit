@@ -1,6 +1,7 @@
 import Capacitor
 import CryptoKit
 import Foundation
+import UIKit
 
 @objc(UpdaterPlugin)
 public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -11,11 +12,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     case immediate
   }
 
-  private enum LaunchSplashState {
+  private enum ManagedOverlayState {
     case inactive
     case holdingForLaunchDecision
-    case timedOut
+    case holdingForResumeDecision
     case waitingForAppReady
+    case timedOutLaunch
+    case timedOutResume
   }
 
   private enum Trigger {
@@ -50,15 +53,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var immediateUpdateOnRuntimeChange = false
   private var autoSplashscreen = false
   private var autoSplashscreenTimeoutMs = 10_000
+  private var autoSplashscreenBackgroundColor: UIColor = .black
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
-  private var launchSplashTimeoutWorkItem: DispatchWorkItem?
-  private var launchSplashState: LaunchSplashState = .inactive
-  private let launchSplashStateLock = NSLock()
+  private var managedOverlayTimeoutWorkItem: DispatchWorkItem?
+  private var managedOverlayState: ManagedOverlayState = .inactive
+  private let managedOverlayStateLock = NSLock()
   private var checkIntervalMs: Int = 600_000
   private let isCheckInProgress = NSLock()
   private var checkInProgress = false
   private var foregroundObserver: NSObjectProtocol?
+  private var otaOverlayView: UIView?
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
@@ -85,6 +90,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     updateMode = resolveUpdateMode(configured: updateModeRaw)
     immediateUpdateOnRuntimeChange = getConfig().getBoolean("immediateUpdateOnRuntimeChange", false)
     autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false)
+    autoSplashscreenBackgroundColor = parseAutoSplashscreenBackgroundColor(
+      getConfig().getString("autoSplashscreenBackgroundColor")
+    )
     downloader = Downloader(allowInsecureUrls: allowInsecureUrls)
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
     autoSplashscreenTimeoutMs = max(
@@ -144,9 +152,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       forceImmediateRuntimeChangeLaunch: forceImmediateRuntimeChangeLaunch
     )
     if manageLaunchSplash {
+      showOtaKitOverlay()
       beginManagedLaunchSplash()
-    } else if autoSplashscreen {
-      hideLaunchSplashIfNeeded(reason: "cold start", allowDeferredRetry: true)
     }
 
     if isAutomaticUpdateMode() {
@@ -175,6 +182,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func handleAppWillEnterForeground() {
+    guard isAutomaticUpdateMode() else {
+      return
+    }
+
+    if updateMode == .immediate && autoSplashscreen {
+      handleManagedImmediateResume()
+      return
+    }
+
     runAutomaticUpdate(
       trigger: .resume,
       forceImmediateLaunch: false,
@@ -192,12 +208,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       if updateMode == .manual { return }
 
       // next-resume and immediate: activate staged bundle on resume without server check
-      if (updateMode == .nextResume || updateMode == .immediate),
-         let stagedId = store.getStagedBundleId(),
-         store.getBundle(id: stagedId) != nil {
-        activateStagedBundleForReload()
-        reloadWebView()
-        return
+      if updateMode == .nextResume || updateMode == .immediate {
+        if activateStagedBundleForReload() {
+          reloadWebView()
+          return
+        }
       }
 
       if updateMode != .immediate && shouldThrottleCheck() { return }
@@ -224,8 +239,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
             if result != nil {
               recordCheckTimestamp()
               if beginManagedLaunchReload() {
-                activateStagedBundleForReload()
-                reloadWebView()
+                if activateStagedBundleForReload() {
+                  reloadWebView()
+                } else if cancelManagedOverlayAwaitingAppReady() {
+                  hideOtaKitOverlay()
+                }
               }
             } else {
               if forceImmediateLaunch {
@@ -233,22 +251,23 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
               }
               recordCheckTimestamp()
               if finishManagedLaunchDecision() {
-                hideLaunchSplashIfNeeded(reason: "launch decision", allowDeferredRetry: false)
+                hideOtaKitOverlay()
               }
             }
           } else if result != nil {
             if forceImmediateLaunch {
               recordCheckTimestamp()
             }
-            activateStagedBundleForReload()
-            reloadWebView()
+            if activateStagedBundleForReload() {
+              reloadWebView()
+            }
           } else if forceImmediateLaunch {
             resolveCurrentRuntimeKey()
             recordCheckTimestamp()
           }
         } catch {
           if manageLaunchSplash, finishManagedLaunchDecision() {
-            hideLaunchSplashIfNeeded(reason: "launch error", allowDeferredRetry: false)
+            hideOtaKitOverlay()
           }
           if forceImmediateLaunch {
             print("[OtaKit] runtime-change startup update failed: \(error.localizedDescription)")
@@ -267,8 +286,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         do {
           let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
           if result != nil {
-            activateStagedBundleForReload()
-            reloadWebView()
+            if activateStagedBundleForReload() {
+              reloadWebView()
+            }
           }
         } catch {
           print("[OtaKit] immediate resume update failed: \(error.localizedDescription)")
@@ -285,6 +305,55 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         recordCheckTimestamp()
       } catch {
         // Check failed — timestamp not recorded, will retry on next trigger
+      }
+    }
+  }
+
+  private func handleManagedImmediateResume() {
+    guard isManagedOverlayInactive() else {
+      return
+    }
+
+    if resolveValidStagedBundleForActivation() != nil {
+      guard beginManagedResumeAppReadyWait() else {
+        return
+      }
+      if activateStagedBundleForReload() {
+        reloadWebView()
+      } else if cancelManagedOverlayAwaitingAppReady() {
+        hideOtaKitOverlay()
+      }
+      return
+    }
+
+    guard claimCheckInProgress() else {
+      return
+    }
+    guard beginManagedResumeSplash() else {
+      releaseCheckInProgress()
+      return
+    }
+
+    Task {
+      defer { releaseCheckInProgress() }
+      do {
+        let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
+        if result != nil {
+          if beginManagedResumeReload() {
+            if activateStagedBundleForReload() {
+              reloadWebView()
+            } else if cancelManagedOverlayAwaitingAppReady() {
+              hideOtaKitOverlay()
+            }
+          }
+        } else if finishManagedResumeDecision() {
+          hideOtaKitOverlay()
+        }
+      } catch {
+        if finishManagedResumeDecision() {
+          hideOtaKitOverlay()
+        }
+        print("[OtaKit] immediate managed resume update failed: \(error.localizedDescription)")
       }
     }
   }
@@ -470,17 +539,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
 
-    activateStagedBundleForReload()
+    guard activateStagedBundleForReload() else {
+      call.reject("No valid staged update to apply")
+      return
+    }
     call.resolve()
     reloadWebView()
   }
 
   @objc func notifyAppReady(_ call: CAPPluginCall) {
     let current = store.getCurrentBundle()
-    let shouldHideLaunchSplash = shouldHideLaunchSplashOnAppReady()
+    let shouldHideManagedOverlay = completeManagedOverlayOnAppReady()
 
-    if shouldHideLaunchSplash {
-      hideLaunchSplashIfNeeded(reason: "notifyAppReady", allowDeferredRetry: false)
+    if shouldHideManagedOverlay {
+      hideOtaKitOverlay()
     }
 
     guard !current.isBuiltin else {
@@ -737,15 +809,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func activateStagedBundleForLaunch() -> BundleInfo {
-    guard let stagedId = store.getStagedBundleId() else {
-      return store.getCurrentBundle()
-    }
-    guard let staged = store.getBundle(id: stagedId) else {
-      store.setStagedBundleId(nil)
-      return store.getCurrentBundle()
-    }
-    guard isCompatibleRuntime(staged) else {
-      try? store.deleteBundle(id: staged.id)
+    guard let staged = resolveValidStagedBundleForActivation() else {
       return store.getCurrentBundle()
     }
 
@@ -755,17 +819,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return staged
   }
 
-  private func activateStagedBundleForReload() {
-    guard let stagedId = store.getStagedBundleId() else {
-      return
-    }
-    guard var staged = store.getBundle(id: stagedId) else {
-      store.setStagedBundleId(nil)
-      return
-    }
-    guard isCompatibleRuntime(staged) else {
-      try? store.deleteBundle(id: staged.id)
-      return
+  @discardableResult
+  private func activateStagedBundleForReload() -> Bool {
+    guard var staged = resolveValidStagedBundleForActivation() else {
+      return false
     }
 
     resolveCurrentRuntimeKey()
@@ -785,6 +842,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     } else {
       applyServerBasePath(nil)
     }
+    return true
   }
 
   private func scheduleTrialTimeout(for bundleId: String) {
@@ -823,21 +881,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func beginManagedLaunchSplash() {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
 
-    cancelLaunchSplashTimeoutLocked()
-    launchSplashState = .holdingForLaunchDecision
+    cancelManagedOverlayTimeoutLocked()
+    managedOverlayState = .holdingForLaunchDecision
 
     let workItem = DispatchWorkItem { [weak self] in
       guard let self else {
         return
       }
       if self.markManagedLaunchTimedOut() {
-        self.hideLaunchSplashIfNeeded(reason: "launch timeout", allowDeferredRetry: false)
+        self.hideOtaKitOverlay()
       }
     }
-    launchSplashTimeoutWorkItem = workItem
+    managedOverlayTimeoutWorkItem = workItem
 
     DispatchQueue.main.asyncAfter(
       deadline: .now() + .milliseconds(autoSplashscreenTimeoutMs),
@@ -845,92 +903,230 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     )
   }
 
-  private func cancelLaunchSplashTimeoutLocked() {
-    launchSplashTimeoutWorkItem?.cancel()
-    launchSplashTimeoutWorkItem = nil
+  private func cancelManagedOverlayTimeoutLocked() {
+    managedOverlayTimeoutWorkItem?.cancel()
+    managedOverlayTimeoutWorkItem = nil
   }
 
   private func markManagedLaunchTimedOut() -> Bool {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
 
-    guard launchSplashState == .holdingForLaunchDecision else {
+    switch managedOverlayState {
+    case .holdingForLaunchDecision:
+      managedOverlayState = .timedOutLaunch
+      managedOverlayTimeoutWorkItem = nil
+      return true
+    case .waitingForAppReady:
+      managedOverlayState = .inactive
+      managedOverlayTimeoutWorkItem = nil
+      return true
+    case .inactive, .holdingForResumeDecision, .timedOutLaunch, .timedOutResume:
+      return false
+    }
+  }
+
+  private func markManagedResumeTimedOut() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
+
+    guard managedOverlayState == .holdingForResumeDecision else {
       return false
     }
 
-    launchSplashState = .timedOut
-    launchSplashTimeoutWorkItem = nil
+    managedOverlayState = .timedOutResume
+    managedOverlayTimeoutWorkItem = nil
     return true
   }
 
-  private func beginManagedLaunchReload() -> Bool {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+  private func isManagedOverlayInactive() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
+    return managedOverlayState == .inactive
+  }
 
-    switch launchSplashState {
+  private func beginManagedLaunchReload() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
+
+    switch managedOverlayState {
     case .holdingForLaunchDecision:
-      cancelLaunchSplashTimeoutLocked()
-      launchSplashState = .waitingForAppReady
+      cancelManagedOverlayTimeoutLocked()
+      managedOverlayState = .waitingForAppReady
       return true
-    case .timedOut:
-      launchSplashState = .inactive
+    case .timedOutLaunch:
+      managedOverlayState = .inactive
       return false
-    case .inactive, .waitingForAppReady:
+    case .inactive, .holdingForResumeDecision, .waitingForAppReady, .timedOutResume:
       return false
     }
   }
 
   private func finishManagedLaunchDecision() -> Bool {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
 
-    switch launchSplashState {
+    switch managedOverlayState {
     case .holdingForLaunchDecision:
-      cancelLaunchSplashTimeoutLocked()
-      launchSplashState = .inactive
-      return true
-    case .timedOut:
-      launchSplashState = .inactive
+      managedOverlayState = .waitingForAppReady
       return false
-    case .inactive, .waitingForAppReady:
+    case .timedOutLaunch:
+      managedOverlayState = .inactive
+      return false
+    case .inactive, .holdingForResumeDecision, .waitingForAppReady, .timedOutResume:
       return false
     }
   }
 
-  private func shouldHideLaunchSplashOnAppReady() -> Bool {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+  private func completeManagedOverlayOnAppReady() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
 
-    switch launchSplashState {
-    case .holdingForLaunchDecision:
+    switch managedOverlayState {
+    case .holdingForLaunchDecision, .holdingForResumeDecision:
       return false
     case .waitingForAppReady:
-      cancelLaunchSplashTimeoutLocked()
-      launchSplashState = .inactive
+      cancelManagedOverlayTimeoutLocked()
+      managedOverlayState = .inactive
       return true
-    case .timedOut:
-      launchSplashState = .inactive
-      return true
+    case .timedOutLaunch, .timedOutResume:
+      managedOverlayState = .inactive
+      return false
     case .inactive:
-      return true
+      return false
     }
   }
 
-  private func disableLaunchSplashManagement() {
-    launchSplashStateLock.lock()
-    defer { launchSplashStateLock.unlock() }
+  private func cancelManagedOverlayAwaitingAppReady() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
 
-    cancelLaunchSplashTimeoutLocked()
-    launchSplashState = .inactive
+    guard managedOverlayState == .waitingForAppReady else {
+      return false
+    }
+    cancelManagedOverlayTimeoutLocked()
+    managedOverlayState = .inactive
+    return true
   }
 
-  private func hideLaunchSplashIfNeeded(reason: String, allowDeferredRetry: Bool) {
+  private func beginManagedResumeAppReadyWait() -> Bool {
+    var shouldShowOverlay = false
+    managedOverlayStateLock.lock()
+    if managedOverlayState == .inactive {
+      managedOverlayState = .waitingForAppReady
+      shouldShowOverlay = true
+    }
+    managedOverlayStateLock.unlock()
+
+    guard shouldShowOverlay else {
+      return false
+    }
+    showOtaKitOverlay()
+    return true
+  }
+
+  private func beginManagedResumeSplash() -> Bool {
+    var workItem: DispatchWorkItem?
+    managedOverlayStateLock.lock()
+    if managedOverlayState == .inactive {
+      cancelManagedOverlayTimeoutLocked()
+      managedOverlayState = .holdingForResumeDecision
+
+      let item = DispatchWorkItem { [weak self] in
+        guard let self else {
+          return
+        }
+        if self.markManagedResumeTimedOut() {
+          self.hideOtaKitOverlay()
+        }
+      }
+      managedOverlayTimeoutWorkItem = item
+      workItem = item
+    }
+    managedOverlayStateLock.unlock()
+
+    guard let workItem else {
+      return false
+    }
+    showOtaKitOverlay()
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + .milliseconds(autoSplashscreenTimeoutMs),
+      execute: workItem
+    )
+    return true
+  }
+
+  private func beginManagedResumeReload() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
+
+    switch managedOverlayState {
+    case .holdingForResumeDecision:
+      cancelManagedOverlayTimeoutLocked()
+      managedOverlayState = .waitingForAppReady
+      return true
+    case .timedOutResume:
+      managedOverlayState = .inactive
+      return false
+    case .inactive, .holdingForLaunchDecision, .waitingForAppReady, .timedOutLaunch:
+      return false
+    }
+  }
+
+  private func finishManagedResumeDecision() -> Bool {
+    managedOverlayStateLock.lock()
+    defer { managedOverlayStateLock.unlock() }
+
+    switch managedOverlayState {
+    case .holdingForResumeDecision:
+      cancelManagedOverlayTimeoutLocked()
+      managedOverlayState = .inactive
+      return true
+    case .timedOutResume:
+      managedOverlayState = .inactive
+      return false
+    case .inactive, .holdingForLaunchDecision, .waitingForAppReady, .timedOutLaunch:
+      return false
+    }
+  }
+
+  private func resolveValidStagedBundleForActivation() -> BundleInfo? {
+    guard let stagedId = store.getStagedBundleId() else {
+      return nil
+    }
+    guard let staged = store.getBundle(id: stagedId) else {
+      store.setStagedBundleId(nil)
+      return nil
+    }
+    guard isCompatibleRuntime(staged) else {
+      try? store.deleteBundle(id: staged.id)
+      store.setStagedBundleId(nil)
+      return nil
+    }
+    return staged
+  }
+
+  private func showOtaKitOverlay() {
     guard autoSplashscreen else {
       return
     }
 
     let work: () -> Void = { [weak self] in
-      self?.hideLaunchSplashOnMain(reason: reason, allowDeferredRetry: allowDeferredRetry)
+      guard let self else {
+        return
+      }
+      guard self.otaOverlayView == nil else {
+        return
+      }
+      guard let parentView = self.bridge?.viewController?.view else {
+        print("[OtaKit] showOtaKitOverlay skipped: host view is not ready")
+        return
+      }
+      let overlay = UIView(frame: parentView.bounds)
+      overlay.backgroundColor = self.autoSplashscreenBackgroundColor
+      overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      parentView.addSubview(overlay)
+      self.otaOverlayView = overlay
     }
 
     if Thread.isMainThread {
@@ -940,49 +1136,43 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
-  private func hideLaunchSplashOnMain(reason: String, allowDeferredRetry: Bool) {
-    guard autoSplashscreen else {
-      return
-    }
-
-    if invokeSplashScreenHide() {
-      return
-    }
-
-    if allowDeferredRetry {
-      DispatchQueue.main.async { [weak self] in
-        self?.hideLaunchSplashOnMain(reason: reason, allowDeferredRetry: false)
+  private func hideOtaKitOverlay() {
+    let work: () -> Void = { [weak self] in
+      guard let self, let overlay = self.otaOverlayView else {
+        return
       }
-      return
+      self.otaOverlayView = nil
+      UIView.animate(withDuration: 0.2, animations: {
+        overlay.alpha = 0
+      }, completion: { _ in
+        overlay.removeFromSuperview()
+      })
     }
 
-    print(
-      "[OtaKit] ERROR: autoSplashscreen could not hide the Capacitor SplashScreen during \(reason). Install @capacitor/splash-screen and set SplashScreen.launchAutoHide to false."
-    )
-    disableLaunchSplashManagement()
+    if Thread.isMainThread {
+      work()
+    } else {
+      DispatchQueue.main.async(execute: work)
+    }
   }
 
-  @discardableResult
-  private func invokeSplashScreenHide() -> Bool {
-    guard let bridge,
-          let splashPlugin = bridge.plugin(withName: "SplashScreen") else {
-      return false
+  private func parseAutoSplashscreenBackgroundColor(_ raw: String?) -> UIColor {
+    guard let raw = trimToNil(raw) else {
+      return .black
+    }
+    guard raw.count == 7,
+          raw.hasPrefix("#"),
+          let rgb = UInt64(raw.dropFirst(), radix: 16) else {
+      print("[OtaKit] Invalid autoSplashscreenBackgroundColor '\(raw)'. Expected #rrggbb.")
+      return .black
     }
 
-    let selector = NSSelectorFromString("hide:")
-    guard splashPlugin.responds(to: selector) else {
-      return false
-    }
-
-    let call = CAPPluginCall(
-      callbackId: "-1",
-      methodName: "hide",
-      options: [:],
-      success: { _, _ in },
-      error: { _ in }
+    return UIColor(
+      red: CGFloat((rgb >> 16) & 0xff) / 255,
+      green: CGFloat((rgb >> 8) & 0xff) / 255,
+      blue: CGFloat(rgb & 0xff) / 255,
+      alpha: 1
     )
-    _ = splashPlugin.perform(selector, with: call)
-    return true
   }
 
   private func logAutoSplashscreenConfigurationWarnings() {
@@ -991,12 +1181,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     if updateMode == .manual {
-      print("[OtaKit] autoSplashscreen is enabled, but updateMode is manual so no managed cold-start launch can occur.")
+      print("[OtaKit] autoSplashscreen is enabled, but updateMode is manual so no managed overlay can occur.")
       return
     }
 
     if updateMode != .immediate && !immediateUpdateOnRuntimeChange {
-      print("[OtaKit] autoSplashscreen is enabled, but this config never manages the launch splash unless updateMode is immediate or immediateUpdateOnRuntimeChange is true.")
+      print("[OtaKit] autoSplashscreen is enabled, but this config never shows the OtaKit overlay unless updateMode is immediate or immediateUpdateOnRuntimeChange is true.")
     }
   }
 
