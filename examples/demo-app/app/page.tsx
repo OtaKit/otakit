@@ -1,6 +1,7 @@
 'use client';
 
 import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
 import {
   type BundleInfo,
   type CheckResult,
@@ -25,6 +26,7 @@ const LOG_CLASS: Record<LogLevel, string> = {
 };
 
 const PLUGIN_NAME = 'OtaKit';
+const SPLASH_PLUGIN_NAME = 'SplashScreen';
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -133,6 +135,20 @@ async function waitForPluginAvailability(timeoutMs = 3000): Promise<boolean> {
   return Capacitor.isPluginAvailable(PLUGIN_NAME);
 }
 
+async function hideNativeSplashScreen(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) {
+    return;
+  }
+  if (!Capacitor.isPluginAvailable(SPLASH_PLUGIN_NAME)) {
+    return;
+  }
+  try {
+    await SplashScreen.hide();
+  } catch {
+    // Ignore splash hide failures so startup can continue.
+  }
+}
+
 type EnvironmentState = {
   isReady: boolean;
   platform: string;
@@ -237,6 +253,7 @@ export default function Home() {
       } catch (error) {
         setStatus(`Init failed: ${toErrorMessage(error)}`);
       } finally {
+        await hideNativeSplashScreen();
         setStartupScreenVisible(false);
       }
     })();

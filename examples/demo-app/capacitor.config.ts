@@ -5,6 +5,12 @@ const config: CapacitorConfig = {
   appName: 'OtaKit Demo',
   webDir: 'out',
   plugins: {
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: '#0f172a',
+      showSpinner: true,
+      spinnerColor: '#22d3ee',
+    },
     OtaKit: {
       appId: '4fdd60d6-4775-4ad5-8c61-1cb4012901ab',
       runtimeVersion: 'demo-shell-v3',

@@ -38,11 +38,16 @@ Use it to verify the plugin works end-to-end:
 
 On screen load, `app/page.tsx`:
 
-1. shows a fullscreen startup loading screen
-2. checks plugin availability with `Capacitor.isPluginAvailable("OtaKit")`
-3. calls `OtaKit.notifyAppReady()`
-4. refreshes `getState()` and `getLastFailure()`
-5. hides the loading screen and sets status to `Ready`
+1. keeps Capacitor Splash Screen visible (`launchAutoHide: false`)
+2. shows a fullscreen startup loading screen
+3. checks plugin availability with `Capacitor.isPluginAvailable("OtaKit")`
+4. calls `OtaKit.notifyAppReady()`
+5. refreshes `getState()` and `getLastFailure()`
+6. hides native splash screen and then hides the startup loading screen
+7. sets status to `Ready`
+
+That startup path keeps the app visually stable on cold launch and during
+bundle activation checks.
 
 ## Main controls
 
