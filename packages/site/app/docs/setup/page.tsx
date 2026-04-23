@@ -62,18 +62,16 @@ export default config;`}</Pre>
       </P>
 
       <P>
-        Optional: if you use <Code>updateMode: &quot;immediate&quot;</Code> or want runtime-lane
-        catch-up launches to stay under the launch splash, you can also enable{' '}
-        <Code>autoSplashscreen</Code>. That requires <Code>@capacitor/splash-screen</Code>,{' '}
-        <Code>SplashScreen.launchAutoHide = false</Code>, and a reliable{' '}
-        <Code>notifyAppReady()</Code> call. See the{' '}
+        Optional: if you want something other than the hosted defaults, you can also set{' '}
+        <Code>launchPolicy</Code>, <Code>resumePolicy</Code>, <Code>runtimePolicy</Code>, and{' '}
+        <Code>checkInterval</Code>. See the{' '}
         <Link
           href="/docs/plugin"
           className="font-medium text-foreground underline underline-offset-4"
         >
           Plugin API
         </Link>{' '}
-        page for the full config.
+        page for the full configuration surface.
       </P>
 
       <Separator className="my-10" />
@@ -101,6 +99,18 @@ export function AppReadyProvider() {
 
   return null;
 }`}</Pre>
+      <P>
+        Recommended: pair this with a real startup loading screen. Keep your native splash screen
+        or app loader visible until startup work is done, then call <Code>notifyAppReady()</Code>,
+        then release the loading UI. See the{' '}
+        <Link
+          href="/docs/loading-screen"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Loading Screen guide
+        </Link>
+        .
+      </P>
 
       <Separator className="my-10" />
 
@@ -134,6 +144,13 @@ otakit upload --release`}</Pre>
           className="font-medium text-foreground underline underline-offset-4"
         >
           React guide
+        </Link>{' '}
+        and the{' '}
+        <Link
+          href="/docs/loading-screen"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Loading Screen guide
         </Link>{' '}
         if you want a full walkthrough. Use the{' '}
         <Link

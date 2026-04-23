@@ -15,6 +15,11 @@ const DOCS = [
   { label: 'REST API', route: '/docs/api', file: 'packages/site/app/docs/api/page.tsx' },
   { label: 'Next.js Guide', route: '/docs/guide', file: 'packages/site/app/docs/guide/page.tsx' },
   { label: 'React Guide', route: '/docs/react', file: 'packages/site/app/docs/react/page.tsx' },
+  {
+    label: 'Loading Screen Guide',
+    route: '/docs/loading-screen',
+    file: 'packages/site/app/docs/loading-screen/page.tsx',
+  },
   { label: 'Channels', route: '/docs/channels', file: 'packages/site/app/docs/channels/page.tsx' },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   { label: 'Security', route: '/docs/security', file: 'packages/site/app/docs/security/page.tsx' },

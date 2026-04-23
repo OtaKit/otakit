@@ -11,6 +11,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - REST API: /docs/api
 - Next.js Guide: /docs/guide
 - React Guide: /docs/react
+- Loading Screen Guide: /docs/loading-screen
 - Channels: /docs/channels
 - CI Automation: /docs/ci
 - Security: /docs/security
@@ -35,8 +36,8 @@ Start with setup
 ### Features
 - **One-command shipping**: Build your web app, then release with otakit upload --release.
 - **Channels & runtime lanes**: Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
-- **Automatic update delivery**: The normal flow checks and downloads automatically, then activates based on updateMode.
-- **Manual update control**: Switch to manual mode when your app wants to show its own update prompt or control install timing.
+- **Automatic update delivery**: The normal flow checks and stages automatically, then activates according to the configured launch, resume, and runtime policies.
+- **Manual update control**: Turn automatic policies off when your app wants to show its own update prompt or control install timing.
 - **Safe activation & rollback**: A newly activated bundle must call notifyAppReady() or OtaKit rolls back automatically.
 - **SHA-256 verification**: Downloaded bundles are verified before activation so corrupted or tampered files are rejected.
 - **Organization access & API keys**: Manage apps, members, and scoped keys inside an organization.
@@ -45,10 +46,11 @@ Start with setup
 ### Getting started
 - **Setup**: Connect the default hosted OtaKit flow to your Capacitor app.
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
+- **Loading Screen Guide**: Keep a splash or startup screen visible until notifyAppReady() completes.
 - **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
-- **Plugin API**: Default automatic flow, manual flow, events, and configuration.
+- **Plugin API**: Default automatic flow, manual flow, and configuration.
 
 Need help with setup, billing, or rollout issues? Email SUPPORT_EMAIL or use the contact page .
 
@@ -95,6 +97,8 @@ export default config;
 
 Note: Your app must be published to the app store at least once with the OtaKit plugin configured before it can receive updates!
 
+Optional: if you want something other than the hosted defaults, you can also set `launchPolicy`, `resumePolicy`, `runtimePolicy`, and `checkInterval`. See the Plugin API page for the full configuration surface.
+
 ### 4. Add notifyAppReady()
 
 Call `notifyAppReady()` once your app has loaded. If the new bundle is activated and your app never confirms that it started successfully, OtaKit rolls back automatically.
@@ -124,6 +128,8 @@ export function AppReadyProvider() {
 }
 ```
 
+Recommended: pair this with a real startup loading screen. Keep your native splash screen or app loader visible until startup work is done, then call `notifyAppReady()`, then release the loading UI. See the Loading Screen guide .
+
 ### 5. Install the CLI and sign in
 
 ```txt
@@ -140,7 +146,7 @@ otakit upload --release
 
 That publishes the bundle to the base channel. By default, OtaKit downloads it in the background and activates it on the next cold app launch.
 
-Next, continue with the Next.js guide or the React guide if you want a full walkthrough. Use the Plugin API and CLI reference for advanced flows and exact command details.
+Next, continue with the Next.js guide or the React guide and the Loading Screen guide if you want a full walkthrough. Use the Plugin API and CLI reference for advanced flows and exact command details.
 
 ## CLI Reference
 
@@ -386,9 +392,9 @@ otakit generate-signing-key
 
 Route: /docs/plugin
 
-Capacitor plugin setup, default automatic updates, and manual advanced flows.
+Capacitor plugin setup, policy-based automatic updates, and manual advanced flows.
 
-Import from `@otakit/capacitor-updater`. The normal flow usually only needs `notifyAppReady()`. The other public methods exist for advanced manual update flows where your app decides when to check, download, and apply an update.
+Import from `@otakit/capacitor-updater`. The default flow usually only needs `notifyAppReady()`. The other public methods exist for advanced manual update flows where your app decides when to check, download, and apply an update.
 
 ```txt
 import { OtaKit } from "@otakit/capacitor-updater";
@@ -396,7 +402,7 @@ import { OtaKit } from "@otakit/capacitor-updater";
 
 ### Configuration
 
-For hosted OtaKit, keep the plugin config small:
+Hosted OtaKit keeps the config small. The default automatic behavior is runtime catch-up on cold start, staged activation on later cold starts, and background checks on resume.
 
 ```txt
 plugins: {
@@ -406,22 +412,38 @@ plugins: {
     // Optional:
     // channel: "production",
     // runtimeVersion: "2026.04",
-    // updateMode: "next-resume",
+    // launchPolicy: "apply-staged",
+    // resumePolicy: "shadow",
+    // runtimePolicy: "immediate",
+    // checkInterval: 600000,
   }
 }
 ```
 - `appId` (string): OtaKit app ID for manifest fetches and event ingest.
 - `channel` (string): Named release track to check. Omit it to use the base channel.
 - `runtimeVersion` (string): Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles.
-- `updateMode` ('manual' | 'next-launch' | 'next-resume' | 'immediate'): Overall update behavior. Optional, defaults to next-launch.
-- `checkInterval` (number): Milliseconds between automatic checks in next-launch and next-resume. Manual APIs and immediate mode ignore it. Optional, defaults to 600000 (10 min).
-- `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000.
+- `launchPolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Cold-start policy after the current runtime lane is already resolved. Default: apply-staged.
+- `resumePolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Foreground resume policy. Default: shadow.
+- `runtimePolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Cold-start policy used when runtimeVersion changes or resolves for the first time. Default: immediate.
+- `checkInterval` (number): Milliseconds between automatic background resume checks. Applies to `resumePolicy: "shadow"` and `resumePolicy: "apply-staged"` when no staged bundle is already waiting. Default: 600000. Set to 0 or a negative value to disable resume throttling.
+- `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Default: 10000.
 - `cdnUrl` (string): Optional CDN base URL for static manifest and bundle delivery. Leave unset for the hosted default.
 - `ingestUrl` (string): Optional event ingest base URL. Leave unset for the hosted default.
 - `serverUrl` (string): Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime uses cdnUrl and ingestUrl instead.
 - `manifestKeys` (array): Optional public verification keys for custom or self-hosted manifest signing.
+- `allowInsecureUrls` (boolean): Allow HTTP only for localhost development. Default: false.
 
 Hosted OtaKit points at the managed CDN and ingest service automatically. Do not set `cdnUrl`, `ingestUrl`, or `manifestKeys` unless you intentionally want custom hosting or verification behavior.
+
+### Policies
+
+Policies are the only automatic behaviors. The same policy logic runs no matter which event triggered it. `launchPolicy`, `resumePolicy`, and `runtimePolicy` only decide when to invoke that policy.
+- `off` (policy): Do nothing automatically.
+- `shadow` (policy): Check for the latest update and stage it locally, but never apply it in that flow.
+- `apply-staged` (policy): Apply an already staged bundle if one exists. If nothing is staged, fall back to shadow.
+- `immediate` (policy): Check, stage, and immediately apply the newest update when one is available.
+
+The hosted defaults are usually the right production baseline: `runtimePolicy: "immediate"`, `launchPolicy: "apply-staged"`, and `resumePolicy: "shadow"`.
 
 ### Compatibility lanes
 
@@ -429,27 +451,31 @@ Hosted OtaKit points at the managed CDN and ingest service automatically. Do not
 
 If you ship a new store build and do not want it to keep consuming older OTA bundles, bump `runtimeVersion` in the plugin config before uploading the next OTA bundle.
 
-The CLI reads that same value automatically during upload, so releases stay simple: release the bundle and it naturally stays inside its own runtime lane.
+The CLI reads that same value automatically during upload, so releases stay inside the correct runtime lane without extra flags.
 
-### Update Modes
-
-`next-launch` and `next-resume` check on cold start and app resume, throttled by `checkInterval`. `immediate` ignores the interval, and manual APIs always perform a live check.
-- `next-launch` (default): Check and download in the background. Activate the staged bundle only on the next cold start. Zero disruption during a session.
-- `next-resume` (recommended): Check and download in the background. Activate the staged bundle on the next resume or cold start. Brief reload when returning to the app.
-- `immediate` (development): Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing.
-- `manual` (optional): No automatic checks. Your app drives everything via check(), download(), apply(), and update().
-
-### Manifest Verification
-
-Hosted OtaKit verifies manifests automatically. The native plugin ships with built-in trusted public keys for the managed service and uses them by default when you stay on the hosted CDN.
-
-You only need `manifestKeys` when you intentionally override trust for a custom or self-hosted setup. In that case, set `cdnUrl` to your manifest CDN and `ingestUrl` to your own event ingest base URL.
+When `runtimeVersion` changes, or when the app resolves a runtime lane for the first time, OtaKit runs `runtimePolicy` on cold start. By default that policy is `immediate`, so fresh installs and new native shells catch up before that lane is marked resolved.
 
 ### Automatic Flow (Default)
 
-This is the normal OtaKit flow. Leave `updateMode` unset or set it to `next-launch`. The plugin checks automatically on startup, downloads in the background, and activates the new bundle according to the selected update mode.
+The hosted default is equivalent to this configuration:
+
+```txt
+plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    runtimePolicy: "immediate",
+    launchPolicy: "apply-staged",
+    resumePolicy: "shadow",
+    appReadyTimeout: 10000,
+  }
+}
+```
 
 In this mode, your app code usually only needs to call `notifyAppReady()`.
+
+Resume throttling is intentionally narrow: `checkInterval` only affects resume background checks. Cold-start runtime handling, cold-start launch handling, and all manual APIs always act immediately.
+
+Set `checkInterval` to `0` or a negative value if you want resume checks to run every time instead of being throttled.
 - `notifyAppReady()` -> `void`: Confirm the current bundle is working. Call this once when your app has fully loaded. If it is not called within appReadyTimeout, the plugin rolls back.
 
 ```txt
@@ -460,33 +486,37 @@ await OtaKit.notifyAppReady();
 
 ### Manual Flow (Advanced)
 
-Use this only when your app wants to control the update UX itself, for example by showing an “Update available” prompt or delaying install until the user confirms. Set `updateMode` to `"manual"` first.
+If you want no automatic checks at all, turn every automatic policy off and drive the update lifecycle yourself.
 
 ```txt
 plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
-    updateMode: "manual",
+    launchPolicy: "off",
+    resumePolicy: "off",
+    runtimePolicy: "off",
     appReadyTimeout: 10000,
   }
 }
 ```
 - `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, and builtin version.
-- `check()` -> `LatestVersion | null`: Check the configured channel for a newer bundle without downloading it. When downloaded=true, that exact update is already staged locally.
-- `download()` -> `BundleInfo | null`: Ensure the latest bundle is staged for later activation. If it is already staged, the staged bundle is returned without re-downloading it.
-- `update()` -> `void`: Recommended one-shot manual helper. Bring the app to the newest available update now. If the newest update is already staged, apply it. Otherwise download it and apply it. Terminal operation.
-- `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation.
+- `check()` -> `CheckResult`: Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available.
+- `download()` -> `DownloadResult`: Ensure the latest bundle is staged for later activation. Returns no_update or staged.
+- `update()` -> `void`: Convenience helper for manual flows. It runs the same native immediate-flow operation used by automatic immediate policies. Terminal operation: if an update is applied, it does not resolve back into the old JS context.
+- `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context.
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 
-The simplest manual pattern is: check for updates, show your own prompt, then call `update()` if the user accepts.
+There is no listener API in the current plugin surface. If you want custom update UI, use `check()`, `getState()`, `download()`, and `apply()` directly.
 
-If `check()` returns `downloaded: true`, the latest update is already staged locally and you can call `apply()` directly.
+After a successful `apply()` or an `update()` that installs a new bundle, the app reloads immediately. Call `notifyAppReady()` from the reloaded app startup, not in the same JS flow that triggered the activation.
+
+The simplest manual pattern is: check for updates, show your own prompt, then call `update()` if the user accepts.
 
 ```txt
 const latest = await OtaKit.check();
 
-if (!latest) {
+if (latest.kind === "no_update") {
   return;
 }
 
@@ -508,7 +538,7 @@ if (state.staged) {
 }
 
 const latest = await OtaKit.check();
-if (!latest) {
+if (latest.kind === "no_update") {
   return;
 }
 
@@ -517,7 +547,10 @@ if (!accepted) {
   return;
 }
 
-await OtaKit.download();
+const result = await OtaKit.download();
+if (result.kind === "no_update") {
+  return;
+}
 
 // Later, after another user action:
 await OtaKit.apply();
@@ -543,39 +576,21 @@ plugins: {
 }
 ```
 - `cdnUrl` (string): Custom CDN base URL for static manifest and bundle delivery.
-- `ingestUrl` (string): Custom event ingest base URL used for plugin event writes.
+- `ingestUrl` (string): Custom event ingest base URL used for device telemetry.
 - `serverUrl` (string): Control-plane API URL used by self-host tooling such as the CLI. The native runtime does not read it.
 - `allowInsecureUrls` (boolean): Allow HTTP for localhost development only. Default: false.
 - `manifestKeys` (array): Public verification keys for manifest signature verification on custom/self-hosted setups.
 
-### Events
-
-Listen to update lifecycle events with `OtaKit.addListener(event, callback)`. Returns a handle that can be removed with `.remove()`.
-- `downloadStarted` ({ version }): A download has begun
-- `downloadComplete` (BundleInfo): Download finished and bundle staged
-- `downloadFailed` ({ version, error }): Download failed
-- `updateAvailable` (LatestVersion): A newer bundle is available. downloaded=true means it is already staged locally.
-- `noUpdateAvailable`: App is up to date
-- `appReady` (BundleInfo): A newly activated OTA bundle was confirmed healthy by notifyAppReady().
-- `rollback` ({ from, to, reason }): The running bundle rolled back to fallback or builtin
-
-```txt
-OtaKit.addListener("downloadComplete", (bundle) => {
-  console.log(`Update staged: ${bundle.version}`);
-});
-
-await OtaKit.removeAllListeners();
-```
-
 ### Types
 
 ```txt
+type OtaKitPolicy = "off" | "shadow" | "apply-staged" | "immediate";
+
 interface BundleInfo {
   id: string;
   version: string;
   runtimeVersion?: string;
-  status: "builtin" | "pending"
-    | "trial" | "success" | "error";
+  status: "builtin" | "pending" | "trial" | "success" | "error";
   downloadedAt?: string;
   sha256?: string;
   channel?: string;
@@ -591,13 +606,21 @@ interface OtaKitState {
 
 interface LatestVersion {
   version: string;
+  runtimeVersion?: string;
   url: string;
   sha256: string;
   size: number;
-  runtimeVersion?: string;
-  downloaded?: boolean;
-  releaseId?: string;
+  releaseId: string;
 }
+
+type CheckResult =
+  | { kind: "no_update" }
+  | { kind: "already_staged"; latest: LatestVersion }
+  | { kind: "update_available"; latest: LatestVersion };
+
+type DownloadResult =
+  | { kind: "no_update" }
+  | { kind: "staged"; bundle: BundleInfo };
 ```
 
 ## REST API
@@ -899,6 +922,8 @@ export default function RootLayout({ children }) {
 }
 ```
 
+Recommended: keep a loading screen visible until this startup path completes. In a native build, the simplest version is Capacitor Splash Screen with `launchAutoHide: false`. See the Loading Screen guide .
+
 ### 9. Build and run on a device
 
 ```txt
@@ -923,7 +948,7 @@ Relaunch the app on your device. By default, OtaKit downloads the update in the 
 ### Next
 - Add CI automation .
 - Keep the base channel first, then add channels only when you need them.
-- Use the Plugin API and CLI reference for advanced flows.
+- Use the Plugin API and the Loading Screen guide and CLI reference for advanced flows.
 
 ## React Guide
 
@@ -1039,6 +1064,8 @@ export default function App() {
 }
 ```
 
+Recommended: do not reveal your app UI too early. Keep a native splash screen or fullscreen loading view visible until your startup work finishes and `notifyAppReady()` has run. See the Loading Screen guide .
+
 ### 8. Build and run on a device
 
 ```txt
@@ -1063,7 +1090,126 @@ Relaunch the app on your device. By default, OtaKit downloads the update in the 
 ### Next
 - Add CI automation .
 - Keep the base channel first, then add channels only when needed.
-- Use the Plugin API and CLI reference for advanced flows.
+- Use the Plugin API and the Loading Screen guide and CLI reference for advanced flows.
+
+## Loading Screen Guide
+
+Route: /docs/loading-screen
+
+Recommended startup pattern: keep a splash or loading screen visible until your app finishes booting and calls notifyAppReady().
+
+OtaKit does not manage a splash screen for you. The recommended setup is: keep a native splash screen or app loading screen visible while your app boots, then call `notifyAppReady()`, then hide that loading UI.
+
+### Why this matters
+
+A newly activated bundle starts in a trial state. OtaKit only marks it healthy after your app calls `notifyAppReady()`. If the new bundle crashes, hangs, or never reaches that point, OtaKit rolls it back automatically.
+
+Your startup UI should cover the time between native launch and the moment your app is actually usable. If you release the splash too early, users can see a blank or half-initialized screen right before `notifyAppReady()`.
+
+### Recommended pattern
+1. Show a native splash screen or a full-screen in-app loading view immediately.
+2. Run your normal startup work: auth restore, config fetch, app hydration, first render.
+3. Call `notifyAppReady()` once the current bundle is genuinely usable.
+4. Hide the splash screen or loading view only after that startup work is done.
+
+### With Capacitor Splash Screen
+
+If you want the native launch screen to stay visible until your JS app is ready, use the `@capacitor/splash-screen` plugin and disable auto-hide.
+
+```txt
+npm install @capacitor/splash-screen
+npx cap sync
+```
+
+Then configure Capacitor to keep the splash screen up:
+
+```txt
+// capacitor.config.ts
+plugins: {
+  SplashScreen: {
+    launchAutoHide: false,
+  },
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    appReadyTimeout: 10000,
+  },
+}
+```
+
+During startup, call `notifyAppReady()` and then hide the splash screen:
+
+```txt
+import { Capacitor } from "@capacitor/core";
+import { SplashScreen } from "@capacitor/splash-screen";
+import { OtaKit } from "@otakit/capacitor-updater";
+
+async function finishStartup() {
+  if (Capacitor.isNativePlatform()) {
+    await OtaKit.notifyAppReady();
+    await SplashScreen.hide();
+  }
+}
+```
+
+### React and Next.js pattern
+
+For React-style apps, use one small client component that owns startup. It can wait for your app bootstrap, call `notifyAppReady()`, then hide the splash screen or remove an in-app loading overlay.
+
+```txt
+"use client";
+import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { SplashScreen } from "@capacitor/splash-screen";
+import { OtaKit } from "@otakit/capacitor-updater";
+
+export function AppReadyGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function boot() {
+      try {
+        // Run your own startup work here.
+        // await restoreSession();
+        // await loadInitialData();
+
+        if (Capacitor.isNativePlatform()) {
+          await OtaKit.notifyAppReady();
+          await SplashScreen.hide();
+        }
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    }
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!ready) {
+    return <div className="startup-screen">Loading…</div>;
+  }
+
+  return <>{children}</>;
+}
+```
+
+The important part is not the exact component shape. The important part is the order: startup work, then `notifyAppReady()`, then release the loading UI.
+
+### Rules of thumb
+- Call `notifyAppReady()` from normal app startup, not from the old JS context that triggered `apply()` or `update()`.
+- Do not hide the splash screen before your root UI is actually ready to use.
+- If startup fails, still release the splash or show an error screen. Do not trap the user behind an infinite loader.
+- If you do not want to use `@capacitor/splash-screen`, an in-app fullscreen loading view is still fine. The same startup order applies.
+
+### Recommended next step
+
+Apply this pattern in the Next.js guide or the React guide .
 
 ## Channels
 

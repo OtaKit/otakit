@@ -2,13 +2,9 @@ package com.otakit.updater;
 
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
-import android.view.ViewGroup;
-import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -22,60 +18,104 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @CapacitorPlugin(name = "OtaKit")
 public class UpdaterPlugin extends Plugin {
 
-  private enum ManagedOverlayState {
-    INACTIVE,
-    HOLDING_FOR_LAUNCH_DECISION,
-    HOLDING_FOR_RESUME_DECISION,
-    WAITING_FOR_APP_READY,
-    TIMED_OUT_LAUNCH,
-    TIMED_OUT_RESUME,
+  private enum Policy {
+    OFF("off"),
+    SHADOW("shadow"),
+    APPLY_STAGED("apply-staged"),
+    IMMEDIATE("immediate");
+
+    final String value;
+
+    Policy(String value) {
+      this.value = value;
+    }
+  }
+
+  private static final class CheckResolution {
+
+    final String kind;
+    final ManifestClient.LatestManifest latest;
+    final BundleInfo bundle;
+
+    private CheckResolution(String kind, ManifestClient.LatestManifest latest, BundleInfo bundle) {
+      this.kind = kind;
+      this.latest = latest;
+      this.bundle = bundle;
+    }
+
+    static CheckResolution noUpdate() {
+      return new CheckResolution("no_update", null, null);
+    }
+
+    static CheckResolution alreadyStaged(ManifestClient.LatestManifest latest, BundleInfo bundle) {
+      return new CheckResolution("already_staged", latest, bundle);
+    }
+
+    static CheckResolution updateAvailable(ManifestClient.LatestManifest latest) {
+      return new CheckResolution("update_available", latest, null);
+    }
+  }
+
+  private static final class DownloadResolution {
+
+    final String kind;
+    final BundleInfo bundle;
+
+    private DownloadResolution(String kind, BundleInfo bundle) {
+      this.kind = kind;
+      this.bundle = bundle;
+    }
+
+    static DownloadResolution noUpdate() {
+      return new DownloadResolution("no_update", null);
+    }
+
+    static DownloadResolution staged(BundleInfo bundle) {
+      return new DownloadResolution("staged", bundle);
+    }
+  }
+
+  @FunctionalInterface
+  private interface ThrowingRunnable {
+    void run() throws Exception;
   }
 
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private final ZipUtils zipUtils = new ZipUtils();
-  private final Object managedOverlayLock = new Object();
 
   private BundleStore store;
+  private UpdaterCoordinator coordinator;
   private Runnable trialTimeoutRunnable;
-  private Runnable managedOverlayTimeoutRunnable;
 
   private int appReadyTimeoutMs = 10_000;
   private boolean allowInsecureUrls = false;
-  private String updateMode = UPDATE_MODE_NEXT_LAUNCH;
+  private Policy launchPolicy = Policy.APPLY_STAGED;
+  private Policy resumePolicy = Policy.SHADOW;
+  private Policy runtimePolicy = Policy.IMMEDIATE;
   private String ingestUrl;
   private String cdnUrl;
   private String appId;
   private String channel;
   private String runtimeVersion;
-  private boolean immediateUpdateOnRuntimeChange = false;
-  private boolean autoSplashscreen = false;
-  private int autoSplashscreenTimeoutMs = 10_000;
-  private int autoSplashscreenBackgroundColor = Color.BLACK;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private long checkIntervalMs = 600_000;
-  private final AtomicBoolean checkInProgress = new AtomicBoolean(false);
-  private ManagedOverlayState managedOverlayState = ManagedOverlayState.INACTIVE;
-  private boolean skipNextResumeAutoUpdate = false;
-  private View otaOverlayView;
+  private boolean coldStartInProgress = false;
   private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
   private static final String DEFAULT_CDN_URL = "https://cdn.otakit.app";
   private static final String INGEST_PATH_SUFFIX = "/v1";
-  private static final String UPDATE_MODE_MANUAL = "manual";
-  private static final String UPDATE_MODE_NEXT_LAUNCH = "next-launch";
-  private static final String UPDATE_MODE_NEXT_RESUME = "next-resume";
-  private static final String UPDATE_MODE_IMMEDIATE = "immediate";
   private static final String KEY_LAST_CHECK_TIMESTAMP = "last_check_timestamp";
   private static final String DEFAULT_RUNTIME_KEY = "__default__";
-  private static final String TRIGGER_LAUNCH = "launch";
-  private static final String TRIGGER_RESUME = "resume";
+  private static final String BUILTIN_ASSET_PATH = "public";
+  private UpdaterCoordinator.StartupPreparation pendingStartupPreparation;
 
   @Override
   public void load() {
@@ -105,17 +145,11 @@ public class UpdaterPlugin extends Plugin {
     this.channel = trimToNull(getConfig().getString("channel"));
     this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
     this.store = new BundleStore(getContext(), builtinVersion, nativeBuild, this.runtimeVersion);
+    this.coordinator = new UpdaterCoordinator(this.store);
     this.allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false);
-    String configuredUpdateMode = getConfig().getString("updateMode", UPDATE_MODE_NEXT_LAUNCH);
-    this.updateMode = resolveUpdateMode(configuredUpdateMode);
-    this.immediateUpdateOnRuntimeChange = getConfig().getBoolean(
-      "immediateUpdateOnRuntimeChange",
-      false
-    );
-    this.autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false);
-    this.autoSplashscreenBackgroundColor = parseAutoSplashscreenBackgroundColor(
-      getConfig().getString("autoSplashscreenBackgroundColor")
-    );
+    this.launchPolicy = resolvePolicy(getConfig().getString("launchPolicy"), Policy.APPLY_STAGED);
+    this.resumePolicy = resolvePolicy(getConfig().getString("resumePolicy"), Policy.SHADOW);
+    this.runtimePolicy = resolvePolicy(getConfig().getString("runtimePolicy"), Policy.IMMEDIATE);
 
     try {
       org.json.JSONArray rawKeys = getConfig().getConfigJSON().optJSONArray("manifestKeys");
@@ -154,223 +188,35 @@ public class UpdaterPlugin extends Plugin {
     }
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
-    this.autoSplashscreenTimeoutMs = Math.max(
-      1000,
-      getConfig().getInt("autoSplashscreenTimeout", 10_000)
-    );
-    this.checkIntervalMs = Math.max(600_000, getConfig().getInt("checkInterval", 600_000));
-    logAutoSplashscreenConfigurationWarnings();
+    this.checkIntervalMs = getConfig().getInt("checkInterval", 600_000);
 
     pruneIncompatibleBundles();
 
-    BundleInfo current = store.getCurrentBundle();
-    if (current.status == BundleStatus.TRIAL) {
-      rollbackCurrentBundle("app_restarted_before_notify");
-      current = store.getCurrentBundle();
-    }
-
-    boolean forceImmediateRuntimeChangeLaunch = shouldForceImmediateRuntimeChangeLaunch();
-
-    if (!forceImmediateRuntimeChangeLaunch && shouldActivateStagedOnLaunch()) {
-      current = activateStagedBundleForLaunch();
-    }
-
-    if (!current.isBuiltin() && current.path != null) {
-      applyServerBasePath(current.path);
-    } else {
-      applyServerBasePath(null);
-    }
-
-    if (current.status == BundleStatus.PENDING) {
-      store.markStatus(current.id, BundleStatus.TRIAL);
-      scheduleTrialTimeout(current.id);
-    }
-
-    boolean manageLaunchSplash = shouldManageLaunchSplash(forceImmediateRuntimeChangeLaunch);
-    if (manageLaunchSplash) {
-      showOtaKitOverlay();
-      beginManagedLaunchSplash();
-    }
-
-    if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_LAUNCH, forceImmediateRuntimeChangeLaunch, manageLaunchSplash);
-    }
+    UpdaterCoordinator.StartupPreparation startup = coordinator.normalizeStartupState(
+      this::isBundleUsable
+    );
+    coordinator.cleanupBundles(startup.cleanupBundleIds);
+    pendingStartupPreparation = startup;
   }
 
   @Override
   protected void handleOnStart() {
     super.handleOnStart();
-    skipNextResumeAutoUpdate = false;
-
-    if (!isAutomaticUpdateMode()) {
-      return;
-    }
-    if (!isManagedOverlayInactive()) {
-      skipNextResumeAutoUpdate = true;
-      return;
-    }
-    if (UPDATE_MODE_IMMEDIATE.equals(updateMode) && autoSplashscreen) {
-      skipNextResumeAutoUpdate = true;
-      handleManagedImmediateResumeOnStart();
-    }
+    consumePendingStartupPreparation();
   }
 
   @Override
   protected void handleOnResume() {
     super.handleOnResume();
-    if (skipNextResumeAutoUpdate) {
-      skipNextResumeAutoUpdate = false;
+    if (coldStartInProgress) {
+      coldStartInProgress = false;
       return;
     }
-    if (isAutomaticUpdateMode()) {
-      runAutomaticUpdate(TRIGGER_RESUME, false, false);
-    }
+    handleResume();
   }
 
-  private void runAutomaticUpdate(
-    String trigger,
-    boolean forceImmediateLaunch,
-    boolean manageLaunchSplash
-  ) {
-    // Resume-only guards
-    if (TRIGGER_RESUME.equals(trigger)) {
-      if (UPDATE_MODE_MANUAL.equals(updateMode)) return;
-
-      // next-resume and immediate: activate staged bundle on resume without server check
-      if (
-        (UPDATE_MODE_NEXT_RESUME.equals(updateMode) || UPDATE_MODE_IMMEDIATE.equals(updateMode))
-      ) {
-        if (activateStagedBundleForReload()) {
-          reloadWebView();
-          return;
-        }
-      }
-
-      if (!UPDATE_MODE_IMMEDIATE.equals(updateMode) && shouldThrottleCheck()) return;
-    }
-
-    if (
-      TRIGGER_LAUNCH.equals(trigger) &&
-      !forceImmediateLaunch &&
-      !UPDATE_MODE_IMMEDIATE.equals(updateMode) &&
-      shouldThrottleCheck()
-    ) {
-      return;
-    }
-
-    // Acquire in-flight guard (submit-time)
-    if (!checkInProgress.compareAndSet(false, true)) return;
-
-    if (forceImmediateLaunch || UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
-      // Immediate: check+download, activate if found
-      executor.execute(() -> {
-        try {
-          BundleInfo result = performCheckAndDownload(null, true);
-          if (manageLaunchSplash) {
-            if (result != null) {
-              recordCheckTimestamp();
-              if (beginManagedLaunchReload()) {
-                if (activateStagedBundleForReload()) {
-                  reloadWebView();
-                } else if (cancelManagedOverlayAwaitingAppReady()) {
-                  hideOtaKitOverlay();
-                }
-              }
-            } else {
-              if (forceImmediateLaunch) {
-                resolveCurrentRuntimeKey();
-              }
-              recordCheckTimestamp();
-              if (finishManagedLaunchDecision()) {
-                hideOtaKitOverlay();
-              }
-            }
-          } else if (result != null) {
-            if (forceImmediateLaunch) {
-              recordCheckTimestamp();
-            }
-            if (activateStagedBundleForReload()) {
-              reloadWebView();
-            }
-          } else if (forceImmediateLaunch) {
-            resolveCurrentRuntimeKey();
-            recordCheckTimestamp();
-          }
-        } catch (Exception e) {
-          if (manageLaunchSplash && finishManagedLaunchDecision()) {
-            hideOtaKitOverlay();
-          }
-          String reason = forceImmediateLaunch
-            ? "runtime-change startup update failed"
-            : "immediate update failed (" + trigger + ")";
-          android.util.Log.w("OtaKit", reason, e);
-        } finally {
-          checkInProgress.set(false);
-        }
-      });
-      return;
-    }
-
-    // next-launch / next-resume: background check+download (fire-and-forget)
-    executor.execute(() -> {
-      try {
-        performCheckAndDownload(null, true);
-        recordCheckTimestamp();
-      } catch (Exception ignored) {
-        // Check failed — timestamp not recorded, will retry on next trigger
-      } finally {
-        checkInProgress.set(false);
-      }
-    });
-  }
-
-  private void handleManagedImmediateResumeOnStart() {
-    if (resolveValidStagedBundleForActivation() != null) {
-      if (!beginManagedResumeAppReadyWait()) {
-        return;
-      }
-      if (activateStagedBundleForReload()) {
-        reloadWebView();
-      } else if (cancelManagedOverlayAwaitingAppReady()) {
-        hideOtaKitOverlay();
-      }
-      return;
-    }
-
-    if (!checkInProgress.compareAndSet(false, true)) {
-      return;
-    }
-    if (!beginManagedResumeSplash()) {
-      checkInProgress.set(false);
-      return;
-    }
-
-    executor.execute(() -> {
-      try {
-        BundleInfo result = performCheckAndDownload(null, true);
-        if (result != null) {
-          if (beginManagedResumeReload()) {
-            if (activateStagedBundleForReload()) {
-              reloadWebView();
-            } else if (cancelManagedOverlayAwaitingAppReady()) {
-              hideOtaKitOverlay();
-            }
-          }
-        } else if (finishManagedResumeDecision()) {
-          hideOtaKitOverlay();
-        }
-      } catch (Exception e) {
-        if (finishManagedResumeDecision()) {
-          hideOtaKitOverlay();
-        }
-        android.util.Log.w("OtaKit", "immediate managed resume update failed", e);
-      } finally {
-        checkInProgress.set(false);
-      }
-    });
-  }
-
-  private boolean shouldThrottleCheck() {
+  private boolean shouldSkipCheckInterval() {
+    if (checkIntervalMs <= 0) return false;
     long lastCheck = store.getPrefs().getLong(KEY_LAST_CHECK_TIMESTAMP, 0);
     if (lastCheck <= 0) return false;
     long elapsed = System.currentTimeMillis() - lastCheck;
@@ -381,215 +227,298 @@ public class UpdaterPlugin extends Plugin {
     store.getPrefs().edit().putLong(KEY_LAST_CHECK_TIMESTAMP, System.currentTimeMillis()).apply();
   }
 
-  private boolean shouldActivateStagedOnLaunch() {
-    return !UPDATE_MODE_MANUAL.equals(updateMode);
+  private void dispatchColdStart() {
+    if (isRuntimeUnresolved()) {
+      handleRuntime();
+    } else {
+      handleLaunch();
+    }
   }
 
-  private boolean isAutomaticUpdateMode() {
-    return !UPDATE_MODE_MANUAL.equals(updateMode);
+  private void consumePendingStartupPreparation() {
+    UpdaterCoordinator.StartupPreparation startup = pendingStartupPreparation;
+    if (startup == null) {
+      return;
+    }
+    pendingStartupPreparation = null;
+
+    if (startup.activationPath != null && !startup.activationPath.isEmpty()) {
+      try {
+        applyServerBasePathSynchronously(startup.activationPath);
+      } catch (Exception e) {
+        android.util.Log.w("OtaKit", "startup activation failed", e);
+      }
+    }
+
+    if (startup.eventPayload != null) {
+      sendDeviceEvent(startup.eventPayload);
+    }
+
+    if (startup.trialBundleId != null) {
+      scheduleTrialTimeout(startup.trialBundleId);
+    } else {
+      cancelTrialTimeout();
+    }
+
+    coldStartInProgress = true;
+    dispatchColdStart();
   }
 
-  private boolean shouldForceImmediateRuntimeChangeLaunch() {
-    if (!immediateUpdateOnRuntimeChange) {
-      return false;
+  private void handleRuntime() {
+    switch (runtimePolicy) {
+      case OFF:
+        resolveCurrentRuntimeKey();
+        return;
+      case APPLY_STAGED:
+        boolean hasStagedBundle =
+          coordinator.snapshotState(
+            bundle -> isCompatibleRuntime(bundle) && isBundleUsable(bundle)
+          ).staged !=
+          null;
+        if (hasStagedBundle) {
+          resolveCurrentRuntimeKey();
+          try {
+            if (!applyStaged(false)) {
+              android.util.Log.w(
+                "OtaKit",
+                "Failed to apply a valid staged bundle during runtime handling"
+              );
+            }
+          } catch (Exception e) {
+            android.util.Log.w("OtaKit", "runtime apply-staged failed", e);
+          }
+          return;
+        }
+        executeAutomaticUpdate("runtime apply-staged fallback", () -> {
+          downloadLatest(false, null);
+          resolveCurrentRuntimeKey();
+        });
+        return;
+      case SHADOW:
+        executeAutomaticUpdate("runtime shadow", () -> {
+          downloadLatest(false, null);
+          resolveCurrentRuntimeKey();
+        });
+        return;
+      case IMMEDIATE:
+        executeAutomaticUpdate("runtime immediate", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if ("no_update".equals(result.kind)) {
+            resolveCurrentRuntimeKey();
+            return;
+          }
+          resolveCurrentRuntimeKey();
+          requireApplyStaged(true);
+        });
+        return;
     }
-    if (UPDATE_MODE_MANUAL.equals(updateMode)) {
-      android.util.Log.w(
-        "OtaKit",
-        "immediateUpdateOnRuntimeChange is ignored when updateMode is manual"
-      );
-      return false;
+  }
+
+  private void handleLaunch() {
+    switch (launchPolicy) {
+      case OFF:
+        return;
+      case APPLY_STAGED:
+        try {
+          if (applyStaged(false)) {
+            return;
+          }
+        } catch (Exception e) {
+          android.util.Log.w("OtaKit", "launch apply-staged failed", e);
+          return;
+        }
+        executeAutomaticUpdate("launch apply-staged fallback", () -> downloadLatest(false, null));
+        return;
+      case SHADOW:
+        executeAutomaticUpdate("launch shadow", () -> downloadLatest(false, null));
+        return;
+      case IMMEDIATE:
+        executeAutomaticUpdate("launch immediate", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if ("staged".equals(result.kind)) {
+            requireApplyStaged(true);
+          }
+        });
+        return;
     }
-    if (UPDATE_MODE_IMMEDIATE.equals(updateMode)) {
-      android.util.Log.w(
-        "OtaKit",
-        "immediateUpdateOnRuntimeChange is ignored when updateMode is immediate"
-      );
-      return false;
+  }
+
+  private void handleResume() {
+    switch (resumePolicy) {
+      case OFF:
+        return;
+      case APPLY_STAGED:
+        executeAutomaticUpdate("resume apply-staged", () -> {
+          if (applyStaged(true)) {
+            return;
+          }
+          downloadLatest(true, null);
+        });
+        return;
+      case SHADOW:
+        executeAutomaticUpdate("resume shadow", () -> downloadLatest(true, null));
+        return;
+      case IMMEDIATE:
+        executeAutomaticUpdate("resume immediate", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if ("staged".equals(result.kind)) {
+            requireApplyStaged(true);
+          }
+        });
+        return;
     }
-    return !java.util.Objects.equals(store.getLastResolvedRuntimeKey(), currentRuntimeKey());
+  }
+
+  private void executeAutomaticUpdate(String label, ThrowingRunnable operation) {
+    if (!coordinator.tryBeginOperation()) {
+      android.util.Log.d("OtaKit", "Skipping " + label + ": update already in progress");
+      return;
+    }
+    executor.execute(() -> {
+      try {
+        operation.run();
+      } catch (Exception e) {
+        android.util.Log.w("OtaKit", label + " failed", e);
+      } finally {
+        coordinator.endOperation();
+      }
+    });
   }
 
   private String currentRuntimeKey() {
     return runtimeVersion != null ? runtimeVersion : DEFAULT_RUNTIME_KEY;
   }
 
-  private void resolveCurrentRuntimeKey() {
-    store.setLastResolvedRuntimeKey(currentRuntimeKey());
+  private boolean isRuntimeUnresolved() {
+    return coordinator.isRuntimeUnresolved(currentRuntimeKey());
   }
 
-  private String resolveUpdateMode(String configuredUpdateMode) {
-    if (configuredUpdateMode == null) {
-      return UPDATE_MODE_NEXT_LAUNCH;
-    }
+  private void resolveCurrentRuntimeKey() {
+    coordinator.resolveRuntimeKey(currentRuntimeKey());
+  }
 
-    String raw = configuredUpdateMode.trim().toLowerCase();
-    if (raw.isEmpty() || UPDATE_MODE_NEXT_LAUNCH.equals(raw)) {
-      return UPDATE_MODE_NEXT_LAUNCH;
+  private Policy resolvePolicy(String configured, Policy defaultPolicy) {
+    String raw = configured == null ? "" : configured.trim().toLowerCase();
+    if (raw.isEmpty()) {
+      return defaultPolicy;
     }
-    if (UPDATE_MODE_MANUAL.equals(raw)) {
-      return UPDATE_MODE_MANUAL;
+    if (Policy.OFF.value.equals(raw)) {
+      return Policy.OFF;
     }
-    if (UPDATE_MODE_NEXT_RESUME.equals(raw)) {
-      return UPDATE_MODE_NEXT_RESUME;
+    if (Policy.SHADOW.value.equals(raw)) {
+      return Policy.SHADOW;
     }
-    if (UPDATE_MODE_IMMEDIATE.equals(raw)) {
-      return UPDATE_MODE_IMMEDIATE;
+    if (Policy.APPLY_STAGED.value.equals(raw)) {
+      return Policy.APPLY_STAGED;
     }
-
-    android.util.Log.w("OtaKit", "Unknown updateMode '" + raw + "', defaulting to 'next-launch'");
-    return UPDATE_MODE_NEXT_LAUNCH;
+    if (Policy.IMMEDIATE.value.equals(raw)) {
+      return Policy.IMMEDIATE;
+    }
+    android.util.Log.w(
+      "OtaKit",
+      "Unknown policy '" + raw + "', defaulting to '" + defaultPolicy.value + "'"
+    );
+    return defaultPolicy;
   }
 
   @PluginMethod
   public void getState(PluginCall call) {
+    UpdaterCoordinator.StateSnapshot snapshot = coordinator.snapshotState(this::isBundleUsable);
     JSObject result = new JSObject();
-    result.put("current", store.getCurrentBundle().toJSObject());
-    result.put("fallback", store.getFallbackBundle().toJSObject());
-    result.put("builtinVersion", store.getBuiltinVersion());
-
-    String stagedId = store.getStagedBundleId();
-    if (stagedId != null) {
-      BundleInfo staged = store.getBundle(stagedId);
-      if (staged == null) {
-        store.setStagedBundleId(null);
-      }
-      result.put("staged", staged != null ? staged.toJSObject() : null);
-    } else {
-      result.put("staged", null);
-    }
-
+    result.put("current", snapshot.current.toJSObject());
+    result.put("fallback", snapshot.fallback.toJSObject());
+    result.put("builtinVersion", snapshot.builtinVersion);
+    result.put("staged", snapshot.staged != null ? snapshot.staged.toJSObject() : null);
     call.resolve(result);
   }
 
   @PluginMethod
   public void check(PluginCall call) {
-    if (!checkInProgress.compareAndSet(false, true)) {
-      String stagedId = store.getStagedBundleId();
-      if (stagedId != null) {
-        BundleInfo staged = store.getBundle(stagedId);
-        if (staged != null) {
-          JSObject result = new JSObject();
-          result.put("version", staged.version);
-          result.put("url", "");
-          result.put("sha256", staged.sha256 != null ? staged.sha256 : "");
-          result.put("size", 0);
-          result.put("downloaded", true);
-          if (staged.runtimeVersion != null) {
-            result.put("runtimeVersion", staged.runtimeVersion);
-          }
-          if (staged.releaseId != null) {
-            result.put("releaseId", staged.releaseId);
-          }
-          call.resolve(result);
-          return;
-        }
-      }
-      call.resolve((JSObject) null);
+    if (!coordinator.tryBeginOperation()) {
+      call.reject("Another update operation is already in progress");
       return;
     }
-    String targetChannel = resolveTargetChannel(null);
     executor.execute(() -> {
       try {
-        ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
-        if (latest == null) {
-          call.resolve((JSObject) null);
-        } else if (isCurrentBundleLatest(latest, targetChannel)) {
-          call.resolve((JSObject) null);
-        } else if (shouldSuppressLatestManifest(latest, targetChannel)) {
-          call.resolve((JSObject) null);
-        } else {
-          BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
-          call.resolve(manifestToJSObject(latest, staged != null));
-        }
+        call.resolve(checkResolutionToJSObject(checkLatest(false, null)));
       } catch (Exception e) {
         call.reject("check failed: " + e.getMessage());
       } finally {
-        checkInProgress.set(false);
+        coordinator.endOperation();
       }
     });
   }
 
   @PluginMethod
   public void download(PluginCall call) {
-    if (!checkInProgress.compareAndSet(false, true)) {
-      String stagedId = store.getStagedBundleId();
-      if (stagedId != null) {
-        BundleInfo staged = store.getBundle(stagedId);
-        if (staged != null) {
-          call.resolve(staged.toJSObject());
-          return;
-        }
-      }
-      call.resolve((JSObject) null);
+    if (!coordinator.tryBeginOperation()) {
+      call.reject("Another update operation is already in progress");
       return;
     }
     executor.execute(() -> {
       try {
-        BundleInfo bundle = performCheckAndDownload(null, true);
-        if (bundle == null) {
-          call.resolve((JSObject) null);
-        } else {
-          call.resolve(bundle.toJSObject());
-        }
+        call.resolve(downloadResolutionToJSObject(downloadLatest(false, null)));
       } catch (Exception e) {
         call.reject("download failed: " + e.getMessage());
       } finally {
-        checkInProgress.set(false);
+        coordinator.endOperation();
       }
     });
   }
 
   @PluginMethod
   public void apply(PluginCall call) {
-    if (!activateStagedBundleForReload()) {
-      call.reject("No valid staged update to apply");
+    if (!coordinator.tryBeginOperation()) {
+      call.reject("Another update operation is already in progress");
       return;
     }
-    call.resolve();
-    reloadWebView();
+    executor.execute(() -> {
+      try {
+        requireApplyStaged(true);
+      } catch (Exception e) {
+        call.reject("apply failed: " + e.getMessage());
+      } finally {
+        coordinator.endOperation();
+      }
+    });
+  }
+
+  @PluginMethod
+  public void update(PluginCall call) {
+    if (!coordinator.tryBeginOperation()) {
+      call.reject("Another update operation is already in progress");
+      return;
+    }
+    executor.execute(() -> {
+      try {
+        DownloadResolution result = downloadLatest(false, null);
+        if ("staged".equals(result.kind)) {
+          requireApplyStaged(true);
+          return;
+        }
+        call.resolve();
+      } catch (Exception e) {
+        call.reject("update failed: " + e.getMessage());
+      } finally {
+        coordinator.endOperation();
+      }
+    });
   }
 
   @PluginMethod
   public void notifyAppReady(PluginCall call) {
-    BundleInfo current = store.getCurrentBundle();
-    if (completeManagedOverlayOnAppReady()) {
-      hideOtaKitOverlay();
+    cancelTrialTimeout();
+    UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady();
+    coordinator.cleanupBundles(preparation.cleanupBundleIds);
+    if (preparation.eventPayload != null) {
+      sendDeviceEvent(preparation.eventPayload);
     }
-
-    if (
-      !current.isBuiltin() &&
-      (current.status == BundleStatus.TRIAL || current.status == BundleStatus.PENDING)
-    ) {
-      BundleInfo oldFallback = store.getFallbackBundle();
-
-      store.markStatus(current.id, BundleStatus.SUCCESS);
-      store.setFallbackBundleId(current.id);
-      BundleInfo updated = store.getBundle(current.id);
-      notifyListeners("appReady", updated != null ? updated.toJSObject() : current.toJSObject());
-
-      sendDeviceEvent(
-        "applied",
-        current.version,
-        current.runtimeVersion,
-        current.channel,
-        current.releaseId,
-        null
-      );
-
-      if (!oldFallback.isBuiltin() && !oldFallback.id.equals(current.id)) {
-        try {
-          store.deleteBundle(oldFallback.id);
-        } catch (Exception ignored) {}
-      }
-    }
-
     call.resolve();
   }
 
   @PluginMethod
   public void getLastFailure(PluginCall call) {
-    BundleInfo failed = store.getFailedBundle();
+    BundleInfo failed = coordinator.lastFailure();
     if (failed == null) {
       call.resolve((JSObject) null);
       return;
@@ -612,46 +541,109 @@ public class UpdaterPlugin extends Plugin {
     );
   }
 
-  private BundleInfo performCheckAndDownload(String channel, boolean emitEvents) throws Exception {
+  private CheckResolution checkLatest(boolean respectInterval, String channel) throws Exception {
     String targetChannel = resolveTargetChannel(channel);
-    ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
-    if (latest == null) {
-      if (emitEvents) {
-        notifyListeners("noUpdateAvailable", new JSObject());
-      }
-      return null;
+    if (respectInterval && shouldSkipCheckInterval()) {
+      android.util.Log.d("OtaKit", "Skipping resume check: checkInterval has not elapsed");
+      return CheckResolution.noUpdate();
     }
 
+    ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
+    if (latest == null) {
+      if (respectInterval) {
+        recordCheckTimestamp();
+      }
+      return CheckResolution.noUpdate();
+    }
+
+    CheckResolution resolution = classifyLatestManifest(latest, targetChannel);
+
+    if (respectInterval) {
+      recordCheckTimestamp();
+    }
+    return resolution;
+  }
+
+  private DownloadResolution downloadLatest(boolean respectInterval, String channel)
+    throws Exception {
+    String targetChannel = resolveTargetChannel(channel);
+    CheckResolution result = checkLatest(respectInterval, channel);
+    switch (result.kind) {
+      case "no_update":
+        return DownloadResolution.noUpdate();
+      case "already_staged":
+        return DownloadResolution.staged(result.bundle);
+      case "update_available":
+        try {
+          return DownloadResolution.staged(downloadLatestManifest(result.latest, targetChannel));
+        } catch (Exception e) {
+          if (!isExpiredURLError(e)) {
+            throw e;
+          }
+
+          ManifestClient.LatestManifest refreshed = fetchLatest(targetChannel);
+          if (refreshed == null) {
+            return DownloadResolution.noUpdate();
+          }
+
+          CheckResolution refreshedResolution = classifyLatestManifest(refreshed, targetChannel);
+          switch (refreshedResolution.kind) {
+            case "no_update":
+              return DownloadResolution.noUpdate();
+            case "already_staged":
+              return DownloadResolution.staged(refreshedResolution.bundle);
+            case "update_available":
+              return DownloadResolution.staged(
+                downloadLatestManifest(refreshedResolution.latest, targetChannel)
+              );
+            default:
+              throw new IllegalStateException(
+                "Unknown refreshed check result: " + refreshedResolution.kind
+              );
+          }
+        }
+      default:
+        throw new IllegalStateException("Unknown check result: " + result.kind);
+    }
+  }
+
+  private CheckResolution classifyLatestManifest(
+    ManifestClient.LatestManifest latest,
+    String targetChannel
+  ) throws Exception {
     if (!isCompatibleRuntime(latest.runtimeVersion)) {
       throw new IllegalStateException(
         "Manifest runtimeVersion does not match the installed app runtime"
       );
     }
 
-    if (isCurrentBundleLatest(latest, targetChannel)) {
-      if (emitEvents) {
-        notifyListeners("noUpdateAvailable", new JSObject());
-      }
-      return null;
+    UpdaterCoordinator.LatestManifestClassification classification =
+      coordinator.classifyLatestManifest(latest, targetChannel, this::isBundleUsable);
+    if ("no_update".equals(classification.kind)) {
+      return CheckResolution.noUpdate();
     }
-
-    if (shouldSuppressLatestManifest(latest, targetChannel)) {
-      if (emitEvents) {
-        notifyListeners("noUpdateAvailable", new JSObject());
-      }
-      return null;
+    if ("already_staged".equals(classification.kind)) {
+      return CheckResolution.alreadyStaged(latest, classification.bundle);
     }
+    return CheckResolution.updateAvailable(latest);
+  }
 
-    BundleInfo staged = findMatchingStagedBundle(latest, targetChannel);
-    if (emitEvents) {
-      notifyListeners("updateAvailable", manifestToJSObject(latest, staged != null));
+  private JSObject checkResolutionToJSObject(CheckResolution result) {
+    JSObject object = new JSObject();
+    object.put("kind", result.kind);
+    if (result.latest != null) {
+      object.put("latest", manifestToJSObject(result.latest));
     }
+    return object;
+  }
 
-    if (staged != null) {
-      return staged;
+  private JSObject downloadResolutionToJSObject(DownloadResolution result) {
+    JSObject object = new JSObject();
+    object.put("kind", result.kind);
+    if (result.bundle != null) {
+      object.put("bundle", result.bundle.toJSObject());
     }
-
-    return downloadLatestManifest(latest, targetChannel);
+    return object;
   }
 
   private boolean isExpiredURLError(Exception e) {
@@ -664,11 +656,6 @@ public class UpdaterPlugin extends Plugin {
       msg.contains("forbidden") ||
       msg.contains("expired")
     );
-  }
-
-  private BundleInfo downloadAndStage(URL url, String version, String expectedSha256)
-    throws Exception {
-    return downloadAndStage(url, version, expectedSha256, 0, null, null, null);
   }
 
   private BundleInfo downloadAndStage(
@@ -697,10 +684,6 @@ public class UpdaterPlugin extends Plugin {
       }
     }
 
-    JSObject start = new JSObject();
-    start.put("version", version);
-    notifyListeners("downloadStarted", start);
-
     File downloadedZip = null;
     File extractedDirectory = null;
 
@@ -721,8 +704,8 @@ public class UpdaterPlugin extends Plugin {
       zipUtils.extractSecurely(downloadedZip, extractedDirectory);
       File bundleRoot = resolveBundleRoot(extractedDirectory);
 
-      String bundleId = buildBundleId(version);
-      File destination = store.bundleDirectory(bundleId);
+      String bundleId = buildBundleId(version, releaseId, expectedSha256);
+      File destination = coordinator.bundleDirectory(bundleId);
       if (destination.exists()) {
         deleteRecursively(destination);
       }
@@ -739,19 +722,12 @@ public class UpdaterPlugin extends Plugin {
         channel,
         releaseId
       );
-      String previousStagedId = store.getStagedBundleId();
-      store.saveBundle(info);
-      store.setStagedBundleId(bundleId);
-      cleanupSupersededStagedBundle(previousStagedId, bundleId);
+      java.util.List<String> cleanupBundleIds = coordinator.stageDownloadedBundle(info);
+      coordinator.cleanupBundles(cleanupBundleIds);
 
-      notifyListeners("downloadComplete", info.toJSObject());
       sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
       return info;
     } catch (Exception e) {
-      JSObject failed = new JSObject();
-      failed.put("version", version);
-      failed.put("error", e.getMessage());
-      notifyListeners("downloadFailed", failed);
       sendDeviceEvent(
         "download_error",
         version,
@@ -823,50 +799,39 @@ public class UpdaterPlugin extends Plugin {
     throw new IllegalStateException("Bundle archive does not contain index.html");
   }
 
-  private BundleInfo activateStagedBundleForLaunch() {
-    BundleInfo staged = resolveValidStagedBundleForActivation();
-    if (staged == null) {
-      return store.getCurrentBundle();
-    }
-
-    resolveCurrentRuntimeKey();
-    store.setCurrentBundleId(staged.id);
-    store.setStagedBundleId(null);
-    return staged;
-  }
-
-  private boolean activateStagedBundleForReload() {
-    BundleInfo staged = resolveValidStagedBundleForActivation();
-    if (staged == null) {
+  private boolean applyStaged(boolean reloadAfterApply) throws Exception {
+    UpdaterCoordinator.ApplyPreparation preparation = coordinator.prepareApplyStaged(
+      this::isCompatibleRuntime,
+      this::isBundleUsable
+    );
+    coordinator.cleanupBundles(preparation.cleanupBundleIds);
+    if (!preparation.didApply()) {
       return false;
     }
 
-    resolveCurrentRuntimeKey();
-    store.setCurrentBundleId(staged.id);
-    store.setStagedBundleId(null);
-
-    if (staged.status == BundleStatus.PENDING) {
-      store.markStatus(staged.id, BundleStatus.TRIAL);
-      staged = store.getBundle(staged.id);
-    }
-    if (staged != null && staged.status == BundleStatus.TRIAL) {
-      scheduleTrialTimeout(staged.id);
+    applyServerBasePathSynchronously(preparation.activationPath);
+    if (reloadAfterApply) {
+      reloadWebViewSynchronously();
     }
 
-    if (staged != null && staged.path != null) {
-      applyServerBasePath(staged.path);
-    } else {
-      applyServerBasePath(null);
+    cancelTrialTimeout();
+    if (preparation.trialBundleId != null) {
+      scheduleTrialTimeout(preparation.trialBundleId);
     }
     return true;
+  }
+
+  private void requireApplyStaged(boolean reloadAfterApply) throws Exception {
+    if (!applyStaged(reloadAfterApply)) {
+      throw new IllegalStateException("Expected a staged bundle to be ready for apply");
+    }
   }
 
   private void scheduleTrialTimeout(String bundleId) {
     cancelTrialTimeout();
     trialTimeoutRunnable = () -> {
-      BundleInfo current = store.getCurrentBundle();
-      if (current.id.equals(bundleId) && current.status == BundleStatus.TRIAL) {
-        rollbackCurrentBundle("notify_timeout");
+      if (coordinator.isCurrentTrialBundle(bundleId)) {
+        rollbackCurrentBundle("notify_timeout", true);
       }
     };
     mainHandler.postDelayed(trialTimeoutRunnable, appReadyTimeoutMs);
@@ -879,433 +844,93 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private boolean shouldManageLaunchSplash(boolean forceImmediateRuntimeChangeLaunch) {
-    if (!autoSplashscreen) {
-      return false;
-    }
-    return UPDATE_MODE_IMMEDIATE.equals(updateMode) || forceImmediateRuntimeChangeLaunch;
-  }
-
-  private void beginManagedLaunchSplash() {
-    synchronized (managedOverlayLock) {
-      cancelManagedOverlayTimeoutLocked();
-      managedOverlayState = ManagedOverlayState.HOLDING_FOR_LAUNCH_DECISION;
-      managedOverlayTimeoutRunnable = () -> {
-        if (markManagedLaunchTimedOut()) {
-          hideOtaKitOverlay();
-        }
-      };
-      mainHandler.postDelayed(managedOverlayTimeoutRunnable, autoSplashscreenTimeoutMs);
-    }
-  }
-
-  private void cancelManagedOverlayTimeoutLocked() {
-    if (managedOverlayTimeoutRunnable != null) {
-      mainHandler.removeCallbacks(managedOverlayTimeoutRunnable);
-      managedOverlayTimeoutRunnable = null;
-    }
-  }
-
-  private boolean markManagedLaunchTimedOut() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_LAUNCH_DECISION:
-          managedOverlayState = ManagedOverlayState.TIMED_OUT_LAUNCH;
-          managedOverlayTimeoutRunnable = null;
-          return true;
-        case WAITING_FOR_APP_READY:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          managedOverlayTimeoutRunnable = null;
-          return true;
-        case INACTIVE:
-        case HOLDING_FOR_RESUME_DECISION:
-        case TIMED_OUT_LAUNCH:
-        case TIMED_OUT_RESUME:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private boolean markManagedResumeTimedOut() {
-    synchronized (managedOverlayLock) {
-      if (managedOverlayState != ManagedOverlayState.HOLDING_FOR_RESUME_DECISION) {
-        return false;
-      }
-      managedOverlayState = ManagedOverlayState.TIMED_OUT_RESUME;
-      managedOverlayTimeoutRunnable = null;
-      return true;
-    }
-  }
-
-  private boolean isManagedOverlayInactive() {
-    synchronized (managedOverlayLock) {
-      return managedOverlayState == ManagedOverlayState.INACTIVE;
-    }
-  }
-
-  private boolean beginManagedLaunchReload() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_LAUNCH_DECISION:
-          cancelManagedOverlayTimeoutLocked();
-          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
-          return true;
-        case TIMED_OUT_LAUNCH:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return false;
-        case INACTIVE:
-        case HOLDING_FOR_RESUME_DECISION:
-        case WAITING_FOR_APP_READY:
-        case TIMED_OUT_RESUME:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private boolean finishManagedLaunchDecision() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_LAUNCH_DECISION:
-          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
-          return false;
-        case TIMED_OUT_LAUNCH:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return false;
-        case INACTIVE:
-        case HOLDING_FOR_RESUME_DECISION:
-        case WAITING_FOR_APP_READY:
-        case TIMED_OUT_RESUME:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private boolean completeManagedOverlayOnAppReady() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_LAUNCH_DECISION:
-        case HOLDING_FOR_RESUME_DECISION:
-          return false;
-        case WAITING_FOR_APP_READY:
-          cancelManagedOverlayTimeoutLocked();
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return true;
-        case TIMED_OUT_LAUNCH:
-        case TIMED_OUT_RESUME:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return false;
-        case INACTIVE:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private boolean cancelManagedOverlayAwaitingAppReady() {
-    synchronized (managedOverlayLock) {
-      if (managedOverlayState != ManagedOverlayState.WAITING_FOR_APP_READY) {
-        return false;
-      }
-      cancelManagedOverlayTimeoutLocked();
-      managedOverlayState = ManagedOverlayState.INACTIVE;
-      return true;
-    }
-  }
-
-  private boolean beginManagedResumeAppReadyWait() {
-    boolean shouldShowOverlay = false;
-    synchronized (managedOverlayLock) {
-      if (managedOverlayState == ManagedOverlayState.INACTIVE) {
-        managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
-        shouldShowOverlay = true;
-      }
-    }
-    if (!shouldShowOverlay) {
-      return false;
-    }
-    showOtaKitOverlay();
-    return true;
-  }
-
-  private boolean beginManagedResumeSplash() {
-    Runnable timeoutRunnable = null;
-    synchronized (managedOverlayLock) {
-      if (managedOverlayState == ManagedOverlayState.INACTIVE) {
-        cancelManagedOverlayTimeoutLocked();
-        managedOverlayState = ManagedOverlayState.HOLDING_FOR_RESUME_DECISION;
-        timeoutRunnable = () -> {
-          if (markManagedResumeTimedOut()) {
-            hideOtaKitOverlay();
-          }
-        };
-        managedOverlayTimeoutRunnable = timeoutRunnable;
-      }
-    }
-    if (timeoutRunnable == null) {
-      return false;
-    }
-    showOtaKitOverlay();
-    mainHandler.postDelayed(timeoutRunnable, autoSplashscreenTimeoutMs);
-    return true;
-  }
-
-  private boolean beginManagedResumeReload() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_RESUME_DECISION:
-          cancelManagedOverlayTimeoutLocked();
-          managedOverlayState = ManagedOverlayState.WAITING_FOR_APP_READY;
-          return true;
-        case TIMED_OUT_RESUME:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return false;
-        case INACTIVE:
-        case HOLDING_FOR_LAUNCH_DECISION:
-        case WAITING_FOR_APP_READY:
-        case TIMED_OUT_LAUNCH:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private boolean finishManagedResumeDecision() {
-    synchronized (managedOverlayLock) {
-      switch (managedOverlayState) {
-        case HOLDING_FOR_RESUME_DECISION:
-          cancelManagedOverlayTimeoutLocked();
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return true;
-        case TIMED_OUT_RESUME:
-          managedOverlayState = ManagedOverlayState.INACTIVE;
-          return false;
-        case INACTIVE:
-        case HOLDING_FOR_LAUNCH_DECISION:
-        case WAITING_FOR_APP_READY:
-        case TIMED_OUT_LAUNCH:
-          return false;
-      }
-      return false;
-    }
-  }
-
-  private BundleInfo resolveValidStagedBundleForActivation() {
-    String stagedId = store.getStagedBundleId();
-    if (stagedId == null) {
-      return null;
-    }
-
-    BundleInfo staged = store.getBundle(stagedId);
-    if (staged == null) {
-      store.setStagedBundleId(null);
-      return null;
-    }
-    if (!isCompatibleRuntime(staged)) {
-      try {
-        store.deleteBundle(staged.id);
-      } catch (Exception ignored) {}
-      store.setStagedBundleId(null);
-      return null;
-    }
-    return staged;
-  }
-
-  private void showOtaKitOverlay() {
-    if (!autoSplashscreen) {
-      return;
-    }
-
-    Runnable show = () -> {
-      if (otaOverlayView != null) {
-        return;
-      }
-      if (bridge == null) {
-        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: bridge is not ready");
-        return;
-      }
-      if (bridge.getWebView() == null) {
-        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: WebView is not ready");
-        return;
-      }
-      View rootView = bridge.getWebView().getRootView();
-      if (!(rootView instanceof ViewGroup)) {
-        android.util.Log.w("OtaKit", "showOtaKitOverlay skipped: root view is not a ViewGroup");
-        return;
-      }
-      View overlay = new View(getContext());
-      overlay.setBackgroundColor(autoSplashscreenBackgroundColor);
-      ViewGroup decorView = (ViewGroup) rootView;
-      ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-      );
-      decorView.addView(overlay, params);
-      otaOverlayView = overlay;
-    };
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      show.run();
-    } else {
-      mainHandler.post(show);
-    }
-  }
-
-  private void hideOtaKitOverlay() {
-    Runnable hide = () -> {
-      View overlay = otaOverlayView;
-      if (overlay == null) {
-        return;
-      }
-      otaOverlayView = null;
-      overlay.animate().alpha(0f).setDuration(200).withEndAction(() -> {
-        ViewGroup parent = (ViewGroup) overlay.getParent();
-        if (parent != null) {
-          parent.removeView(overlay);
-        }
-      }).start();
-    };
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      hide.run();
-    } else {
-      mainHandler.post(hide);
-    }
-  }
-
-  private int parseAutoSplashscreenBackgroundColor(String raw) {
-    String normalized = trimToNull(raw);
-    if (normalized == null) {
-      return Color.BLACK;
-    }
-    if (!normalized.matches("^#[0-9a-fA-F]{6}$")) {
-      android.util.Log.w(
-        "OtaKit",
-        "Invalid autoSplashscreenBackgroundColor '" + raw + "'. Expected #rrggbb."
-      );
-      return Color.BLACK;
-    }
-    return Color.parseColor(normalized);
-  }
-
-  private void logAutoSplashscreenConfigurationWarnings() {
-    if (!autoSplashscreen) {
-      return;
-    }
-
-    if (UPDATE_MODE_MANUAL.equals(updateMode)) {
-      android.util.Log.w(
-        "OtaKit",
-        "autoSplashscreen is enabled, but updateMode is manual so no managed overlay can occur."
-      );
-      return;
-    }
-
-    if (!UPDATE_MODE_IMMEDIATE.equals(updateMode) && !immediateUpdateOnRuntimeChange) {
-      android.util.Log.w(
-        "OtaKit",
-        "autoSplashscreen is enabled, but this config never shows the OtaKit overlay unless updateMode is immediate or immediateUpdateOnRuntimeChange is true."
-      );
-    }
-  }
-
-  private void rollbackCurrentBundle(String reason) {
+  private void rollbackCurrentBundle(String reason, boolean shouldReload) {
     cancelTrialTimeout();
-
-    BundleInfo current = store.getCurrentBundle();
-    if (current.isBuiltin()) {
-      return;
-    }
-
-    BundleInfo failed = current.withStatus(BundleStatus.ERROR);
-    store.markStatus(current.id, BundleStatus.ERROR);
-    store.setFailedBundle(failed);
-    store.setStagedBundleId(null);
-
-    sendDeviceEvent(
-      "rollback",
-      current.version,
-      current.runtimeVersion,
-      current.channel,
-      current.releaseId,
-      reason
+    UpdaterCoordinator.RollbackPreparation preparation = coordinator.prepareRollback(
+      reason,
+      this::isBundleUsable
     );
-
-    BundleInfo fallback = store.getFallbackBundle();
-    JSObject payload = new JSObject();
-    payload.put("from", failed.toJSObject());
-
-    if (!fallback.isBuiltin() && fallback.path != null) {
-      store.setCurrentBundleId(fallback.id);
-      applyServerBasePath(fallback.path);
-      payload.put("to", fallback.toJSObject());
-    } else {
-      store.setCurrentBundleId(null);
-      applyServerBasePath(null);
-      payload.put("to", store.builtinBundle().toJSObject());
-    }
-    payload.put("reason", reason);
-
-    notifyListeners("rollback", payload);
-
-    try {
-      store.deleteBundle(current.id);
-    } catch (Exception ignored) {}
-
-    reloadWebView();
-  }
-
-  private void cleanupSupersededStagedBundle(String previousStagedId, String replacementId) {
-    if (
-      previousStagedId == null ||
-      previousStagedId.equals(replacementId) ||
-      "builtin".equals(previousStagedId)
-    ) {
+    if (!preparation.didRollback) {
       return;
     }
-
-    BundleInfo current = store.getCurrentBundle();
-    if (previousStagedId.equals(current.id)) {
-      return;
-    }
-
-    BundleInfo fallback = store.getFallbackBundle();
-    if (previousStagedId.equals(fallback.id)) {
-      return;
+    coordinator.cleanupBundles(preparation.cleanupBundleIds);
+    if (preparation.eventPayload != null) {
+      sendDeviceEvent(preparation.eventPayload);
     }
 
     try {
-      store.deleteBundle(previousStagedId);
-    } catch (Exception ignored) {}
+      applyServerBasePathSynchronously(preparation.activationPath);
+      if (shouldReload) {
+        reloadWebViewSynchronously();
+      }
+    } catch (Exception e) {
+      android.util.Log.w("OtaKit", "rollback activation failed", e);
+    }
   }
 
-  private void applyServerBasePath(String path) {
-    mainHandler.post(() -> {
-      try {
-        if (path == null || path.isEmpty()) {
-          bridge.setServerBasePath("");
-        } else {
-          bridge.setServerBasePath(path);
-        }
-      } catch (Throwable ignored) {}
-    });
-  }
-
-  private void reloadWebView() {
-    mainHandler.post(() -> {
-      if (bridge != null && bridge.getWebView() != null) {
-        bridge.getWebView().reload();
+  private void applyServerBasePathSynchronously(String path) throws Exception {
+    runOnMainSynchronously(() -> {
+      if (bridge == null) {
+        throw new IllegalStateException("Bridge not available for activation");
+      }
+      if (path == null || path.isEmpty()) {
+        bridge.setServerAssetPath(BUILTIN_ASSET_PATH);
+      } else {
+        bridge.setServerBasePath(path);
       }
     });
   }
 
-  private JSObject manifestToJSObject(ManifestClient.LatestManifest latest, boolean downloaded) {
+  private void reloadWebViewSynchronously() throws Exception {
+    runOnMainSynchronously(() -> {
+      if (bridge == null || bridge.getWebView() == null) {
+        throw new IllegalStateException("WebView not available for reload");
+      }
+      bridge.getWebView().reload();
+    });
+  }
+
+  private void runOnMainSynchronously(ThrowingRunnable work) throws Exception {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      work.run();
+      return;
+    }
+
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    mainHandler.post(() -> {
+      try {
+        work.run();
+      } catch (Throwable error) {
+        failure.set(error);
+      } finally {
+        latch.countDown();
+      }
+    });
+
+    try {
+      latch.await();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Interrupted while waiting for main thread activation", e);
+    }
+
+    Throwable error = failure.get();
+    if (error == null) {
+      return;
+    }
+    if (error instanceof Exception) {
+      throw (Exception) error;
+    }
+    throw new RuntimeException(error);
+  }
+
+  private JSObject manifestToJSObject(ManifestClient.LatestManifest latest) {
     JSObject object = new JSObject();
     object.put("version", latest.version);
     object.put("url", latest.url);
     object.put("sha256", latest.sha256);
     object.put("size", latest.size);
-    object.put("downloaded", downloaded);
     if (latest.runtimeVersion != null) {
       object.put("runtimeVersion", latest.runtimeVersion);
     }
@@ -1313,152 +938,19 @@ public class UpdaterPlugin extends Plugin {
     return object;
   }
 
-  private boolean isCurrentBundleLatest(
-    ManifestClient.LatestManifest latest,
-    String targetChannel
-  ) {
-    return doesBundleMatchLatest(store.getCurrentBundle(), latest, targetChannel);
-  }
-
-  private boolean shouldSuppressLatestManifest(
-    ManifestClient.LatestManifest latest,
-    String targetChannel
-  ) {
-    BundleInfo failed = store.getFailedBundle();
-    return failed != null && doesFailedBundleMatchLatest(failed, latest, targetChannel);
-  }
-
-  private boolean doesFailedBundleMatchLatest(
-    BundleInfo failed,
-    ManifestClient.LatestManifest latest,
-    String targetChannel
-  ) {
-    if (!java.util.Objects.equals(trimToNull(failed.channel), targetChannel)) {
-      return false;
-    }
-    if (
-      !java.util.Objects.equals(
-        trimToNull(failed.runtimeVersion),
-        trimToNull(latest.runtimeVersion)
-      )
-    ) {
-      return false;
-    }
-    if (
-      latest.releaseId != null &&
-      failed.releaseId != null &&
-      latest.releaseId.equals(failed.releaseId)
-    ) {
-      return true;
-    }
-    return (
-      latest.sha256 != null &&
-      failed.sha256 != null &&
-      !latest.sha256.isEmpty() &&
-      latest.sha256.equals(failed.sha256)
-    );
-  }
-
-  private boolean doesBundleMatchLatest(
-    BundleInfo bundle,
-    ManifestClient.LatestManifest latest,
-    String targetChannel
-  ) {
-    if (bundle == null) {
-      return false;
-    }
-
-    if (!java.util.Objects.equals(trimToNull(bundle.channel), targetChannel)) {
-      return false;
-    }
-
-    if (
-      !java.util.Objects.equals(
-        trimToNull(bundle.runtimeVersion),
-        trimToNull(latest.runtimeVersion)
-      )
-    ) {
-      return false;
-    }
-
-    if (
-      latest.releaseId != null &&
-      bundle.releaseId != null &&
-      latest.releaseId.equals(bundle.releaseId)
-    ) {
-      return true;
-    }
-
-    if (latest.sha256 != null && bundle.sha256 != null && latest.sha256.equals(bundle.sha256)) {
-      return true;
-    }
-
-    return latest.version != null && latest.version.equals(bundle.version);
-  }
-
-  private BundleInfo findMatchingStagedBundle(
-    ManifestClient.LatestManifest latest,
-    String targetChannel
-  ) {
-    String stagedId = store.getStagedBundleId();
-    if (stagedId == null) {
-      return null;
-    }
-
-    BundleInfo staged = store.getBundle(stagedId);
-    if (staged == null) {
-      store.setStagedBundleId(null);
-      return null;
-    }
-
-    if (!java.util.Objects.equals(trimToNull(staged.channel), targetChannel)) {
-      return null;
-    }
-
-    if (
-      !java.util.Objects.equals(
-        trimToNull(staged.runtimeVersion),
-        trimToNull(latest.runtimeVersion)
-      )
-    ) {
-      return null;
-    }
-
-    return doesBundleMatchLatest(staged, latest, targetChannel) ? staged : null;
-  }
-
   private BundleInfo downloadLatestManifest(
     ManifestClient.LatestManifest latest,
     String targetChannel
   ) throws Exception {
-    try {
-      return downloadAndStage(
-        new URL(latest.url),
-        latest.version,
-        latest.sha256,
-        latest.size,
-        latest.runtimeVersion,
-        targetChannel,
-        latest.releaseId
-      );
-    } catch (Exception e) {
-      if (isExpiredURLError(e)) {
-        ManifestClient.LatestManifest refreshed = fetchLatest(targetChannel);
-        if (refreshed == null) {
-          throw e;
-        }
-        return downloadAndStage(
-          new URL(refreshed.url),
-          refreshed.version,
-          refreshed.sha256,
-          refreshed.size,
-          refreshed.runtimeVersion,
-          targetChannel,
-          refreshed.releaseId
-        );
-      }
-      throw e;
-    }
+    return downloadAndStage(
+      new URL(latest.url),
+      latest.version,
+      latest.sha256,
+      latest.size,
+      latest.runtimeVersion,
+      targetChannel,
+      latest.releaseId
+    );
   }
 
   private void moveDirectory(File source, File destination) throws Exception {
@@ -1519,7 +1011,7 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private String buildBundleId(String version) throws Exception {
+  private String buildBundleId(String version, String releaseId, String sha256) throws Exception {
     String trimmed = version == null ? "" : version.trim();
     String normalized = trimmed.replaceAll("[^A-Za-z0-9._-]", "-");
     normalized = normalized.replaceAll("-{2,}", "-");
@@ -1531,8 +1023,16 @@ public class UpdaterPlugin extends Plugin {
       normalized = normalized.substring(0, 64);
     }
 
+    String identitySource = trimToNull(releaseId);
+    if (identitySource == null) {
+      identitySource = trimToNull(sha256);
+    }
+    if (identitySource == null) {
+      identitySource = trimmed;
+    }
+
     MessageDigest digest = MessageDigest.getInstance("SHA-256");
-    byte[] hash = digest.digest(trimmed.getBytes(StandardCharsets.UTF_8));
+    byte[] hash = digest.digest(identitySource.getBytes(StandardCharsets.UTF_8));
     StringBuilder suffix = new StringBuilder();
     for (int i = 0; i < 6; i++) {
       suffix.append(String.format("%02x", hash[i]));
@@ -1603,20 +1103,33 @@ public class UpdaterPlugin extends Plugin {
     String releaseId,
     String detail
   ) {
+    sendDeviceEvent(
+      new UpdaterCoordinator.DeviceEventPayload(
+        action,
+        bundleVersion,
+        runtimeVersion,
+        channel,
+        releaseId,
+        detail
+      )
+    );
+  }
+
+  private void sendDeviceEvent(UpdaterCoordinator.DeviceEventPayload payload) {
     if (appId == null) {
       return;
     }
-    String normalizedBundleVersion = trimToNull(bundleVersion);
+    String normalizedBundleVersion = trimToNull(payload.bundleVersion);
     if (normalizedBundleVersion == null) {
       android.util.Log.w("OtaKit", "Skipping device event without bundleVersion");
       return;
     }
-    String normalizedReleaseId = trimToNull(releaseId);
+    String normalizedReleaseId = trimToNull(payload.releaseId);
     if (normalizedReleaseId == null) {
       android.util.Log.w("OtaKit", "Skipping device event without releaseId");
       return;
     }
-    String nativeBuild = trimToNull(store.getNativeBuild());
+    String nativeBuild = trimToNull(coordinator.getNativeBuild());
     if (nativeBuild == null) {
       android.util.Log.w("OtaKit", "Skipping device event without nativeBuild");
       return;
@@ -1625,29 +1138,18 @@ public class UpdaterPlugin extends Plugin {
       ingestUrl,
       appId,
       "android",
-      action,
+      payload.action,
       normalizedBundleVersion,
-      channel,
-      trimToNull(runtimeVersion),
+      payload.channel,
+      trimToNull(payload.runtimeVersion),
       normalizedReleaseId,
       nativeBuild,
-      detail
+      payload.detail
     );
   }
 
   private void pruneIncompatibleBundles() {
-    for (BundleInfo bundle : store.listDownloadedBundleInfos()) {
-      if (!isCompatibleRuntime(bundle)) {
-        try {
-          store.deleteBundle(bundle.id);
-        } catch (Exception ignored) {}
-      }
-    }
-
-    BundleInfo failed = store.getFailedBundle();
-    if (failed != null && !isCompatibleRuntime(failed)) {
-      store.setFailedBundle(null);
-    }
+    coordinator.cleanupBundles(coordinator.pruneIncompatibleBundles(this::isCompatibleRuntime));
   }
 
   private boolean isCompatibleRuntime(String bundleRuntimeVersion) {
@@ -1656,6 +1158,24 @@ public class UpdaterPlugin extends Plugin {
 
   private boolean isCompatibleRuntime(BundleInfo bundle) {
     return isCompatibleRuntime(bundle.runtimeVersion);
+  }
+
+  private boolean isBundleUsable(BundleInfo bundle) {
+    return bundle != null && (bundle.isBuiltin() || isBundlePathUsable(bundle.path));
+  }
+
+  private boolean isBundlePathUsable(String path) {
+    String normalizedPath = trimToNull(path);
+    if (normalizedPath == null) {
+      return false;
+    }
+
+    File directory = new File(normalizedPath);
+    if (!directory.exists() || !directory.isDirectory()) {
+      return false;
+    }
+
+    return new File(directory, "index.html").exists();
   }
 
   private long getFreeDiskSpace() {

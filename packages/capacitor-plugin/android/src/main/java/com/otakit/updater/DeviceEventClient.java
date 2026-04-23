@@ -8,9 +8,9 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.UUID;
 import org.json.JSONObject;
 
 final class DeviceEventClient {
@@ -52,8 +52,7 @@ final class DeviceEventClient {
         payload.put("releaseId", releaseId);
         payload.put("nativeBuild", nativeBuild);
         if (detail != null) {
-          String truncated =
-            detail.length() > 500 ? detail.substring(0, 500) : detail;
+          String truncated = detail.length() > 500 ? detail.substring(0, 500) : detail;
           payload.put("detail", truncated);
         }
 

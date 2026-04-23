@@ -2,7 +2,7 @@ import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
   title: 'Plugin API — OtaKit Docs',
-  description: 'Capacitor plugin setup, default automatic updates, and manual advanced flows.',
+  description: 'Capacitor plugin setup, policy-based automatic updates, and manual advanced flows.',
 };
 
 export default function PluginReferencePage() {
@@ -10,7 +10,7 @@ export default function PluginReferencePage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Plugin API</h1>
       <P>
-        Import from <Code>@otakit/capacitor-updater</Code>. The normal flow usually only needs{' '}
+        Import from <Code>@otakit/capacitor-updater</Code>. The default flow usually only needs{' '}
         <Code>notifyAppReady()</Code>. The other public methods exist for advanced manual update
         flows where your app decides when to check, download, and apply an update.
       </P>
@@ -19,7 +19,10 @@ export default function PluginReferencePage() {
       <Separator className="my-10" />
 
       <H2>Configuration</H2>
-      <P>For hosted OtaKit, keep the plugin config small:</P>
+      <P>
+        Hosted OtaKit keeps the config small. The default automatic behavior is runtime catch-up on
+        cold start, staged activation on later cold starts, and background checks on resume.
+      </P>
       <Pre>{`plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
@@ -27,10 +30,10 @@ export default function PluginReferencePage() {
     // Optional:
     // channel: "production",
     // runtimeVersion: "2026.04",
-    // updateMode: "next-resume",
-    // immediateUpdateOnRuntimeChange: true,
-    // autoSplashscreen: true,
-    // autoSplashscreenTimeout: 8000,
+    // launchPolicy: "apply-staged",
+    // resumePolicy: "shadow",
+    // runtimePolicy: "immediate",
+    // checkInterval: 600000,
   }
 }`}</Pre>
       <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
@@ -50,34 +53,29 @@ export default function PluginReferencePage() {
           description="Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles."
         />
         <ConfigRow
-          field="updateMode"
-          type="'manual' | 'next-launch' | 'next-resume' | 'immediate'"
-          description="Overall update behavior. Optional, defaults to next-launch."
+          field="launchPolicy"
+          type='"off" | "shadow" | "apply-staged" | "immediate"'
+          description="Cold-start policy after the current runtime lane is already resolved. Default: apply-staged."
         />
         <ConfigRow
-          field="immediateUpdateOnRuntimeChange"
-          type="boolean"
-          description="One-time cold-start override for fresh installs or runtimeVersion changes. In next-launch/next-resume, it checks live, bypasses checkInterval, and applies immediately if needed."
+          field="resumePolicy"
+          type='"off" | "shadow" | "apply-staged" | "immediate"'
+          description="Foreground resume policy. Default: shadow."
+        />
+        <ConfigRow
+          field="runtimePolicy"
+          type='"off" | "shadow" | "apply-staged" | "immediate"'
+          description="Cold-start policy used when runtimeVersion changes or resolves for the first time. Default: immediate."
         />
         <ConfigRow
           field="checkInterval"
           type="number"
-          description="Milliseconds between automatic checks in next-launch and next-resume. Manual APIs and immediate mode ignore it. Optional, defaults to 600000 (10 min)."
+          description='Milliseconds between automatic background resume checks. Applies to `resumePolicy: "shadow"` and `resumePolicy: "apply-staged"` when no staged bundle is already waiting. Default: 600000. Set to 0 or a negative value to disable resume throttling.'
         />
         <ConfigRow
           field="appReadyTimeout"
           type="number"
-          description="Milliseconds to wait for notifyAppReady(). Optional, defaults to 10000."
-        />
-        <ConfigRow
-          field="autoSplashscreen"
-          type="boolean"
-          description="Optional cold-start launch splash handoff for inline update launches. Requires @capacitor/splash-screen, SplashScreen.launchAutoHide = false, and a reliable notifyAppReady() call."
-        />
-        <ConfigRow
-          field="autoSplashscreenTimeout"
-          type="number"
-          description="Milliseconds to keep the launch splash visible while OtaKit decides whether to apply an inline cold-start update. Optional, defaults to 10000."
+          description="Milliseconds to wait for notifyAppReady(). Default: 10000."
         />
         <ConfigRow
           field="cdnUrl"
@@ -98,6 +96,11 @@ export default function PluginReferencePage() {
           field="manifestKeys"
           type="array"
           description="Optional public verification keys for custom or self-hosted manifest signing."
+        />
+        <ConfigRow
+          field="allowInsecureUrls"
+          type="boolean"
+          description="Allow HTTP only for localhost development. Default: false."
           last
         />
       </div>
@@ -106,6 +109,40 @@ export default function PluginReferencePage() {
         Hosted OtaKit points at the managed CDN and ingest service automatically. Do not set{' '}
         <Code>cdnUrl</Code>, <Code>ingestUrl</Code>, or <Code>manifestKeys</Code> unless you
         intentionally want custom hosting or verification behavior.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Policies</H2>
+      <P>
+        Policies are the only automatic behaviors. The same policy logic runs no matter which event
+        triggered it. <Code>launchPolicy</Code>, <Code>resumePolicy</Code>, and{' '}
+        <Code>runtimePolicy</Code> only decide when to invoke that policy.
+      </P>
+      <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
+        <ConfigRow field="off" type="policy" description="Do nothing automatically." />
+        <ConfigRow
+          field="shadow"
+          type="policy"
+          description="Check for the latest update and stage it locally, but never apply it in that flow."
+        />
+        <ConfigRow
+          field="apply-staged"
+          type="policy"
+          description="Apply an already staged bundle if one exists. If nothing is staged, fall back to shadow."
+        />
+        <ConfigRow
+          field="immediate"
+          type="policy"
+          description="Check, stage, and immediately apply the newest update when one is available."
+          last
+        />
+      </div>
+      <P>
+        The hosted defaults are usually the right production baseline:{' '}
+        <Code>runtimePolicy: &quot;immediate&quot;</Code>,{' '}
+        <Code>launchPolicy: &quot;apply-staged&quot;</Code>, and{' '}
+        <Code>resumePolicy: &quot;shadow&quot;</Code>.
       </P>
 
       <Separator className="my-10" />
@@ -120,115 +157,40 @@ export default function PluginReferencePage() {
         <Code>runtimeVersion</Code> in the plugin config before uploading the next OTA bundle.
       </P>
       <P>
-        The CLI reads that same value automatically during upload, so releases stay simple: release
-        the bundle and it naturally stays inside its own runtime lane.
+        The CLI reads that same value automatically during upload, so releases stay inside the
+        correct runtime lane without extra flags.
       </P>
       <P>
-        If you want fresh installs or new native shells to catch up on first launch, enable{' '}
-        <Code>immediateUpdateOnRuntimeChange</Code>. That override is launch-only: it bypasses{' '}
-        <Code>checkInterval</Code>, performs a live check for the current runtime lane, and then
-        returns to the normal update mode after the lane is resolved.
-      </P>
-
-      <Separator className="my-10" />
-
-      <H2>Launch Splash Handoff</H2>
-      <P>
-        If you want to mask the old-bundle flash during cold-start inline updates, enable{' '}
-        <Code>autoSplashscreen</Code>. OtaKit then owns the existing Capacitor launch splash only
-        for cold-start inline update launches.
-      </P>
-      <Pre>{`plugins: {
-  OtaKit: {
-    appId: "YOUR_OTAKIT_APP_ID",
-    updateMode: "immediate",
-    autoSplashscreen: true,
-    autoSplashscreenTimeout: 8000,
-  }
-}`}</Pre>
-      <P>Hard prerequisites:</P>
-      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>
-          Install <Code>@capacitor/splash-screen</Code>.
-        </li>
-        <li>
-          Set <Code>SplashScreen.launchAutoHide</Code> to <Code>false</Code>.
-        </li>
-        <li>
-          Call <Code>notifyAppReady()</Code> reliably after startup.
-        </li>
-      </ul>
-      <P>
-        Scope is intentionally narrow in v1: cold start only. Resume activations keep their normal
-        behavior, and manual update flows do not use this feature.
-      </P>
-      <P>
-        If <Code>autoSplashscreenTimeout</Code> fires, OtaKit hides the splash and does not apply
-        inline later on that same cold start. If the download finishes after that, the bundle stays
-        staged for the next normal activation path.
-      </P>
-
-      <Separator className="my-10" />
-
-      <H2>Update Modes</H2>
-      <P>
-        <Code>next-launch</Code> and <Code>next-resume</Code> check on cold start and app resume,
-        throttled by <Code>checkInterval</Code>. <Code>immediate</Code> ignores the interval, and
-        manual APIs always perform a live check.
-      </P>
-      <P>
-        <Code>immediateUpdateOnRuntimeChange</Code> only augments automatic <Code>next-launch</Code>{' '}
-        and <Code>next-resume</Code>. It is ignored in <Code>manual</Code> and redundant in{' '}
-        <Code>immediate</Code>.
-      </P>
-      <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
-        <ConfigRow
-          field="next-launch"
-          type="default"
-          description="Check and download in the background. Activate the staged bundle only on the next cold start. Zero disruption during a session."
-        />
-        <ConfigRow
-          field="next-resume"
-          type="recommended"
-          description="Check and download in the background. Activate the staged bundle on the next resume or cold start. Brief reload when returning to the app."
-        />
-        <ConfigRow
-          field="immediate"
-          type="development"
-          description="Check, download, and activate as soon as possible on both cold start and resume. Primarily for development and testing."
-        />
-        <ConfigRow
-          field="manual"
-          type="optional"
-          description="No automatic checks. Your app drives everything via check(), download(), apply(), and update()."
-          last
-        />
-      </div>
-
-      <Separator className="my-10" />
-
-      <H2>Manifest Verification</H2>
-      <P>
-        Hosted OtaKit verifies manifests automatically. The native plugin ships with built-in
-        trusted public keys for the managed service and uses them by default when you stay on the
-        hosted CDN.
-      </P>
-      <P>
-        You only need <Code>manifestKeys</Code> when you intentionally override trust for a custom
-        or self-hosted setup. In that case, set <Code>cdnUrl</Code> to your manifest CDN and{' '}
-        <Code>ingestUrl</Code> to your own event ingest base URL.
+        When <Code>runtimeVersion</Code> changes, or when the app resolves a runtime lane for the
+        first time, OtaKit runs <Code>runtimePolicy</Code> on cold start. By default that policy is{' '}
+        <Code>immediate</Code>, so fresh installs and new native shells catch up before that lane is
+        marked resolved.
       </P>
 
       <Separator className="my-10" />
 
       <H2>Automatic Flow (Default)</H2>
-      <P>
-        This is the normal OtaKit flow. Leave <Code>updateMode</Code> unset or set it to{' '}
-        <Code>next-launch</Code>. The plugin checks automatically on startup, downloads in the
-        background, and activates the new bundle according to the selected update mode.
-      </P>
+      <P>The hosted default is equivalent to this configuration:</P>
+      <Pre>{`plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    runtimePolicy: "immediate",
+    launchPolicy: "apply-staged",
+    resumePolicy: "shadow",
+    appReadyTimeout: 10000,
+  }
+}`}</Pre>
       <P>
         In this mode, your app code usually only needs to call <Code>notifyAppReady()</Code>.
+      </P>
+      <P>
+        Resume throttling is intentionally narrow: <Code>checkInterval</Code> only affects resume
+        background checks. Cold-start runtime handling, cold-start launch handling, and all manual
+        APIs always act immediately.
+      </P>
+      <P>
+        Set <Code>checkInterval</Code> to <Code>0</Code> or a negative value if you want resume
+        checks to run every time instead of being throttled.
       </P>
       <div className="mt-4 space-y-4">
         <Method
@@ -245,14 +207,15 @@ await OtaKit.notifyAppReady();`}</Pre>
 
       <H2>Manual Flow (Advanced)</H2>
       <P>
-        Use this only when your app wants to control the update UX itself, for example by showing an
-        “Update available” prompt or delaying install until the user confirms. Set{' '}
-        <Code>updateMode</Code> to <Code>&quot;manual&quot;</Code> first.
+        If you want no automatic checks at all, turn every automatic policy off and drive the update
+        lifecycle yourself.
       </P>
       <Pre>{`plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
-    updateMode: "manual",
+    launchPolicy: "off",
+    resumePolicy: "off",
+    runtimePolicy: "off",
     appReadyTimeout: 10000,
   }
 }`}</Pre>
@@ -264,23 +227,23 @@ await OtaKit.notifyAppReady();`}</Pre>
         />
         <Method
           name="check()"
-          returns="LatestVersion | null"
-          description="Check the configured channel for a newer bundle without downloading it. When downloaded=true, that exact update is already staged locally."
+          returns="CheckResult"
+          description="Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available."
         />
         <Method
           name="download()"
-          returns="BundleInfo | null"
-          description="Ensure the latest bundle is staged for later activation. If it is already staged, the staged bundle is returned without re-downloading it."
+          returns="DownloadResult"
+          description="Ensure the latest bundle is staged for later activation. Returns no_update or staged."
         />
         <Method
           name="update()"
           returns="void"
-          description="Recommended one-shot manual helper. Bring the app to the newest available update now. If the newest update is already staged, apply it. Otherwise download it and apply it. Terminal operation."
+          description="Convenience helper for manual flows. It runs the same native immediate-flow operation used by automatic immediate policies. Terminal operation: if an update is applied, it does not resolve back into the old JS context."
         />
         <Method
           name="apply()"
           returns="void"
-          description="Activate the currently staged bundle and reload the WebView. Terminal operation."
+          description="Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context."
         />
         <Method
           name="notifyAppReady()"
@@ -294,16 +257,22 @@ await OtaKit.notifyAppReady();`}</Pre>
         />
       </div>
       <P>
+        There is no listener API in the current plugin surface. If you want custom update UI, use{' '}
+        <Code>check()</Code>, <Code>getState()</Code>, <Code>download()</Code>, and{' '}
+        <Code>apply()</Code> directly.
+      </P>
+      <P>
+        After a successful <Code>apply()</Code> or an <Code>update()</Code> that installs a new
+        bundle, the app reloads immediately. Call <Code>notifyAppReady()</Code> from the reloaded
+        app startup, not in the same JS flow that triggered the activation.
+      </P>
+      <P>
         The simplest manual pattern is: check for updates, show your own prompt, then call{' '}
         <Code>update()</Code> if the user accepts.
       </P>
-      <P>
-        If <Code>check()</Code> returns <Code>downloaded: true</Code>, the latest update is already
-        staged locally and you can call <Code>apply()</Code> directly.
-      </P>
       <Pre>{`const latest = await OtaKit.check();
 
-if (!latest) {
+if (latest.kind === "no_update") {
   return;
 }
 
@@ -321,7 +290,7 @@ if (state.staged) {
 }
 
 const latest = await OtaKit.check();
-if (!latest) {
+if (latest.kind === "no_update") {
   return;
 }
 
@@ -330,7 +299,10 @@ if (!accepted) {
   return;
 }
 
-await OtaKit.download();
+const result = await OtaKit.download();
+if (result.kind === "no_update") {
+  return;
+}
 
 // Later, after another user action:
 await OtaKit.apply();`}</Pre>
@@ -361,7 +333,7 @@ await OtaKit.apply();`}</Pre>
         <ConfigRow
           field="ingestUrl"
           type="string"
-          description="Custom event ingest base URL used for plugin event writes."
+          description="Custom event ingest base URL used for device telemetry."
         />
         <ConfigRow
           field="serverUrl"
@@ -383,60 +355,14 @@ await OtaKit.apply();`}</Pre>
 
       <Separator className="my-10" />
 
-      <H2>Events</H2>
-      <P>
-        Listen to update lifecycle events with <Code>OtaKit.addListener(event, callback)</Code>.
-        Returns a handle that can be removed with <Code>.remove()</Code>.
-      </P>
-      <div className="mt-4 overflow-x-auto rounded-lg border text-xs">
-        <EventRow
-          event="downloadStarted"
-          payload="{ version }"
-          description="A download has begun"
-        />
-        <EventRow
-          event="downloadComplete"
-          payload="BundleInfo"
-          description="Download finished and bundle staged"
-        />
-        <EventRow
-          event="downloadFailed"
-          payload="{ version, error }"
-          description="Download failed"
-        />
-        <EventRow
-          event="updateAvailable"
-          payload="LatestVersion"
-          description="A newer bundle is available. downloaded=true means it is already staged locally."
-        />
-        <EventRow event="noUpdateAvailable" payload="" description="App is up to date" />
-        <EventRow
-          event="appReady"
-          payload="BundleInfo"
-          description="A newly activated OTA bundle was confirmed healthy by notifyAppReady()."
-        />
-        <EventRow
-          event="rollback"
-          payload="{ from, to, reason }"
-          description="The running bundle rolled back to fallback or builtin"
-          last
-        />
-      </div>
-      <Pre>{`OtaKit.addListener("downloadComplete", (bundle) => {
-  console.log(\`Update staged: \${bundle.version}\`);
-});
-
-await OtaKit.removeAllListeners();`}</Pre>
-
-      <Separator className="my-10" />
-
       <H2>Types</H2>
-      <Pre>{`interface BundleInfo {
+      <Pre>{`type OtaKitPolicy = "off" | "shadow" | "apply-staged" | "immediate";
+
+interface BundleInfo {
   id: string;
   version: string;
   runtimeVersion?: string;
-  status: "builtin" | "pending"
-    | "trial" | "success" | "error";
+  status: "builtin" | "pending" | "trial" | "success" | "error";
   downloadedAt?: string;
   sha256?: string;
   channel?: string;
@@ -452,13 +378,21 @@ interface OtaKitState {
 
 interface LatestVersion {
   version: string;
+  runtimeVersion?: string;
   url: string;
   sha256: string;
   size: number;
-  runtimeVersion?: string;
-  downloaded?: boolean;
-  releaseId?: string;
-}`}</Pre>
+  releaseId: string;
+}
+
+type CheckResult =
+  | { kind: "no_update" }
+  | { kind: "already_staged"; latest: LatestVersion }
+  | { kind: "update_available"; latest: LatestVersion };
+
+type DownloadResult =
+  | { kind: "no_update" }
+  | { kind: "staged"; bundle: BundleInfo };`}</Pre>
     </>
   );
 }
@@ -519,28 +453,6 @@ function ConfigRow({
     >
       <div className="border-r px-3 py-2 font-mono">{field}</div>
       <div className="border-r px-3 py-2 text-muted-foreground">{type}</div>
-      <div className="px-3 py-2 text-muted-foreground">{description}</div>
-    </div>
-  );
-}
-
-function EventRow({
-  event,
-  payload,
-  description,
-  last = false,
-}: {
-  event: string;
-  payload: string;
-  description: string;
-  last?: boolean;
-}) {
-  return (
-    <div
-      className={`grid min-w-[640px] grid-cols-[180px_180px_1fr] gap-0 ${last ? '' : 'border-b'}`}
-    >
-      <div className="border-r px-3 py-2 font-mono">{event}</div>
-      <div className="border-r px-3 py-2 text-muted-foreground">{payload || '—'}</div>
       <div className="px-3 py-2 text-muted-foreground">{description}</div>
     </div>
   );

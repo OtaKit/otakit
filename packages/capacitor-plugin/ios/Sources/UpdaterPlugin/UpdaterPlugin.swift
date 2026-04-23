@@ -5,25 +5,22 @@ import UIKit
 
 @objc(UpdaterPlugin)
 public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
-  private enum UpdateMode: String {
-    case manual
-    case nextLaunch = "next-launch"
-    case nextResume = "next-resume"
+  private enum Policy: String {
+    case off
+    case shadow
+    case applyStaged = "apply-staged"
     case immediate
   }
 
-  private enum ManagedOverlayState {
-    case inactive
-    case holdingForLaunchDecision
-    case holdingForResumeDecision
-    case waitingForAppReady
-    case timedOutLaunch
-    case timedOutResume
+  private enum CheckResolution {
+    case noUpdate
+    case alreadyStaged(latest: LatestManifest, bundle: BundleInfo)
+    case updateAvailable(LatestManifest)
   }
 
-  private enum Trigger {
-    case launch
-    case resume
+  private enum DownloadResolution {
+    case noUpdate
+    case staged(BundleInfo)
   }
 
   public let identifier = "UpdaterPlugin"
@@ -33,37 +30,31 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "check", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "apply", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "notifyAppReady", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getLastFailure", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
+  private lazy var coordinator = UpdaterCoordinator(store: store)
   private var downloader = Downloader()
   private let zipUtils = ZipUtils()
   private let fileManager = FileManager.default
 
   private var appReadyTimeoutMs = 10_000
   private var allowInsecureUrls = false
-  private var updateMode: UpdateMode = .nextLaunch
+  private var launchPolicy: Policy = .applyStaged
+  private var resumePolicy: Policy = .shadow
+  private var runtimePolicy: Policy = .immediate
   private var ingestUrl = UpdaterPlugin.defaultIngestURL
   private var cdnUrl = UpdaterPlugin.defaultCdnURL
   private var appId: String?
   private var channel: String?
   private var runtimeVersion: String?
-  private var immediateUpdateOnRuntimeChange = false
-  private var autoSplashscreen = false
-  private var autoSplashscreenTimeoutMs = 10_000
-  private var autoSplashscreenBackgroundColor: UIColor = .black
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
-  private var managedOverlayTimeoutWorkItem: DispatchWorkItem?
-  private var managedOverlayState: ManagedOverlayState = .inactive
-  private let managedOverlayStateLock = NSLock()
   private var checkIntervalMs: Int = 600_000
-  private let isCheckInProgress = NSLock()
-  private var checkInProgress = false
   private var foregroundObserver: NSObjectProtocol?
-  private var otaOverlayView: UIView?
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
@@ -86,21 +77,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     runtimeVersion = trimToNil(getConfig().getString("runtimeVersion"))
     store.appRuntimeVersion = runtimeVersion
     allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false)
-    let updateModeRaw = getConfig().getString("updateMode", UpdateMode.nextLaunch.rawValue)
-    updateMode = resolveUpdateMode(configured: updateModeRaw)
-    immediateUpdateOnRuntimeChange = getConfig().getBoolean("immediateUpdateOnRuntimeChange", false)
-    autoSplashscreen = getConfig().getBoolean("autoSplashscreen", false)
-    autoSplashscreenBackgroundColor = parseAutoSplashscreenBackgroundColor(
-      getConfig().getString("autoSplashscreenBackgroundColor")
-    )
+    launchPolicy = resolvePolicy(configured: getConfig().getString("launchPolicy"), defaultPolicy: .applyStaged)
+    resumePolicy = resolvePolicy(configured: getConfig().getString("resumePolicy"), defaultPolicy: .shadow)
+    runtimePolicy = resolvePolicy(configured: getConfig().getString("runtimePolicy"), defaultPolicy: .immediate)
     downloader = Downloader(allowInsecureUrls: allowInsecureUrls)
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
-    autoSplashscreenTimeoutMs = max(
-      1000,
-      getConfig().getInt("autoSplashscreenTimeout", 10_000)
-    )
-    checkIntervalMs = max(600_000, getConfig().getInt("checkInterval", 600_000))
-    logAutoSplashscreenConfigurationWarnings()
+    checkIntervalMs = getConfig().getInt("checkInterval", 600_000)
 
     let rawKeysValue = getConfig().getArray("manifestKeys")
     if let rawKeys = rawKeysValue as? [[String: String]] {
@@ -125,46 +107,30 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     pruneIncompatibleBundles()
 
-    var current = store.getCurrentBundle()
-    if current.status == .trial {
-      rollbackCurrentBundle(reason: "app_restarted_before_notify")
-      current = store.getCurrentBundle()
-    }
-
-    let forceImmediateRuntimeChangeLaunch = shouldForceImmediateRuntimeChangeLaunch()
-
-    if !forceImmediateRuntimeChangeLaunch && shouldActivateStagedOnLaunch() {
-      current = activateStagedBundleForLaunch()
-    }
-
-    if !current.isBuiltin, let path = current.path {
-      applyServerBasePath(path)
-    } else {
-      applyServerBasePath(nil)
-    }
-
-    if current.status == .pending {
-      store.markStatus(bundleId: current.id, status: .trial)
-      scheduleTrialTimeout(for: current.id)
-    }
-
-    let manageLaunchSplash = shouldManageLaunchSplash(
-      forceImmediateRuntimeChangeLaunch: forceImmediateRuntimeChangeLaunch
+    let startup = coordinator.normalizeStartupState(
+      isBundleUsable: isBundleUsable
     )
-    if manageLaunchSplash {
-      showOtaKitOverlay()
-      beginManagedLaunchSplash()
+    coordinator.cleanupBundles(startup.cleanupBundleIds)
+
+    do {
+      try applyServerBasePathSynchronously(startup.activationPath)
+    } catch {
+      print("[OtaKit] startup activation failed: \(error.localizedDescription)")
     }
 
-    if isAutomaticUpdateMode() {
-      runAutomaticUpdate(
-        trigger: .launch,
-        forceImmediateLaunch: forceImmediateRuntimeChangeLaunch,
-        manageLaunchSplash: manageLaunchSplash
-      )
+    if let eventPayload = startup.eventPayload {
+      sendDeviceEvent(eventPayload)
     }
 
-    if isAutomaticUpdateMode() {
+    if let trialBundleId = startup.trialBundleId {
+      scheduleTrialTimeout(for: trialBundleId)
+    } else {
+      cancelTrialTimeout()
+    }
+
+    dispatchColdStart()
+
+    if resumePolicy != .off {
       foregroundObserver = NotificationCenter.default.addObserver(
         forName: UIApplication.willEnterForegroundNotification,
         object: nil,
@@ -182,183 +148,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func handleAppWillEnterForeground() {
-    guard isAutomaticUpdateMode() else {
-      return
-    }
-
-    if updateMode == .immediate && autoSplashscreen {
-      handleManagedImmediateResume()
-      return
-    }
-
-    runAutomaticUpdate(
-      trigger: .resume,
-      forceImmediateLaunch: false,
-      manageLaunchSplash: false
-    )
+    handleResume()
   }
 
-  private func runAutomaticUpdate(
-    trigger: Trigger,
-    forceImmediateLaunch: Bool,
-    manageLaunchSplash: Bool
-  ) {
-    // Resume-only guards
-    if trigger == .resume {
-      if updateMode == .manual { return }
-
-      // next-resume and immediate: activate staged bundle on resume without server check
-      if updateMode == .nextResume || updateMode == .immediate {
-        if activateStagedBundleForReload() {
-          reloadWebView()
-          return
-        }
-      }
-
-      if updateMode != .immediate && shouldThrottleCheck() { return }
-    }
-
-    if trigger == .launch &&
-      !forceImmediateLaunch &&
-      updateMode != .immediate &&
-      shouldThrottleCheck()
-    {
-      return
-    }
-
-    // Acquire in-flight guard (submit-time)
-    guard claimCheckInProgress() else { return }
-
-    // Immediate mode on cold start: block until check+download+activate completes
-    if (updateMode == .immediate && trigger == .launch) || forceImmediateLaunch {
-      Task {
-        defer { releaseCheckInProgress() }
-        do {
-          let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          if manageLaunchSplash {
-            if result != nil {
-              recordCheckTimestamp()
-              if beginManagedLaunchReload() {
-                if activateStagedBundleForReload() {
-                  reloadWebView()
-                } else if cancelManagedOverlayAwaitingAppReady() {
-                  hideOtaKitOverlay()
-                }
-              }
-            } else {
-              if forceImmediateLaunch {
-                resolveCurrentRuntimeKey()
-              }
-              recordCheckTimestamp()
-              if finishManagedLaunchDecision() {
-                hideOtaKitOverlay()
-              }
-            }
-          } else if result != nil {
-            if forceImmediateLaunch {
-              recordCheckTimestamp()
-            }
-            if activateStagedBundleForReload() {
-              reloadWebView()
-            }
-          } else if forceImmediateLaunch {
-            resolveCurrentRuntimeKey()
-            recordCheckTimestamp()
-          }
-        } catch {
-          if manageLaunchSplash, finishManagedLaunchDecision() {
-            hideOtaKitOverlay()
-          }
-          if forceImmediateLaunch {
-            print("[OtaKit] runtime-change startup update failed: \(error.localizedDescription)")
-          } else {
-            print("[OtaKit] immediate startup update failed: \(error.localizedDescription)")
-          }
-        }
-      }
-      return
-    }
-
-    // Immediate mode on resume: background check+download, activate when done
-    if updateMode == .immediate && trigger == .resume {
-      Task {
-        defer { releaseCheckInProgress() }
-        do {
-          let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-          if result != nil {
-            if activateStagedBundleForReload() {
-              reloadWebView()
-            }
-          }
-        } catch {
-          print("[OtaKit] immediate resume update failed: \(error.localizedDescription)")
-        }
-      }
-      return
-    }
-
-    // next-launch / next-resume: background check+download (fire-and-forget)
-    Task {
-      defer { releaseCheckInProgress() }
-      do {
-        _ = try await performCheckAndDownload(channel: nil, emitEvents: true)
-        recordCheckTimestamp()
-      } catch {
-        // Check failed — timestamp not recorded, will retry on next trigger
-      }
-    }
-  }
-
-  private func handleManagedImmediateResume() {
-    guard isManagedOverlayInactive() else {
-      return
-    }
-
-    if resolveValidStagedBundleForActivation() != nil {
-      guard beginManagedResumeAppReadyWait() else {
-        return
-      }
-      if activateStagedBundleForReload() {
-        reloadWebView()
-      } else if cancelManagedOverlayAwaitingAppReady() {
-        hideOtaKitOverlay()
-      }
-      return
-    }
-
-    guard claimCheckInProgress() else {
-      return
-    }
-    guard beginManagedResumeSplash() else {
-      releaseCheckInProgress()
-      return
-    }
-
-    Task {
-      defer { releaseCheckInProgress() }
-      do {
-        let result = try await performCheckAndDownload(channel: nil, emitEvents: true)
-        if result != nil {
-          if beginManagedResumeReload() {
-            if activateStagedBundleForReload() {
-              reloadWebView()
-            } else if cancelManagedOverlayAwaitingAppReady() {
-              hideOtaKitOverlay()
-            }
-          }
-        } else if finishManagedResumeDecision() {
-          hideOtaKitOverlay()
-        }
-      } catch {
-        if finishManagedResumeDecision() {
-          hideOtaKitOverlay()
-        }
-        print("[OtaKit] immediate managed resume update failed: \(error.localizedDescription)")
-      }
-    }
-  }
-
-  private func shouldThrottleCheck() -> Bool {
+  private func shouldSkipCheckInterval() -> Bool {
+    guard checkIntervalMs > 0 else { return false }
     let lastCheck = UserDefaults.standard.double(forKey: UpdaterPlugin.lastCheckTimestampKey)
     guard lastCheck > 0 else { return false }
     let elapsed = Date().timeIntervalSince1970 * 1000 - lastCheck
@@ -372,131 +166,185 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     )
   }
 
-  private func claimCheckInProgress() -> Bool {
-    isCheckInProgress.lock()
-    defer { isCheckInProgress.unlock() }
-    if checkInProgress { return false }
-    checkInProgress = true
-    return true
-  }
-
-  private func releaseCheckInProgress() {
-    isCheckInProgress.lock()
-    defer { isCheckInProgress.unlock() }
-    checkInProgress = false
-  }
-
-  private func shouldActivateStagedOnLaunch() -> Bool {
-    updateMode != .manual
-  }
-
-  private func isAutomaticUpdateMode() -> Bool {
-    updateMode != .manual
-  }
-
-  private func shouldForceImmediateRuntimeChangeLaunch() -> Bool {
-    guard immediateUpdateOnRuntimeChange else {
-      return false
+  private func dispatchColdStart() {
+    if isRuntimeUnresolved() {
+      handleRuntime()
+    } else {
+      handleLaunch()
     }
-    if updateMode == .manual {
-      print("[OtaKit] immediateUpdateOnRuntimeChange is ignored when updateMode is manual")
-      return false
+  }
+
+  private func handleRuntime() {
+    switch runtimePolicy {
+    case .off:
+      resolveCurrentRuntimeKey()
+    case .applyStaged:
+      let hasStagedBundle = coordinator.snapshotState(
+        isStagedBundleUsable: { [self] bundle in
+          isCompatibleRuntime(bundle) && isBundleUsable(bundle)
+        }
+      ).staged != nil
+      if hasStagedBundle {
+        resolveCurrentRuntimeKey()
+        do {
+          if !(try applyStaged(reloadAfterApply: false)) {
+            print("[OtaKit] Failed to apply a valid staged bundle during runtime handling")
+          }
+        } catch {
+          print("[OtaKit] runtime apply-staged failed: \(error.localizedDescription)")
+        }
+        return
+      }
+      executeAutomaticUpdate(label: "runtime apply-staged fallback") { [self] in
+        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        resolveCurrentRuntimeKey()
+      }
+    case .shadow:
+      executeAutomaticUpdate(label: "runtime shadow") { [self] in
+        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        resolveCurrentRuntimeKey()
+      }
+    case .immediate:
+      executeAutomaticUpdate(label: "runtime immediate") { [self] in
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        switch result {
+        case .noUpdate:
+          resolveCurrentRuntimeKey()
+        case .staged:
+          resolveCurrentRuntimeKey()
+          try requireApplyStaged(reloadAfterApply: true)
+        }
+      }
     }
-    if updateMode == .immediate {
-      print("[OtaKit] immediateUpdateOnRuntimeChange is ignored when updateMode is immediate")
-      return false
+  }
+
+  private func handleLaunch() {
+    switch launchPolicy {
+    case .off:
+      return
+    case .applyStaged:
+      do {
+        if try applyStaged(reloadAfterApply: false) {
+          return
+        }
+      } catch {
+        print("[OtaKit] launch apply-staged failed: \(error.localizedDescription)")
+        return
+      }
+      executeAutomaticUpdate(label: "launch apply-staged fallback") { [self] in
+        _ = try await downloadLatest(respectInterval: false, channel: nil)
+      }
+    case .shadow:
+      executeAutomaticUpdate(label: "launch shadow") { [self] in
+        _ = try await downloadLatest(respectInterval: false, channel: nil)
+      }
+    case .immediate:
+      executeAutomaticUpdate(label: "launch immediate") { [self] in
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if case .staged = result {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
+      }
     }
-    return store.getLastResolvedRuntimeKey() != currentRuntimeKey()
+  }
+
+  private func handleResume() {
+    switch resumePolicy {
+    case .off:
+      return
+    case .applyStaged:
+      executeAutomaticUpdate(label: "resume apply-staged") { [self] in
+        if try applyStaged(reloadAfterApply: true) {
+          return
+        }
+        _ = try await downloadLatest(respectInterval: true, channel: nil)
+      }
+    case .shadow:
+      executeAutomaticUpdate(label: "resume shadow") { [self] in
+        _ = try await downloadLatest(respectInterval: true, channel: nil)
+      }
+    case .immediate:
+      executeAutomaticUpdate(label: "resume immediate") { [self] in
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if case .staged = result {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
+      }
+    }
+  }
+
+  private func executeAutomaticUpdate(
+    label: String,
+    operation: @escaping () async throws -> Void
+  ) {
+    guard coordinator.tryBeginOperation() else {
+      print("[OtaKit] Skipping \(label): update already in progress")
+      return
+    }
+
+    Task {
+      defer { coordinator.endOperation() }
+      do {
+        try await operation()
+      } catch {
+        print("[OtaKit] \(label) failed: \(error.localizedDescription)")
+      }
+    }
   }
 
   private func currentRuntimeKey() -> String {
     runtimeVersion ?? UpdaterPlugin.defaultRuntimeKey
   }
 
-  private func resolveCurrentRuntimeKey() {
-    store.setLastResolvedRuntimeKey(currentRuntimeKey())
+  private func isRuntimeUnresolved() -> Bool {
+    coordinator.isRuntimeUnresolved(currentRuntimeKey: currentRuntimeKey())
   }
 
-  private func resolveUpdateMode(configured: String?) -> UpdateMode {
+  private func resolveCurrentRuntimeKey() {
+    coordinator.resolveRuntimeKey(currentRuntimeKey())
+  }
+
+  private func resolvePolicy(configured: String?, defaultPolicy: Policy) -> Policy {
     let raw = configured?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
     switch raw {
-    case "", UpdateMode.nextLaunch.rawValue:
-      return .nextLaunch
-    case UpdateMode.manual.rawValue:
-      return .manual
-    case UpdateMode.nextResume.rawValue:
-      return .nextResume
-    case UpdateMode.immediate.rawValue:
+    case "":
+      return defaultPolicy
+    case Policy.off.rawValue:
+      return .off
+    case Policy.shadow.rawValue:
+      return .shadow
+    case Policy.applyStaged.rawValue:
+      return .applyStaged
+    case Policy.immediate.rawValue:
       return .immediate
     default:
-      print("[OtaKit] Unknown updateMode '\(raw)', defaulting to 'next-launch'")
-      return .nextLaunch
+      print("[OtaKit] Unknown policy '\(raw)', defaulting to '\(defaultPolicy.rawValue)'")
+      return defaultPolicy
     }
   }
 
   @objc func getState(_ call: CAPPluginCall) {
-    let current = store.getCurrentBundle()
-    let staged: [String: Any]? = {
-      guard let stagedId = store.getStagedBundleId() else {
-        return nil
-      }
-      guard let staged = store.getBundle(id: stagedId) else {
-        store.setStagedBundleId(nil)
-        return nil
-      }
-      return staged.toDictionary()
-    }()
+    let snapshot = coordinator.snapshotState(isStagedBundleUsable: isBundleUsable)
     var payload: [String: Any] = [
-      "current": current.toDictionary(),
-      "fallback": store.getFallbackBundle().toDictionary(),
-      "builtinVersion": store.builtinVersion,
+      "current": snapshot.current.toDictionary(),
+      "fallback": snapshot.fallback.toDictionary(),
+      "builtinVersion": snapshot.builtinVersion,
     ]
-    payload["staged"] = staged ?? NSNull()
+    payload["staged"] = snapshot.staged?.toDictionary() ?? NSNull()
     call.resolve(payload)
   }
 
   @objc func check(_ call: CAPPluginCall) {
-    if !claimCheckInProgress() {
-      if let stagedId = store.getStagedBundleId(),
-         let staged = store.getBundle(id: stagedId) {
-        var payload: [String: Any] = [
-          "version": staged.version,
-          "url": "",
-          "sha256": staged.sha256 ?? "",
-          "size": 0,
-          "downloaded": true,
-        ]
-        if let runtimeVersion = staged.runtimeVersion {
-          payload["runtimeVersion"] = runtimeVersion
-        }
-        if let releaseId = staged.releaseId {
-          payload["releaseId"] = releaseId
-        }
-        call.resolve(payload)
-      } else {
-        call.resolve()
-      }
+    if !coordinator.tryBeginOperation() {
+      call.reject("Another update operation is already in progress")
       return
     }
-    let targetChannel = resolveTargetChannel(nil)
+
     Task {
-      defer { releaseCheckInProgress() }
+      defer { coordinator.endOperation() }
       do {
-        let latest = try await fetchLatest(channel: targetChannel)
-        if let latest {
-          if isCurrentBundleLatest(latest: latest, targetChannel: targetChannel) {
-            call.resolve()
-            return
-          }
-          if shouldSuppressLatestManifest(latest: latest, targetChannel: targetChannel) {
-            call.resolve()
-            return
-          }
-          let staged = findMatchingStagedBundle(latest: latest, targetChannel: targetChannel)
-          call.resolve(manifestToDictionary(latest, downloaded: staged != nil))
-        } else {
-          call.resolve()
-        }
+        let result = try await checkLatest(respectInterval: false, channel: nil)
+        call.resolve(checkResultDictionary(result))
       } catch {
         call.reject("check failed: \(error.localizedDescription)")
       }
@@ -504,24 +352,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func download(_ call: CAPPluginCall) {
-    if !claimCheckInProgress() {
-      if let stagedId = store.getStagedBundleId(),
-         let staged = store.getBundle(id: stagedId) {
-        call.resolve(staged.toDictionary())
-      } else {
-        call.resolve()
-      }
+    if !coordinator.tryBeginOperation() {
+      call.reject("Another update operation is already in progress")
       return
     }
+
     Task {
-      defer { releaseCheckInProgress() }
+      defer { coordinator.endOperation() }
       do {
-        let bundle = try await performCheckAndDownload(channel: nil, emitEvents: true)
-        if let bundle {
-          call.resolve(bundle.toDictionary())
-        } else {
-          call.resolve()
-        }
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        call.resolve(downloadResultDictionary(result))
       } catch {
         call.reject("download failed: \(error.localizedDescription)")
       }
@@ -529,68 +369,57 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func apply(_ call: CAPPluginCall) {
-    guard let stagedId = store.getStagedBundleId() else {
-      call.reject("No staged update to apply")
+    guard coordinator.tryBeginOperation() else {
+      call.reject("Another update operation is already in progress")
       return
     }
-    guard store.getBundle(id: stagedId) != nil else {
-      store.setStagedBundleId(nil)
-      call.reject("Staged bundle not found")
+    defer { coordinator.endOperation() }
+
+    do {
+      guard try applyStaged(reloadAfterApply: true) else {
+        call.reject("No valid staged update to apply")
+        return
+      }
+    } catch {
+      call.reject("apply failed: \(error.localizedDescription)")
+      return
+    }
+  }
+
+  @objc func update(_ call: CAPPluginCall) {
+    guard coordinator.tryBeginOperation() else {
+      call.reject("Another update operation is already in progress")
       return
     }
 
-    guard activateStagedBundleForReload() else {
-      call.reject("No valid staged update to apply")
-      return
+    Task {
+      defer { coordinator.endOperation() }
+      do {
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if case .staged = result {
+          try requireApplyStaged(reloadAfterApply: true)
+          return
+        }
+        call.resolve()
+      } catch {
+        call.reject("update failed: \(error.localizedDescription)")
+      }
     }
-    call.resolve()
-    reloadWebView()
   }
 
   @objc func notifyAppReady(_ call: CAPPluginCall) {
-    let current = store.getCurrentBundle()
-    let shouldHideManagedOverlay = completeManagedOverlayOnAppReady()
-
-    if shouldHideManagedOverlay {
-      hideOtaKitOverlay()
-    }
-
-    guard !current.isBuiltin else {
-      call.resolve()
-      return
-    }
-
-    if current.status == .trial || current.status == .pending {
-      let oldFallback = store.getFallbackBundle()
-
-      store.markStatus(bundleId: current.id, status: .success)
-      store.setFallbackBundleId(current.id)
-
-      if let confirmed = store.getBundle(id: current.id) {
-        notifyListeners("appReady", data: confirmed.toDictionary())
-      } else {
-        notifyListeners("appReady", data: current.toDictionary())
-      }
-
-      sendDeviceEvent(
-        action: .applied,
-        bundleVersion: current.version,
-        runtimeVersion: current.runtimeVersion,
-        channel: current.channel,
-        releaseId: current.releaseId
-      )
-
-      if !oldFallback.isBuiltin,
-         oldFallback.id != current.id {
-        try? store.deleteBundle(id: oldFallback.id)
-      }
+    cancelTrialTimeout()
+    let preparation = coordinator.prepareNotifyAppReady()
+    coordinator.cleanupBundles(preparation.cleanupBundleIds)
+    if let eventPayload = preparation.eventPayload {
+      sendDeviceEvent(eventPayload)
     }
 
     call.resolve()
   }
 
   @objc func getLastFailure(_ call: CAPPluginCall) {
-    guard let failed = store.getFailedBundle() else {
+    guard let failed = coordinator.lastFailure() else {
       call.resolve()
       return
     }
@@ -614,20 +443,75 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     )
   }
 
-  private func performCheckAndDownload(
-    channel: String?,
-    emitEvents: Bool
-  ) async throws -> BundleInfo? {
+  private func checkLatest(
+    respectInterval: Bool,
+    channel: String?
+  ) async throws -> CheckResolution {
     let targetChannel = resolveTargetChannel(channel)
-    let latest = try await fetchLatest(channel: targetChannel)
-
-    guard var manifest = latest else {
-      if emitEvents {
-        notifyListeners("noUpdateAvailable", data: [:])
-      }
-      return nil
+    if respectInterval, shouldSkipCheckInterval() {
+      print("[OtaKit] Skipping resume check: checkInterval has not elapsed")
+      return .noUpdate
     }
 
+    let latest = try await fetchLatest(channel: targetChannel)
+    guard let manifest = latest else {
+      if respectInterval {
+        recordCheckTimestamp()
+      }
+      return .noUpdate
+    }
+
+    let resolution = try classifyLatestManifest(manifest, targetChannel: targetChannel)
+
+    if respectInterval {
+      recordCheckTimestamp()
+    }
+    return resolution
+  }
+
+  private func downloadLatest(
+    respectInterval: Bool,
+    channel: String?
+  ) async throws -> DownloadResolution {
+    let targetChannel = resolveTargetChannel(channel)
+    let result = try await checkLatest(respectInterval: respectInterval, channel: channel)
+    switch result {
+    case .noUpdate:
+      return .noUpdate
+    case let .alreadyStaged(_, bundle):
+      return .staged(bundle)
+    case let .updateAvailable(manifest):
+      do {
+        let bundle = try await downloadLatestManifest(
+          manifest,
+          targetChannel: targetChannel
+        )
+        return .staged(bundle)
+      } catch let error as NSError where isExpiredURLError(error) {
+        guard let refreshed = try await fetchLatest(channel: targetChannel) else {
+          return .noUpdate
+        }
+
+        switch try classifyLatestManifest(refreshed, targetChannel: targetChannel) {
+        case .noUpdate:
+          return .noUpdate
+        case let .alreadyStaged(_, bundle):
+          return .staged(bundle)
+        case let .updateAvailable(retryManifest):
+          let bundle = try await downloadLatestManifest(
+            retryManifest,
+            targetChannel: targetChannel
+          )
+          return .staged(bundle)
+        }
+      }
+    }
+  }
+
+  private func classifyLatestManifest(
+    _ manifest: LatestManifest,
+    targetChannel: String?
+  ) throws -> CheckResolution {
     guard isCompatibleRuntime(manifest.runtimeVersion) else {
       throw NSError(
         domain: "OtaKit",
@@ -636,30 +520,47 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       )
     }
 
-    if isCurrentBundleLatest(latest: manifest, targetChannel: targetChannel) {
-      if emitEvents {
-        notifyListeners("noUpdateAvailable", data: [:])
-      }
-      return nil
+    switch coordinator.classifyLatestManifest(
+      manifest,
+      targetChannel: targetChannel,
+      isStagedBundleUsable: isBundleUsable
+    ) {
+    case .noUpdate:
+      return .noUpdate
+    case let .alreadyStaged(bundle):
+      return .alreadyStaged(latest: manifest, bundle: bundle)
+    case .updateAvailable:
+      return .updateAvailable(manifest)
     }
+  }
 
-    if shouldSuppressLatestManifest(latest: manifest, targetChannel: targetChannel) {
-      if emitEvents {
-        notifyListeners("noUpdateAvailable", data: [:])
-      }
-      return nil
+  private func checkResultDictionary(_ result: CheckResolution) -> [String: Any] {
+    switch result {
+    case .noUpdate:
+      return ["kind": "no_update"]
+    case let .alreadyStaged(latest, _):
+      return [
+        "kind": "already_staged",
+        "latest": manifestToDictionary(latest),
+      ]
+    case let .updateAvailable(latest):
+      return [
+        "kind": "update_available",
+        "latest": manifestToDictionary(latest),
+      ]
     }
+  }
 
-    let staged = findMatchingStagedBundle(latest: manifest, targetChannel: targetChannel)
-    if emitEvents {
-      notifyListeners("updateAvailable", data: manifestToDictionary(manifest, downloaded: staged != nil))
+  private func downloadResultDictionary(_ result: DownloadResolution) -> [String: Any] {
+    switch result {
+    case .noUpdate:
+      return ["kind": "no_update"]
+    case let .staged(bundle):
+      return [
+        "kind": "staged",
+        "bundle": bundle.toDictionary(),
+      ]
     }
-
-    if let staged {
-      return staged
-    }
-
-    return try await downloadLatestManifest(manifest, targetChannel: targetChannel)
   }
 
   private func isExpiredURLError(_ error: NSError) -> Bool {
@@ -702,7 +603,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       }
     }
 
-    notifyListeners("downloadStarted", data: ["version": version])
     let zipURL = try await downloader.download(from: url)
 
     let extractDirectory = fileManager.temporaryDirectory
@@ -728,8 +628,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       try zipUtils.extractSecurely(zipURL: zipURL, to: extractDirectory)
       let bundleRoot = try resolveBundleRoot(extractedDirectory: extractDirectory)
 
-      let bundleId = buildBundleId(from: version)
-      let destination = store.bundleDirectory(for: bundleId)
+      let bundleId = buildBundleId(
+        version: version,
+        releaseId: releaseId,
+        sha256: expectedSha256
+      )
+      let destination = coordinator.bundleDirectory(for: bundleId)
 
       if fileManager.fileExists(atPath: destination.path) {
         try fileManager.removeItem(at: destination)
@@ -751,12 +655,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         releaseId: releaseId
       )
 
-      let previousStagedId = store.getStagedBundleId()
-      try store.saveBundle(info)
-      store.setStagedBundleId(bundleId)
-      cleanupSupersededStagedBundle(previousStagedId: previousStagedId, replacementId: bundleId)
+      let cleanupBundleIds = try coordinator.stageDownloadedBundle(info)
+      coordinator.cleanupBundles(cleanupBundleIds)
 
-      notifyListeners("downloadComplete", data: info.toDictionary())
       sendDeviceEvent(
         action: .downloaded,
         bundleVersion: version,
@@ -766,10 +667,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       )
       return info
     } catch {
-      notifyListeners("downloadFailed", data: [
-        "version": version,
-        "error": error.localizedDescription,
-      ])
       sendDeviceEvent(
         action: .downloadError,
         bundleVersion: version,
@@ -808,41 +705,40 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     )
   }
 
-  private func activateStagedBundleForLaunch() -> BundleInfo {
-    guard let staged = resolveValidStagedBundleForActivation() else {
-      return store.getCurrentBundle()
-    }
-
-    resolveCurrentRuntimeKey()
-    store.setCurrentBundleId(staged.id)
-    store.setStagedBundleId(nil)
-    return staged
-  }
-
   @discardableResult
-  private func activateStagedBundleForReload() -> Bool {
-    guard var staged = resolveValidStagedBundleForActivation() else {
+  private func applyStaged(reloadAfterApply: Bool) throws -> Bool {
+    let preparation = coordinator.prepareApplyStaged(
+      isCompatibleRuntime: isCompatibleRuntime,
+      isBundleUsable: isBundleUsable
+    )
+    coordinator.cleanupBundles(preparation.cleanupBundleIds)
+
+    guard let activationPath = preparation.activationPath else {
       return false
     }
 
-    resolveCurrentRuntimeKey()
-    store.setCurrentBundleId(staged.id)
-    store.setStagedBundleId(nil)
+    try applyServerBasePathSynchronously(activationPath)
 
-    if staged.status == .pending {
-      store.markStatus(bundleId: staged.id, status: .trial)
-      staged = store.getBundle(id: staged.id) ?? staged
-      scheduleTrialTimeout(for: staged.id)
-    } else if staged.status == .trial {
-      scheduleTrialTimeout(for: staged.id)
+    if reloadAfterApply {
+      try reloadWebViewSynchronously()
     }
 
-    if let path = staged.path {
-      applyServerBasePath(path)
-    } else {
-      applyServerBasePath(nil)
+    cancelTrialTimeout()
+    if let trialBundleId = preparation.trialBundleId {
+      scheduleTrialTimeout(for: trialBundleId)
     }
+
     return true
+  }
+
+  private func requireApplyStaged(reloadAfterApply: Bool) throws {
+    guard try applyStaged(reloadAfterApply: reloadAfterApply) else {
+      throw NSError(
+        domain: "OtaKit",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Expected a staged bundle to be ready for apply"]
+      )
+    }
   }
 
   private func scheduleTrialTimeout(for bundleId: String) {
@@ -852,12 +748,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       guard let self else {
         return
       }
-      let current = self.store.getCurrentBundle()
-      guard current.id == bundleId else {
-        return
-      }
-      if current.status == .trial {
-        self.rollbackCurrentBundle(reason: "notify_timeout")
+      if self.coordinator.isCurrentTrialBundle(bundleId) {
+        self.rollbackCurrentBundle(reason: "notify_timeout", shouldReload: true)
       }
     }
     trialTimeoutWorkItem = workItem
@@ -873,543 +765,105 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     trialTimeoutWorkItem = nil
   }
 
-  private func shouldManageLaunchSplash(forceImmediateRuntimeChangeLaunch: Bool) -> Bool {
-    guard autoSplashscreen else {
-      return false
-    }
-    return updateMode == .immediate || forceImmediateRuntimeChangeLaunch
-  }
-
-  private func beginManagedLaunchSplash() {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    cancelManagedOverlayTimeoutLocked()
-    managedOverlayState = .holdingForLaunchDecision
-
-    let workItem = DispatchWorkItem { [weak self] in
-      guard let self else {
-        return
-      }
-      if self.markManagedLaunchTimedOut() {
-        self.hideOtaKitOverlay()
-      }
-    }
-    managedOverlayTimeoutWorkItem = workItem
-
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(autoSplashscreenTimeoutMs),
-      execute: workItem
-    )
-  }
-
-  private func cancelManagedOverlayTimeoutLocked() {
-    managedOverlayTimeoutWorkItem?.cancel()
-    managedOverlayTimeoutWorkItem = nil
-  }
-
-  private func markManagedLaunchTimedOut() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForLaunchDecision:
-      managedOverlayState = .timedOutLaunch
-      managedOverlayTimeoutWorkItem = nil
-      return true
-    case .waitingForAppReady:
-      managedOverlayState = .inactive
-      managedOverlayTimeoutWorkItem = nil
-      return true
-    case .inactive, .holdingForResumeDecision, .timedOutLaunch, .timedOutResume:
-      return false
-    }
-  }
-
-  private func markManagedResumeTimedOut() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    guard managedOverlayState == .holdingForResumeDecision else {
-      return false
-    }
-
-    managedOverlayState = .timedOutResume
-    managedOverlayTimeoutWorkItem = nil
-    return true
-  }
-
-  private func isManagedOverlayInactive() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-    return managedOverlayState == .inactive
-  }
-
-  private func beginManagedLaunchReload() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForLaunchDecision:
-      cancelManagedOverlayTimeoutLocked()
-      managedOverlayState = .waitingForAppReady
-      return true
-    case .timedOutLaunch:
-      managedOverlayState = .inactive
-      return false
-    case .inactive, .holdingForResumeDecision, .waitingForAppReady, .timedOutResume:
-      return false
-    }
-  }
-
-  private func finishManagedLaunchDecision() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForLaunchDecision:
-      managedOverlayState = .waitingForAppReady
-      return false
-    case .timedOutLaunch:
-      managedOverlayState = .inactive
-      return false
-    case .inactive, .holdingForResumeDecision, .waitingForAppReady, .timedOutResume:
-      return false
-    }
-  }
-
-  private func completeManagedOverlayOnAppReady() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForLaunchDecision, .holdingForResumeDecision:
-      return false
-    case .waitingForAppReady:
-      cancelManagedOverlayTimeoutLocked()
-      managedOverlayState = .inactive
-      return true
-    case .timedOutLaunch, .timedOutResume:
-      managedOverlayState = .inactive
-      return false
-    case .inactive:
-      return false
-    }
-  }
-
-  private func cancelManagedOverlayAwaitingAppReady() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    guard managedOverlayState == .waitingForAppReady else {
-      return false
-    }
-    cancelManagedOverlayTimeoutLocked()
-    managedOverlayState = .inactive
-    return true
-  }
-
-  private func beginManagedResumeAppReadyWait() -> Bool {
-    var shouldShowOverlay = false
-    managedOverlayStateLock.lock()
-    if managedOverlayState == .inactive {
-      managedOverlayState = .waitingForAppReady
-      shouldShowOverlay = true
-    }
-    managedOverlayStateLock.unlock()
-
-    guard shouldShowOverlay else {
-      return false
-    }
-    showOtaKitOverlay()
-    return true
-  }
-
-  private func beginManagedResumeSplash() -> Bool {
-    var workItem: DispatchWorkItem?
-    managedOverlayStateLock.lock()
-    if managedOverlayState == .inactive {
-      cancelManagedOverlayTimeoutLocked()
-      managedOverlayState = .holdingForResumeDecision
-
-      let item = DispatchWorkItem { [weak self] in
-        guard let self else {
-          return
-        }
-        if self.markManagedResumeTimedOut() {
-          self.hideOtaKitOverlay()
-        }
-      }
-      managedOverlayTimeoutWorkItem = item
-      workItem = item
-    }
-    managedOverlayStateLock.unlock()
-
-    guard let workItem else {
-      return false
-    }
-    showOtaKitOverlay()
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(autoSplashscreenTimeoutMs),
-      execute: workItem
-    )
-    return true
-  }
-
-  private func beginManagedResumeReload() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForResumeDecision:
-      cancelManagedOverlayTimeoutLocked()
-      managedOverlayState = .waitingForAppReady
-      return true
-    case .timedOutResume:
-      managedOverlayState = .inactive
-      return false
-    case .inactive, .holdingForLaunchDecision, .waitingForAppReady, .timedOutLaunch:
-      return false
-    }
-  }
-
-  private func finishManagedResumeDecision() -> Bool {
-    managedOverlayStateLock.lock()
-    defer { managedOverlayStateLock.unlock() }
-
-    switch managedOverlayState {
-    case .holdingForResumeDecision:
-      cancelManagedOverlayTimeoutLocked()
-      managedOverlayState = .inactive
-      return true
-    case .timedOutResume:
-      managedOverlayState = .inactive
-      return false
-    case .inactive, .holdingForLaunchDecision, .waitingForAppReady, .timedOutLaunch:
-      return false
-    }
-  }
-
-  private func resolveValidStagedBundleForActivation() -> BundleInfo? {
-    guard let stagedId = store.getStagedBundleId() else {
-      return nil
-    }
-    guard let staged = store.getBundle(id: stagedId) else {
-      store.setStagedBundleId(nil)
-      return nil
-    }
-    guard isCompatibleRuntime(staged) else {
-      try? store.deleteBundle(id: staged.id)
-      store.setStagedBundleId(nil)
-      return nil
-    }
-    return staged
-  }
-
-  private func showOtaKitOverlay() {
-    guard autoSplashscreen else {
-      return
-    }
-
-    let work: () -> Void = { [weak self] in
-      guard let self else {
-        return
-      }
-      guard self.otaOverlayView == nil else {
-        return
-      }
-      guard let parentView = self.bridge?.viewController?.view else {
-        print("[OtaKit] showOtaKitOverlay skipped: host view is not ready")
-        return
-      }
-      let overlay = UIView(frame: parentView.bounds)
-      overlay.backgroundColor = self.autoSplashscreenBackgroundColor
-      overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-      parentView.addSubview(overlay)
-      self.otaOverlayView = overlay
-    }
-
-    if Thread.isMainThread {
-      work()
-    } else {
-      DispatchQueue.main.async(execute: work)
-    }
-  }
-
-  private func hideOtaKitOverlay() {
-    let work: () -> Void = { [weak self] in
-      guard let self, let overlay = self.otaOverlayView else {
-        return
-      }
-      self.otaOverlayView = nil
-      UIView.animate(withDuration: 0.2, animations: {
-        overlay.alpha = 0
-      }, completion: { _ in
-        overlay.removeFromSuperview()
-      })
-    }
-
-    if Thread.isMainThread {
-      work()
-    } else {
-      DispatchQueue.main.async(execute: work)
-    }
-  }
-
-  private func parseAutoSplashscreenBackgroundColor(_ raw: String?) -> UIColor {
-    guard let raw = trimToNil(raw) else {
-      return .black
-    }
-    guard raw.count == 7,
-          raw.hasPrefix("#"),
-          let rgb = UInt64(raw.dropFirst(), radix: 16) else {
-      print("[OtaKit] Invalid autoSplashscreenBackgroundColor '\(raw)'. Expected #rrggbb.")
-      return .black
-    }
-
-    return UIColor(
-      red: CGFloat((rgb >> 16) & 0xff) / 255,
-      green: CGFloat((rgb >> 8) & 0xff) / 255,
-      blue: CGFloat(rgb & 0xff) / 255,
-      alpha: 1
-    )
-  }
-
-  private func logAutoSplashscreenConfigurationWarnings() {
-    guard autoSplashscreen else {
-      return
-    }
-
-    if updateMode == .manual {
-      print("[OtaKit] autoSplashscreen is enabled, but updateMode is manual so no managed overlay can occur.")
-      return
-    }
-
-    if updateMode != .immediate && !immediateUpdateOnRuntimeChange {
-      print("[OtaKit] autoSplashscreen is enabled, but this config never shows the OtaKit overlay unless updateMode is immediate or immediateUpdateOnRuntimeChange is true.")
-    }
-  }
-
-  private func rollbackCurrentBundle(reason: String) {
+  private func rollbackCurrentBundle(reason: String, shouldReload: Bool) {
     cancelTrialTimeout()
-
-    let current = store.getCurrentBundle()
-    guard !current.isBuiltin else {
+    let preparation = coordinator.prepareRollback(
+      reason: reason,
+      isBundleUsable: isBundleUsable
+    )
+    guard preparation.didRollback else {
       return
     }
 
-    let failed = BundleInfo(
-      id: current.id,
-      version: current.version,
-      runtimeVersion: current.runtimeVersion,
-      status: .error,
-      downloadedAt: current.downloadedAt,
-      sha256: current.sha256,
-      path: current.path,
-      channel: current.channel,
-      releaseId: current.releaseId
-    )
-    store.markStatus(bundleId: current.id, status: .error)
-    store.setFailedBundle(failed)
-    store.setStagedBundleId(nil)
-
-    sendDeviceEvent(
-      action: .rollback,
-      bundleVersion: current.version,
-      runtimeVersion: current.runtimeVersion,
-      channel: current.channel,
-      releaseId: current.releaseId,
-      detail: reason
-    )
-
-    let fallback = store.getFallbackBundle()
-    if fallback.isBuiltin {
-      store.setCurrentBundleId(nil)
-      applyServerBasePath(nil)
-      notifyListeners("rollback", data: [
-        "from": failed.toDictionary(),
-        "to": store.builtinBundle().toDictionary(),
-        "reason": reason,
-      ])
-    } else if let fallbackPath = fallback.path {
-      store.setCurrentBundleId(fallback.id)
-      applyServerBasePath(fallbackPath)
-      notifyListeners("rollback", data: [
-        "from": failed.toDictionary(),
-        "to": fallback.toDictionary(),
-        "reason": reason,
-      ])
-    } else {
-      store.setCurrentBundleId(nil)
-      applyServerBasePath(nil)
-      notifyListeners("rollback", data: [
-        "from": failed.toDictionary(),
-        "to": store.builtinBundle().toDictionary(),
-        "reason": reason,
-      ])
+    coordinator.cleanupBundles(preparation.cleanupBundleIds)
+    if let eventPayload = preparation.eventPayload {
+      sendDeviceEvent(eventPayload)
     }
 
-    try? store.deleteBundle(id: current.id)
-
-    reloadWebView()
+    do {
+      try applyServerBasePathSynchronously(preparation.activationPath)
+      if shouldReload {
+        try reloadWebViewSynchronously()
+      }
+    } catch {
+      print("[OtaKit] rollback activation failed: \(error.localizedDescription)")
+    }
   }
 
-  private func cleanupSupersededStagedBundle(
-    previousStagedId: String?,
-    replacementId: String
-  ) {
-    guard let previousStagedId,
-          previousStagedId != replacementId,
-          previousStagedId != "builtin" else {
-      return
-    }
+  private func applyServerBasePathSynchronously(_ path: String?) throws {
+    try runOnMainSynchronously { [weak self] in
+      guard let self, let bridge = self.bridge else {
+        throw NSError(
+          domain: "OtaKit",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "Bridge not available for activation"]
+        )
+      }
 
-    let current = store.getCurrentBundle()
-    if previousStagedId == current.id {
-      return
-    }
-
-    let fallback = store.getFallbackBundle()
-    if previousStagedId == fallback.id {
-      return
-    }
-
-    try? store.deleteBundle(id: previousStagedId)
-  }
-
-  private func applyServerBasePath(_ path: String?) {
-    DispatchQueue.main.async { [weak self] in
       if let path, !path.isEmpty {
-        self?.bridge?.setServerBasePath(path)
+        bridge.setServerBasePath(path)
       } else {
         let builtinPath = Bundle.main.resourceURL?
           .appendingPathComponent("public", isDirectory: true).path ?? ""
-        self?.bridge?.setServerBasePath(builtinPath)
+        bridge.setServerBasePath(builtinPath)
       }
     }
   }
 
-  private func reloadWebView() {
-    DispatchQueue.main.async { [weak self] in
-      if self?.bridge?.webView == nil {
-        print("[OtaKit] WARNING: WebView not available for reload")
+  private func reloadWebViewSynchronously() throws {
+    try runOnMainSynchronously { [weak self] in
+      guard let webView = self?.bridge?.webView else {
+        throw NSError(
+          domain: "OtaKit",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "WebView not available for reload"]
+        )
       }
-      self?.bridge?.webView?.reload()
+      webView.reload()
+    }
+  }
+
+  private func runOnMainSynchronously(_ work: @escaping () throws -> Void) throws {
+    if Thread.isMainThread {
+      try work()
+      return
+    }
+
+    let semaphore = DispatchSemaphore(value: 0)
+    final class FailureBox {
+      var error: Error?
+    }
+    let failure = FailureBox()
+
+    DispatchQueue.main.async {
+      defer { semaphore.signal() }
+      do {
+        try work()
+      } catch {
+        failure.error = error
+      }
+    }
+
+    semaphore.wait()
+    if let error = failure.error {
+      throw error
     }
   }
 
   private func manifestToDictionary(
-    _ latest: LatestManifest,
-    downloaded: Bool = false
+    _ latest: LatestManifest
   ) -> [String: Any] {
     var payload: [String: Any] = [
       "version": latest.version,
       "url": latest.url,
       "sha256": latest.sha256,
       "size": latest.size,
-      "downloaded": downloaded,
     ]
     if let runtimeVersion = latest.runtimeVersion {
       payload["runtimeVersion"] = runtimeVersion
     }
     payload["releaseId"] = latest.releaseId
     return payload
-  }
-
-  private func isCurrentBundleLatest(
-    latest: LatestManifest,
-    targetChannel: String?
-  ) -> Bool {
-    doesBundleMatchLatest(store.getCurrentBundle(), latest: latest, targetChannel: targetChannel)
-  }
-
-  private func shouldSuppressLatestManifest(
-    latest: LatestManifest,
-    targetChannel: String?
-  ) -> Bool {
-    guard let failed = store.getFailedBundle() else {
-      return false
-    }
-    return doesFailedBundleMatchLatest(failed, latest: latest, targetChannel: targetChannel)
-  }
-
-  private func doesFailedBundleMatchLatest(
-    _ failed: BundleInfo,
-    latest: LatestManifest,
-    targetChannel: String?
-  ) -> Bool {
-    if trimToNil(failed.channel) != targetChannel {
-      return false
-    }
-
-    if trimToNil(failed.runtimeVersion) != trimToNil(latest.runtimeVersion) {
-      return false
-    }
-
-    if let failedReleaseId = failed.releaseId,
-       latest.releaseId == failedReleaseId {
-      return true
-    }
-
-    if !latest.sha256.isEmpty,
-       let failedSha = failed.sha256,
-       !failedSha.isEmpty,
-       latest.sha256 == failedSha {
-      return true
-    }
-
-    return false
-  }
-
-  private func doesBundleMatchLatest(
-    _ bundle: BundleInfo,
-    latest: LatestManifest,
-    targetChannel: String?
-  ) -> Bool {
-    if trimToNil(bundle.channel) != targetChannel {
-      return false
-    }
-
-    if trimToNil(bundle.runtimeVersion) != trimToNil(latest.runtimeVersion) {
-      return false
-    }
-
-    if let bundleReleaseId = bundle.releaseId,
-       latest.releaseId == bundleReleaseId {
-      return true
-    }
-
-    if !latest.sha256.isEmpty,
-       let bundleSha = bundle.sha256,
-       !bundleSha.isEmpty,
-       latest.sha256 == bundleSha {
-      return true
-    }
-
-    return latest.version == bundle.version
-  }
-
-  private func findMatchingStagedBundle(
-    latest: LatestManifest,
-    targetChannel: String?
-  ) -> BundleInfo? {
-    guard let stagedId = store.getStagedBundleId() else {
-      return nil
-    }
-    guard let staged = store.getBundle(id: stagedId) else {
-      store.setStagedBundleId(nil)
-      return nil
-    }
-
-    if trimToNil(staged.channel) != targetChannel {
-      return nil
-    }
-
-    if trimToNil(staged.runtimeVersion) != trimToNil(latest.runtimeVersion) {
-      return nil
-    }
-
-    return doesBundleMatchLatest(staged, latest: latest, targetChannel: targetChannel) ? staged : nil
   }
 
   private func downloadLatestManifest(
@@ -1424,43 +878,22 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       )
     }
 
-    do {
-      return try await downloadAndStage(
-        url: url,
-        version: manifest.version,
-        expectedSha256: manifest.sha256,
-        expectedSize: manifest.size,
-        runtimeVersion: manifest.runtimeVersion,
-        channel: targetChannel,
-        releaseId: manifest.releaseId
-      )
-    } catch let error as NSError where isExpiredURLError(error) {
-      guard let refreshed = try await fetchLatest(channel: targetChannel) else {
-        throw error
-      }
-      guard let retryURL = URL(string: refreshed.url) else {
-        throw error
-      }
-      return try await downloadAndStage(
-        url: retryURL,
-        version: refreshed.version,
-        expectedSha256: refreshed.sha256,
-        expectedSize: refreshed.size,
-        runtimeVersion: refreshed.runtimeVersion,
-        channel: targetChannel,
-        releaseId: refreshed.releaseId
-      )
-    }
+    return try await downloadAndStage(
+      url: url,
+      version: manifest.version,
+      expectedSha256: manifest.sha256,
+      expectedSize: manifest.size,
+      runtimeVersion: manifest.runtimeVersion,
+      channel: targetChannel,
+      releaseId: manifest.releaseId
+    )
   }
 
   private func pruneIncompatibleBundles() {
-    for bundle in store.listDownloadedBundles() where !isCompatibleRuntime(bundle) {
-      try? store.deleteBundle(id: bundle.id)
-    }
-
-    if let failed = store.getFailedBundle(), !isCompatibleRuntime(failed) {
-      store.setFailedBundle(nil)
-    }
+    let cleanupBundleIds = coordinator.pruneIncompatibleBundles(
+      isCompatibleRuntime: isCompatibleRuntime
+    )
+    coordinator.cleanupBundles(cleanupBundleIds)
   }
 
   private func isCompatibleRuntime(_ runtimeVersion: String?) -> Bool {
@@ -1471,7 +904,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     isCompatibleRuntime(bundle.runtimeVersion)
   }
 
-  private func buildBundleId(from version: String) -> String {
+  private func buildBundleId(
+    version: String,
+    releaseId: String?,
+    sha256: String?
+  ) -> String {
     let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
     let allowed = CharacterSet(
       charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
@@ -1500,7 +937,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       normalized = String(normalized.prefix(64))
     }
 
-    let digest = SHA256.hash(data: Data(trimmed.utf8))
+    let identitySource = trimToNil(releaseId) ?? trimToNil(sha256) ?? trimmed
+    let digest = SHA256.hash(data: Data(identitySource.utf8))
     let suffix = digest.map { String(format: "%02x", $0) }.joined().prefix(12)
     return "\(normalized)-\(suffix)"
   }
@@ -1513,18 +951,31 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     releaseId: String? = nil,
     detail: String? = nil
   ) {
+    sendDeviceEvent(
+      UpdaterCoordinator.DeviceEventPayload(
+        action: action,
+        bundleVersion: bundleVersion,
+        runtimeVersion: runtimeVersion,
+        channel: channel,
+        releaseId: releaseId,
+        detail: detail
+      )
+    )
+  }
+
+  private func sendDeviceEvent(_ payload: UpdaterCoordinator.DeviceEventPayload) {
     guard let appId else {
       return
     }
-    guard let bundleVersion = trimToNil(bundleVersion) else {
+    guard let bundleVersion = trimToNil(payload.bundleVersion) else {
       print("[OtaKit] Skipping device event without bundleVersion")
       return
     }
-    guard let releaseId = trimToNil(releaseId) else {
+    guard let releaseId = trimToNil(payload.releaseId) else {
       print("[OtaKit] Skipping device event without releaseId")
       return
     }
-    let nativeBuild = store.nativeBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+    let nativeBuild = coordinator.nativeBuild.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !nativeBuild.isEmpty else {
       print("[OtaKit] Skipping device event without nativeBuild")
       return
@@ -1533,14 +984,37 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       ingestUrl: ingestUrl,
       appId: appId,
       platform: "ios",
-      action: action,
+      action: payload.action,
       bundleVersion: bundleVersion,
-      channel: channel,
-      runtimeVersion: trimToNil(runtimeVersion),
+      channel: payload.channel,
+      runtimeVersion: trimToNil(payload.runtimeVersion),
       releaseId: releaseId,
       nativeBuild: nativeBuild,
-      detail: detail
+      detail: payload.detail
     )
+  }
+
+  private func isBundleUsable(_ bundle: BundleInfo) -> Bool {
+    guard !bundle.isBuiltin else {
+      return true
+    }
+    return isBundlePathUsable(bundle.path)
+  }
+
+  private func isBundlePathUsable(_ path: String?) -> Bool {
+    guard let path = trimToNil(path) else {
+      return false
+    }
+
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
+          isDirectory.boolValue else {
+      return false
+    }
+
+    let indexPath = URL(fileURLWithPath: path, isDirectory: true)
+      .appendingPathComponent("index.html", isDirectory: false).path
+    return fileManager.fileExists(atPath: indexPath)
   }
 
   private func resolveTargetChannel(_ channel: String?) -> String? {

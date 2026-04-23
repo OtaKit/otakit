@@ -121,6 +121,18 @@ export default function RootLayout({ children }) {
     </html>
   );
 }`}</Pre>
+          <P>
+            Recommended: keep a loading screen visible until this startup path completes. In a
+            native build, the simplest version is Capacitor Splash Screen with{' '}
+            <Code>launchAutoHide: false</Code>. See the{' '}
+            <Link
+              href="/docs/loading-screen"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              Loading Screen guide
+            </Link>
+            .
+          </P>
         </Step>
 
         <Step number="9" title="Build and run on a device">
@@ -176,6 +188,13 @@ otakit upload --release`}</Pre>
             className="font-medium text-foreground underline underline-offset-4"
           >
             Plugin API
+          </Link>{' '}
+          and the{' '}
+          <Link
+            href="/docs/loading-screen"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Loading Screen guide
           </Link>{' '}
           and{' '}
           <Link
