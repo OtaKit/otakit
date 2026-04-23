@@ -109,7 +109,6 @@ export function AppReadyProvider() {
         >
           Loading Screen guide
         </Link>
-        .
       </P>
 
       <Separator className="my-10" />
@@ -130,41 +129,59 @@ otakit upload --release`}</Pre>
 
       <Separator className="my-10" />
 
-      <P>
-        Next, continue with the{' '}
-        <Link
-          href="/docs/guide"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Next.js guide
-        </Link>{' '}
-        or the{' '}
-        <Link
-          href="/docs/react"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          React guide
-        </Link>{' '}
-        and the{' '}
-        <Link
-          href="/docs/loading-screen"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Loading Screen guide
-        </Link>{' '}
-        if you want a full walkthrough. Use the{' '}
-        <Link
-          href="/docs/plugin"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Plugin API
-        </Link>{' '}
-        and{' '}
-        <Link href="/docs/cli" className="font-medium text-foreground underline underline-offset-4">
-          CLI reference
-        </Link>{' '}
-        for advanced flows and exact command details.
-      </P>
+      <H2>Next</H2>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          Continue with the{' '}
+          <Link
+            href="/docs/guide"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Next.js guide
+          </Link>{' '}
+          or{' '}
+          <Link
+            href="/docs/react"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            React guide
+          </Link>
+        </li>
+        <li>
+          Read{' '}
+          <Link
+            href="/docs/channels"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Channels & Runtimes
+          </Link>{' '}
+          for more advanced release flows.
+        </li>
+        <li>
+          See the{' '}
+          <Link
+            href="/docs/loading-screen"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Loading Screen guide
+          </Link>{' '}
+          to avoid WebView flicker during immediate updates.
+        </li>
+        <li>
+          Use the{' '}
+          <Link
+            href="/docs/plugin"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Plugin API
+          </Link>{' '}
+          and{' '}
+          <Link href="/docs/cli" className="font-medium text-foreground underline underline-offset-4">
+            CLI reference
+          </Link>{' '}
+          for exact configuration and command details.
+        </li>
+      </ul>
     </>
   );
 }

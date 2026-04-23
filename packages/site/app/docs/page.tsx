@@ -104,11 +104,6 @@ export default function DocsOverviewPage() {
           description="Go from Next.js + Capacitor to your first OTA update."
         />
         <NavCard
-          href="/docs/loading-screen"
-          title="Loading Screen Guide"
-          description="Keep a splash or startup screen visible until notifyAppReady() completes."
-        />
-        <NavCard
           href="/docs/channels"
           title="Channels & Runtimes"
           description="Rollout tracks vs runtime compatibility lanes, and when to use each."

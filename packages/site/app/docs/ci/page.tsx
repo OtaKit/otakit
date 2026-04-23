@@ -115,17 +115,18 @@ jobs:
         <li>Use branch protection so OTA uploads only run from trusted branches.</li>
       </ul>
 
-      <P>
-        Related docs:{' '}
-        <Link href="/docs/cli" className="underline underline-offset-4">
-          CLI reference
-        </Link>{' '}
-        and{' '}
-        <Link href="/docs/channels" className="underline underline-offset-4">
-          channels
-        </Link>
-        .
-      </P>
+      <Separator className="my-10" />
+
+      <H2>Next</H2>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          Use the{' '}
+          <Link href="/docs/cli" className="font-medium text-foreground underline underline-offset-4">
+            CLI reference
+          </Link>{' '}
+          for exact upload, login, and token commands.
+        </li>
+      </ul>
     </>
   );
 }

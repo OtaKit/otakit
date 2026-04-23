@@ -84,7 +84,6 @@ otakit login`}</Pre>
   plugins: {
     OtaKit: {
       appId: "YOUR_OTAKIT_APP_ID",
-      appReadyTimeout: 10000,
     }
   }
 };`}</Pre>
@@ -131,7 +130,6 @@ export default function RootLayout({ children }) {
             >
               Loading Screen guide
             </Link>
-            .
           </P>
         </Step>
 
@@ -162,24 +160,24 @@ otakit upload --release`}</Pre>
       <H2>Next</H2>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
-          Add{' '}
-          <Link
-            href="/docs/ci"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            CI automation
-          </Link>
-          .
-        </li>
-        <li>
-          Keep the base channel first, then add{' '}
+          Read{' '}
           <Link
             href="/docs/channels"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            channels
+            Channels & Runtimes
           </Link>{' '}
-          only when you need them.
+          for release tracks and native compatibility boundaries.
+        </li>
+        <li>
+          See the{' '}
+          <Link
+            href="/docs/loading-screen"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Loading Screen guide
+          </Link>{' '}
+          to avoid WebView flicker during immediate updates.
         </li>
         <li>
           Use the{' '}
@@ -189,13 +187,6 @@ otakit upload --release`}</Pre>
           >
             Plugin API
           </Link>{' '}
-          and the{' '}
-          <Link
-            href="/docs/loading-screen"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            Loading Screen guide
-          </Link>{' '}
           and{' '}
           <Link
             href="/docs/cli"
@@ -203,7 +194,7 @@ otakit upload --release`}</Pre>
           >
             CLI reference
           </Link>{' '}
-          for advanced flows.
+          for exact configuration and command details.
         </li>
       </ul>
     </>

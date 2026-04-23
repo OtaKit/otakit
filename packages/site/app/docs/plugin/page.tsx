@@ -26,7 +26,6 @@ export default function PluginReferencePage() {
       <Pre>{`plugins: {
   OtaKit: {
     appId: "YOUR_OTAKIT_APP_ID",
-    appReadyTimeout: 10000,
     // Optional:
     // channel: "production",
     // runtimeVersion: "2026.04",
@@ -216,7 +215,6 @@ await OtaKit.notifyAppReady();`}</Pre>
     launchPolicy: "off",
     resumePolicy: "off",
     runtimePolicy: "off",
-    appReadyTimeout: 10000,
   }
 }`}</Pre>
       <div className="mt-4 space-y-4">
