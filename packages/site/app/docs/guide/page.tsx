@@ -120,17 +120,6 @@ export default function RootLayout({ children }) {
     </html>
   );
 }`}</Pre>
-          <P>
-            Recommended: keep a loading screen visible until this startup path completes. In a
-            native build, the simplest version is Capacitor Splash Screen with{' '}
-            <Code>launchAutoHide: false</Code>. See the{' '}
-            <Link
-              href="/docs/loading-screen"
-              className="font-medium text-foreground underline underline-offset-4"
-            >
-              Loading Screen guide
-            </Link>
-          </P>
         </Step>
 
         <Step number="9" title="Build and run on a device">
@@ -168,16 +157,6 @@ otakit upload --release`}</Pre>
             Channels & Runtimes
           </Link>{' '}
           for release tracks and native compatibility boundaries.
-        </li>
-        <li>
-          See the{' '}
-          <Link
-            href="/docs/loading-screen"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            Loading Screen guide
-          </Link>{' '}
-          to avoid WebView flicker during immediate updates.
         </li>
         <li>
           Use the{' '}

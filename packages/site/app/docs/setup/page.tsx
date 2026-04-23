@@ -99,18 +99,6 @@ export function AppReadyProvider() {
 
   return null;
 }`}</Pre>
-      <P>
-        Recommended: pair this with a real startup loading screen. Keep your native splash screen
-        or app loader visible until startup work is done, then call <Code>notifyAppReady()</Code>,
-        then release the loading UI. See the{' '}
-        <Link
-          href="/docs/loading-screen"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          Loading Screen guide
-        </Link>
-      </P>
-
       <Separator className="my-10" />
 
       <H2>5. Install the CLI and sign in</H2>
@@ -156,16 +144,6 @@ otakit upload --release`}</Pre>
             Channels & Runtimes
           </Link>{' '}
           for more advanced release flows.
-        </li>
-        <li>
-          See the{' '}
-          <Link
-            href="/docs/loading-screen"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            Loading Screen guide
-          </Link>{' '}
-          to avoid WebView flicker during immediate updates.
         </li>
         <li>
           Use the{' '}

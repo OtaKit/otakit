@@ -11,7 +11,6 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - REST API: /docs/api
 - Next.js Guide: /docs/guide
 - React Guide: /docs/react
-- Loading Screen Guide: /docs/loading-screen
 - Channels: /docs/channels
 - CI Automation: /docs/ci
 - Security: /docs/security
@@ -127,8 +126,6 @@ export function AppReadyProvider() {
 }
 ```
 
-Recommended: pair this with a real startup loading screen. Keep your native splash screen or app loader visible until startup work is done, then call `notifyAppReady()`, then release the loading UI. See the Loading Screen guide
-
 ### 5. Install the CLI and sign in
 
 ```txt
@@ -148,7 +145,6 @@ That publishes the bundle to the base channel. By default, OtaKit downloads it i
 ### Next
 - Continue with the Next.js guide or React guide
 - Read Channels & Runtimes for more advanced release flows.
-- See the Loading Screen guide to avoid WebView flicker during immediate updates.
 - Use the Plugin API and CLI reference for exact configuration and command details.
 
 ## CLI Reference
@@ -922,8 +918,6 @@ export default function RootLayout({ children }) {
 }
 ```
 
-Recommended: keep a loading screen visible until this startup path completes. In a native build, the simplest version is Capacitor Splash Screen with `launchAutoHide: false`. See the Loading Screen guide
-
 ### 9. Build and run on a device
 
 ```txt
@@ -947,7 +941,6 @@ Relaunch the app on your device. By default, OtaKit downloads the update in the 
 
 ### Next
 - Read Channels & Runtimes for release tracks and native compatibility boundaries.
-- See the Loading Screen guide to avoid WebView flicker during immediate updates.
 - Use the Plugin API and CLI reference for exact configuration and command details.
 
 ## React Guide
@@ -1063,8 +1056,6 @@ export default function App() {
 }
 ```
 
-Recommended: do not reveal your app UI too early. Keep a native splash screen or fullscreen loading view visible until your startup work finishes and `notifyAppReady()` has run. See the Loading Screen guide
-
 ### 8. Build and run on a device
 
 ```txt
@@ -1088,87 +1079,7 @@ Relaunch the app on your device. By default, OtaKit downloads the update in the 
 
 ### Next
 - Read Channels & Runtimes for release tracks and native compatibility boundaries.
-- See the Loading Screen guide to avoid WebView flicker during immediate updates.
 - Use the Plugin API and CLI reference for exact configuration and command details.
-
-## Loading Screen Guide
-
-Route: /docs/loading-screen
-
-Use Capacitor Splash Screen with OtaKit to avoid update activation flicker.
-
-Immediate updates can reload the WebView while a new bundle is activated. Without a splash screen, users may briefly see a blank or half-loaded page. The fix is simple: keep the native splash screen visible until your app calls `notifyAppReady()`.
-
-### Use Capacitor Splash Screen
-
-OtaKit does not include its own loading UI. Capacitor already has the right native primitive for this: `@capacitor/splash-screen`.
-
-```txt
-npm install @capacitor/splash-screen
-npx cap sync
-```
-
-Disable auto-hide so the splash stays up while the WebView starts:
-
-```txt
-// capacitor.config.ts
-plugins: {
-  SplashScreen: {
-    launchAutoHide: false,
-  },
-  OtaKit: {
-    appId: "YOUR_OTAKIT_APP_ID",
-  },
-}
-```
-
-### Call it from app startup
-
-In your root app startup, call `notifyAppReady()`, then hide the splash screen. Do not wait for optional API calls, analytics, push registration, or long background work.
-
-```txt
-import { Capacitor } from "@capacitor/core";
-import { SplashScreen } from "@capacitor/splash-screen";
-import { OtaKit } from "@otakit/capacitor-updater";
-
-async function markAppReady() {
-  if (!Capacitor.isNativePlatform()) {
-    return;
-  }
-
-  await OtaKit.notifyAppReady();
-  await SplashScreen.hide();
-}
-```
-
-### React and Next.js
-
-Add a tiny client component near the root of your app:
-
-```txt
-"use client";
-import { useEffect } from "react";
-import { Capacitor } from "@capacitor/core";
-import { SplashScreen } from "@capacitor/splash-screen";
-import { OtaKit } from "@otakit/capacitor-updater";
-
-export function AppReady() {
-  useEffect(() => {
-    async function markReady() {
-      if (Capacitor.isNativePlatform()) {
-        await OtaKit.notifyAppReady();
-        await SplashScreen.hide();
-      }
-    }
-
-    void markReady();
-  }, []);
-
-  return null;
-}
-```
-
-Render it once from your root layout or root app component. If startup data fails, still call `notifyAppReady()` once the app can render. Show offline, signed-out, empty, or retry states in your normal UI.
 
 ## Channels
 
