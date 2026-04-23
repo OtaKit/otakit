@@ -20,7 +20,7 @@ final class BundleStore {
   private static final String KEY_CURRENT = "current_bundle_id";
   private static final String KEY_FALLBACK = "fallback_bundle_id";
   private static final String KEY_STAGED = "staged_bundle_id";
-  private static final String KEY_FAILED_INFO = "failed_bundle_info";
+  private static final String KEY_LAST_FAILED_BUNDLE_INFO = "last_failed_bundle_info";
   private static final String KEY_LAST_RESOLVED_RUNTIME_KEY = "last_resolved_runtime_key";
 
   private final Context context;
@@ -140,6 +140,10 @@ final class BundleStore {
     return current != null ? current : builtinBundle();
   }
 
+  synchronized String getCurrentBundleId() {
+    return prefs.getString(KEY_CURRENT, null);
+  }
+
   synchronized void setCurrentBundleId(String id) {
     SharedPreferences.Editor editor = prefs.edit();
     if (id == null) {
@@ -157,6 +161,10 @@ final class BundleStore {
     }
     BundleInfo fallback = getBundle(fallbackId);
     return fallback != null ? fallback : builtinBundle();
+  }
+
+  synchronized String getFallbackBundleId() {
+    return prefs.getString(KEY_FALLBACK, null);
   }
 
   synchronized void setFallbackBundleId(String id) {
@@ -183,22 +191,22 @@ final class BundleStore {
     editor.commit();
   }
 
-  synchronized void setFailedBundle(BundleInfo bundle) {
+  synchronized void setLastFailedBundle(BundleInfo bundle) {
     SharedPreferences.Editor editor = prefs.edit();
     if (bundle == null) {
-      editor.remove(KEY_FAILED_INFO);
+      editor.remove(KEY_LAST_FAILED_BUNDLE_INFO);
     } else {
       try {
-        editor.putString(KEY_FAILED_INFO, bundle.toJSONObject().toString());
+        editor.putString(KEY_LAST_FAILED_BUNDLE_INFO, bundle.toJSONObject().toString());
       } catch (JSONException ignored) {
-        editor.remove(KEY_FAILED_INFO);
+        editor.remove(KEY_LAST_FAILED_BUNDLE_INFO);
       }
     }
     editor.apply();
   }
 
-  synchronized BundleInfo getFailedBundle() {
-    String json = prefs.getString(KEY_FAILED_INFO, null);
+  synchronized BundleInfo getLastFailedBundle() {
+    String json = prefs.getString(KEY_LAST_FAILED_BUNDLE_INFO, null);
     if (json == null) {
       return null;
     }

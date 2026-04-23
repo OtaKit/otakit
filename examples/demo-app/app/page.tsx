@@ -1,13 +1,13 @@
 'use client';
 
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import {
   type BundleInfo,
-  type LatestVersion,
+  type CheckResult,
   type OtaKitState,
   OtaKit,
 } from '@otakit/capacitor-updater';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type LogLevel = 'info' | 'success' | 'error';
 
@@ -24,9 +24,21 @@ const LOG_CLASS: Record<LogLevel, string> = {
   error: 'text-rose-300',
 };
 
+const PLUGIN_NAME = 'OtaKit';
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function shortId(value: string | undefined): string {
@@ -36,22 +48,128 @@ function shortId(value: string | undefined): string {
 
 function bundleLabel(bundle: BundleInfo | null | undefined): string {
   if (!bundle) return '-';
-  return `${bundle.version} (${shortId(bundle.id)})`;
+  const version = nonEmptyString(bundle.version);
+  const bundleId = nonEmptyString(bundle.id);
+
+  if (version && bundleId) {
+    return `${version} (${shortId(bundleId)})`;
+  }
+  if (version) {
+    return version;
+  }
+  if (bundleId) {
+    return shortId(bundleId);
+  }
+  return 'Unknown bundle';
 }
 
+function latestDetails(result: CheckResult | null | undefined) {
+  if (!result || result.kind === 'no_update') {
+    return null;
+  }
+  return result.latest ?? null;
+}
+
+function latestVersionLabel(result: CheckResult | null | undefined): string {
+  return nonEmptyString(latestDetails(result)?.version) ?? '-';
+}
+
+function latestSizeLabel(result: CheckResult | null | undefined): string {
+  const size = finiteNumber(latestDetails(result)?.size);
+  return size === null ? '-' : `${size} bytes`;
+}
+
+function latestShaLabel(result: CheckResult | null | undefined): string {
+  return shortId(nonEmptyString(latestDetails(result)?.sha256) ?? undefined);
+}
+
+function describeCheckResult(result: CheckResult): string {
+  if (result.kind === 'no_update') {
+    return 'No update available';
+  }
+
+  const version = nonEmptyString(result.latest?.version);
+  if (result.kind === 'already_staged') {
+    return version
+      ? `${version} is already staged and ready to apply.`
+      : 'The latest update is already staged and ready to apply.';
+  }
+
+  return version ? `${version} is available.` : 'An update is available.';
+}
+
+function describeDownloadResult(
+  result: Awaited<ReturnType<typeof OtaKit.download>>,
+): string {
+  if (result.kind !== 'staged') {
+    return 'No new update';
+  }
+
+  const version = nonEmptyString(result.bundle?.version);
+  return version
+    ? `Prepared ${version}. It is staged and ready to apply.`
+    : 'Prepared the latest bundle. It is staged and ready to apply.';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForPluginAvailability(timeoutMs = 3000): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) {
+    return Capacitor.isPluginAvailable(PLUGIN_NAME);
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (Capacitor.isPluginAvailable(PLUGIN_NAME)) {
+      return true;
+    }
+    await sleep(100);
+  }
+
+  return Capacitor.isPluginAvailable(PLUGIN_NAME);
+}
+
+type EnvironmentState = {
+  isReady: boolean;
+  platform: string;
+  isNative: boolean;
+  pluginAvailable: boolean;
+};
+
+const INITIAL_ENVIRONMENT: EnvironmentState = {
+  isReady: false,
+  platform: '-',
+  isNative: false,
+  pluginAvailable: false,
+};
+
+const BUILD_LABEL = process.env.NEXT_PUBLIC_BUILD_TIME ?? '-';
+
 export default function Home() {
-  const pluginAvailable = useMemo(() => Capacitor.isPluginAvailable('OtaKit'), []);
-  const [platform] = useState(() => Capacitor.getPlatform());
-  const [isNative] = useState(() => Capacitor.isNativePlatform());
+  const [environment, setEnvironment] = useState(INITIAL_ENVIRONMENT);
 
   const [status, setStatus] = useState('Booting...');
+  const [startupScreenVisible, setStartupScreenVisible] = useState(true);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const logSeqRef = useRef(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   const [runtimeState, setRuntimeState] = useState<OtaKitState | null>(null);
-  const [latest, setLatest] = useState<LatestVersion | null>(null);
+  const [latest, setLatest] = useState<CheckResult | null>(null);
   const [lastFailure, setLastFailure] = useState<BundleInfo | null>(null);
+
+  useEffect(() => {
+    setEnvironment({
+      isReady: true,
+      platform: Capacitor.getPlatform(),
+      isNative: Capacitor.isNativePlatform(),
+      pluginAvailable: Capacitor.isPluginAvailable(PLUGIN_NAME),
+    });
+  }, []);
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     logSeqRef.current += 1;
@@ -92,78 +210,56 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!pluginAvailable) {
-      setStatus('OtaKit plugin unavailable ("OtaKit" not registered)');
+    if (!environment.isReady) {
       return;
     }
 
-    const listeners: PluginListenerHandle[] = [];
-    const listenerApi = OtaKit as unknown as {
-      addListener: (
-        event: string,
-        callback: (payload: unknown) => void,
-      ) => Promise<PluginListenerHandle>;
-    };
-
-    const addListener = async (event: string) => {
-      const handle = await listenerApi.addListener(event, () => {
-        addLog('info', `event: ${event}`);
-      });
-      listeners.push(handle);
-    };
-
     void (async () => {
       setStatus('Initializing...');
-      await Promise.all([
-        addListener('downloadComplete'),
-        addListener('downloadFailed'),
-        addListener('updateAvailable'),
-        addListener('rollback'),
-      ]);
-
       try {
-        await withAction('refresh', refresh);
+        const pluginAvailable = await waitForPluginAvailability();
+        setEnvironment((prev) =>
+          prev.pluginAvailable === pluginAvailable
+            ? prev
+            : { ...prev, pluginAvailable }
+        );
+
+        if (!pluginAvailable) {
+          setStatus('OtaKit plugin unavailable ("OtaKit" not registered)');
+          return;
+        }
+
+        // throw new DOMException('Sartup failed - rollback expected')
+
         await withAction('notifyAppReady', () => OtaKit.notifyAppReady());
+        await withAction('refresh', refresh);
         setStatus('Ready');
       } catch (error) {
         setStatus(`Init failed: ${toErrorMessage(error)}`);
+      } finally {
+        setStartupScreenVisible(false);
       }
     })();
-
-    return () => {
-      for (const listener of listeners) {
-        void listener.remove();
-      }
-    };
-  }, [addLog, pluginAvailable, refresh, withAction]);
+  }, [environment.isReady, refresh, withAction]);
 
   const isBusy = busyAction !== null;
 
   const checkLatest = async () => {
     const value = await withAction('check', () => OtaKit.check());
     setLatest(value);
-    if (!value) {
-      setStatus('No update available');
-    } else if (value.downloaded) {
-      setStatus(`Update ${value.version} is already downloaded and ready to apply.`);
-    } else {
-      setStatus(`Update available: ${value.version}`);
-    }
+    setStatus(describeCheckResult(value));
   };
 
   const downloadLatest = async () => {
-    const bundle = await withAction('download', () => OtaKit.download());
-    if (bundle) {
-      setStatus(`Prepared ${bundle.version}. It is staged and ready to apply.`);
-    } else {
-      setStatus('No new update');
-    }
+    const result = await withAction('download', () => OtaKit.download());
+    setStatus(describeDownloadResult(result));
     await refresh();
   };
 
   const applyStaged = async () => {
     if (!runtimeState?.staged) return;
-    if (!window.confirm(`Apply staged update ${runtimeState.staged.version} now and reload?`)) {
+    const label = bundleLabel(runtimeState.staged);
+    if (!window.confirm(`Apply staged update ${label} now and reload?`)) {
       return;
     }
     await withAction('apply', () => OtaKit.apply());
@@ -173,7 +269,7 @@ export default function Home() {
     if (
       !window.confirm(
         runtimeState?.staged
-          ? `Apply staged update ${runtimeState.staged.version} now and reload?`
+          ? `Apply staged update ${bundleLabel(runtimeState.staged)} now and reload?`
           : 'Download the latest update, apply it, and reload now?',
       )
     ) {
@@ -184,22 +280,37 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
+      {startupScreenVisible ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 px-6">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-cyan-950/30">
+            <div className="flex items-center gap-3">
+              <div className="size-3 rounded-full bg-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.75)]" />
+              <p className="text-sm font-semibold text-cyan-200">Preparing OtaKit demo</p>
+            </div>
+            <p className="mt-4 text-sm text-slate-300">{status}</p>
+            <p className="mt-2 text-xs text-slate-500">
+              This mirrors the recommended startup gate: keep a loading screen visible until
+              startup work finishes and the app has called <code>notifyAppReady()</code>.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <main
         className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-4 md:p-6"
         style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
       >
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h1 className="text-2xl font-bold text-cyan-300">OtaKit Demo v0.4.0</h1>
+          <h1 className="text-2xl font-bold text-cyan-300">OtaKit Demo</h1>
           <p className="mt-2 text-xs text-slate-400">
-            platform={platform} native={String(isNative)} plugin=
-            {String(pluginAvailable)} build={process.env.BUILD_TIME}
+            platform={environment.platform} native={String(environment.isNative)} plugin=
+            {String(environment.pluginAvailable)} build={BUILD_LABEL}
           </p>
           <p className="mt-2 text-sm text-slate-200">Status: {status}</p>
           {busyAction ? <p className="mt-1 text-xs text-amber-300">Running: {busyAction}</p> : null}
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          Placeholder text for demoing updates 5
+          Placeholder text for demoing updates 38
         </section>
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -283,6 +394,7 @@ export default function Home() {
             <h2 className="mb-2 font-semibold text-cyan-200">Runtime State</h2>
             <ul className="space-y-1 text-sm">
               <li>Current: {bundleLabel(runtimeState?.current)}</li>
+              <li>Fallback: {bundleLabel(runtimeState?.fallback)}</li>
               <li>Staged: {bundleLabel(runtimeState?.staged)}</li>
               <li>Builtin: {runtimeState?.builtinVersion ?? '-'}</li>
             </ul>
@@ -292,10 +404,10 @@ export default function Home() {
               <h2 className="font-semibold text-cyan-200">Diagnostics</h2>
             </div>
             <ul className="space-y-1 text-sm">
-              <li>Latest version: {latest?.version ?? '-'}</li>
-              <li>Latest downloaded: {latest ? String(Boolean(latest.downloaded)) : '-'}</li>
-              <li>Latest size: {latest ? `${latest.size} bytes` : '-'}</li>
-              <li>Latest SHA: {shortId(latest?.sha256)}</li>
+              <li>Latest version: {latestVersionLabel(latest)}</li>
+              <li>Latest status: {latest?.kind ?? '-'}</li>
+              <li>Latest size: {latestSizeLabel(latest)}</li>
+              <li>Latest SHA: {latestShaLabel(latest)}</li>
               <li>Last failure: {bundleLabel(lastFailure)}</li>
             </ul>
           </div>

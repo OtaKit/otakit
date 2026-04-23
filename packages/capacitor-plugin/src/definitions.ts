@@ -1,5 +1,3 @@
-import type { PluginListenerHandle } from '@capacitor/core';
-
 /**
  * Bundle status enum.
  */
@@ -46,8 +44,6 @@ export interface LatestVersion {
   sha256: string;
   /** Bundle size in bytes */
   size: number;
-  /** True when this exact update is already staged locally. */
-  downloaded?: boolean;
   /** Release history ID associated with this manifest */
   releaseId: string;
 }
@@ -59,12 +55,42 @@ export interface OtaKitState {
   builtinVersion: string;
 }
 
-export type OtaKitUpdateMode = 'manual' | 'next-launch' | 'next-resume' | 'immediate';
+export type OtaKitPolicy = 'off' | 'shadow' | 'apply-staged' | 'immediate';
 
 export interface OtaKitManifestKey {
   kid: string;
   key: string;
 }
+
+export interface CheckNoUpdateResult {
+  kind: 'no_update';
+}
+
+export interface CheckAlreadyStagedResult {
+  kind: 'already_staged';
+  latest: LatestVersion;
+}
+
+export interface CheckUpdateAvailableResult {
+  kind: 'update_available';
+  latest: LatestVersion;
+}
+
+export type CheckResult =
+  | CheckNoUpdateResult
+  | CheckAlreadyStagedResult
+  | CheckUpdateAvailableResult;
+
+export interface DownloadNoUpdateResult {
+  kind: 'no_update';
+}
+
+export interface DownloadStagedResult {
+  kind: 'staged';
+  bundle: BundleInfo;
+}
+
+export type DownloadResult = DownloadNoUpdateResult | DownloadStagedResult;
 
 /**
  * Plugin configuration for capacitor.config.ts.
@@ -76,18 +102,17 @@ export interface OtaKitConfig {
   channel?: string;
   /** Optional native compatibility lane. Set this when a new store build should start a new OTA line. */
   runtimeVersion?: string;
-  /** Overall update behavior. Defaults to next-launch. */
-  updateMode?: OtaKitUpdateMode;
+  /** Cold-start policy after runtime has already been resolved. Defaults to apply-staged. */
+  launchPolicy?: OtaKitPolicy;
+  /** Foreground resume policy. Defaults to shadow. */
+  resumePolicy?: OtaKitPolicy;
+  /** Cold-start policy when runtimeVersion changes or resolves for the first time. Defaults to immediate. */
+  runtimePolicy?: OtaKitPolicy;
   /**
-   * On fresh install or after a runtimeVersion change, bypass the normal launch flow once:
-   * check live, download if needed, and apply immediately on cold start.
-   * Only affects automatic `next-launch` / `next-resume` mode. Ignored in `manual` and `immediate`.
-   */
-  immediateUpdateOnRuntimeChange?: boolean;
-  /**
-   * Minimum milliseconds between automatic update checks.
-   * Applies only to automatic checks in `next-launch` and `next-resume`.
-   * Manual APIs and `immediate` mode bypass this throttle. Defaults to 600000 (10 min).
+   * Minimum milliseconds between automatic background resume checks.
+   * Applies only to `resumePolicy: "shadow"` and `resumePolicy: "apply-staged"`
+   * when no staged bundle is already waiting. Defaults to 600000 (10 min).
+   * Set to 0 or a negative value to disable resume throttling.
    */
   checkInterval?: number;
   /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
@@ -104,15 +129,6 @@ export interface OtaKitConfig {
   allowInsecureUrls?: boolean;
 }
 
-export type OtaKitEvent =
-  | 'downloadStarted'
-  | 'downloadComplete'
-  | 'downloadFailed'
-  | 'updateAvailable'
-  | 'noUpdateAvailable'
-  | 'appReady'
-  | 'rollback';
-
 export interface OtaKitPlugin {
   /**
    * Inspect the current updater state.
@@ -121,32 +137,30 @@ export interface OtaKitPlugin {
 
   /**
    * Check the configured channel for a newer version without downloading it.
-   * When `downloaded` is true, the latest update is already staged locally.
    */
-  check(): Promise<LatestVersion | null>;
+  check(): Promise<CheckResult>;
 
   /**
-   * Check the configured channel and download the latest bundle if available.
-   * The latest bundle is staged for later activation. If it is already staged,
-   * the existing staged bundle is returned without re-downloading it.
+   * Check the configured channel and ensure the latest bundle is staged locally.
    */
-  download(): Promise<BundleInfo | null>;
+  download(): Promise<DownloadResult>;
 
   /**
    * Activate the currently staged bundle and reload the WebView.
    *
    * **WARNING: TERMINAL OPERATION**
+   * On success this call does not resolve back into the old JS context.
    * Code after this call may not execute. The WebView will reload.
    */
   apply(): Promise<void>;
 
   /**
    * Friendly manual-mode helper.
-   * Bring the app to the newest available update now.
-   * If the newest update is already staged, apply it.
-   * Otherwise download it and apply it.
+   * Bring the app to the newest available update now using one native
+   * immediate-flow operation.
    *
    * **WARNING: TERMINAL OPERATION**
+   * If an update is applied, this call does not resolve back into the old JS context.
    * Code after this call may not execute if an update is applied.
    */
   update(): Promise<void>;
@@ -154,11 +168,6 @@ export interface OtaKitPlugin {
   /**
    * **CRITICAL**: Call this when your app has successfully started.
    * Must be called within appReadyTimeout (default 10s) or rollback occurs.
-   *
-   * This confirms the current bundle is working and:
-   * - Marks the bundle as SUCCESS
-   * - Updates the fallback bundle pointer
-   * - Removes the older fallback bundle once the new bundle proves healthy
    */
   notifyAppReady(): Promise<void>;
 
@@ -167,79 +176,14 @@ export interface OtaKitPlugin {
    * Returns null if no failure has occurred.
    */
   getLastFailure(): Promise<BundleInfo | null>;
-
-  /**
-   * Add listener for update events
-   */
-  addListener(
-    event: 'downloadStarted',
-    callback: (data: { version: string }) => void,
-  ): Promise<PluginListenerHandle>;
-
-  addListener(
-    event: 'downloadComplete',
-    callback: (data: BundleInfo) => void,
-  ): Promise<PluginListenerHandle>;
-
-  addListener(
-    event: 'downloadFailed',
-    callback: (data: { version: string; error: string }) => void,
-  ): Promise<PluginListenerHandle>;
-
-  addListener(
-    event: 'updateAvailable',
-    callback: (data: LatestVersion) => void,
-  ): Promise<PluginListenerHandle>;
-
-  addListener(event: 'noUpdateAvailable', callback: () => void): Promise<PluginListenerHandle>;
-
-  addListener(
-    event: 'appReady',
-    callback: (data: BundleInfo) => void,
-  ): Promise<PluginListenerHandle>;
-
-  addListener(
-    event: 'rollback',
-    callback: (data: { from: BundleInfo; to: BundleInfo; reason?: string }) => void,
-  ): Promise<PluginListenerHandle>;
-
-  /**
-   * Remove all listeners for this plugin
-   */
-  removeAllListeners(): Promise<void>;
 }
 
 export interface OtaKitBridgePlugin {
   getState(): Promise<OtaKitState>;
-  check(): Promise<LatestVersion | null>;
-  download(): Promise<BundleInfo | null>;
+  check(): Promise<CheckResult>;
+  download(): Promise<DownloadResult>;
   apply(): Promise<void>;
+  update(): Promise<void>;
   notifyAppReady(): Promise<void>;
   getLastFailure(): Promise<BundleInfo | null>;
-  addListener(
-    event: 'downloadStarted',
-    callback: (data: { version: string }) => void,
-  ): Promise<PluginListenerHandle>;
-  addListener(
-    event: 'downloadComplete',
-    callback: (data: BundleInfo) => void,
-  ): Promise<PluginListenerHandle>;
-  addListener(
-    event: 'downloadFailed',
-    callback: (data: { version: string; error: string }) => void,
-  ): Promise<PluginListenerHandle>;
-  addListener(
-    event: 'updateAvailable',
-    callback: (data: LatestVersion) => void,
-  ): Promise<PluginListenerHandle>;
-  addListener(event: 'noUpdateAvailable', callback: () => void): Promise<PluginListenerHandle>;
-  addListener(
-    event: 'appReady',
-    callback: (data: BundleInfo) => void,
-  ): Promise<PluginListenerHandle>;
-  addListener(
-    event: 'rollback',
-    callback: (data: { from: BundleInfo; to: BundleInfo; reason?: string }) => void,
-  ): Promise<PluginListenerHandle>;
-  removeAllListeners(): Promise<void>;
 }

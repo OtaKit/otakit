@@ -109,6 +109,18 @@ export default function App() {
     </>
   );
 }`}</Pre>
+          <P>
+            Recommended: do not reveal your app UI too early. Keep a native splash screen or
+            fullscreen loading view visible until your startup work finishes and{' '}
+            <Code>notifyAppReady()</Code> has run. See the{' '}
+            <Link
+              href="/docs/loading-screen"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              Loading Screen guide
+            </Link>
+            .
+          </P>
         </Step>
 
         <Step number="8" title="Build and run on a device">
@@ -165,6 +177,13 @@ otakit upload --release`}</Pre>
             className="font-medium text-foreground underline underline-offset-4"
           >
             Plugin API
+          </Link>{' '}
+          and the{' '}
+          <Link
+            href="/docs/loading-screen"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Loading Screen guide
           </Link>{' '}
           and{' '}
           <Link

@@ -52,8 +52,7 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 echo "Building OtaKit demo app..."
-pnpm build
-pnpm exec cap sync ios
+pnpm build:cap
 
 if [[ -n "$CHANNEL" ]]; then
   echo "Uploading v$VERSION to $SERVER_URL → channel '$CHANNEL'..."

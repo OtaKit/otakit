@@ -92,7 +92,11 @@ export const registerCommand = new Command('register')
       console.log(`    appId: "${payload.id}",`);
       console.log('    appReadyTimeout: 10000,');
       console.log('    // Optional:');
-      console.log('    // updateMode: "next-resume",');
+      console.log('    // channel: "staging",');
+      console.log('    // runtimeVersion: "2026.04",');
+      console.log('    // launchPolicy: "apply-staged",');
+      console.log('    // resumePolicy: "shadow",');
+      console.log('    // runtimePolicy: "immediate",');
       console.log('  },');
       console.log('}');
       console.log('');

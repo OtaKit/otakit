@@ -64,11 +64,11 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Automatic update delivery"
-          description="The normal flow checks and downloads automatically, then activates based on updateMode."
+          description="The normal flow checks and stages automatically, then activates according to the configured launch, resume, and runtime policies."
         />
         <Feature
           title="Manual update control"
-          description="Switch to manual mode when your app wants to show its own update prompt or control install timing."
+          description="Turn automatic policies off when your app wants to show its own update prompt or control install timing."
         />
         <Feature
           title="Safe activation & rollback"
@@ -104,6 +104,11 @@ export default function DocsOverviewPage() {
           description="Go from Next.js + Capacitor to your first OTA update."
         />
         <NavCard
+          href="/docs/loading-screen"
+          title="Loading Screen Guide"
+          description="Keep a splash or startup screen visible until notifyAppReady() completes."
+        />
+        <NavCard
           href="/docs/channels"
           title="Channels & Runtimes"
           description="Rollout tracks vs runtime compatibility lanes, and when to use each."
@@ -121,7 +126,7 @@ export default function DocsOverviewPage() {
         <NavCard
           href="/docs/plugin"
           title="Plugin API"
-          description="Default automatic flow, manual flow, events, and configuration."
+          description="Default automatic flow, manual flow, and configuration."
         />
       </div>
 

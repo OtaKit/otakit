@@ -5,7 +5,7 @@ final class BundleStore {
     static let currentBundleId = "otakit_current_bundle_id"
     static let fallbackBundleId = "otakit_fallback_bundle_id"
     static let stagedBundleId = "otakit_staged_bundle_id"
-    static let failedBundleInfo = "otakit_failed_bundle_info"
+    static let lastFailedBundleInfo = "otakit_last_failed_bundle_info"
     static let lastResolvedRuntimeKey = "otakit_last_resolved_runtime_key"
   }
 
@@ -143,6 +143,10 @@ final class BundleStore {
     return bundle
   }
 
+  func getCurrentBundleId() -> String? {
+    defaults.string(forKey: Keys.currentBundleId)
+  }
+
   func setCurrentBundleId(_ id: String?) {
     if let id {
       defaults.set(id, forKey: Keys.currentBundleId)
@@ -159,6 +163,10 @@ final class BundleStore {
       return builtinBundle()
     }
     return bundle
+  }
+
+  func getFallbackBundleId() -> String? {
+    defaults.string(forKey: Keys.fallbackBundleId)
   }
 
   func setFallbackBundleId(_ id: String?) {
@@ -181,18 +189,18 @@ final class BundleStore {
     }
   }
 
-  func setFailedBundle(_ bundle: BundleInfo?) {
+  func setLastFailedBundle(_ bundle: BundleInfo?) {
     if let bundle {
       if let data = try? encoder.encode(bundle) {
-        defaults.set(data, forKey: Keys.failedBundleInfo)
+        defaults.set(data, forKey: Keys.lastFailedBundleInfo)
       }
     } else {
-      defaults.removeObject(forKey: Keys.failedBundleInfo)
+      defaults.removeObject(forKey: Keys.lastFailedBundleInfo)
     }
   }
 
-  func getFailedBundle() -> BundleInfo? {
-    guard let data = defaults.data(forKey: Keys.failedBundleInfo) else {
+  func getLastFailedBundle() -> BundleInfo? {
+    guard let data = defaults.data(forKey: Keys.lastFailedBundleInfo) else {
       return nil
     }
     return try? decoder.decode(BundleInfo.self, from: data)

@@ -3,6 +3,16 @@
 This demo app is a native-capable Next.js diagnostics console for the
 `@otakit/capacitor-updater` plugin.
 
+The native config in `capacitor.config.ts` is set up to exercise the simplified
+policy model:
+
+- `launchPolicy: "apply-staged"`
+- `resumePolicy: "shadow"`
+- `runtimePolicy: "immediate"`
+
+That demo config makes runtime catch-up eager while keeping normal resume checks
+in the background.
+
 ## Plugin API
 
 ```ts
@@ -28,11 +38,11 @@ Use it to verify the plugin works end-to-end:
 
 On screen load, `app/page.tsx`:
 
-1. checks plugin availability with `Capacitor.isPluginAvailable("OtaKit")`
-2. registers listeners for updater events
-3. calls `OtaKit.getState()` and `OtaKit.getLastFailure()`
-4. calls `OtaKit.notifyAppReady()`
-5. sets status to `Ready`
+1. shows a fullscreen startup loading screen
+2. checks plugin availability with `Capacitor.isPluginAvailable("OtaKit")`
+3. calls `OtaKit.notifyAppReady()`
+4. refreshes `getState()` and `getLastFailure()`
+5. hides the loading screen and sets status to `Ready`
 
 ## Main controls
 
@@ -67,7 +77,7 @@ pnpm ios:run
 Then, after a code change:
 
 ```bash
-pnpm build              # rebuild exported web assets into ./out
+pnpm build:cap          # rebuild exported web assets and sync native projects
 pnpm exec otakit upload --release
 ```
 

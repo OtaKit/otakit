@@ -3,8 +3,9 @@ import { WebPlugin } from '@capacitor/core';
 import type {
   OtaKitBridgePlugin,
   BundleInfo,
-  LatestVersion,
   BundleStatus,
+  CheckResult,
+  DownloadResult,
   OtaKitState,
 } from './definitions';
 
@@ -28,19 +29,23 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
     };
   }
 
-  async check(): Promise<LatestVersion | null> {
+  async check(): Promise<CheckResult> {
     console.warn('OtaKit.check() is not supported on web');
-    return null;
+    return { kind: 'no_update' };
   }
 
-  async download(): Promise<BundleInfo | null> {
+  async download(): Promise<DownloadResult> {
     console.warn('OtaKit.download() is not supported on web');
-    return null;
+    return { kind: 'no_update' };
   }
 
   async apply(): Promise<void> {
     console.warn('OtaKit.apply() is not supported on web');
     throw new Error('OtaKit.apply() is not supported on web');
+  }
+
+  async update(): Promise<void> {
+    await this.download();
   }
 
   async notifyAppReady(): Promise<void> {

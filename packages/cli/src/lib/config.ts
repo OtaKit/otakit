@@ -4,11 +4,11 @@ import { CAPACITOR_CONFIG_FILE_NAMES, readCapacitorProjectConfig } from './capac
 import { readStoredAccessToken } from './token-store.js';
 
 const API_PATH_SUFFIX = '/api/v1';
-const DEFAULT_SERVER_URL = 'https://www.otakit.app';
+const DEFAULT_SERVER_URL = 'https://console.otakit.app';
 export const PROJECT_CONFIG_LABEL = 'capacitor.config.*';
 
 const HOSTED_PRIMARY_HOST = 'otakit.app';
-const HOSTED_CANONICAL_HOST = 'www.otakit.app';
+const HOSTED_CANONICAL_HOST = 'console.otakit.app';
 
 export type AuthSource = 'env_token' | 'env_access_token' | 'file' | 'env_secret_key';
 

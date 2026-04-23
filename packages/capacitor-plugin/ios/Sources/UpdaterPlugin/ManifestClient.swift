@@ -59,11 +59,15 @@ enum ManifestClient {
     let runtimeKey = runtimeVersion?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
       ?? defaultRuntimeKey
 
-    guard let url = URL(
-      string: "\(sanitizedBase)/manifests/\(appId)/\(channelKey)/\(runtimeKey)/manifest.json"
-    ) else {
+    guard let baseURL = URL(string: sanitizedBase) else {
       throw ManifestClientError.invalidURL
     }
+    let url = baseURL
+      .appendingPathComponent("manifests", isDirectory: true)
+      .appendingPathComponent(appId, isDirectory: true)
+      .appendingPathComponent(channelKey, isDirectory: true)
+      .appendingPathComponent(runtimeKey, isDirectory: true)
+      .appendingPathComponent("manifest.json", isDirectory: false)
 
     try requireHTTPS(url: url, allowInsecure: allowInsecureUrls)
 

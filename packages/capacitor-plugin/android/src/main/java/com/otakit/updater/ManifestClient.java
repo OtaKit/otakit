@@ -1,5 +1,6 @@
 package com.otakit.updater;
 
+import android.net.Uri;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -74,14 +75,25 @@ final class ManifestClient {
     java.util.List<ManifestVerifier.KeyEntry> manifestKeys
   ) throws Exception {
     String base = cdnUrl.replaceAll("/+$", "");
-    String channelKey = channel != null && !channel.trim().isEmpty() ? channel.trim() : BASE_CHANNEL_KEY;
+    String channelKey =
+      channel != null && !channel.trim().isEmpty() ? channel.trim() : BASE_CHANNEL_KEY;
     String runtimeKey =
       runtimeVersion != null && !runtimeVersion.trim().isEmpty()
         ? runtimeVersion.trim()
         : DEFAULT_RUNTIME_KEY;
-    URL url = new URL(
-      base + "/manifests/" + appId + "/" + channelKey + "/" + runtimeKey + "/manifest.json"
-    );
+    Uri baseUri = Uri.parse(base);
+    if (baseUri.getScheme() == null || baseUri.getHost() == null) {
+      throw new IllegalStateException("Invalid CDN URL");
+    }
+    Uri urlUri = baseUri
+      .buildUpon()
+      .appendPath("manifests")
+      .appendPath(appId)
+      .appendPath(channelKey)
+      .appendPath(runtimeKey)
+      .appendPath("manifest.json")
+      .build();
+    URL url = new URL(urlUri.toString());
 
     requireHTTPS(url, allowInsecureUrls);
 
@@ -112,9 +124,10 @@ final class ManifestClient {
       String sha256 = json.getString("sha256");
       int size = json.getInt("size");
 
-      String responseRuntimeVersion = json.has("runtimeVersion") && !json.isNull("runtimeVersion")
-        ? json.getString("runtimeVersion").trim()
-        : null;
+      String responseRuntimeVersion =
+        json.has("runtimeVersion") && !json.isNull("runtimeVersion")
+          ? json.getString("runtimeVersion").trim()
+          : null;
       if (responseRuntimeVersion != null && responseRuntimeVersion.isEmpty()) {
         responseRuntimeVersion = null;
       }
