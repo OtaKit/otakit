@@ -1,6 +1,6 @@
 {
   "name": "@otakit/capacitor-updater",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Capacitor plugin for OTA updates",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -11,6 +11,7 @@
   },
   "files": [
     "LICENSE",
+    "Package.swift",
     "android/src/main/",
     "android/build.gradle",
     "dist/",
@@ -36,8 +37,9 @@
     "update"
   ],
   "scripts": {
-    "verify": "npm run verify:minimal",
+    "verify": "npm run verify:minimal && npm run verify:pack",
     "verify:minimal": "node -e \"console.log('Native verification is not wired yet')\"",
+    "verify:pack": "npm pack --dry-run --json --cache /tmp/otakit-npm-pack-cache | node -e \"const data=JSON.parse(require('fs').readFileSync(0,'utf8')); const files=(data[0]?.files??[]).map((f)=>f.path); if(!files.includes('Package.swift')){console.error('Missing Package.swift in published tarball'); process.exit(1)} console.log('Verified tarball includes Package.swift')\"",
     "verify:web": "npm run build",
     "lint": "npm run eslint && npm run prettier -- --check && npm run swiftlint -- lint",
     "fmt": "npm run eslint -- --fix && npm run prettier -- --write && npm run swiftlint -- --fix --format",
@@ -69,7 +71,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@capacitor/core": "^8.0.2"
+    "@capacitor/core": "^7.0.0 || ^8.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
