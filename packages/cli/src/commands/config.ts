@@ -95,7 +95,7 @@ const validateSubcommand = new Command('validate')
   .action(async (options: ConfigValidateOptions) => {
     await runCommand(async () => {
       try {
-        const config = readProjectConfig();
+        const config = await readProjectConfig();
 
         if (!config) {
           const message = `No ${PROJECT_CONFIG_LABEL} found in the current directory or its parents.`;

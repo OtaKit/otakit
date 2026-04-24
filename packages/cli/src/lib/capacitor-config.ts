@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const CAPACITOR_CONFIG_FILE_NAMES = [
   'capacitor.config.ts',
@@ -20,15 +22,17 @@ export interface CapacitorProjectConfig {
   outputDir?: string;
 }
 
-export function readCapacitorProjectConfig(
+const baseRequire = createRequire(import.meta.url);
+
+export async function readCapacitorProjectConfig(
   cwd: string = process.cwd(),
-): CapacitorProjectConfig | null {
+): Promise<CapacitorProjectConfig | null> {
   const configPath = findCapacitorConfigPath(cwd);
   if (!configPath) {
     return null;
   }
 
-  const rawConfig = loadCapacitorConfigFile(configPath);
+  const rawConfig = await loadCapacitorConfigFile(configPath);
   return extractProjectConfig(configPath, rawConfig);
 }
 
@@ -51,55 +55,108 @@ export function findCapacitorConfigPath(cwd: string = process.cwd()): string | n
   }
 }
 
-function loadCapacitorConfigFile(configPath: string): unknown {
+async function loadCapacitorConfigFile(configPath: string): Promise<unknown> {
   const extension = extname(configPath).toLowerCase();
-  const source = readFileSync(configPath, 'utf-8');
 
   if (extension === '.json') {
     try {
-      return JSON.parse(source) as unknown;
+      return JSON.parse(readFileSync(configPath, 'utf-8')) as unknown;
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown parse error';
       throw new Error(`${configPath} is not valid JSON: ${reason}`);
     }
   }
 
-  return evaluateCapacitorConfigModule(configPath, source);
+  if (extension === '.ts') {
+    return loadTypeScriptConfigModule(configPath);
+  }
+
+  return loadJavaScriptConfigModule(configPath);
 }
 
-function evaluateCapacitorConfigModule(configPath: string, source: string): unknown {
-  let normalizedSource = source.replace(/^\uFEFF/, '');
-  normalizedSource = normalizedSource.replace(/^\s*import\s+type[\s\S]*?;?\s*$/gm, '');
-  normalizedSource = normalizedSource.replace(
-    /\b(const|let|var)\s+([A-Za-z_$][\w$]*)\s*:\s*[^=;\n]+=/g,
-    '$1 $2 =',
-  );
-  normalizedSource = normalizedSource.replace(/\s+satisfies\s+[^;\n]+/g, '');
-  normalizedSource = normalizedSource.replace(/\s+as\s+const\b/g, '');
-
-  if (/^\s*import\s/m.test(normalizedSource)) {
+function loadTypeScriptConfigModule(configPath: string): unknown {
+  const source = readFileSync(configPath, 'utf-8').replace(/^\uFEFF/, '');
+  const tsPath = resolveNode(dirname(configPath), 'typescript');
+  if (!tsPath) {
     throw new Error(
-      `${configPath} uses runtime imports. OtaKit can read capacitor config files that only use inline values, process.env, and type-only imports.`,
+      `Could not find installation of TypeScript. To use ${configPath}, install TypeScript in your project.`,
     );
   }
 
-  normalizedSource = normalizedSource.replace(/\bexport\s+default\b/, 'return');
-  normalizedSource = normalizedSource.replace(/\bmodule\.exports\s*=\s*/g, 'return ');
-  normalizedSource = normalizedSource.replace(/\bexports\.default\s*=\s*/g, 'return ');
-
   try {
-    const evaluator = new Function(
-      'defineConfig',
-      'process',
-      `"use strict";\n${normalizedSource}`,
-    ) as (defineConfig: <T>(value: T) => T, process: NodeJS.Process) => unknown;
+    const ts = baseRequire(tsPath) as {
+      ModuleKind: { CommonJS: number };
+      ModuleResolutionKind: { NodeJs: number };
+      ScriptTarget: { ES2017: number };
+      transpileModule: (
+        sourceText: string,
+        options: {
+          fileName: string;
+          compilerOptions: Record<string, unknown>;
+          reportDiagnostics: boolean;
+        },
+      ) => { outputText: string };
+    };
 
-    return evaluator((value) => value, process);
+    const transpiled = ts.transpileModule(source, {
+      fileName: configPath,
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        moduleResolution: ts.ModuleResolutionKind.NodeJs,
+        esModuleInterop: true,
+        strict: true,
+        target: ts.ScriptTarget.ES2017,
+      },
+      reportDiagnostics: true,
+    });
+
+    return unwrapModuleExport(compileCommonJsModule(configPath, transpiled.outputText));
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown evaluation error';
-    throw new Error(
-      `${configPath} could not be evaluated. Keep capacitor config simple or use CLI flags/env overrides. ${reason}`,
-    );
+    throw new Error(`${configPath} could not be loaded. ${reason}`);
+  }
+}
+
+async function loadJavaScriptConfigModule(configPath: string): Promise<unknown> {
+  try {
+    const loaded = await import(`${pathToFileURL(configPath).href}?otakit=${Date.now()}`);
+    return unwrapModuleExport(loaded);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Unknown evaluation error';
+    throw new Error(`${configPath} could not be loaded. ${reason}`);
+  }
+}
+
+function compileCommonJsModule(configPath: string, sourceText: string): unknown {
+  const Module = baseRequire('node:module') as {
+    new (id: string): {
+      filename: string;
+      paths: string[];
+      _compile(code: string, filename: string): void;
+      exports: unknown;
+    };
+    _nodeModulePaths(from: string): string[];
+  };
+
+  const mod = new Module(configPath);
+  mod.filename = configPath;
+  mod.paths = Module._nodeModulePaths(dirname(configPath));
+  mod._compile(sourceText, configPath);
+  return mod.exports;
+}
+
+function unwrapModuleExport(loaded: unknown): unknown {
+  if (loaded && typeof loaded === 'object' && 'default' in loaded) {
+    return (loaded as { default: unknown }).default;
+  }
+  return loaded;
+}
+
+function resolveNode(rootDir: string, id: string): string | null {
+  try {
+    return baseRequire.resolve(id, { paths: [rootDir] });
+  } catch {
+    return null;
   }
 }
 

@@ -159,8 +159,8 @@ export async function requireServerAndAuth(options?: {
   };
 }
 
-export function readProjectConfig(cwd: string = process.cwd()): ProjectConfig | null {
-  const projectConfig = readCapacitorProjectConfig(cwd);
+export async function readProjectConfig(cwd: string = process.cwd()): Promise<ProjectConfig | null> {
+  const projectConfig = await readCapacitorProjectConfig(cwd);
   if (!projectConfig) {
     return null;
   }
@@ -176,8 +176,8 @@ export function readProjectConfig(cwd: string = process.cwd()): ProjectConfig | 
   };
 }
 
-export function requireProjectConfig(cwd: string = process.cwd()): ProjectConfig {
-  const config = readProjectConfig(cwd);
+export async function requireProjectConfig(cwd: string = process.cwd()): Promise<ProjectConfig> {
+  const config = await readProjectConfig(cwd);
   if (!config) {
     throw new Error(
       [
@@ -211,10 +211,10 @@ export async function resolveConfigSnapshot(
   options?: ConfigResolveOptions,
 ): Promise<ConfigResolveSnapshot> {
   const cwd = options?.cwd ?? process.cwd();
-  const capacitorProjectConfig = readCapacitorProjectConfig(cwd);
+  const capacitorProjectConfig = await readCapacitorProjectConfig(cwd);
   const configPath =
     capacitorProjectConfig?.configPath ?? resolve(cwd, CAPACITOR_CONFIG_FILE_NAMES[0]);
-  const projectConfig = readProjectConfig(cwd);
+  const projectConfig = await readProjectConfig(cwd);
 
   if (options?.requireProjectConfig && !projectConfig) {
     throw new Error(
