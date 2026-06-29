@@ -5,9 +5,10 @@ import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } 
 import { CopyCode } from '@/app/components/CopyCode';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { site } from '@/lib/site';
 
 export const metadata = {
-  title: 'OtaKit — Live updates for Capacitor apps',
+  title: { absolute: 'OtaKit — Live updates for Capacitor apps' },
   description:
     'Ship instant over-the-air updates to your Capacitor apps. No app store delays. Open source and self-hostable.',
 };
@@ -91,12 +92,12 @@ export default function LandingPage() {
               Docs
             </Link>
             <div className="ml-3 flex items-center gap-2">
-              <Link href="https://console.otakit.app/dashboard">
+              <Link href={`${site.console}/dashboard`}>
                 <Button variant="ghost" size="sm">
                   Dashboard
                 </Button>
               </Link>
-              <Link href="https://console.otakit.app/login">
+              <Link href={`${site.console}/login`}>
                 <Button size="sm" className="rounded-full px-4">
                   Sign Up
                 </Button>
@@ -162,7 +163,7 @@ export default function LandingPage() {
             </p>
             <div className="mt-20 flex flex-col items-start gap-4 sm:flex-row">
               <div>
-                <Link href="https://console.otakit.app/login">
+                <Link href={`${site.console}/login`}>
                   <Button size="lg" className="group rounded-full px-8">
                     Start releasing free
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
@@ -336,7 +337,8 @@ export default function LandingPage() {
                 Simple, value-aligned pricing
               </h2>
               <p className="mt-4 max-w-3xl text-muted-foreground">
-                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth, or storage.
+                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth,
+                or storage.
               </p>
             </div>
             <div className="grid gap-px bg-border sm:grid-cols-3">
@@ -352,7 +354,7 @@ export default function LandingPage() {
                   'Unlimited users',
                   'Channel-based deploys',
                   'Dashboard + CLI',
-                  'Real-time analytics'
+                  'Real-time analytics',
                 ]}
                 cta="Get started free"
               />
@@ -416,7 +418,7 @@ export default function LandingPage() {
             Push over-the-air updates directly to your users without delays.
           </p>
           <div className="mt-20 flex flex-col gap-4 sm:flex-row">
-            <Link href="https://console.otakit.app/login">
+            <Link href={`${site.console}/login`}>
               <Button size="lg" className="group rounded-full px-8">
                 Get started free
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
@@ -442,19 +444,45 @@ export default function LandingPage() {
             <span className="text-sm font-medium text-foreground">OtaKit</span>
           </div>
           <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm text-muted-foreground">
-            <Link href="/docs" className="transition-colors hover:text-foreground">Docs</Link>
-            <Link href="#pricing" className="transition-colors hover:text-foreground">Pricing</Link>
-            <a href="https://github.com/OtaKit/otakit" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">GitHub</a>
-            <Link href="/contact" className="transition-colors hover:text-foreground">Contact</Link>
-            <Link href="/docs/security" className="transition-colors hover:text-foreground">Security</Link>
-            <a href="https://otakit.hyperping.app/" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">Status</a>
+            <Link href="/docs" className="transition-colors hover:text-foreground">
+              Docs
+            </Link>
+            <Link href="#pricing" className="transition-colors hover:text-foreground">
+              Pricing
+            </Link>
+            <a
+              href={site.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              GitHub
+            </a>
+            <Link href="/contact" className="transition-colors hover:text-foreground">
+              Contact
+            </Link>
+            <Link href="/docs/security" className="transition-colors hover:text-foreground">
+              Security
+            </Link>
+            <a
+              href="https://otakit.hyperping.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              Status
+            </a>
           </div>
         </div>
         <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} OtaKit. Open source under MIT.</span>
           <div className="flex gap-6">
-            <Link href="/terms" className="transition-colors hover:text-foreground">Terms</Link>
-            <Link href="/policy" className="transition-colors hover:text-foreground">Privacy</Link>
+            <Link href="/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </Link>
+            <Link href="/policy" className="transition-colors hover:text-foreground">
+              Privacy
+            </Link>
           </div>
         </div>
       </footer>
@@ -557,7 +585,7 @@ function PricingCard({
         ))}
       </ul>
       <div className="mt-8">
-        <Link href="https://console.otakit.app/login" className="block">
+        <Link href={`${site.console}/login`} className="block">
           <Button variant={highlighted ? 'default' : 'outline'} className="w-full">
             {cta}
           </Button>

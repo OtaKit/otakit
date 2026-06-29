@@ -1,9 +1,10 @@
 import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
+import { site } from '@/lib/site';
 
 export const metadata = {
-  title: 'Next.js Guide — OtaKit Docs',
+  title: 'Next.js Guide',
   description: 'Step-by-step guide: from Next.js + Capacitor to your first OTA update.',
 };
 
@@ -65,7 +66,7 @@ npx cap sync`}</Pre>
           <P>
             Create an app in the{' '}
             <Link
-              href="https://console.otakit.app/dashboard"
+              href={`${site.console}/dashboard`}
               className="font-medium text-foreground underline underline-offset-4"
             >
               OtaKit dashboard
@@ -127,10 +128,10 @@ export default function RootLayout({ children }) {
 npx cap sync
 npx cap run ios       # or: npx cap run android`}</Pre>
 
-        <P>
-          Note: The app must be published to the App Store (and/or Play Store) at least once with the OtaKit plugin configured 
-          before end users&rsquo; devices can receive live updates.
-        </P>
+          <P>
+            Note: The app must be published to the App Store (and/or Play Store) at least once with
+            the OtaKit plugin configured before end users&rsquo; devices can receive live updates.
+          </P>
         </Step>
 
         <Step number="10" title="Ship your first OTA update">

@@ -5,7 +5,7 @@ import { SUPPORT_EMAIL } from '@/lib/support';
 import { ContactPageClient } from './ContactPageClient';
 
 export const metadata: Metadata = {
-  title: 'Contact support — OtaKit',
+  title: 'Contact support',
   description: 'Get help with setup, billing, or OTA rollout questions.',
 };
 

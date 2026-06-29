@@ -1,7 +1,7 @@
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'REST API — OtaKit Docs',
+  title: 'REST API',
   description: 'Public OtaKit REST API endpoints for app, bundle, and release automation.',
 };
 

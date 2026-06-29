@@ -1,9 +1,10 @@
 import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
+import { site } from '@/lib/site';
 
 export const metadata = {
-  title: 'Setup — OtaKit Docs',
+  title: 'Setup',
   description: 'Set up the default hosted OtaKit flow in a Capacitor project.',
 };
 
@@ -19,7 +20,7 @@ export default function SetupPage() {
       <P>
         Sign in to the{' '}
         <Link
-          href="https://console.otakit.app/dashboard"
+          href={`${site.console}/dashboard`}
           className="font-medium text-foreground underline underline-offset-4"
         >
           OtaKit dashboard
@@ -154,7 +155,10 @@ otakit upload --release`}</Pre>
             Plugin API
           </Link>{' '}
           and{' '}
-          <Link href="/docs/cli" className="font-medium text-foreground underline underline-offset-4">
+          <Link
+            href="/docs/cli"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
             CLI reference
           </Link>{' '}
           for exact configuration and command details.

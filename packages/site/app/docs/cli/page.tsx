@@ -1,7 +1,7 @@
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'CLI Reference — OtaKit Docs',
+  title: 'CLI Reference',
   description:
     'Upload bundles, release them, inspect history, and manage apps with the OtaKit CLI.',
 };

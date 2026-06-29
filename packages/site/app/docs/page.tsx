@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '@/lib/support';
 
 export const metadata = {
-  title: 'OtaKit — Docs',
+  title: 'Docs',
   description: 'How OtaKit works and where to start.',
 };
 

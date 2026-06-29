@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'Self-hosting — OtaKit Docs',
+  title: 'Self-hosting',
   description: 'Run OtaKit on your own infrastructure.',
 };
 
@@ -45,9 +45,9 @@ export default function SelfHostPage() {
         </li>
       </ul>
       <P>
-        The <strong>CLI</strong> (<Code>packages/cli</Code>) and{' '}
-        <strong>Capacitor plugin</strong> (<Code>packages/capacitor-plugin</Code>) are client-side
-        tools — they can be configured to point at your self-hosted services.
+        The <strong>CLI</strong> (<Code>packages/cli</Code>) and <strong>Capacitor plugin</strong> (
+        <Code>packages/capacitor-plugin</Code>) are client-side tools — they can be configured to
+        point at your self-hosted services.
       </P>
 
       <Separator className="my-10" />
@@ -99,10 +99,9 @@ MANIFEST_SIGNING_KEY=-----BEGIN EC PRIVATE KEY-----...
 
       <H3>Ingest Worker</H3>
       <P>
-        Only needed if you want to use analytics. See{' '}
-        <Code>packages/ingest/wrangler.jsonc</Code> and{' '}
-        <Code>packages/ingest/.env.example</Code> for the full config. The Worker needs a Tinybird
-        append token and a Cloudflare Queue.
+        Only needed if you want to use analytics. See <Code>packages/ingest/wrangler.jsonc</Code>{' '}
+        and <Code>packages/ingest/.env.example</Code> for the full config. The Worker needs a
+        Tinybird append token and a Cloudflare Queue.
       </P>
 
       <Separator className="my-10" />
@@ -127,9 +126,7 @@ cd packages/console
 npx prisma migrate deploy
 pnpm build
 pnpm start`}</Pre>
-      <P>
-        Runs on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS.
-      </P>
+      <P>Runs on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS.</P>
 
       <H3>Ingest Worker</H3>
       <Pre>{`cd packages/ingest

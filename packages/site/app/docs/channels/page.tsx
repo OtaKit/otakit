@@ -1,7 +1,7 @@
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'Channels & Runtime Version — OtaKit Docs',
+  title: 'Channels & Runtime Version',
   description:
     'Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.',
 };
@@ -11,10 +11,10 @@ export default function ChannelsPage() {
     <>
       <h1 className="text-2xl font-bold tracking-tight">Channels & Runtime Version</h1>
       <P>
-        Channels control which audience receives a release — for example, a{' '}
-        <Code>staging</Code> channel for testers and the default channel for everyone else.
-        Runtime version creates a compatibility boundary between native builds and OTA
-        bundles — each side only sees releases meant for its version.
+        Channels control which audience receives a release — for example, a <Code>staging</Code>{' '}
+        channel for testers and the default channel for everyone else. Runtime version creates a
+        compatibility boundary between native builds and OTA bundles — each side only sees releases
+        meant for its version.
       </P>
       <P>Both are optional and build-time settings. Start with neither and add them when needed.</P>
 
@@ -26,8 +26,8 @@ export default function ChannelsPage() {
 
       <H3>Base channel</H3>
       <P>
-        If you omit <Code>channel</Code> from the plugin config, the app uses the unnamed
-        base channel. This is the default and the simplest setup.
+        If you omit <Code>channel</Code> from the plugin config, the app uses the unnamed base
+        channel. This is the default and the simplest setup.
       </P>
       <Pre>{`plugins: {
   OtaKit: {
@@ -41,8 +41,8 @@ export default function ChannelsPage() {
 
       <H3>Named channels</H3>
       <P>
-        Add a channel when you want a separate rollout track — for example, internal QA,
-        beta, or a staged production rollout.
+        Add a channel when you want a separate rollout track — for example, internal QA, beta, or a
+        staged production rollout.
       </P>
       <Pre>{`plugins: {
   OtaKit: {
@@ -71,14 +71,13 @@ otakit release <bundle-id> --channel production`}</Pre>
 
       <H3>When to use it</H3>
       <P>
-        <Code>runtimeVersion</Code> is optional. Use it when a new store submission changes
-        what the native shell expects from the web bundle. Devices on the old native build
-        won&apos;t receive bundles meant for the new one, and devices on the new
-        build won&apos;t receive old bundles.
+        <Code>runtimeVersion</Code> is optional. Use it when a new store submission changes what the
+        native shell expects from the web bundle. Devices on the old native build won&apos;t receive
+        bundles meant for the new one, and devices on the new build won&apos;t receive old bundles.
       </P>
       <P>
-        Without <Code>runtimeVersion</Code>, all OTA releases share one lane per channel.
-        With it, each runtime version gets its own lane.
+        Without <Code>runtimeVersion</Code>, all OTA releases share one lane per channel. With it,
+        each runtime version gets its own lane.
       </P>
 
       <Separator className="my-6" />
@@ -100,9 +99,6 @@ otakit release <bundle-id> --channel production`}</Pre>
         <li>Old cached OTA bundles from a different runtime are ignored on startup.</li>
       </ul>
 
-
-
-
       <Separator className="my-10" />
 
       <h2 className="text-xl font-semibold tracking-tight">Common setups</h2>
@@ -116,8 +112,8 @@ otakit release <bundle-id> --channel production`}</Pre>
           <Code>production</Code> to split audiences.
         </li>
         <li>
-          <strong>New store baseline:</strong> — bump{' '}
-          <Code>runtimeVersion</Code> so the new native build starts a fresh OTA lane.
+          <strong>New store baseline:</strong> — bump <Code>runtimeVersion</Code> so the new native
+          build starts a fresh OTA lane.
         </li>
       </ul>
     </>

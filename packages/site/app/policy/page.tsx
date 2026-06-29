@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Privacy Policy - OtaKit',
+  title: 'Privacy Policy',
   description:
     'Privacy Policy for OtaKit (otakit.app), including data collection, use, sharing, and rights.',
 };
@@ -91,9 +91,7 @@ export default function PrivacyPolicyPage() {
           </Section>
 
           <Section title="7. Sub-processors">
-            <P>
-              The managed OtaKit service uses the following third-party providers to operate:
-            </P>
+            <P>The managed OtaKit service uses the following third-party providers to operate:</P>
             <List
               items={[
                 'Cloudflare — CDN, edge delivery, R2 object storage, Workers compute.',
@@ -104,9 +102,7 @@ export default function PrivacyPolicyPage() {
                 'Vercel — Dashboard and API hosting.',
               ]}
             />
-            <P>
-              Self-hosted deployments choose their own infrastructure providers.
-            </P>
+            <P>Self-hosted deployments choose their own infrastructure providers.</P>
           </Section>
 
           <Section title="8. International Data Transfers">

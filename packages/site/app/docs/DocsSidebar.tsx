@@ -7,6 +7,7 @@ import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { site } from '@/lib/site';
 
 const NAV = [
   {
@@ -93,7 +94,7 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           Contact support
         </Link>
         <Link
-          href="https://github.com/OtaKit/otakit"
+          href={site.github}
           target="_blank"
           rel="noopener noreferrer"
           onClick={onClick}

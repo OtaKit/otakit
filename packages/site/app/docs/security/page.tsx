@@ -1,7 +1,8 @@
 import { Separator } from '@/components/ui/separator';
+import { site } from '@/lib/site';
 
 export const metadata = {
-  title: 'Security — OtaKit Docs',
+  title: 'Security',
   description: 'How OtaKit secures your OTA update delivery pipeline.',
 };
 
@@ -18,9 +19,9 @@ export default function SecurityPage() {
 
       <H2>Manifest signing</H2>
       <P>
-        Every manifest is signed with ES256 (ECDSA P-256) when a release is published. The
-        plugin verifies the signature before trusting the manifest. A tampered manifest — whether
-        modified in transit, at the CDN edge, or in storage — is rejected.
+        Every manifest is signed with ES256 (ECDSA P-256) when a release is published. The plugin
+        verifies the signature before trusting the manifest. A tampered manifest — whether modified
+        in transit, at the CDN edge, or in storage — is rejected.
       </P>
       <P>
         The signing key stays on your server. The plugin only holds the public verification key.
@@ -45,17 +46,15 @@ export default function SecurityPage() {
         bundle crashes, hangs, or breaks — the plugin automatically rolls back to the last
         known-good bundle.
       </P>
-      <P>
-        This means a bad OTA release self-heals on the device without user intervention.
-      </P>
+      <P>This means a bad OTA release self-heals on the device without user intervention.</P>
 
       <Separator className="my-10" />
 
       <H2>Infrastructure</H2>
       <P>
-        On the managed OtaKit service, manifests and bundles are served from Cloudflare&apos;s global
-        CDN with 300+ edge locations. Download availability inherits Cloudflare&apos;s infrastructure
-        SLA. Bundles are stored in Cloudflare R2 with encryption at rest.
+        On the managed OtaKit service, manifests and bundles are served from Cloudflare&apos;s
+        global CDN with 300+ edge locations. Download availability inherits Cloudflare&apos;s
+        infrastructure SLA. Bundles are stored in Cloudflare R2 with encryption at rest.
       </P>
       <P>
         The dashboard and control plane run on isolated infrastructure. Device traffic (manifest
@@ -83,7 +82,7 @@ export default function SecurityPage() {
         The entire OtaKit codebase — plugin, CLI, dashboard, and ingest service — is open source
         under the MIT license. The signing and verification logic can be audited directly on{' '}
         <a
-          href="https://github.com/OtaKit/otakit"
+          href={site.github}
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-foreground underline underline-offset-4"
@@ -100,8 +99,8 @@ export default function SecurityPage() {
 
       <H2>HTTPS enforcement</H2>
       <P>
-        The plugin enforces HTTPS for all manifest and bundle requests. HTTP is only allowed
-        for <Code>localhost</Code> during development when explicitly opted in via{' '}
+        The plugin enforces HTTPS for all manifest and bundle requests. HTTP is only allowed for{' '}
+        <Code>localhost</Code> during development when explicitly opted in via{' '}
         <Code>allowInsecureUrls</Code>.
       </P>
 
@@ -110,9 +109,9 @@ export default function SecurityPage() {
       <H2>API authentication</H2>
       <P>
         All dashboard and CLI operations require authentication via scoped API keys or session
-        tokens. API keys are hashed before storage — the raw key is shown once at creation and
-        never stored. Organization-level role-based access controls restrict who can upload
-        bundles, create releases, or manage team members.
+        tokens. API keys are hashed before storage — the raw key is shown once at creation and never
+        stored. Organization-level role-based access controls restrict who can upload bundles,
+        create releases, or manage team members.
       </P>
 
       <Separator className="my-10" />

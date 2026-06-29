@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 
 import { DocsMobileNav, DocsSidebar } from './DocsSidebar';
+import { site } from '@/lib/site';
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +31,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <div className="ml-auto">
             <Link
-              href="https://console.otakit.app/dashboard"
+              href={`${site.console}/dashboard`}
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               Dashboard →

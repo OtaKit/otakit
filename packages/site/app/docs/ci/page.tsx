@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'CI Automation — OtaKit Docs',
+  title: 'CI Automation',
   description: 'Use GitHub Actions to build, upload, and optionally release OtaKit bundles.',
 };
 
@@ -121,7 +121,10 @@ jobs:
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
           Use the{' '}
-          <Link href="/docs/cli" className="font-medium text-foreground underline underline-offset-4">
+          <Link
+            href="/docs/cli"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
             CLI reference
           </Link>{' '}
           for exact upload, login, and token commands.

@@ -1,7 +1,7 @@
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'Plugin API — OtaKit Docs',
+  title: 'Plugin API',
   description: 'Capacitor plugin setup, policy-based automatic updates, and manual advanced flows.',
 };
 

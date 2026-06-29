@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Terms of Use - OtaKit',
+  title: 'Terms of Use',
   description:
     'Terms of Use for OtaKit (otakit.app), including service usage, billing, and legal terms.',
 };
