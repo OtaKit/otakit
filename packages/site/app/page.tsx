@@ -354,7 +354,7 @@ export default function LandingPage() {
                 name="Pro"
                 price="$25"
                 period="/mo"
-                description="$25/mo billed yearly, or $50/mo monthly."
+                description="$25/mo billed yearly ($300/yr) — or $50/mo month-to-month."
                 allowance="1,000,000 updates / month"
                 features={[
                   'Everything in Free',
@@ -381,14 +381,6 @@ export default function LandingPage() {
                 href="/contact"
               />
             </div>
-            <p className="border-t border-border px-8 py-5 text-center text-sm text-muted-foreground/60">
-              Pro includes 1,000,000 updates / month. Need more? Enable overage ($50 per additional
-              1,000,000 updates), turn it off any time to cap spend, or{' '}
-              <Link href="/contact" className="underline underline-offset-4 hover:text-foreground">
-                contact us
-              </Link>{' '}
-              for a custom Enterprise plan.
-            </p>
           </div>
         </div>
       </section>
