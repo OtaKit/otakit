@@ -114,8 +114,10 @@ export const auth = betterAuth({
 });
 
 /**
- * Post-signup provisioning: apply pending invites or create a personal organization.
- * Also called on sign-in to pick up new invites (see after-auth hook).
+ * Post-signup provisioning: apply pending invites or create a personal
+ * organization. Runs once from the user.create hook above. Invites for users
+ * who already exist are applied inline by the invite route, so there is no
+ * sign-in hook.
  */
 export async function provisionUser(userId: string, email: string) {
   await db.$transaction(async (tx) => {

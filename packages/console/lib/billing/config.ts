@@ -60,11 +60,16 @@ export function getPlanLimits(planKey: PlanKey): PlanLimits {
   return PLAN_LIMITS[planKey];
 }
 
+// Polar identifies a customer by this external id. Both helpers share one
+// prefix constant so the build and parse halves can never drift out of sync.
+const ORGANIZATION_EXTERNAL_ID_PREFIX = 'organization:';
+
 export function getExternalCustomerId(organizationId: string): string {
-  return `organization:${organizationId}`;
+  return `${ORGANIZATION_EXTERNAL_ID_PREFIX}${organizationId}`;
 }
 
 export function parseOrganizationIdFromExternalId(externalId: string): string | null {
-  if (!externalId.startsWith('organization:')) return null;
-  return externalId.slice(7);
+  if (!externalId.startsWith(ORGANIZATION_EXTERNAL_ID_PREFIX)) return null;
+  const organizationId = externalId.slice(ORGANIZATION_EXTERNAL_ID_PREFIX.length);
+  return organizationId.length > 0 ? organizationId : null;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
+import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { sendInviteEmail, sendTeamAccessGrantedEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
@@ -35,6 +36,18 @@ export async function POST(request: NextRequest) {
 
   if (ctx.role !== 'owner' && ctx.role !== 'admin') {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+  }
+
+  // Team members are a paid entitlement — the starter plan is single-seat.
+  const entitlements = await getOrganizationEntitlements(ctx.organizationId);
+  if (!entitlements.limits.teamMembers) {
+    return NextResponse.json(
+      {
+        error:
+          'Team members are not available on your current plan. Upgrade to Pro or Scale to invite teammates.',
+      },
+      { status: 403 },
+    );
   }
 
   let body: Record<string, unknown>;
