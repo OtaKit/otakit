@@ -2,7 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
 
-import { CopyCode } from '@/app/components/CopyCode';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { site } from '@/lib/site';
@@ -57,12 +56,6 @@ const HERO_ICON_CLOUD: HeroIconCloudItem[] = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground m-3 border border-border">
-      {/* Launch banner */}
-      <div className="bg-amber-300 text-amber-950 px-4 py-2.5 text-center text-sm font-medium uppercase">
-        <Rocket className="mr-1 inline-block size-4" />
-        OtaKit just launched - get 50% off with code
-        <CopyCode code="LAUNCH50" />
-      </div>
       {/* Nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/60 backdrop-blur-2xl">
         <div className="mx-auto flex h-16 max-w-screen-xl items-center gap-6 px-6">
