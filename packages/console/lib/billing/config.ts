@@ -5,16 +5,23 @@ export type PlanLimits = {
   teamMembers: boolean;
 };
 
+// Enterprise has no metered cap — it's a custom, operator-provisioned contract.
+// A finite-but-effectively-infinite ceiling keeps every `limit > 0` guard and
+// percentage calc honest while never blocking an enterprise org.
+export const ENTERPRISE_DOWNLOADS = Number.MAX_SAFE_INTEGER;
+
 const PLAN_LIMITS: Record<PlanKey, PlanLimits> = {
-  starter: { downloads: 1_000, teamMembers: false },
-  pro: { downloads: 100_000, teamMembers: true },
-  scale: { downloads: 1_000_000, teamMembers: true },
+  free: { downloads: 10_000, teamMembers: false },
+  pro: { downloads: 1_000_000, teamMembers: true },
+  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true },
 };
 
 /**
  * Maps Polar product IDs (from env) to local plan keys.
  * Built once on first access, includes yearly IDs when configured.
  */
+export type BillingInterval = 'month' | 'year';
+
 let productToPlanMap: Map<string, PlanKey> | null = null;
 
 function getProductToPlanMap(): Map<string, PlanKey> {
@@ -23,9 +30,7 @@ function getProductToPlanMap(): Map<string, PlanKey> {
   const map = new Map<string, PlanKey>();
   const entries: [string | undefined, PlanKey][] = [
     [process.env.POLAR_PRODUCT_PRO_MONTHLY, 'pro'],
-    [process.env.POLAR_PRODUCT_SCALE_MONTHLY, 'scale'],
     [process.env.POLAR_PRODUCT_PRO_YEARLY, 'pro'],
-    [process.env.POLAR_PRODUCT_SCALE_YEARLY, 'scale'],
   ];
 
   for (const [productId, planKey] of entries) {
@@ -37,7 +42,7 @@ function getProductToPlanMap(): Map<string, PlanKey> {
 }
 
 export function productIdToPlanKey(productId: string | null | undefined): PlanKey {
-  if (!productId) return 'starter';
+  if (!productId) return 'free';
   const planKey = getProductToPlanMap().get(productId);
   if (!planKey) {
     throw new Error(`Unknown Polar product ID: ${productId}. Check POLAR_PRODUCT_* env vars.`);
@@ -45,15 +50,16 @@ export function productIdToPlanKey(productId: string | null | undefined): PlanKe
   return planKey;
 }
 
-export function planKeyToProductId(planKey: PlanKey): string | null {
-  switch (planKey) {
-    case 'pro':
-      return process.env.POLAR_PRODUCT_PRO_MONTHLY ?? null;
-    case 'scale':
-      return process.env.POLAR_PRODUCT_SCALE_MONTHLY ?? null;
-    default:
-      return null;
-  }
+// Pro is the only self-serve paid plan. Free needs no checkout and Enterprise is
+// a contact-sales contract, so neither maps to a Polar product.
+export function planKeyToProductId(
+  planKey: PlanKey,
+  interval: BillingInterval = 'month',
+): string | null {
+  if (planKey !== 'pro') return null;
+  return interval === 'year'
+    ? (process.env.POLAR_PRODUCT_PRO_YEARLY ?? null)
+    : (process.env.POLAR_PRODUCT_PRO_MONTHLY ?? null);
 }
 
 export function getPlanLimits(planKey: PlanKey): PlanLimits {

@@ -4,11 +4,18 @@ import type { PlanKey } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getPolar, isPolarConfigured } from '@/lib/polar';
 import { getSessionContext } from '@/lib/session';
-import { getExternalCustomerId, planKeyToProductId } from '@/lib/billing/config';
+import {
+  getExternalCustomerId,
+  planKeyToProductId,
+  type BillingInterval,
+} from '@/lib/billing/config';
 
 export const runtime = 'nodejs';
 
-const VALID_PLAN_KEYS = new Set<string>(['pro', 'scale']);
+// Pro is the only self-serve checkout. Free is the default and Enterprise is
+// contact-sales.
+const VALID_PLAN_KEYS = new Set<string>(['pro']);
+const VALID_INTERVALS = new Set<string>(['month', 'year']);
 
 export async function POST(request: NextRequest) {
   if (!isPolarConfigured()) {
@@ -29,14 +36,15 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   if (!body || !VALID_PLAN_KEYS.has(body.planKey)) {
-    return NextResponse.json(
-      { error: 'Invalid planKey. Must be "pro" or "scale".' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid planKey. Must be "pro".' }, { status: 400 });
   }
+  const interval: BillingInterval =
+    typeof body.interval === 'string' && VALID_INTERVALS.has(body.interval)
+      ? (body.interval as BillingInterval)
+      : 'month';
 
   const planKey = body.planKey as PlanKey;
-  const productId = planKeyToProductId(planKey);
+  const productId = planKeyToProductId(planKey, interval);
   if (!productId) {
     return NextResponse.json({ error: 'Product not configured for this plan.' }, { status: 500 });
   }
@@ -67,6 +75,7 @@ export async function POST(request: NextRequest) {
         organizationId: ctx.organizationId,
         initiatedByUserId: ctx.userId,
         targetPlan: planKey,
+        billingInterval: interval,
       },
     });
 

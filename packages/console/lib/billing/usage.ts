@@ -91,7 +91,7 @@ export async function getOrganizationUsageSnapshot(
     },
   });
 
-  const planKey = organization?.planKey ?? 'starter';
+  const planKey = organization?.planKey ?? 'free';
   const limit = getPlanLimits(planKey).downloads;
   const inCurrentPeriod = isSameMonth(organization?.usagePeriodStart ?? null, currentPeriodStart);
   const downloadsCount = inCurrentPeriod ? (organization?.downloadsCount ?? 0) : 0;

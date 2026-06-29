@@ -336,15 +336,14 @@ export default function LandingPage() {
             </div>
             <div className="grid gap-px bg-border sm:grid-cols-3">
               <PricingCard
-                name="Starter"
+                name="Free"
                 price="$0"
                 period="/mo"
-                description="Free tier for early usage."
-                allowance="1,000 updates / month"
+                description="Free forever for early usage."
+                allowance="10,000 updates / month"
                 features={[
                   'Unlimited releases',
                   'Unlimited apps',
-                  'Unlimited users',
                   'Channel-based deploys',
                   'Dashboard + CLI',
                   'Real-time analytics',
@@ -353,34 +352,42 @@ export default function LandingPage() {
               />
               <PricingCard
                 name="Pro"
-                price="$19"
+                price="$25"
                 period="/mo"
-                description="For growing apps."
-                allowance="100,000 updates / month"
-                features={['Everything in Starter', 'Team members & roles', 'Priority support']}
+                description="$25/mo billed yearly, or $50/mo monthly."
+                allowance="1,000,000 updates / month"
+                features={[
+                  'Everything in Free',
+                  'Team members & roles',
+                  'Usage-based overage ($50 / extra 1M)',
+                  'Priority support',
+                ]}
                 cta="Start with Pro"
                 highlighted
               />
               <PricingCard
-                name="Scale"
-                price="$99"
-                period="/mo"
+                name="Enterprise"
+                price="Custom"
+                period=""
                 description="For apps at production scale."
-                allowance="1,000,000 updates / month included"
+                allowance="Custom download volume"
                 features={[
                   'Everything in Pro',
-                  'Best value for high-volume apps',
-                  'Usage-based top-ups',
+                  'Custom limits & contract',
+                  'SSO & priority SLAs',
+                  'Dedicated support',
                 ]}
-                cta="Get started"
+                cta="Contact sales"
+                href="/contact"
               />
             </div>
             <p className="border-t border-border px-8 py-5 text-center text-sm text-muted-foreground/60">
-              Need more usage? Enable overage pricing ($0.0001 per additional update), or{' '}
+              Pro includes 1,000,000 updates / month. Need more? Enable overage ($50 per additional
+              1,000,000 updates), turn it off any time to cap spend, or{' '}
               <Link href="/contact" className="underline underline-offset-4 hover:text-foreground">
                 contact us
               </Link>{' '}
-              for a custom plan.
+              for a custom Enterprise plan.
             </p>
           </div>
         </div>
@@ -538,6 +545,7 @@ function PricingCard({
   features,
   cta,
   highlighted,
+  href,
 }: {
   name: string;
   price: string;
@@ -547,6 +555,7 @@ function PricingCard({
   features: string[];
   cta: string;
   highlighted?: boolean;
+  href?: string;
 }) {
   return (
     <div
@@ -578,7 +587,7 @@ function PricingCard({
         ))}
       </ul>
       <div className="mt-8">
-        <Link href={`${site.console}/login`} className="block">
+        <Link href={href ?? `${site.console}/login`} className="block">
           <Button variant={highlighted ? 'default' : 'outline'} className="w-full">
             {cta}
           </Button>

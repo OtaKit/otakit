@@ -551,9 +551,9 @@ User ID: ${initialData.user.id}`,
                         <div className="text-sm font-medium">
                           {billingData?.billing.planKey === 'pro'
                             ? 'Pro'
-                            : billingData?.billing.planKey === 'scale'
-                              ? 'Scale'
-                              : 'Starter (Free)'}
+                            : billingData?.billing.planKey === 'enterprise'
+                              ? 'Enterprise'
+                              : 'Free'}
                         </div>
                       </div>
                       {canManageTeam ? (
@@ -575,26 +575,30 @@ User ID: ${initialData.user.id}`,
                         <div>
                           <div className="text-sm font-medium">Usage this month</div>
                           <div className="text-xs text-muted-foreground">
-                            {usageData
-                              ? `${usageData.usage.downloadsCount.toLocaleString()} / ${usageData.usage.limit.toLocaleString()} downloads`
-                              : 'No usage data'}
+                            {!usageData
+                              ? 'No usage data'
+                              : billingData?.billing.planKey === 'enterprise'
+                                ? `${usageData.usage.downloadsCount.toLocaleString()} downloads`
+                                : `${usageData.usage.downloadsCount.toLocaleString()} / ${usageData.usage.limit.toLocaleString()} downloads`}
                           </div>
                         </div>
-                        {usageData ? (
+                        {usageData && billingData?.billing.planKey !== 'enterprise' ? (
                           <Badge variant="secondary" className="text-xs">
                             {Math.max(0, usageData.usage.percentage)}%
                           </Badge>
                         ) : null}
                       </div>
-                      <div className="mt-3 h-2 rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-foreground/80"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, usageData?.usage.percentage ?? 0))}%`,
-                          }}
-                        />
-                      </div>
-                      {billingData?.billing.planKey === 'scale' ? (
+                      {billingData?.billing.planKey !== 'enterprise' ? (
+                        <div className="mt-3 h-2 rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-foreground/80"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, usageData?.usage.percentage ?? 0))}%`,
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      {billingData?.billing.planKey === 'pro' ? (
                         <div className="mt-3 flex items-center justify-between">
                           <div>
                             <div className="text-sm font-medium">Enable additional usage</div>
@@ -629,7 +633,7 @@ User ID: ${initialData.user.id}`,
                       Members
                     </h2>
                     {canManageTeam ? (
-                      billingData?.billing.planKey === 'starter' ? (
+                      billingData?.billing.planKey === 'free' ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -945,7 +949,7 @@ User ID: ${initialData.user.id}`,
               return {
                 billing: {
                   ...nextBillingData.billing,
-                  isActive: nextBillingData.billing.planKey !== 'starter',
+                  isActive: nextBillingData.billing.planKey !== 'free',
                 },
               };
             }

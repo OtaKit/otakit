@@ -77,9 +77,9 @@ model Verification {
 // ── Billing enums ───────────────────────────────────────────────────
 
 enum PlanKey {
-  starter
+  free
   pro
-  scale
+  enterprise
 }
 
 enum UsageWarningSent {
@@ -100,7 +100,7 @@ model Organization {
   id                  String               @id @default(uuid())
   name                String
   // Billing (Polar)
-  planKey             PlanKey              @default(starter)
+  planKey             PlanKey              @default(free)
   isActive            Boolean              @default(false)
   polarCustomerId     String?
   polarSubscriptionId String?

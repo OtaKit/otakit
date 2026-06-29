@@ -33,7 +33,7 @@ export async function getOrganizationEntitlements(
     select: { planKey: true, isActive: true },
   });
 
-  const planKey = organization?.planKey ?? 'starter';
+  const planKey = organization?.planKey ?? 'free';
   const isActive = organization?.isActive ?? false;
 
   return { planKey, isActive, limits: getPlanLimits(planKey) };
@@ -54,7 +54,7 @@ export async function getBillingState(organizationId: string): Promise<BillingSt
 
   if (!organization) {
     return {
-      planKey: 'starter',
+      planKey: 'free',
       isActive: false,
       polarSubscriptionId: null,
       polarCustomerId: null,
@@ -79,7 +79,7 @@ export async function refreshBillingState(organizationId: string): Promise<Billi
 
   const externalId = getExternalCustomerId(organizationId);
 
-  let planKey: PlanKey = 'starter';
+  let planKey: PlanKey = 'free';
   let isActive = false;
   let polarCustomerId: string | null = null;
   let polarSubscriptionId: string | null = null;
@@ -100,7 +100,7 @@ export async function refreshBillingState(organizationId: string): Promise<Billi
       isActive = true;
     }
   } catch (err: unknown) {
-    // 404 = customer doesn't exist in Polar yet — stay on starter
+    // 404 = customer doesn't exist in Polar yet — stay on free
     const statusCode =
       err && typeof err === 'object' && 'statusCode' in err
         ? (err as { statusCode: number }).statusCode

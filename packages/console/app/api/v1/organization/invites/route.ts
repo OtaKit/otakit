@@ -38,13 +38,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // Team members are a paid entitlement — the starter plan is single-seat.
+  // Team members are a paid entitlement — the free plan is single-seat.
   const entitlements = await getOrganizationEntitlements(ctx.organizationId);
   if (!entitlements.limits.teamMembers) {
     return NextResponse.json(
       {
         error:
-          'Team members are not available on your current plan. Upgrade to Pro or Scale to invite teammates.',
+          'Team members are not available on your current plan. Upgrade to Pro to invite teammates.',
       },
       { status: 403 },
     );
