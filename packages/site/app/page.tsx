@@ -1,10 +1,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
+import { ArrowRight, BookOpen, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { site } from '@/lib/site';
+import { PricingSection } from './PricingSection';
 
 export const metadata = {
   title: { absolute: 'OtaKit — Live updates for Capacitor apps' },
@@ -319,71 +320,7 @@ export default function LandingPage() {
       <Separator className="" />
 
       {/* Pricing */}
-      <section id="pricing" className="border-x border-border mx-auto max-w-screen-xl">
-        <div className="">
-          <div className="overflow-hidden">
-            <div className="border-b border-border px-8 py-10 pt-30">
-              <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
-                Pricing
-              </p>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-                Simple, value-aligned pricing
-              </h2>
-              <p className="mt-4 max-w-3xl text-muted-foreground">
-                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth,
-                or storage.
-              </p>
-            </div>
-            <div className="grid gap-px bg-border sm:grid-cols-3">
-              <PricingCard
-                name="Free"
-                price="$0"
-                period="/mo"
-                description="Free forever for early usage."
-                allowance="10,000 updates / month"
-                features={[
-                  'Unlimited releases',
-                  'Unlimited apps',
-                  'Channel-based deploys',
-                  'Dashboard + CLI',
-                  'Real-time analytics',
-                ]}
-                cta="Get started free"
-              />
-              <PricingCard
-                name="Pro"
-                price="$25"
-                period="/mo"
-                description="$25/mo billed yearly ($300/yr) — or $50/mo month-to-month."
-                allowance="1,000,000 updates / month"
-                features={[
-                  'Everything in Free',
-                  'Team members & roles',
-                  'Usage-based overage ($50 / extra 1M)',
-                  'Priority support',
-                ]}
-                cta="Start with Pro"
-                highlighted
-              />
-              <PricingCard
-                name="Enterprise"
-                price="Custom"
-                period=""
-                description="For apps at production scale."
-                allowance="Custom download volume"
-                features={[
-                  'Everything in Pro',
-                  'Custom limits & contract',
-                  'SSO & priority SLAs',
-                  'Dedicated support',
-                ]}
-                cta="Contact sales"
-                href="/contact"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
+      <PricingSection />
 
       <Separator className="" />
 
@@ -524,67 +461,6 @@ function FeatureCard({
       </div>
       <h3 className="mt-4 text-[15px] font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function PricingCard({
-  name,
-  price,
-  period,
-  description,
-  allowance,
-  features,
-  cta,
-  highlighted,
-  href,
-}: {
-  name: string;
-  price: string;
-  period: string;
-  description: string;
-  allowance: string;
-  features: string[];
-  cta: string;
-  highlighted?: boolean;
-  href?: string;
-}) {
-  return (
-    <div
-      className={`relative flex flex-col p-8 transition-colors ${
-        highlighted ? 'bg-emerald-50' : 'bg-background'
-      }`}
-    >
-      {highlighted && <div className="absolute inset-x-0 top-0 h-0.5 bg-emerald-500" />}
-      {highlighted && (
-        <div className="absolute top-3 right-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-          Recommended
-        </div>
-      )}
-      <div>
-        <h3 className="text-sm font-medium text-muted-foreground">{name}</h3>
-        <div className="mt-4 flex items-baseline gap-1">
-          <span className="text-4xl font-bold tracking-tight">{price}</span>
-          <span className="text-sm text-muted-foreground">{period}</span>
-        </div>
-        <p className="mt-3 text-sm text-muted-foreground">{description}</p>
-        <p className="mt-1 text-sm font-medium">{allowance}</p>
-      </div>
-      <ul className="mt-8 flex-1 space-y-3">
-        {features.map((f) => (
-          <li key={f} className="flex items-start gap-2.5 text-sm text-muted-foreground">
-            <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-            {f}
-          </li>
-        ))}
-      </ul>
-      <div className="mt-8">
-        <Link href={href ?? `${site.console}/login`} className="block">
-          <Button variant={highlighted ? 'default' : 'outline'} className="w-full">
-            {cta}
-          </Button>
-        </Link>
-      </div>
     </div>
   );
 }
