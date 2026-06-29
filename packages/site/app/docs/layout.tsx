@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 
 import { DocsMobileNav, DocsSidebar } from './DocsSidebar';
+import { AskAi } from './AskAi';
 import { site } from '@/lib/site';
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +49,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </div>
         </main>
       </div>
+
+      <AskAi />
     </div>
   );
 }
