@@ -16,13 +16,13 @@ in the background.
 ## Plugin API
 
 ```ts
-OtaKit.getState()        // current, fallback, staged, builtinVersion
-OtaKit.check()           // check for a newer version
-OtaKit.download()        // download and stage the latest bundle
-OtaKit.apply()           // activate the staged bundle and reload
-OtaKit.update()          // one-shot: download + apply
-OtaKit.notifyAppReady()  // confirm the current bundle is healthy
-OtaKit.getLastFailure()  // last rollback info (if any)
+OtaKit.getState(); // current, fallback, staged, builtinVersion
+OtaKit.check(); // check for a newer version
+OtaKit.download(); // download and stage the latest bundle
+OtaKit.apply(); // activate the staged bundle and reload
+OtaKit.update(); // one-shot: download + apply
+OtaKit.notifyAppReady(); // confirm the current bundle is healthy
+OtaKit.getLastFailure(); // last rollback info (if any)
 ```
 
 ## What this app is for

@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, KeyRound, MoreHorizontal, Plus, RefreshCcw, ShieldOff } from 'lucide-react';
 
 import { toast } from 'sonner';
@@ -71,8 +70,6 @@ export function OrganizationKeyAdmin({ initialKeys }: Props) {
   const [latestSecret, setLatestSecret] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const activeKeyCount = useMemo(() => keys.filter((key) => key.revokedAt === null).length, [keys]);
 
   useEffect(() => {
     setKeys(initialKeys);

@@ -59,8 +59,7 @@ const EVENTS_PATHS = new Set(['/v1/events']);
 const HEALTH_PATHS = new Set(['/healthz', '/v1/healthz']);
 const VALID_ACTIONS = new Set<EventAction>(['downloaded', 'applied', 'download_error', 'rollback']);
 const VALID_PLATFORMS = new Set<Platform>(['ios', 'android']);
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETRYABLE_TINYBIRD_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const APP_ID_HEADER = 'X-App-Id';
 
@@ -225,15 +224,9 @@ async function handleEventsRequest(request: Request, env: WorkerEnv): Promise<Re
   return jsonResponse({ accepted: true }, 202);
 }
 
-async function handleQueueBatch(
-  batch: MessageBatch<EnqueuedEvent>,
-  env: WorkerEnv,
-): Promise<void> {
+async function handleQueueBatch(batch: MessageBatch<EnqueuedEvent>, env: WorkerEnv): Promise<void> {
   const host = normalizeTinybirdHost(requireNonEmpty(env.TINYBIRD_API_HOST, 'TINYBIRD_API_HOST'));
-  const datasource = requireNonEmpty(
-    env.TINYBIRD_EVENTS_DATASOURCE,
-    'TINYBIRD_EVENTS_DATASOURCE',
-  );
+  const datasource = requireNonEmpty(env.TINYBIRD_EVENTS_DATASOURCE, 'TINYBIRD_EVENTS_DATASOURCE');
   const token = requireNonEmpty(env.TINYBIRD_EVENTS_TOKEN, 'TINYBIRD_EVENTS_TOKEN');
   const body = `${batch.messages.map((message) => JSON.stringify(message.body)).join('\n')}\n`;
 

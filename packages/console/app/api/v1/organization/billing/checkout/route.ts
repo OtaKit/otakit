@@ -12,7 +12,10 @@ const VALID_PLAN_KEYS = new Set<string>(['pro', 'scale']);
 
 export async function POST(request: NextRequest) {
   if (!isPolarConfigured()) {
-    return NextResponse.json({ error: 'Billing is not configured on this instance' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'Billing is not configured on this instance' },
+      { status: 404 },
+    );
   }
 
   const ctx = await getSessionContext();

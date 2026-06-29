@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { EventCountSummary } from '@/app/components/dashboard-types';
 
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';

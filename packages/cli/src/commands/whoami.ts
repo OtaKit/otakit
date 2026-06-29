@@ -33,10 +33,7 @@ export const whoamiCommand = new Command('whoami')
 
       if (!auth) {
         throw new CliError(
-          [
-            'Not authenticated.',
-            'Run `otakit login`, or set OTAKIT_TOKEN.',
-          ].join('\n'),
+          ['Not authenticated.', 'Run `otakit login`, or set OTAKIT_TOKEN.'].join('\n'),
         );
       }
 

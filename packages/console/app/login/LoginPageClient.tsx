@@ -20,7 +20,11 @@ type LoginPageClientProps = {
 type Step = 'email' | 'otp';
 type SocialProvider = 'google' | 'apple' | 'github';
 
-export function LoginPageClient({ googleEnabled, appleEnabled, githubEnabled }: LoginPageClientProps) {
+export function LoginPageClient({
+  googleEnabled,
+  appleEnabled,
+  githubEnabled,
+}: LoginPageClientProps) {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<Step>('email');

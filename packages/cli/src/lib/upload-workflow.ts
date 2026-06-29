@@ -152,7 +152,9 @@ export async function runUploadWorkflow(
   const cleanup = () => {
     try {
       unlinkSync(tempZipPath);
-    } catch {}
+    } catch {
+      // Best-effort cleanup — the temp zip may never have been created.
+    }
     process.exit(1);
   };
   process.on('SIGINT', cleanup);

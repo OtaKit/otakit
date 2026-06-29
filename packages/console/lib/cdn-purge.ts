@@ -32,12 +32,16 @@ export async function purgeCdnUrls(urls: string[]): Promise<void> {
     body: JSON.stringify({ files: uniqueUrls }),
   });
 
-  const body = (await response.json().catch(() => null)) as
-    | { success?: boolean; errors?: Array<{ message?: string }> }
-    | null;
+  const body = (await response.json().catch(() => null)) as {
+    success?: boolean;
+    errors?: Array<{ message?: string }>;
+  } | null;
 
   if (!response.ok || !body?.success) {
-    const errorMessage = body?.errors?.map((entry) => entry.message).filter(Boolean).join('; ');
+    const errorMessage = body?.errors
+      ?.map((entry) => entry.message)
+      .filter(Boolean)
+      .join('; ');
     throw new Error(
       `Cloudflare purge failed (${response.status}): ${errorMessage || 'unknown error'}`,
     );

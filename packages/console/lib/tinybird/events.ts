@@ -5,7 +5,12 @@ import type {
   Platform,
 } from '@/app/components/dashboard-types';
 
-import { TinybirdConfigError, isTinybirdConfigured, warnTinybirdNotConfigured, queryTinybirdPipe } from './client';
+import {
+  TinybirdConfigError,
+  isTinybirdConfigured,
+  warnTinybirdNotConfigured,
+  queryTinybirdPipe,
+} from './client';
 
 type RecentEventRow = {
   event_id?: string | null;
@@ -48,8 +53,7 @@ type CurrentPeriodDownloadCountArgs = {
   periodEndExclusive: Date;
 };
 
-const APP_EVENTS_RECENT_PIPE =
-  process.env.TINYBIRD_APP_EVENTS_RECENT_PIPE ?? 'app_events_recent';
+const APP_EVENTS_RECENT_PIPE = process.env.TINYBIRD_APP_EVENTS_RECENT_PIPE ?? 'app_events_recent';
 const RELEASE_EVENT_COUNTS_PIPE =
   process.env.TINYBIRD_RELEASE_EVENT_COUNTS_PIPE ?? 'release_event_counts';
 const BUNDLE_EVENT_COUNTS_PIPE =
@@ -148,7 +152,11 @@ function mergeEventCount(
   countsByKey.set(key, current);
 }
 
-function logDashboardAnalyticsFailure(context: string, metadata: Record<string, unknown>, error: unknown) {
+function logDashboardAnalyticsFailure(
+  context: string,
+  metadata: Record<string, unknown>,
+  error: unknown,
+) {
   console.error(`[Tinybird] ${context} failed`, {
     ...metadata,
     error,
@@ -172,9 +180,7 @@ export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<De
       release_id: args.releaseId ?? '',
     });
 
-    return rows
-      .map(normalizeEventRow)
-      .filter((event): event is DeviceEvent => event !== null);
+    return rows.map(normalizeEventRow).filter((event): event is DeviceEvent => event !== null);
   } catch (error) {
     logDashboardAnalyticsFailure(
       'app_events_recent',
@@ -193,7 +199,9 @@ export async function getReleaseEventCounts(
     warnTinybirdNotConfigured('getReleaseEventCounts');
     return new Map();
   }
-  const uniqueReleaseIds = Array.from(new Set(releaseIds.map((value) => value.trim()).filter(Boolean)));
+  const uniqueReleaseIds = Array.from(
+    new Set(releaseIds.map((value) => value.trim()).filter(Boolean)),
+  );
   if (uniqueReleaseIds.length === 0) {
     return new Map();
   }
@@ -282,7 +290,9 @@ export async function getCurrentPeriodDownloadCountFromEvents(
     warnTinybirdNotConfigured('getCurrentPeriodDownloadCountFromEvents');
     return 0;
   }
-  const uniqueAppIds = Array.from(new Set(args.appIds.map((value) => value.trim()).filter(Boolean)));
+  const uniqueAppIds = Array.from(
+    new Set(args.appIds.map((value) => value.trim()).filter(Boolean)),
+  );
   if (uniqueAppIds.length === 0) {
     return 0;
   }

@@ -127,7 +127,10 @@ export async function GET(
         size: bundle.size,
         runtimeVersion: bundle.runtimeVersion,
         isLive: false,
-        currentTargets: new Map<string, { channel: string | null; runtimeVersion: string | null }>(),
+        currentTargets: new Map<
+          string,
+          { channel: string | null; runtimeVersion: string | null }
+        >(),
         deployedTargets: new Map<
           string,
           { channel: string | null; runtimeVersion: string | null; deployedAt: Date }

@@ -7,7 +7,10 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   if (!isPolarConfigured()) {
-    return NextResponse.json({ error: 'Billing is not configured on this instance' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'Billing is not configured on this instance' },
+      { status: 404 },
+    );
   }
 
   const ctx = await getSessionContext();

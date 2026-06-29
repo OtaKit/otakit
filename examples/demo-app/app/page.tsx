@@ -100,9 +100,7 @@ function describeCheckResult(result: CheckResult): string {
   return version ? `${version} is available.` : 'An update is available.';
 }
 
-function describeDownloadResult(
-  result: Awaited<ReturnType<typeof OtaKit.download>>,
-): string {
+function describeDownloadResult(result: Awaited<ReturnType<typeof OtaKit.download>>): string {
   if (result.kind !== 'staged') {
     return 'No new update';
   }
@@ -217,10 +215,7 @@ export default function Home() {
   );
 
   const refresh = useCallback(async () => {
-    const [state, failure] = await Promise.all([
-      OtaKit.getState(),
-      OtaKit.getLastFailure(),
-    ]);
+    const [state, failure] = await Promise.all([OtaKit.getState(), OtaKit.getLastFailure()]);
     setRuntimeState(state);
     setLastFailure(failure);
   }, []);
@@ -235,9 +230,7 @@ export default function Home() {
       try {
         const pluginAvailable = await waitForPluginAvailability();
         setEnvironment((prev) =>
-          prev.pluginAvailable === pluginAvailable
-            ? prev
-            : { ...prev, pluginAvailable }
+          prev.pluginAvailable === pluginAvailable ? prev : { ...prev, pluginAvailable },
         );
 
         if (!pluginAvailable) {
@@ -306,8 +299,8 @@ export default function Home() {
             </div>
             <p className="mt-4 text-sm text-slate-300">{status}</p>
             <p className="mt-2 text-xs text-slate-500">
-              This mirrors the recommended startup gate: keep a loading screen visible until
-              startup work finishes and the app has called <code>notifyAppReady()</code>.
+              This mirrors the recommended startup gate: keep a loading screen visible until startup
+              work finishes and the app has called <code>notifyAppReady()</code>.
             </p>
           </div>
         </div>

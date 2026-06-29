@@ -204,6 +204,12 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
       continue;
     }
     seenLanes.add(laneKey);
-    await writeManifestFile(appId, release.channel, release.bundle.runtimeVersion, release, release.bundle);
+    await writeManifestFile(
+      appId,
+      release.channel,
+      release.bundle.runtimeVersion,
+      release,
+      release.bundle,
+    );
   }
 }

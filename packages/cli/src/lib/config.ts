@@ -144,11 +144,9 @@ export async function requireServerAndAuth(options?: {
 
   if (!auth) {
     throw new Error(
-      [
-        'Missing authentication:',
-        '- Run `otakit login`',
-        '- or set OTAKIT_TOKEN env var',
-      ].join('\n'),
+      ['Missing authentication:', '- Run `otakit login`', '- or set OTAKIT_TOKEN env var'].join(
+        '\n',
+      ),
     );
   }
 
@@ -159,7 +157,9 @@ export async function requireServerAndAuth(options?: {
   };
 }
 
-export async function readProjectConfig(cwd: string = process.cwd()): Promise<ProjectConfig | null> {
+export async function readProjectConfig(
+  cwd: string = process.cwd(),
+): Promise<ProjectConfig | null> {
   const projectConfig = await readCapacitorProjectConfig(cwd);
   if (!projectConfig) {
     return null;
@@ -318,11 +318,9 @@ export async function requireConfig(options?: ConfigResolveOptions): Promise<Cli
 
   if (!snapshot.authToken.value || !snapshot.authSource) {
     throw new Error(
-      [
-        'Missing authentication:',
-        '- Run `otakit login`',
-        '- or set OTAKIT_TOKEN env var',
-      ].join('\n'),
+      ['Missing authentication:', '- Run `otakit login`', '- or set OTAKIT_TOKEN env var'].join(
+        '\n',
+      ),
     );
   }
 

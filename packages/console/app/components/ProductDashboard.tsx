@@ -320,10 +320,7 @@ function getReleaseTargetsForRuntime(
   return Array.from(byKey.values()).sort(compareReleaseTargets);
 }
 
-function getDefaultReleaseTargetKey(
-  bundle: BundleSummaryItem,
-  targets: ReleaseTarget[],
-): string {
+function getDefaultReleaseTargetKey(bundle: BundleSummaryItem, targets: ReleaseTarget[]): string {
   const firstAvailableTarget = targets.find(
     (target) => !isCurrentOnTarget(bundle, target.channel, target.runtimeVersion),
   );
@@ -410,16 +407,6 @@ type ProductDashboardProps = {
   settingsHref?: string;
   docsHref?: string;
 };
-
-function getEventTimeframeStart(timeframe: EventTimeframeFilter): number {
-  const now = Date.now();
-  const hour = 60 * 60 * 1000;
-
-  if (timeframe === '1h') return now - hour;
-  if (timeframe === '24h') return now - 24 * hour;
-  if (timeframe === '7d') return now - 7 * 24 * hour;
-  return now - 30 * 24 * hour;
-}
 
 /* ─── Main Component ───────────────────────────────────────────────── */
 
@@ -592,8 +579,7 @@ export function ProductDashboard({
     releasingAction?.version === releaseConfirm.bundle.version &&
     releasingAction.targetKey ===
       getReleaseTargetKey(releaseSelectedTarget.channel, releaseSelectedTarget.runtimeVersion);
-  const isCreatingNewReleaseChannel =
-    releaseConfirm?.selectedTargetKey === NEW_RELEASE_STREAM_KEY;
+  const isCreatingNewReleaseChannel = releaseConfirm?.selectedTargetKey === NEW_RELEASE_STREAM_KEY;
   const releaseChannelMissing = useMemo(() => {
     if (!releaseConfirm || releaseConfirm.selectedTargetKey !== NEW_RELEASE_STREAM_KEY) {
       return false;
@@ -687,24 +673,21 @@ export function ProductDashboard({
 
   // ── Data loading ──────────────────────────────────────────────────
 
-  const loadBundles = useCallback(
-    async (appId: string) => {
-      setLoadingBundles(true);
-      try {
-        const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/bundles/summary`);
-        const data = await parseJson<{ bundles?: BundleSummaryItem[] } & ApiError>(res);
-        if (!res.ok) throw new Error(data.error ?? 'Failed to load bundles');
-        setBundles(data.bundles ?? []);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to load bundles');
-        setBundles([]);
-      } finally {
-        setLoadingBundles(false);
-        setBundlesLoadedOnce(true);
-      }
-    },
-    [],
-  );
+  const loadBundles = useCallback(async (appId: string) => {
+    setLoadingBundles(true);
+    try {
+      const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/bundles/summary`);
+      const data = await parseJson<{ bundles?: BundleSummaryItem[] } & ApiError>(res);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load bundles');
+      setBundles(data.bundles ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load bundles');
+      setBundles([]);
+    } finally {
+      setLoadingBundles(false);
+      setBundlesLoadedOnce(true);
+    }
+  }, []);
 
   const loadEvents = useCallback(
     async (appId: string) => {
@@ -733,24 +716,21 @@ export function ProductDashboard({
     [eventAction, eventBundle, eventPlatform, eventTimeframe],
   );
 
-  const loadReleaseHistory = useCallback(
-    async (appId: string) => {
-      setLoadingReleaseHistory(true);
-      try {
-        const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/releases?limit=100`);
-        const data = await parseJson<{ releases?: ReleaseHistoryItem[] } & ApiError>(res);
-        if (!res.ok) throw new Error(data.error ?? 'Failed to load release history');
-        setReleaseHistory(data.releases ?? []);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to load release history');
-        setReleaseHistory([]);
-      } finally {
-        setLoadingReleaseHistory(false);
-        setReleasesLoadedOnce(true);
-      }
-    },
-    [],
-  );
+  const loadReleaseHistory = useCallback(async (appId: string) => {
+    setLoadingReleaseHistory(true);
+    try {
+      const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/releases?limit=100`);
+      const data = await parseJson<{ releases?: ReleaseHistoryItem[] } & ApiError>(res);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load release history');
+      setReleaseHistory(data.releases ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load release history');
+      setReleaseHistory([]);
+    } finally {
+      setLoadingReleaseHistory(false);
+      setReleasesLoadedOnce(true);
+    }
+  }, []);
 
   useEffect(() => {
     setBundlesLoadedOnce(false);
@@ -1308,7 +1288,8 @@ export function ProductDashboard({
                                                 className="text-xs text-muted-foreground"
                                                 title={`Last served ${formatDate(b.deployedTargets[0].deployedAt)}`}
                                               >
-                                                Released {formatDate(b.deployedTargets[0].deployedAt)}
+                                                Released{' '}
+                                                {formatDate(b.deployedTargets[0].deployedAt)}
                                               </span>
                                             ) : (
                                               <span className="text-xs text-muted-foreground">
@@ -1985,9 +1966,7 @@ export function ProductDashboard({
               <Rocket className="size-4" />
               Confirm release
             </DialogTitle>
-            <DialogDescription>
-              Choose the channel that should serve this bundle.
-            </DialogDescription>
+            <DialogDescription>Choose the channel that should serve this bundle.</DialogDescription>
           </DialogHeader>
           {releaseConfirm ? (
             <div className="space-y-4 text-sm">
@@ -2143,17 +2122,14 @@ export function ProductDashboard({
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No previous release is available. Devices will fall back to the built-in app bundle.
+                  No previous release is available. Devices will fall back to the built-in app
+                  bundle.
                 </p>
               )}
             </div>
           ) : null}
           <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={revertBusy}
-              onClick={() => setRevertConfirm(null)}
-            >
+            <Button variant="outline" disabled={revertBusy} onClick={() => setRevertConfirm(null)}>
               Cancel
             </Button>
             <Button

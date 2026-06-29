@@ -17,7 +17,10 @@ function formatReleaseTarget(channel: string | null): string {
   return channel ?? 'base channel';
 }
 
-function formatReleaseLane(channel: string | null, runtimeVersion: string | null | undefined): string {
+function formatReleaseLane(
+  channel: string | null,
+  runtimeVersion: string | null | undefined,
+): string {
   const target = formatReleaseTarget(channel);
   return runtimeVersion ? `${target} (runtime ${runtimeVersion})` : target;
 }

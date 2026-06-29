@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Building2, Check, Leaf, LoaderCircle, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -43,6 +43,9 @@ export function PricingDialog({
 
   useEffect(() => {
     setBillingData(initialBillingData ?? null);
+    // Re-sync only when the meaningful billing fields change, not on every parent
+    // re-render that hands us a fresh object identity (which would clobber state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBillingData?.billing.planKey, initialBillingData?.billing.polarCustomerId]);
 
   useEffect(() => {
@@ -130,12 +133,6 @@ export function PricingDialog({
       setOpeningPortal(false);
     }
   }
-
-  const titlePlan = useMemo(() => {
-    if (currentPlan === 'pro') return 'Pro';
-    if (currentPlan === 'scale') return 'Scale';
-    return 'Starter';
-  }, [currentPlan]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

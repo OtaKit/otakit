@@ -140,6 +140,9 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
         polarCustomerId: billingData.billing.polarCustomerId,
       },
     };
+    // Recompute only when the meaningful billing fields change, not on every
+    // billingData object identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billingData?.billing.planKey, billingData?.billing.polarCustomerId]);
 
   const loadTeamData = useCallback(async () => {

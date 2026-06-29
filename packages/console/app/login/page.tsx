@@ -15,5 +15,11 @@ export default async function LoginPage() {
   const appleEnabled = Boolean(process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET);
   const githubEnabled = Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
 
-  return <LoginPageClient googleEnabled={googleEnabled} appleEnabled={appleEnabled} githubEnabled={githubEnabled} />;
+  return (
+    <LoginPageClient
+      googleEnabled={googleEnabled}
+      appleEnabled={appleEnabled}
+      githubEnabled={githubEnabled}
+    />
+  );
 }

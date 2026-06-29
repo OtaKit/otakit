@@ -2,11 +2,8 @@ import type { PlanKey, UsageWarningSent } from '@prisma/client';
 
 import { db } from '@/lib/db';
 import { sendUsageWarningEmail } from '@/lib/email';
-import {
-  deleteAllManifestFilesForApp,
-  restoreManifestFilesForApp,
-} from '@/lib/manifest-files';
-import { getPolar, isPolarConfigured, warnPolarNotConfigured } from '@/lib/polar';
+import { deleteAllManifestFilesForApp, restoreManifestFilesForApp } from '@/lib/manifest-files';
+import { getPolar, isPolarConfigured } from '@/lib/polar';
 import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
 import { getExternalCustomerId, getPlanLimits } from './config';
@@ -339,7 +336,9 @@ async function refreshUsageForOrganization(
     }
   }
 
-  const usageBlocked = isPolarConfigured() ? !organization.overageEnabled && downloadsCount >= limit : false;
+  const usageBlocked = isPolarConfigured()
+    ? !organization.overageEnabled && downloadsCount >= limit
+    : false;
   const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({
