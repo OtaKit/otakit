@@ -2,17 +2,22 @@ import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
 import { site } from '@/lib/site';
+import { CopyForAgent } from '@/app/docs/CopyForAgent';
 
 export const metadata = {
-  title: 'Setup',
+  title: 'Quick setup',
   description: 'Set up the default hosted OtaKit flow in a Capacitor project.',
 };
 
 export default function SetupPage() {
   return (
     <>
-      <H1>Setup</H1>
+      <H1>Quick setup</H1>
       <P>This is the most simple, default hosted setup path.</P>
+
+      <div className="mt-5">
+        <CopyForAgent />
+      </div>
 
       <Separator className="my-10" />
 

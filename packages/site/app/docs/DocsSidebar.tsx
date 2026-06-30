@@ -14,7 +14,7 @@ const NAV = [
     title: 'Getting Started',
     links: [
       { label: 'Overview', href: '/docs' },
-      { label: 'Setup', href: '/docs/setup' },
+      { label: 'Quick setup', href: '/docs/setup' },
     ],
   },
   {

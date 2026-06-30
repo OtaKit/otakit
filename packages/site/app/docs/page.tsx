@@ -22,7 +22,7 @@ export default function DocsOverviewPage() {
       <div className="mt-6">
         <Link href="/docs/setup">
           <Button>
-            Start with setup
+            Start with the quick setup
             <ArrowRight className="size-3.5" />
           </Button>
         </Link>
@@ -95,7 +95,7 @@ export default function DocsOverviewPage() {
       <div className="-mx-6 mt-4 -mb-10 grid w-[calc(100%+3rem)] gap-px overflow-hidden border-t border-border bg-border sm:grid-cols-2">
         <NavCard
           href="/docs/setup"
-          title="Setup"
+          title="Quick setup"
           description="Connect the default hosted OtaKit flow to your Capacitor app."
         />
         <NavCard
