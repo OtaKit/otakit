@@ -138,183 +138,173 @@ export function LoginPageClient({
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto min-h-screen w-full max-w-screen-xl border-x border-border">
-        <div className="relative min-h-screen">
-          <div className="pointer-events-none absolute inset-0 hidden lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)]">
-            <div />
-            <div className="border-x border-border" />
-            <div />
-          </div>
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+      <Link
+        href="/"
+        className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:left-6 sm:top-6"
+      >
+        <ArrowLeft className="size-4" />
+        Back
+      </Link>
 
-          <div className="relative flex min-h-screen flex-col justify-center">
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)]">
-              <div className="hidden lg:block" />
-              <div className="p-5 border-t border-border flex items-center gap-2.5">
-                <Image
-                  src="/logo.svg"
-                  alt="OtaKit"
-                  width={24}
-                  height={24}
-                  className="size-6 rounded-md"
-                />
+      <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
+        <div className="relative w-full max-w-md bg-card">
+          {/* Full-bleed frame — 2 horizontal (full width) + 2 vertical (full height) */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-0 z-10 h-px w-screen -translate-x-1/2 bg-border"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-1/2 z-10 h-px w-screen -translate-x-1/2 bg-border"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-1/2 z-10 h-screen w-px -translate-y-1/2 bg-border"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute right-0 top-1/2 z-10 h-screen w-px -translate-y-1/2 bg-border"
+          />
 
-                <h1 className="text-2xl font-semibold">Sign in or create an account</h1>
+          <div className="px-6 py-9 sm:px-9">
+            <div className="flex items-center gap-3.5">
+              <Image
+                src="/logo.svg"
+                alt="OtaKit"
+                width={44}
+                height={44}
+                className="size-11 shrink-0 rounded-2xl"
+              />
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight">Sign in to OtaKit</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {step === 'email' ? (
+                    'Sign in or create your account'
+                  ) : (
+                    <>
+                      Enter the code sent to <span className="text-foreground">{email}</span>
+                    </>
+                  )}
+                </p>
               </div>
-              <div className="hidden lg:block" />
             </div>
 
-            <div className="border-y border-border">
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)]">
-                <div className="hidden lg:block" />
-                <div className="">
-                  <div className="p-5">
-                    <div className="space-y-5">
-                      {step === 'email' && socialProviders.length > 0 ? (
-                        <>
-                          <div className="space-y-3">
-                            {socialProviders.map((provider) => (
-                              <Button
-                                key={provider.id}
-                                type="button"
-                                variant="outline"
-                                className="h-11 w-full justify-center gap-3 rounded-full"
-                                disabled={busy}
-                                onClick={() => signInWith(provider.id)}
-                              >
-                                {busyAction === provider.id ? (
-                                  <LoaderCircle className="size-4 animate-spin" />
-                                ) : (
-                                  <provider.icon className="size-4" />
-                                )}
-                                {provider.label}
-                              </Button>
-                            ))}
-                          </div>
-                          <div className="relative">
-                            <Separator />
-                            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                              Or email
-                            </span>
-                          </div>
-                        </>
-                      ) : null}
+            <div className="-mx-6 my-7 border-t border-border sm:-mx-9" />
 
-                      {step === 'email' ? (
-                        <form onSubmit={sendOtp} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="login-email">Email</Label>
-                            <Input
-                              id="login-email"
-                              type="email"
-                              value={email}
-                              onChange={(e) => setEmail(e.target.value)}
-                              placeholder="you@example.com"
-                              autoFocus
-                              autoComplete="email"
-                              className="h-11"
-                            />
-                          </div>
-                          <Button
-                            type="submit"
-                            className="h-11 w-full rounded-full gap-2"
-                            disabled={busy}
-                          >
-                            {busyAction === 'otp-send' ? (
-                              <LoaderCircle className="size-4 animate-spin" />
-                            ) : (
-                              <Mail className="size-4" />
-                            )}
-                            {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email'}
-                          </Button>
-                        </form>
-                      ) : (
-                        <form onSubmit={verifyOtp} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="login-otp">Verification code</Label>
-                            <Input
-                              id="login-otp"
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={6}
-                              value={otp}
-                              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                              placeholder="000000"
-                              autoFocus
-                              className="h-12 text-center font-mono text-lg tracking-[0.45em]"
-                            />
-                          </div>
-                          <Button
-                            type="submit"
-                            className="h-11 w-full rounded-full"
-                            disabled={busy}
-                          >
-                            {busyAction === 'otp-verify' ? (
-                              <>
-                                <LoaderCircle className="size-4 animate-spin" />
-                                Verifying...
-                              </>
-                            ) : (
-                              'Sign in'
-                            )}
-                          </Button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStep('email');
-                              setOtp('');
-                              setError(null);
-                            }}
-                            className="w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
-                          >
-                            Use a different email
-                          </button>
-                        </form>
-                      )}
-
-                      {error ? (
-                        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                          {error}
-                        </div>
-                      ) : null}
-
-                      <p className="text-center text-xs leading-relaxed text-muted-foreground">
-                        By continuing, you agree to the{' '}
-                        <Link
-                          href="/terms"
-                          className="underline underline-offset-4 hover:text-foreground"
-                        >
-                          Terms of Use
-                        </Link>{' '}
-                        and{' '}
-                        <Link
-                          href="/policy"
-                          className="underline underline-offset-4 hover:text-foreground"
-                        >
-                          Privacy Policy
-                        </Link>
-                        .
-                      </p>
-                    </div>
+            <div className="space-y-5">
+              {step === 'email' && socialProviders.length > 0 ? (
+                <>
+                  <div className="space-y-2.5">
+                    {socialProviders.map((provider) => (
+                      <Button
+                        key={provider.id}
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full justify-center gap-3"
+                        disabled={busy}
+                        onClick={() => signInWith(provider.id)}
+                      >
+                        {busyAction === provider.id ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <provider.icon className="size-4" />
+                        )}
+                        {provider.label}
+                      </Button>
+                    ))}
                   </div>
-                  <div className="hidden lg:block" />
+                  <div className="relative">
+                    <Separator />
+                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                      Or
+                    </span>
+                  </div>
+                </>
+              ) : null}
+
+              {step === 'email' ? (
+                <form onSubmit={sendOtp} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email">Email</Label>
+                    <Input
+                      id="login-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoFocus
+                      autoComplete="email"
+                      className="h-11"
+                    />
+                  </div>
+                  <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
+                    {busyAction === 'otp-send' ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Mail className="size-4" />
+                    )}
+                    {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email'}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={verifyOtp} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-otp">Verification code</Label>
+                    <Input
+                      id="login-otp"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      autoFocus
+                      className="h-12 text-center font-mono text-lg tracking-[0.45em]"
+                    />
+                  </div>
+                  <Button type="submit" className="h-11 w-full" disabled={busy}>
+                    {busyAction === 'otp-verify' ? (
+                      <>
+                        <LoaderCircle className="size-4 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      'Sign in'
+                    )}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('email');
+                      setOtp('');
+                      setError(null);
+                    }}
+                    className="w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Use a different email
+                  </button>
+                </form>
+              )}
+
+              {error ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                  {error}
                 </div>
-              </div>
+              ) : null}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)_minmax(0,1fr)]">
-              <div className="hidden lg:block" />
-              <div className="p-6 border-b border-border">
-                <Link
-                  href="/"
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground flex items-center gap-2"
-                >
-                  <ArrowLeft className="size-4" />
-                  Back
-                </Link>
-              </div>
-              <div className="hidden lg:block" />
-            </div>
+            <p className="mt-7 text-left text-xs leading-relaxed text-muted-foreground">
+              By continuing, you agree to the{' '}
+              <Link href="/terms" className="underline underline-offset-4 hover:text-foreground">
+                Terms of Use
+              </Link>{' '}
+              and{' '}
+              <Link href="/policy" className="underline underline-offset-4 hover:text-foreground">
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </div>
         </div>
       </div>

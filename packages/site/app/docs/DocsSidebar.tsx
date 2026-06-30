@@ -87,13 +87,6 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           Security
         </Link>
         <Link
-          href="/contact"
-          onClick={onClick}
-          className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          Contact support
-        </Link>
-        <Link
           href={site.github}
           target="_blank"
           rel="noopener noreferrer"
