@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } 
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { DashboardPreview } from '@/components/DashboardPreview';
 import { site } from '@/lib/site';
 
 export const metadata = {
@@ -201,19 +202,19 @@ export default function LandingPage() {
               <StepCard
                 number="01"
                 title="Install"
-                description="Add the OtaKit plugin to your Capacitor app."
+                description="Add the OtaKit plugin to your Capacitor app and publish once to the stores."
                 code="npm install @otakit/capacitor-plugin"
               />
               <StepCard
                 number="02"
                 title="Upload"
-                description="Build your app and upload its bundle to OtaKit."
+                description="Make changes, build your app, and upload the new web bundle to OtaKit."
                 code="otakit upload"
               />
               <StepCard
                 number="03"
                 title="Go live"
-                description="Devices pick up the update automatically."
+                description="Devices with your app installed pick up the update silently in the background."
                 code="otakit release"
               />
             </div>
@@ -242,18 +243,10 @@ export default function LandingPage() {
             {/* Dashboard mockup */}
             <div className="overflow-hidden bg-[linear-gradient(180deg,rgba(245,245,240,0.9)_0%,rgba(250,250,248,0.98)_54%,rgba(255,255,255,1)_100%)] px-6 pt-8 dark:bg-[linear-gradient(180deg,rgba(18,18,16,0.96)_0%,rgba(12,12,11,0.98)_54%,rgba(10,10,9,1)_100%)]">
               <div className="mx-auto max-w-6xl [perspective:2200px]">
-                <div className="relative origin-top [transform:rotateX(7deg)_scale(1)]">
+                <div className="relative origin-top mb-[-4.5rem] [transform:rotateX(7deg)_scale(0.9)]">
                   <div className="pointer-events-none absolute inset-x-[10%] top-4 h-24 rounded-full bg-foreground/10 blur-3xl opacity-20" />
-                  <div className="overflow-hidden rounded-t-2xl border border-border/80 bg-background pt-3 shadow-[0_56px_150px_-72px_rgba(15,23,42,0.65)]">
-                    <Image
-                      src="/dashboard-preview.png"
-                      alt="OtaKit dashboard preview showing bundles, releases, and events"
-                      width={3290}
-                      height={1778}
-                      priority
-                      sizes="(min-width: 1536px) 1400px, (min-width: 1280px) 1200px, (min-width: 768px) 92vw, 100vw"
-                      className="block h-auto w-full"
-                    />
+                  <div className="overflow-hidden rounded-t-2xl border border-border/80 bg-background shadow-[0_56px_150px_-72px_rgba(15,23,42,0.65)]">
+                    <DashboardPreview />
                   </div>
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-b from-transparent via-white/70 to-background dark:via-background/75 dark:to-background" />
                 </div>
