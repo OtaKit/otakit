@@ -457,7 +457,7 @@ User ID: ${initialData.user.id}`,
         <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
           <section className="">
             <div className="mx-auto max-w-3xl bg-muted/30">
-              <div className="flex items-center gap-3 border-b border-border bg-background px-5 py-6">
+              <div className="flex items-center gap-3 border-b border-border bg-background px-5 pb-6 pt-8">
                 <Mail className="size-6 shrink-0 text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
                   <h2 className="text-[15px] font-semibold leading-tight">Profile</h2>
@@ -488,7 +488,7 @@ User ID: ${initialData.user.id}`,
 
           <section className="">
             <div className="mx-auto max-w-3xl bg-muted/30">
-              <div className="flex items-center justify-between border-b border-border bg-background px-5 py-6">
+              <div className="flex items-center justify-between border-b border-border bg-background px-5 pb-6 pt-8">
                 <div className="flex items-center gap-3">
                   <Building2 className="size-6 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col gap-0.5">
@@ -564,7 +564,7 @@ User ID: ${initialData.user.id}`,
             <>
               <section className="">
                 <div className="mx-auto max-w-3xl bg-muted/30">
-                  <div className="flex items-center gap-3 border-b border-border bg-background px-5 py-6">
+                  <div className="flex items-center gap-3 border-b border-border bg-background px-5 pb-6 pt-8">
                     <CreditCard className="size-6 shrink-0 text-muted-foreground" />
                     <div className="flex flex-col gap-0.5">
                       <h2 className="text-[15px] font-semibold leading-tight">Subscription</h2>
@@ -655,7 +655,7 @@ User ID: ${initialData.user.id}`,
 
               <section className="">
                 <div className="mx-auto max-w-3xl bg-muted/30">
-                  <div className="flex items-center justify-between border-b border-border bg-background px-5 py-6">
+                  <div className="flex items-center justify-between border-b border-border bg-background px-5 pb-6 pt-8">
                     <div className="flex items-center gap-3">
                       <Users className="size-6 shrink-0 text-muted-foreground" />
                       <div className="flex flex-col gap-0.5">

@@ -953,7 +953,7 @@ export function ProductDashboard({
           {/* App selector bar */}
           <section className="border-b border-border">
             <div className="mx-auto max-w-screen-xl">
-              <div className="flex flex-wrap items-center gap-3 px-6 py-5">
+              <div className="flex flex-wrap items-center gap-3 px-6 pb-5 pt-8">
                 <h2 className="flex items-center gap-3 text-[15px] font-semibold">
                   <Cpu className="size-6 shrink-0 text-muted-foreground" />
                   App
@@ -1083,7 +1083,7 @@ export function ProductDashboard({
               {selectedApp ? (
                 <section className="">
                   <div className="mx-auto max-w-screen-xl bg-muted/30">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-5">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 pb-5 pt-8">
                       <div className="flex items-center gap-3">
                         <Package className="size-6 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
@@ -1492,7 +1492,7 @@ export function ProductDashboard({
               {selectedApp ? (
                 <section className="">
                   <div className="mx-auto max-w-screen-xl bg-muted/30">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-5">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 pb-5 pt-8">
                       <div className="mr-5 flex items-center gap-3">
                         <Activity className="size-6 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
