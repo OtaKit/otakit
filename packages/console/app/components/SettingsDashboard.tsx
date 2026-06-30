@@ -7,10 +7,11 @@ import {
   ArrowUpRight,
   Building2,
   ChevronsUpDown,
+  Copy,
   CreditCard,
+  LifeBuoy,
   LogOut,
   Mail,
-  MessageSquare,
   Pencil,
   Plus,
   LoaderCircle,
@@ -31,7 +32,7 @@ import {
 } from '@/app/components/PricingDialog';
 import { OrganizationKeyAdmin } from '@/app/components/OrganizationKeyAdmin';
 import { authClient } from '@/lib/auth-client';
-import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '@/lib/support';
+import { SUPPORT_EMAIL } from '@/lib/support';
 import type {
   ApiError,
   DashboardInitialData,
@@ -191,6 +192,13 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
 
   // Load billing summary for the settings subscription row.
   useEffect(() => {
+    // Billing endpoints 404 when Polar isn't configured (e.g. local dev) — skip
+    // the calls entirely so they don't surface as console errors.
+    if (!initialData.billingEnabled) {
+      setBillingLoading(false);
+      setUsageLoading(false);
+      return;
+    }
     async function loadBilling() {
       try {
         const [billingRes, usageRes] = await Promise.all([
@@ -213,7 +221,7 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
       }
     }
     void loadBilling();
-  }, [initialData.activeOrganization.id]);
+  }, [initialData.activeOrganization.id, initialData.billingEnabled]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -449,18 +457,18 @@ User ID: ${initialData.user.id}`,
         <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
           <section className="">
             <div className="mx-auto max-w-3xl bg-muted/30">
-              <div className="flex items-center gap-2.5 border-b border-border bg-background p-5">
-                <Mail className="size-5 shrink-0 text-muted-foreground" />
+              <div className="flex items-center gap-3 border-b border-border bg-background px-5 py-6">
+                <Mail className="size-6 shrink-0 text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
-                  <h2 className="text-sm font-semibold leading-tight">Profile</h2>
+                  <h2 className="text-[15px] font-semibold leading-tight">Profile</h2>
                   <p className="text-xs leading-tight text-muted-foreground">
-                    Your account and session
+                    Your account
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-4 p-5">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{initialData.user.email}</div>
+                  <div className="truncate text-sm">{initialData.user.email}</div>
                 </div>
                 <Button
                   variant="ghost"
@@ -480,13 +488,13 @@ User ID: ${initialData.user.id}`,
 
           <section className="">
             <div className="mx-auto max-w-3xl bg-muted/30">
-              <div className="flex items-center justify-between border-b border-border bg-background p-5">
-                <div className="flex items-center gap-2.5">
-                  <Building2 className="size-5 shrink-0 text-muted-foreground" />
+              <div className="flex items-center justify-between border-b border-border bg-background px-5 py-6">
+                <div className="flex items-center gap-3">
+                  <Building2 className="size-6 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col gap-0.5">
-                    <h2 className="text-sm font-semibold leading-tight">Workspace</h2>
+                    <h2 className="text-[15px] font-semibold leading-tight">Workspace</h2>
                     <p className="text-xs leading-tight text-muted-foreground">
-                      Switch, rename, or create a workspace
+                      Switch or create workspace
                     </p>
                   </div>
                 </div>
@@ -505,7 +513,7 @@ User ID: ${initialData.user.id}`,
                   disabled={isSwitchingOrganization}
                 >
                   <SelectTrigger
-                    className="h-8 w-56 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent"
+                    className="h-8 w-56 border-0 bg-transparent px-2 shadow-none hover:bg-accent"
                     icon={<ChevronsUpDown className="size-4 opacity-50" />}
                   >
                     <SelectValue placeholder="Select workspace" />
@@ -556,19 +564,19 @@ User ID: ${initialData.user.id}`,
             <>
               <section className="">
                 <div className="mx-auto max-w-3xl bg-muted/30">
-                  <div className="flex items-center gap-2.5 border-b border-border bg-background p-5">
-                    <CreditCard className="size-5 shrink-0 text-muted-foreground" />
+                  <div className="flex items-center gap-3 border-b border-border bg-background px-5 py-6">
+                    <CreditCard className="size-6 shrink-0 text-muted-foreground" />
                     <div className="flex flex-col gap-0.5">
-                      <h2 className="text-sm font-semibold leading-tight">Subscription</h2>
+                      <h2 className="text-[15px] font-semibold leading-tight">Subscription</h2>
                       <p className="text-xs leading-tight text-muted-foreground">
-                        Plan and monthly usage
+                        Plan and usage
                       </p>
                     </div>
                   </div>
                   <div className="p-5">
                     <div className="flex items-center justify-between gap-4 py-3">
                       <div>
-                        <div className="text-sm font-medium">
+                        <div className="text-sm">
                           {billingData?.billing.planKey === 'pro'
                             ? 'Pro'
                             : billingData?.billing.planKey === 'enterprise'
@@ -593,7 +601,7 @@ User ID: ${initialData.user.id}`,
                     <div className="py-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <div className="text-sm font-medium">Usage this month</div>
+                          <div className="text-sm">Usage this month</div>
                           <div className="text-xs text-muted-foreground">
                             {!usageData
                               ? 'No usage data'
@@ -621,7 +629,7 @@ User ID: ${initialData.user.id}`,
                       {billingData?.billing.planKey === 'pro' ? (
                         <div className="mt-3 flex items-center justify-between">
                           <div>
-                            <div className="text-sm font-medium">Enable additional usage</div>
+                            <div className="text-sm">Enable additional usage</div>
                             <div className="text-xs text-muted-foreground">
                               Continue delivering updates after included monthly usage is exhausted.
                             </div>
@@ -647,36 +655,40 @@ User ID: ${initialData.user.id}`,
 
               <section className="">
                 <div className="mx-auto max-w-3xl bg-muted/30">
-                  <div className="flex items-center justify-between border-b border-border bg-background p-5">
-                    <div className="flex items-center gap-2.5">
-                      <Users className="size-5 shrink-0 text-muted-foreground" />
+                  <div className="flex items-center justify-between border-b border-border bg-background px-5 py-6">
+                    <div className="flex items-center gap-3">
+                      <Users className="size-6 shrink-0 text-muted-foreground" />
                       <div className="flex flex-col gap-0.5">
-                        <h2 className="text-sm font-semibold leading-tight">Members</h2>
+                        <h2 className="text-[15px] font-semibold leading-tight">Members</h2>
                         <p className="text-xs leading-tight text-muted-foreground">
-                          People with access to this workspace
+                          People in this workspace
                         </p>
                       </div>
                     </div>
                     {canManageTeam ? (
                       billingData?.billing.planKey === 'free' ? (
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs justify-center hidden sm:flex"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-muted-foreground/50"
+                          title="Upgrade your plan to invite team members"
                           disabled
                         >
                           <Lock className="size-3.5" />
-                          Upgrade subscription to invite team members
+                          <span className="sr-only">
+                            Upgrade your plan to invite team members
+                          </span>
                         </Button>
                       ) : (
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-40 justify-center"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          title="Invite member"
                           onClick={() => setInviteDialogOpen(true)}
                         >
                           <UserPlus className="size-3.5" />
-                          Invite member
+                          <span className="sr-only">Invite member</span>
                         </Button>
                       )
                     ) : null}
@@ -994,8 +1006,8 @@ User ID: ${initialData.user.id}`,
         className="fixed bottom-6 right-6 z-40 rounded-full px-4 shadow-lg"
         onClick={() => setFeedbackDialogOpen(true)}
       >
-        <MessageSquare className="size-4" />
-        Send feedback
+        <LifeBuoy className="size-4" />
+        Support
       </Button>
 
       <Dialog
@@ -1009,17 +1021,22 @@ User ID: ${initialData.user.id}`,
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="size-4" />
-              Send feedback
+              <LifeBuoy className="size-4" />
+              Support
             </DialogTitle>
             <DialogDescription>
               Or email us at{' '}
-              <a
-                href={SUPPORT_MAILTO}
-                className="underline underline-offset-4 hover:text-foreground"
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(SUPPORT_EMAIL);
+                  toast.success('Email copied');
+                }}
+                className="inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground"
               >
                 {SUPPORT_EMAIL}
-              </a>
+                <Copy className="size-3" />
+              </button>
             </DialogDescription>
           </DialogHeader>
 
@@ -1054,7 +1071,7 @@ User ID: ${initialData.user.id}`,
               ) : (
                 <>
                   <Send className="size-3.5" />
-                  Send feedback
+                  Send message
                 </>
               )}
             </Button>

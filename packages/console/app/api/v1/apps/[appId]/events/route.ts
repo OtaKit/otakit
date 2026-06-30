@@ -59,9 +59,14 @@ export async function GET(
 
   const rawChannel = searchParams.get('channel');
   const channel = rawChannel && rawChannel !== 'all' ? rawChannel.trim() : null;
-  if (channel && !isValidChannelName(channel)) {
+  // 'base' is a reserved filter meaning the default (no-channel) stream.
+  if (channel && channel !== 'base' && !isValidChannelName(channel)) {
     return NextResponse.json({ error: 'Invalid channel filter' }, { status: 400 });
   }
+
+  const rawRuntime = searchParams.get('runtime');
+  const runtimeVersion =
+    rawRuntime && rawRuntime !== 'all' ? rawRuntime.trim().slice(0, 64) : null;
 
   const rawReleaseId = searchParams.get('releaseId');
   const releaseId = rawReleaseId && rawReleaseId !== 'all' ? rawReleaseId.trim() : null;
@@ -91,6 +96,7 @@ export async function GET(
     action,
     bundleVersion,
     channel,
+    runtimeVersion,
     releaseId,
   });
 

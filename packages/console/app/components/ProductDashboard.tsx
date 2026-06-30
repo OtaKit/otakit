@@ -6,16 +6,17 @@ import { useMemo, useState, useEffect, useCallback, type ElementType } from 'rea
 import { useRouter } from 'next/navigation';
 import {
   Activity,
-  AlertTriangle,
+  BadgeCheck,
   Calendar,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronsUpDown,
+  CircleAlert,
   Clock,
   Copy,
   Cpu,
   Download,
+  Filter,
   Hash,
   LoaderCircle,
   Package,
@@ -41,6 +42,13 @@ import type {
 } from '@/app/components/dashboard-types';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -83,18 +91,8 @@ type BundleTableColumn =
   | 'version'
   | 'size'
   | 'uploaded'
+  | 'runtime'
   | 'targets'
-  | 'downloads'
-  | 'applied'
-  | 'errors'
-  | 'rollbacks'
-  | 'action';
-type ReleaseTableColumn =
-  | 'version'
-  | 'channel'
-  | 'previous'
-  | 'releaser'
-  | 'date'
   | 'downloads'
   | 'applied'
   | 'errors'
@@ -106,8 +104,7 @@ const NEW_RELEASE_STREAM_KEY = '$new';
 const NULL_RUNTIME_TARGET_KEY = '$runtime-null';
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
-const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v2';
-const RELEASE_COLUMNS_STORAGE_KEY = 'dashboard:release-columns:v3';
+const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v3';
 const STAT_COLUMN_HINTS = {
   downloads: 'Devices that downloaded this update',
   applied: 'Devices that activated this update successfully',
@@ -116,6 +113,7 @@ const STAT_COLUMN_HINTS = {
 } as const;
 const BUNDLE_COLUMN_OPTIONS: Array<{ key: BundleTableColumn; label: string }> = [
   { key: 'version', label: 'Version' },
+  { key: 'runtime', label: 'Runtime' },
   { key: 'size', label: 'Size' },
   { key: 'uploaded', label: 'Uploaded' },
   { key: 'targets', label: 'Targets' },
@@ -126,57 +124,25 @@ const BUNDLE_COLUMN_OPTIONS: Array<{ key: BundleTableColumn; label: string }> = 
   { key: 'action', label: 'Action' },
 ];
 const BUNDLE_COLUMN_KEYS = BUNDLE_COLUMN_OPTIONS.map((option) => option.key);
-const RELEASE_COLUMN_OPTIONS: Array<{ key: ReleaseTableColumn; label: string }> = [
-  { key: 'version', label: 'Bundle' },
-  { key: 'channel', label: 'Target' },
-  { key: 'previous', label: 'Previous' },
-  { key: 'releaser', label: 'Releaser' },
-  { key: 'date', label: 'Date' },
-  { key: 'downloads', label: 'Downloads' },
-  { key: 'applied', label: 'Applied' },
-  { key: 'errors', label: 'Errors' },
-  { key: 'rollbacks', label: 'Rollbacks' },
-  { key: 'action', label: 'Action' },
-];
-const RELEASE_COLUMN_KEYS = RELEASE_COLUMN_OPTIONS.map((option) => option.key);
 const DEFAULT_BUNDLE_COLUMNS: BundleTableColumn[] = [
   'version',
+  'runtime',
   'size',
   'uploaded',
   'targets',
   'action',
 ];
-const DEFAULT_RELEASE_COLUMNS: ReleaseTableColumn[] = [
-  'version',
-  'channel',
-  'date',
-  'downloads',
-  'applied',
-  'rollbacks',
-  'action',
-];
 const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
-  version: 160,
-  size: 90,
-  uploaded: 110,
-  targets: 180,
-  downloads: 90,
-  applied: 85,
-  errors: 70,
-  rollbacks: 90,
-  action: 120,
-};
-const RELEASE_COLUMN_WIDTHS: Record<ReleaseTableColumn, number> = {
-  version: 160,
-  channel: 120,
-  previous: 120,
-  releaser: 150,
-  date: 110,
-  downloads: 90,
-  applied: 85,
-  errors: 70,
-  rollbacks: 90,
-  action: 120,
+  version: 208,
+  runtime: 208,
+  size: 96,
+  uploaded: 96,
+  targets: 240,
+  downloads: 64,
+  applied: 64,
+  errors: 64,
+  rollbacks: 64,
+  action: 116,
 };
 
 /* ─── Platform Icons ──────────────────────────────────────────────── */
@@ -201,6 +167,20 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function formatDateOnly(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatTimeOnly(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
@@ -331,10 +311,6 @@ function getDefaultReleaseTargetKey(bundle: BundleSummaryItem, targets: ReleaseT
     : getReleaseTargetKey(firstAvailableTarget.channel, firstAvailableTarget.runtimeVersion);
 }
 
-function createEmptyEventCounts() {
-  return { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0 };
-}
-
 function readStoredColumns<T extends string>(
   storageKey: string,
   options: readonly T[],
@@ -445,7 +421,6 @@ export function ProductDashboard({
   const [loadingBundles, setLoadingBundles] = useState(false);
   const [bundlesLoadedOnce, setBundlesLoadedOnce] = useState(false);
   const [releaseHistory, setReleaseHistory] = useState<ReleaseHistoryItem[]>([]);
-  const [loadingReleaseHistory, setLoadingReleaseHistory] = useState(false);
   const [releasesLoadedOnce, setReleasesLoadedOnce] = useState(false);
   const dashboardReady = !selectedAppId || (bundlesLoadedOnce && releasesLoadedOnce);
 
@@ -455,22 +430,18 @@ export function ProductDashboard({
   const [eventPlatform, setEventPlatform] = useState<EventPlatformFilter>('all');
   const [eventBundle, setEventBundle] = useState<string>('all');
   const [eventAction, setEventAction] = useState<EventActionFilter>('all');
+  const [eventChannel, setEventChannel] = useState<string>('all');
+  const [eventRuntime, setEventRuntime] = useState<string>('all');
   const [eventTimeframe, setEventTimeframe] = useState<EventTimeframeFilter>('24h');
   const [visibleBundleCount, setVisibleBundleCount] = useState(5);
-  const [visibleReleaseCount, setVisibleReleaseCount] = useState(5);
   const [visibleEventCount, setVisibleEventCount] = useState(20);
   const [bundleColumnsDialogOpen, setBundleColumnsDialogOpen] = useState(false);
-  const [releaseColumnsDialogOpen, setReleaseColumnsDialogOpen] = useState(false);
   const [bundleColumns, setBundleColumns] = useState<BundleTableColumn[]>(() =>
     readStoredColumns(BUNDLE_COLUMNS_STORAGE_KEY, BUNDLE_COLUMN_KEYS, DEFAULT_BUNDLE_COLUMNS),
   );
   const [bundleColumnsDraft, setBundleColumnsDraft] = useState<BundleTableColumn[]>(bundleColumns);
-  const [releaseColumns, setReleaseColumns] = useState<ReleaseTableColumn[]>(() =>
-    readStoredColumns(RELEASE_COLUMNS_STORAGE_KEY, RELEASE_COLUMN_KEYS, DEFAULT_RELEASE_COLUMNS),
-  );
-  const [releaseColumnsDraft, setReleaseColumnsDraft] =
-    useState<ReleaseTableColumn[]>(releaseColumns);
   const [appIdCopied, setAppIdCopied] = useState(false);
+  const [copiedVersion, setCopiedVersion] = useState<string | null>(null);
 
   // Release
   const [releasingAction, setReleasingAction] = useState<{
@@ -627,50 +598,58 @@ export function ProductDashboard({
 
   const eventBundleOptions = useMemo(() => bundles.map((bundle) => bundle.version), [bundles]);
 
-  const hideChannelColumns = useMemo(() => {
-    return (
-      releaseTargets.length <= 1 &&
-      releaseTargets.every((target) => target.channel === null && target.runtimeVersion === null)
-    );
+  // Latest release event per (bundle version + target), so the merged table can
+  // show who shipped each release and offer a revert.
+  const releaseByKey = useMemo(() => {
+    const map = new Map<string, ReleaseHistoryItem>();
+    for (const release of releaseHistory) {
+      const key = `${release.bundleVersion}::${getReleaseTargetKey(release.channel, release.runtimeVersion)}`;
+      const existing = map.get(key);
+      if (!existing || new Date(release.promotedAt) > new Date(existing.promotedAt)) {
+        map.set(key, release);
+      }
+    }
+    return map;
+  }, [releaseHistory]);
+
+  const eventChannelOptions = useMemo(() => {
+    const channels = new Set<string>();
+    for (const target of releaseTargets) {
+      if (target.channel) channels.add(target.channel);
+    }
+    const custom = Array.from(channels).sort((a, b) => a.localeCompare(b));
+    // Surface the default (no-channel) stream as "base" alongside named channels.
+    return custom.length > 0 ? ['base', ...custom] : [];
   }, [releaseTargets]);
+
+  const eventRuntimeOptions = useMemo(() => {
+    const runtimes = new Set<string>();
+    for (const target of releaseTargets) {
+      if (target.runtimeVersion) runtimes.add(target.runtimeVersion);
+    }
+    for (const bundle of bundles) {
+      if (bundle.runtimeVersion) runtimes.add(bundle.runtimeVersion);
+    }
+    return Array.from(runtimes).sort((a, b) => a.localeCompare(b));
+  }, [releaseTargets, bundles]);
+
   const bundleColumnOptions = useMemo(
     () =>
       BUNDLE_COLUMN_OPTIONS.map((option) =>
         option.key === 'targets'
-          ? { ...option, label: hideChannelColumns ? 'Status' : 'Targets' }
+          ? { ...option, label: 'Release' }
           : option,
       ),
-    [hideChannelColumns],
-  );
-  const releaseColumnOptions = useMemo(
-    () =>
-      hideChannelColumns
-        ? RELEASE_COLUMN_OPTIONS.filter((option) => option.key !== 'channel')
-        : RELEASE_COLUMN_OPTIONS,
-    [hideChannelColumns],
+    [],
   );
   const bundleColumnSet = useMemo(() => new Set(bundleColumns), [bundleColumns]);
-  const releaseColumnSet = useMemo(() => new Set(releaseColumns), [releaseColumns]);
   const hasBundleColumn = useCallback(
     (column: BundleTableColumn) => bundleColumnSet.has(column),
     [bundleColumnSet],
   );
-  const hasReleaseColumn = useCallback(
-    (column: ReleaseTableColumn) => releaseColumnSet.has(column),
-    [releaseColumnSet],
-  );
   const bundleTableMinWidth = Math.max(
     160,
     bundleColumns.reduce((total, column) => total + BUNDLE_COLUMN_WIDTHS[column], 0),
-  );
-  const releaseTableMinWidth = Math.max(
-    160,
-    releaseColumns.reduce((total, column) => {
-      if (column === 'channel' && hideChannelColumns) {
-        return total;
-      }
-      return total + RELEASE_COLUMN_WIDTHS[column];
-    }, 0),
   );
 
   // ── Data loading ──────────────────────────────────────────────────
@@ -699,6 +678,8 @@ export function ProductDashboard({
           platform: eventPlatform,
           bundle: eventBundle,
           action: eventAction,
+          channel: eventChannel,
+          runtime: eventRuntime,
           timeframe: eventTimeframe,
           limit: '100',
         });
@@ -715,11 +696,10 @@ export function ProductDashboard({
         setLoadingEvents(false);
       }
     },
-    [eventAction, eventBundle, eventPlatform, eventTimeframe],
+    [eventAction, eventBundle, eventChannel, eventRuntime, eventPlatform, eventTimeframe],
   );
 
   const loadReleaseHistory = useCallback(async (appId: string) => {
-    setLoadingReleaseHistory(true);
     try {
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/releases?limit=100`);
       const data = await parseJson<{ releases?: ReleaseHistoryItem[] } & ApiError>(res);
@@ -729,7 +709,6 @@ export function ProductDashboard({
       toast.error(err instanceof Error ? err.message : 'Failed to load release history');
       setReleaseHistory([]);
     } finally {
-      setLoadingReleaseHistory(false);
       setReleasesLoadedOnce(true);
     }
   }, []);
@@ -772,12 +751,31 @@ export function ProductDashboard({
   }, [eventBundle, eventBundleOptions]);
 
   useEffect(() => {
+    if (eventChannel === 'all') {
+      return;
+    }
+    if (!eventChannelOptions.includes(eventChannel)) {
+      setEventChannel('all');
+    }
+  }, [eventChannel, eventChannelOptions]);
+
+  useEffect(() => {
+    if (eventRuntime === 'all') {
+      return;
+    }
+    if (!eventRuntimeOptions.includes(eventRuntime)) {
+      setEventRuntime('all');
+    }
+  }, [eventRuntime, eventRuntimeOptions]);
+
+  useEffect(() => {
     setEventBundle('all');
+    setEventChannel('all');
+    setEventRuntime('all');
   }, [selectedAppId]);
 
   useEffect(() => {
     setVisibleBundleCount(5);
-    setVisibleReleaseCount(5);
     setVisibleEventCount(20);
   }, [selectedAppId]);
 
@@ -787,15 +785,11 @@ export function ProductDashboard({
 
   useEffect(() => {
     setVisibleEventCount(20);
-  }, [eventPlatform, eventBundle, eventAction, eventTimeframe]);
+  }, [eventPlatform, eventBundle, eventAction, eventChannel, eventRuntime, eventTimeframe]);
 
   useEffect(() => {
     window.localStorage.setItem(BUNDLE_COLUMNS_STORAGE_KEY, JSON.stringify(bundleColumns));
   }, [bundleColumns]);
-
-  useEffect(() => {
-    window.localStorage.setItem(RELEASE_COLUMNS_STORAGE_KEY, JSON.stringify(releaseColumns));
-  }, [releaseColumns]);
 
   // ── Actions ───────────────────────────────────────────────────────
 
@@ -812,21 +806,6 @@ export function ProductDashboard({
   function saveBundleColumnsDialog() {
     setBundleColumns(bundleColumnsDraft);
     setBundleColumnsDialogOpen(false);
-  }
-
-  function openReleaseColumnsDialog() {
-    setReleaseColumnsDraft(releaseColumns);
-    setReleaseColumnsDialogOpen(true);
-  }
-
-  function cancelReleaseColumnsDialog() {
-    setReleaseColumnsDraft(releaseColumns);
-    setReleaseColumnsDialogOpen(false);
-  }
-
-  function saveReleaseColumnsDialog() {
-    setReleaseColumns(releaseColumnsDraft);
-    setReleaseColumnsDialogOpen(false);
   }
 
   function requestRelease(bundle: BundleSummaryItem) {
@@ -974,10 +953,10 @@ export function ProductDashboard({
           {/* App selector bar */}
           <section className="border-b border-border">
             <div className="mx-auto max-w-screen-xl">
-              <div className="flex flex-wrap items-center gap-3 px-6 py-4">
-                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Cpu className="size-4 text-muted-foreground" />
-                  Apps
+              <div className="flex flex-wrap items-center gap-3 px-6 py-5">
+                <h2 className="flex items-center gap-3 text-[15px] font-semibold">
+                  <Cpu className="size-6 shrink-0 text-muted-foreground" />
+                  App
                 </h2>
                 <div className="mx-1 h-4 w-px bg-border" />
                 {apps.length > 0 ? (
@@ -993,7 +972,7 @@ export function ProductDashboard({
                       }}
                     >
                       <SelectTrigger
-                        className="h-8 w-40 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent sm:w-56"
+                        className="h-8 w-40 border-0 bg-transparent px-2 shadow-none hover:bg-accent sm:w-56"
                         icon={<ChevronsUpDown className="size-4 opacity-50" />}
                       >
                         <SelectValue placeholder="Select app" />
@@ -1019,7 +998,7 @@ export function ProductDashboard({
                         <Separator orientation="vertical" className="h-4" />
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Hash className="size-3" />
-                          App ID
+                          App ID:
                         </span>
                         <button
                           type="button"
@@ -1030,9 +1009,9 @@ export function ProductDashboard({
                             toast.success('App ID copied');
                             setTimeout(() => setAppIdCopied(false), 2000);
                           }}
-                          title={appIdCopied ? 'Copied' : 'Copy app ID'}
+                          title={String(selectedAppId) ?? 'App id'}
                         >
-                          {truncate(selectedApp.id, 12)}
+                          {truncate(selectedApp.id, 16)}
                           {appIdCopied ? (
                             <Check className="size-3 text-emerald-500" />
                           ) : (
@@ -1104,13 +1083,13 @@ export function ProductDashboard({
               {selectedApp ? (
                 <section className="">
                   <div className="mx-auto max-w-screen-xl bg-muted/30">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-4">
-                      <div className="flex items-center gap-2.5">
-                        <Package className="size-5 shrink-0 text-muted-foreground" />
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        <Package className="size-6 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
-                          <h2 className="text-sm font-semibold leading-tight">Bundles</h2>
+                          <h2 className="text-[15px] font-semibold leading-tight">Updates</h2>
                           <p className="text-xs leading-tight text-muted-foreground">
-                            Uploaded web assets ready to release
+                            Bundles &amp; releases
                           </p>
                         </div>
                       </div>
@@ -1156,65 +1135,72 @@ export function ProductDashboard({
                         <div className="relative">
                           <div className="overflow-auto">
                             <Table
-                              className="table-fixed [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0"
+                              className="w-full table-fixed text-xs [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_td]:border-r [&_td]:border-border [&_td]:py-2 [&_td:last-child]:border-r-0 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_th]:border-r [&_th]:border-border [&_th:last-child]:border-r-0"
                               style={{ minWidth: `${bundleTableMinWidth}px` }}
                             >
+                              <colgroup>
+                                {bundleColumns.map((col) => (
+                                  <col
+                                    key={col}
+                                    style={
+                                      col === 'targets'
+                                        ? undefined
+                                        : { width: `${BUNDLE_COLUMN_WIDTHS[col]}px` }
+                                    }
+                                  />
+                                ))}
+                              </colgroup>
                               <TableHeader>
                                 <TableRow>
                                   {hasBundleColumn('version') ? (
-                                    <TableHead className="">
-                                      Version
-                                    </TableHead>
+                                    <TableHead className="">Bundle</TableHead>
+                                  ) : null}
+                                  {hasBundleColumn('runtime') ? (
+                                    <TableHead className="">Runtime</TableHead>
                                   ) : null}
                                   {hasBundleColumn('size') ? (
                                     <TableHead className="">Size</TableHead>
                                   ) : null}
                                   {hasBundleColumn('uploaded') ? (
-                                    <TableHead className="">
-                                      Uploaded
-                                    </TableHead>
+                                    <TableHead className="">Uploaded</TableHead>
                                   ) : null}
                                   {hasBundleColumn('targets') ? (
-                                    !hideChannelColumns ? (
-                                      <TableHead className="">
-                                        Channels
-                                      </TableHead>
-                                    ) : (
-                                      <TableHead className="">
-                                        Status
-                                      </TableHead>
-                                    )
+                                    <TableHead className="">Release</TableHead>
                                   ) : null}
                                   {hasBundleColumn('downloads') ? (
                                     <TableHead
-                                      className="w-[90px]  text-right whitespace-nowrap"
+                                      className="text-center align-middle"
                                       title={STAT_COLUMN_HINTS.downloads}
                                     >
-                                      Downloads
+                                      <Download className="mx-auto size-3.5 text-blue-600/55 dark:text-blue-400/60" />
+                                      <span className="sr-only">Downloads</span>
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('applied') ? (
                                     <TableHead
-                                      className="w-[85px]  text-right whitespace-nowrap"
+                                      className="text-center align-middle"
                                       title={STAT_COLUMN_HINTS.applied}
                                     >
-                                      Applied
+                                      <BadgeCheck className="mx-auto size-3.5 text-emerald-600/55 dark:text-emerald-400/60" />
+                                      <span className="sr-only">Applied</span>
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('errors') ? (
                                     <TableHead
-                                      className="w-[70px]  text-right whitespace-nowrap"
+                                      className="text-center align-middle"
                                       title={STAT_COLUMN_HINTS.errors}
                                     >
-                                      Errors
+                                      <CircleAlert className="mx-auto size-3.5 text-amber-600/55 dark:text-amber-400/60" />
+                                      <span className="sr-only">Errors</span>
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('rollbacks') ? (
                                     <TableHead
-                                      className="w-[90px]  text-right whitespace-nowrap"
+                                      className="text-center align-middle"
                                       title={STAT_COLUMN_HINTS.rollbacks}
                                     >
-                                      Rollbacks
+                                      <RotateCcw className="mx-auto size-3.5 text-red-600/55 dark:text-red-400/60" />
+                                      <span className="sr-only">Rollbacks</span>
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('action') ? (
@@ -1236,10 +1222,46 @@ export function ProductDashboard({
                                   return (
                                     <TableRow key={b.version}>
                                       {hasBundleColumn('version') ? (
-                                        <TableCell className=" font-mono text-sm font-semibold">
-                                          <span className="block truncate" title={b.version}>
-                                            {b.version}
-                                          </span>
+                                        <TableCell className="font-mono text-xs">
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              className="group inline-flex min-w-0 items-center gap-1 transition-colors hover:text-foreground/80"
+                                              title={`Copy ${b.version}`}
+                                              onClick={() => {
+                                                void navigator.clipboard.writeText(b.version);
+                                                setCopiedVersion(b.version);
+                                                toast.success('Bundle copied');
+                                                setTimeout(
+                                                  () =>
+                                                    setCopiedVersion((c) =>
+                                                      c === b.version ? null : c,
+                                                    ),
+                                                  2000,
+                                                );
+                                              }}
+                                            >
+                                              <span className="truncate">{b.version}</span>
+                                              {copiedVersion === b.version ? (
+                                                <Check className="size-3 shrink-0 text-emerald-500" />
+                                              ) : (
+                                                <Copy className="size-3 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground" />
+                                              )}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="shrink-0 text-muted-foreground/40 transition-colors hover:text-foreground"
+                                              title="Filter activity by this bundle"
+                                              onClick={() => setEventBundle(b.version)}
+                                            >
+                                              <Filter className="size-3" />
+                                            </button>
+                                          </div>
+                                        </TableCell>
+                                      ) : null}
+                                      {hasBundleColumn('runtime') ? (
+                                        <TableCell className="truncate font-mono text-xs text-muted-foreground">
+                                          {b.runtimeVersion ?? 'any'}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('size') ? (
@@ -1249,126 +1271,168 @@ export function ProductDashboard({
                                       ) : null}
                                       {hasBundleColumn('uploaded') ? (
                                         <TableCell className=" text-xs text-muted-foreground">
-                                          {formatDate(b.createdAt)}
+                                          <div className="leading-tight">
+                                            {formatDateOnly(b.createdAt)}
+                                          </div>
+                                          <div className="leading-tight">
+                                            {formatTimeOnly(b.createdAt)}
+                                          </div>
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('targets') ? (
-                                        !hideChannelColumns ? (
-                                          <TableCell className="">
-                                            {b.deployedTargets.length === 0 ? (
-                                              <span className="text-xs text-muted-foreground">
-                                                Not released
-                                              </span>
-                                            ) : (
-                                              <div className="flex flex-wrap items-center gap-1">
-                                                {b.deployedTargets.map((entry) => {
-                                                  const isCurrent = currentSet.has(
+                                        <TableCell className="align-middle">
+                                          {b.deployedTargets.length === 0 ? (
+                                            <span className="text-muted-foreground">Not released</span>
+                                          ) : (
+                                            <div className="flex flex-wrap items-center gap-1">
+                                              {b.deployedTargets
+                                                .filter((entry) =>
+                                                  currentSet.has(
                                                     getReleaseTargetKey(
                                                       entry.channel,
                                                       entry.runtimeVersion,
                                                     ),
+                                                  ),
+                                                )
+                                                .map((entry) => {
+                                                  const tKey = getReleaseTargetKey(
+                                                    entry.channel,
+                                                    entry.runtimeVersion,
+                                                  );
+                                                  const rel = releaseByKey.get(
+                                                    `${b.version}::${tKey}`,
+                                                  );
+                                                  const canRevert =
+                                                    rel != null && rel.revertedAt === null;
+                                                  const detail = `Channel: ${entry.channel ?? 'base'}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}`;
+                                                  return (
+                                                    <DropdownMenu key={tKey}>
+                                                      <DropdownMenuTrigger asChild>
+                                                        <button
+                                                          type="button"
+                                                          title={detail}
+                                                          className="inline-flex max-w-full items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/30 transition-colors hover:bg-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25"
+                                                        >
+                                                          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                                          <span className="truncate">
+                                                            {entry.channel ?? 'base'}
+                                                          </span>
+                                                          <ChevronDown className="size-2.5 shrink-0 opacity-50" />
+                                                        </button>
+                                                      </DropdownMenuTrigger>
+                                                      <DropdownMenuContent align="start" className="w-60">
+                                                        <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 px-2 py-1.5 text-[11px]">
+                                                          <span className="text-muted-foreground">
+                                                            Channel
+                                                          </span>
+                                                          <span className="font-medium">
+                                                            {entry.channel ?? 'base'}
+                                                          </span>
+                                                          {rel ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Live since
+                                                              </span>
+                                                              <span>{formatDate(rel.promotedAt)}</span>
+                                                              <span className="text-muted-foreground">
+                                                                Released by
+                                                              </span>
+                                                              <span className="truncate">
+                                                                {formatReleasedBy(rel.promotedBy)}
+                                                              </span>
+                                                            </>
+                                                          ) : null}
+                                                          {rel?.previousBundleVersion ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Previous
+                                                              </span>
+                                                              <span className="truncate font-mono">
+                                                                {rel.previousBundleVersion}
+                                                              </span>
+                                                            </>
+                                                          ) : null}
+                                                        </div>
+                                                        {canRevert ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              disabled={revertConfirm !== null}
+                                                              onClick={() => openRevertConfirm(rel)}
+                                                            >
+                                                              <RotateCcw className="size-3.5" />
+                                                              Revert to previous
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : null}
+                                                      </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                  );
+                                                })}
+                                              {b.deployedTargets
+                                                .filter(
+                                                  (entry) =>
+                                                    !currentSet.has(
+                                                      getReleaseTargetKey(
+                                                        entry.channel,
+                                                        entry.runtimeVersion,
+                                                      ),
+                                                    ),
+                                                )
+                                                .map((entry) => {
+                                                  const tKey = getReleaseTargetKey(
+                                                    entry.channel,
+                                                    entry.runtimeVersion,
+                                                  );
+                                                  const rel = releaseByKey.get(
+                                                    `${b.version}::${tKey}`,
                                                   );
                                                   return (
                                                     <span
-                                                      key={getReleaseTargetKey(
-                                                        entry.channel,
-                                                        entry.runtimeVersion,
-                                                      )}
-                                                      title={`Released ${formatDate(entry.deployedAt)}${isCurrent ? ' · current' : ''}`}
-                                                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                                                        isCurrent
-                                                          ? 'bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25'
-                                                          : 'bg-secondary text-secondary-foreground'
-                                                      }`}
+                                                      key={tKey}
+                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}`}
+                                                      className="inline-flex max-w-full items-center rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
                                                     >
-                                                      {isCurrent ? (
-                                                        <Check
-                                                          className="size-3 text-emerald-500"
-                                                          strokeWidth={3}
-                                                        />
-                                                      ) : null}
-                                                      {formatReleaseTarget(
-                                                        entry.channel,
-                                                        entry.runtimeVersion,
-                                                      )}
+                                                      <span className="truncate">
+                                                        {entry.channel ?? 'base'}
+                                                      </span>
                                                     </span>
                                                   );
                                                 })}
-                                              </div>
-                                            )}
-                                          </TableCell>
-                                        ) : (
-                                          <TableCell className="">
-                                            {b.isLive ? (
-                                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25">
-                                                <Check
-                                                  className="size-3 text-emerald-500"
-                                                  strokeWidth={3}
-                                                />
-                                                Live
-                                              </span>
-                                            ) : b.deployedTargets[0] ? (
-                                              <span
-                                                className="text-xs text-muted-foreground"
-                                                title={`Last served ${formatDate(b.deployedTargets[0].deployedAt)}`}
-                                              >
-                                                Released{' '}
-                                                {formatDate(b.deployedTargets[0].deployedAt)}
-                                              </span>
-                                            ) : (
-                                              <span className="text-xs text-muted-foreground">
-                                                Not released
-                                              </span>
-                                            )}
-                                          </TableCell>
-                                        )
+                                            </div>
+                                          )}
+                                        </TableCell>
                                       ) : null}
                                       {hasBundleColumn('downloads') ? (
-                                        <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
-                                          <span
-                                            className="inline-flex items-center justify-end gap-1"
-                                            title={STAT_COLUMN_HINTS.downloads}
-                                          >
-                                            <Download className="size-3 shrink-0" />
-                                            {b.eventCounts.downloads}
-                                          </span>
+                                        <TableCell
+                                          className="text-center align-middle text-xs tabular-nums text-muted-foreground"
+                                          title={STAT_COLUMN_HINTS.downloads}
+                                        >
+                                          {b.eventCounts.downloads}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('applied') ? (
-                                        <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
-                                          <span
-                                            className="inline-flex items-center justify-end gap-1"
-                                            title={STAT_COLUMN_HINTS.applied}
-                                          >
-                                            <CheckCircle2 className="size-3 shrink-0 text-emerald-500" />
-                                            {b.eventCounts.applied}
-                                          </span>
+                                        <TableCell
+                                          className="text-center align-middle text-xs tabular-nums text-muted-foreground"
+                                          title={STAT_COLUMN_HINTS.applied}
+                                        >
+                                          {b.eventCounts.applied}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('errors') ? (
                                         <TableCell
-                                          className={` text-right text-xs tabular-nums ${b.eventCounts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                                          className={`text-center align-middle text-xs tabular-nums ${b.eventCounts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                                          title={STAT_COLUMN_HINTS.errors}
                                         >
-                                          <span
-                                            className="inline-flex items-center justify-end gap-1"
-                                            title={STAT_COLUMN_HINTS.errors}
-                                          >
-                                            <AlertTriangle className="size-3 shrink-0" />
-                                            {b.eventCounts.downloadErrors}
-                                          </span>
+                                          {b.eventCounts.downloadErrors}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('rollbacks') ? (
                                         <TableCell
-                                          className={` text-right text-xs tabular-nums ${b.eventCounts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                                          className={`text-center align-middle text-xs tabular-nums ${b.eventCounts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                                          title={STAT_COLUMN_HINTS.rollbacks}
                                         >
-                                          <span
-                                            className="inline-flex items-center justify-end gap-1"
-                                            title={STAT_COLUMN_HINTS.rollbacks}
-                                          >
-                                            <RotateCcw className="size-3 shrink-0" />
-                                            {b.eventCounts.rollbacks}
-                                          </span>
+                                          {b.eventCounts.rollbacks}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('action') ? (
@@ -1421,291 +1485,6 @@ export function ProductDashboard({
                 </section>
               ) : null}
 
-              <Separator className="" />
-
-              {/* Release History */}
-              {selectedApp ? (
-                <section className="">
-                  <div className="mx-auto max-w-screen-xl bg-muted/30">
-                    <div className="flex items-center gap-2 border-b border-border bg-background px-6 py-4">
-                      <div className="flex items-center gap-2.5">
-                        <Rocket className="size-5 shrink-0 text-muted-foreground" />
-                        <div className="flex flex-col gap-0.5">
-                          <h2 className="text-sm font-semibold leading-tight">Releases</h2>
-                          <p className="text-xs leading-tight text-muted-foreground">
-                            What each channel is currently serving
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="ml-auto h-7 w-7 text-muted-foreground/45 hover:text-muted-foreground"
-                        onClick={openReleaseColumnsDialog}
-                      >
-                        <SlidersHorizontal className="size-3.5" />
-                        <span className="sr-only">Edit release columns</span>
-                      </Button>
-                    </div>
-
-                    {releaseHistory.length === 0 && !loadingReleaseHistory ? (
-                      <div className="p-5">
-                        <div className="rounded-lg border border-dashed py-12 text-center">
-                          <Rocket className="mx-auto size-6 text-muted-foreground/40" />
-                          <p className="mt-3 text-sm font-medium">No release history yet</p>
-                          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                            Release a bundle to start recording audit history.
-                          </p>
-                          <p className="mt-4">
-                            <Link
-                              href="/docs/setup"
-                              className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                            >
-                              Read the setup guide
-                            </Link>
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      (() => {
-                        const visible = releaseHistory.slice(0, visibleReleaseCount);
-
-                        // Current release per target = the most recent non-reverted release.
-                        const currentReleaseIds = new Set<string>();
-                        const seenTargets = new Set<string>();
-                        for (const release of releaseHistory) {
-                          const key = getReleaseTargetKey(release.channel, release.runtimeVersion);
-                          if (!seenTargets.has(key) && release.revertedAt === null) {
-                            currentReleaseIds.add(release.id);
-                            seenTargets.add(key);
-                          }
-                        }
-
-                        return (
-                          <div className="relative">
-                            <div className="overflow-auto">
-                              <Table
-                                className="table-fixed [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0"
-                                style={{ minWidth: `${releaseTableMinWidth}px` }}
-                              >
-                                <TableHeader>
-                                  <TableRow>
-                                    {hasReleaseColumn('version') ? (
-                                      <TableHead className="">
-                                        Bundle
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('channel') && !hideChannelColumns ? (
-                                      <TableHead className="">
-                                        Target
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('previous') ? (
-                                      <TableHead className="">
-                                        Previous
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('releaser') ? (
-                                      <TableHead className="">
-                                        Releaser
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('date') ? (
-                                      <TableHead className="">Date</TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('downloads') ? (
-                                      <TableHead
-                                        className="w-[90px]  text-right whitespace-nowrap"
-                                        title={STAT_COLUMN_HINTS.downloads}
-                                      >
-                                        Downloads
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('applied') ? (
-                                      <TableHead
-                                        className="w-[85px]  text-right whitespace-nowrap"
-                                        title={STAT_COLUMN_HINTS.applied}
-                                      >
-                                        Applied
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('errors') ? (
-                                      <TableHead
-                                        className="w-[70px]  text-right whitespace-nowrap"
-                                        title={STAT_COLUMN_HINTS.errors}
-                                      >
-                                        Errors
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('rollbacks') ? (
-                                      <TableHead
-                                        className="w-[90px]  text-right whitespace-nowrap"
-                                        title={STAT_COLUMN_HINTS.rollbacks}
-                                      >
-                                        Rollbacks
-                                      </TableHead>
-                                    ) : null}
-                                    {hasReleaseColumn('action') ? (
-                                      <TableHead className="w-[120px] text-center whitespace-nowrap">
-                                        Action
-                                      </TableHead>
-                                    ) : null}
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {visible.map((row) => {
-                                    const isCurrent = currentReleaseIds.has(row.id);
-                                    const isReverted = row.revertedAt !== null;
-                                    const canRevert = isCurrent && !isReverted;
-                                    const counts = row.eventCounts ?? createEmptyEventCounts();
-
-                                    return (
-                                      <TableRow
-                                        key={row.id}
-                                        className={isReverted ? 'opacity-50' : undefined}
-                                      >
-                                        {hasReleaseColumn('version') ? (
-                                          <TableCell className="">
-                                            <span className="flex items-center gap-1.5">
-                                              <span
-                                                className="block max-w-full truncate font-mono text-sm font-medium"
-                                                title={row.bundleVersion}
-                                              >
-                                                {row.bundleVersion}
-                                              </span>
-                                              {isCurrent ? (
-                                                <Check
-                                                  className="size-3.5 text-emerald-500"
-                                                  strokeWidth={3}
-                                                />
-                                              ) : null}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('channel') && !hideChannelColumns ? (
-                                          <TableCell className=" truncate text-sm text-muted-foreground">
-                                            {formatReleaseTarget(row.channel, row.runtimeVersion)}
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('previous') ? (
-                                          <TableCell className=" font-mono text-xs text-muted-foreground">
-                                            <span
-                                              className="block truncate"
-                                              title={row.previousBundleVersion ?? '—'}
-                                            >
-                                              {row.previousBundleVersion ?? '—'}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('releaser') ? (
-                                          <TableCell className=" truncate text-xs text-muted-foreground">
-                                            {formatReleasedBy(row.promotedBy)}
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('date') ? (
-                                          <TableCell className=" truncate text-xs text-muted-foreground">
-                                            {formatDate(row.promotedAt)}
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('downloads') ? (
-                                          <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
-                                            <span
-                                              className="inline-flex items-center justify-end gap-1"
-                                              title={STAT_COLUMN_HINTS.downloads}
-                                            >
-                                              <Download className="size-3 shrink-0" />
-                                              {counts.downloads}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('applied') ? (
-                                          <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
-                                            <span
-                                              className="inline-flex items-center justify-end gap-1"
-                                              title={STAT_COLUMN_HINTS.applied}
-                                            >
-                                              <CheckCircle2 className="size-3 shrink-0 text-emerald-500" />
-                                              {counts.applied}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('errors') ? (
-                                          <TableCell
-                                            className={` text-right text-xs tabular-nums ${counts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
-                                          >
-                                            <span
-                                              className="inline-flex items-center justify-end gap-1"
-                                              title={STAT_COLUMN_HINTS.errors}
-                                            >
-                                              <AlertTriangle className="size-3 shrink-0" />
-                                              {counts.downloadErrors}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('rollbacks') ? (
-                                          <TableCell
-                                            className={` text-right text-xs tabular-nums ${counts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
-                                          >
-                                            <span
-                                              className="inline-flex items-center justify-end gap-1"
-                                              title={STAT_COLUMN_HINTS.rollbacks}
-                                            >
-                                              <RotateCcw className="size-3 shrink-0" />
-                                              {counts.rollbacks}
-                                            </span>
-                                          </TableCell>
-                                        ) : null}
-                                        {hasReleaseColumn('action') ? (
-                                          <TableCell className="text-center">
-                                            {isReverted ? (
-                                              <span
-                                                className="text-xs text-muted-foreground"
-                                                title={`Reverted ${row.revertedAt ? formatDate(row.revertedAt) : 'recently'} by ${formatReleasedBy(row.revertedBy)}`}
-                                              >
-                                                Reverted
-                                              </span>
-                                            ) : canRevert ? (
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-7 text-xs"
-                                                disabled={revertConfirm !== null}
-                                                onClick={() => openRevertConfirm(row)}
-                                              >
-                                                <RotateCcw className="size-3" />
-                                                Revert
-                                              </Button>
-                                            ) : null}
-                                          </TableCell>
-                                        ) : null}
-                                      </TableRow>
-                                    );
-                                  })}
-                                </TableBody>
-                              </Table>
-                            </div>
-                            {releaseHistory.length > visibleReleaseCount ? (
-                              <button
-                                type="button"
-                                className="absolute -right-8 bottom-2 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
-                                title="Load more"
-                                onClick={() =>
-                                  setVisibleReleaseCount((current) =>
-                                    Math.min(current + 5, releaseHistory.length),
-                                  )
-                                }
-                              >
-                                <ChevronDown className="size-3" />
-                              </button>
-                            ) : null}
-                          </div>
-                        );
-                      })()
-                    )}
-                  </div>
-                </section>
-              ) : null}
 
               {selectedApp ? <Separator className="" /> : null}
 
@@ -1713,13 +1492,13 @@ export function ProductDashboard({
               {selectedApp ? (
                 <section className="">
                   <div className="mx-auto max-w-screen-xl bg-muted/30">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-4">
-                      <div className="mr-5 flex items-center gap-2.5">
-                        <Activity className="size-5 shrink-0 text-muted-foreground" />
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-5">
+                      <div className="mr-5 flex items-center gap-3">
+                        <Activity className="size-6 shrink-0 text-muted-foreground" />
                         <div className="flex flex-col gap-0.5">
-                          <h2 className="text-sm font-semibold leading-tight">Events</h2>
+                          <h2 className="text-[15px] font-semibold leading-tight">Events</h2>
                           <p className="text-xs leading-tight text-muted-foreground">
-                            Recent device update activity
+                            Device activity
                           </p>
                         </div>
                       </div>
@@ -1770,6 +1549,48 @@ export function ProductDashboard({
                             ))}
                           </SelectContent>
                         </Select>
+
+                        {eventChannelOptions.length > 0 ? (
+                          <Select value={eventChannel} onValueChange={setEventChannel}>
+                            <SelectTrigger className="h-8 w-full text-xs sm:w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">
+                                <span className="flex items-center gap-1.5">
+                                  <Hash className="size-3.5 text-muted-foreground" />
+                                  All channels
+                                </span>
+                              </SelectItem>
+                              {eventChannelOptions.map((channel) => (
+                                <SelectItem key={channel} value={channel}>
+                                  {channel}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
+
+                        {eventRuntimeOptions.length > 0 ? (
+                          <Select value={eventRuntime} onValueChange={setEventRuntime}>
+                            <SelectTrigger className="h-8 w-full text-xs sm:w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">
+                                <span className="flex items-center gap-1.5">
+                                  <Cpu className="size-3.5 text-muted-foreground" />
+                                  All runtimes
+                                </span>
+                              </SelectItem>
+                              {eventRuntimeOptions.map((runtime) => (
+                                <SelectItem key={runtime} value={runtime}>
+                                  <span className="font-mono">{runtime}</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
 
                         <Select
                           value={eventAction}
@@ -1868,37 +1689,30 @@ export function ProductDashboard({
                     ) : (
                       <div className="relative">
                         <div className="overflow-auto">
-                          <Table className="min-w-[600px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0">
+                          <Table className="min-w-[680px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0">
                             <TableHeader>
                               <TableRow>
-                                <TableHead className="">Time</TableHead>
-                                <TableHead className="">Platform</TableHead>
-                                <TableHead className="">Action</TableHead>
-                                <TableHead
-                                  className={
-                                    !hideChannelColumns ? '' : undefined
-                                  }
-                                >
-                                  Bundle Version
-                                </TableHead>
-                                {!hideChannelColumns ? <TableHead>Channel</TableHead> : null}
+                                <TableHead>Time</TableHead>
+                                <TableHead>Platform</TableHead>
+                                <TableHead>Action</TableHead>
+                                <TableHead>Bundle</TableHead>
+                                <TableHead>Channel</TableHead>
+                                <TableHead>Runtime</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {appEvents.slice(0, visibleEventCount).map((ev) => (
                                 <TableRow key={ev.id}>
-                                  <TableCell className=" truncate text-xs text-muted-foreground">
+                                  <TableCell className="truncate text-xs text-muted-foreground">
                                     {formatDate(ev.createdAt)}
                                   </TableCell>
-                                  <TableCell className=" truncate text-xs text-muted-foreground">
+                                  <TableCell className="truncate text-xs text-muted-foreground">
                                     {formatEventPlatform(ev.platform)}
                                   </TableCell>
-                                  <TableCell className=" truncate text-xs text-muted-foreground">
+                                  <TableCell className="truncate text-xs text-muted-foreground">
                                     {formatEventAction(ev.action)}
                                   </TableCell>
-                                  <TableCell
-                                    className={`font-mono text-sm ${!hideChannelColumns ? '' : ''}`}
-                                  >
+                                  <TableCell className="font-mono text-xs">
                                     {ev.bundleVersion ? (
                                       <span className="block truncate" title={ev.bundleVersion}>
                                         {ev.bundleVersion}
@@ -1907,11 +1721,12 @@ export function ProductDashboard({
                                       <span className="text-muted-foreground">Unknown</span>
                                     )}
                                   </TableCell>
-                                  {!hideChannelColumns ? (
-                                    <TableCell className="truncate text-xs text-muted-foreground">
-                                      {formatReleaseTarget(ev.channel, null)}
-                                    </TableCell>
-                                  ) : null}
+                                  <TableCell className="truncate text-xs text-muted-foreground">
+                                    {ev.channel ?? 'base'}
+                                  </TableCell>
+                                  <TableCell className="truncate font-mono text-xs text-muted-foreground">
+                                    {ev.runtimeVersion ?? 'any'}
+                                  </TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>
@@ -1964,25 +1779,6 @@ export function ProductDashboard({
         onSave={saveBundleColumnsDialog}
       />
 
-      <ColumnSelectionDialog
-        open={releaseColumnsDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            cancelReleaseColumnsDialog();
-          }
-        }}
-        title="Release columns"
-        options={releaseColumnOptions}
-        selected={releaseColumnsDraft}
-        onToggle={(column) =>
-          setReleaseColumnsDraft((current) =>
-            toggleOrderedColumn(current, column, RELEASE_COLUMN_KEYS),
-          )
-        }
-        onCancel={cancelReleaseColumnsDialog}
-        onSave={saveReleaseColumnsDialog}
-      />
-
       {/* Confirm Release Dialog */}
       <Dialog
         open={releaseConfirm !== null}
@@ -2032,7 +1828,7 @@ export function ProductDashboard({
                           target.runtimeVersion,
                         )}
                       >
-                        {formatReleaseTarget(target.channel, target.runtimeVersion)}
+                        {target.channel ?? 'base'}
                       </SelectItem>
                     ))}
                     <SelectItem value={NEW_RELEASE_STREAM_KEY}>New channel…</SelectItem>
@@ -2139,9 +1935,7 @@ export function ProductDashboard({
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Channel</span>
-                <span className="font-medium">
-                  {formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}
-                </span>
+                <span className="font-medium">{revertConfirm.channel ?? 'base'}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Current</span>

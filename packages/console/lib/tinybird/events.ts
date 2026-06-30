@@ -44,6 +44,7 @@ type RecentAppEventsArgs = {
   action?: DeviceEventAction | null;
   bundleVersion?: string | null;
   channel?: string | null;
+  runtimeVersion?: string | null;
   releaseId?: string | null;
 };
 
@@ -177,6 +178,7 @@ export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<De
       action: args.action ?? '',
       bundle_version: args.bundleVersion ?? '',
       channel: args.channel ?? '',
+      runtime_version: args.runtimeVersion ?? '',
       release_id: args.releaseId ?? '',
     });
 

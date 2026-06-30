@@ -147,24 +147,25 @@ export function OrganizationKeyAdmin({ initialKeys }: Props) {
 
   return (
     <section className="bg-muted/30">
-      <div className="flex items-center justify-between border-b border-border bg-background p-5">
-        <div className="flex items-center gap-2.5">
-          <KeyRound className="size-5 shrink-0 text-muted-foreground" />
+      <div className="flex items-center justify-between border-b border-border bg-background px-5 py-6">
+        <div className="flex items-center gap-3">
+          <KeyRound className="size-6 shrink-0 text-muted-foreground" />
           <div className="flex flex-col gap-0.5">
-            <h2 className="text-sm font-semibold leading-tight">API Keys</h2>
+            <h2 className="text-[15px] font-semibold leading-tight">API Keys</h2>
             <p className="text-xs leading-tight text-muted-foreground">
               Programmatic access for CI and the CLI
             </p>
           </div>
         </div>
         <Button
-          size="sm"
+          size="icon"
           variant="ghost"
-          className="h-8 w-16 justify-center"
+          className="size-7 text-muted-foreground hover:text-foreground"
+          title="New API key"
           onClick={() => handleCreateDialogOpenChange(true)}
         >
           <Plus className="size-3.5" />
-          New
+          <span className="sr-only">New API key</span>
         </Button>
       </div>
 
@@ -186,7 +187,7 @@ export function OrganizationKeyAdmin({ initialKeys }: Props) {
                   <TableRow key={key.id} className={`h-12 ${isRevoked ? 'opacity-50' : ''}`}>
                     <TableCell>
                       <div className="flex items-center gap-2 pl-5">
-                        <span className="text-sm font-medium">{key.name}</span>
+                        <span className="text-sm">{key.name}</span>
                         <code className="text-xs text-muted-foreground">{key.keyPrefix}...</code>
                         {isRevoked ? (
                           <Badge
