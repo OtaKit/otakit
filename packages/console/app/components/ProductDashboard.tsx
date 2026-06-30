@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronsUpDown,
   Clock,
   Copy,
   Cpu,
@@ -54,6 +55,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -963,7 +965,7 @@ export function ProductDashboard({
       />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
-        <div className="pointer-events-none absolute inset-0 hidden justify-center sm:flex">
+        <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
           <div className="h-full w-full max-w-screen-xl border-x border-border" />
         </div>
         <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
@@ -980,8 +982,20 @@ export function ProductDashboard({
                 <div className="mx-1 h-4 w-px bg-border" />
                 {apps.length > 0 ? (
                   <>
-                    <Select value={selectedAppId ?? ''} onValueChange={setSelectedAppId}>
-                      <SelectTrigger className="h-8 w-40 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent sm:w-56">
+                    <Select
+                      value={selectedAppId ?? ''}
+                      onValueChange={(value) => {
+                        if (value === '__new_app__') {
+                          setCreateDialogOpen(true);
+                          return;
+                        }
+                        setSelectedAppId(value);
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-40 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent sm:w-56"
+                        icon={<ChevronsUpDown className="size-4 opacity-50" />}
+                      >
                         <SelectValue placeholder="Select app" />
                       </SelectTrigger>
                       <SelectContent>
@@ -990,6 +1004,13 @@ export function ProductDashboard({
                             {app.slug}
                           </SelectItem>
                         ))}
+                        <SelectSeparator />
+                        <SelectItem value="__new_app__" className="text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <Plus className="size-3.5" />
+                            New app
+                          </span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -1022,18 +1043,16 @@ export function ProductDashboard({
                     ) : null}
                   </>
                 ) : (
-                  <span className="text-sm text-muted-foreground">No apps</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8"
+                    onClick={() => setCreateDialogOpen(true)}
+                  >
+                    <Plus className="size-3.5" />
+                    New app
+                  </Button>
                 )}
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-8"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  <Plus className="size-3.5" />
-                  New app
-                </Button>
               </div>
             </div>
           </section>
@@ -1084,12 +1103,17 @@ export function ProductDashboard({
               {/* Bundles */}
               {selectedApp ? (
                 <section className="">
-                  <div className="mx-auto max-w-screen-xl">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-4">
-                      <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                        <Package className="size-4 text-muted-foreground" />
-                        Bundles
-                      </h2>
+                  <div className="mx-auto max-w-screen-xl bg-muted/30">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <Package className="size-5 shrink-0 text-muted-foreground" />
+                        <div className="flex flex-col gap-0.5">
+                          <h2 className="text-sm font-semibold leading-tight">Bundles</h2>
+                          <p className="text-xs leading-tight text-muted-foreground">
+                            Uploaded web assets ready to release
+                          </p>
+                        </div>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1132,38 +1156,38 @@ export function ProductDashboard({
                         <div className="relative">
                           <div className="overflow-auto">
                             <Table
-                              className="table-fixed"
+                              className="table-fixed [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0"
                               style={{ minWidth: `${bundleTableMinWidth}px` }}
                             >
                               <TableHeader>
                                 <TableRow>
                                   {hasBundleColumn('version') ? (
-                                    <TableHead className="border-r border-border">
+                                    <TableHead className="">
                                       Version
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('size') ? (
-                                    <TableHead className="border-r border-border">Size</TableHead>
+                                    <TableHead className="">Size</TableHead>
                                   ) : null}
                                   {hasBundleColumn('uploaded') ? (
-                                    <TableHead className="border-r border-border">
+                                    <TableHead className="">
                                       Uploaded
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('targets') ? (
                                     !hideChannelColumns ? (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Channels
                                       </TableHead>
                                     ) : (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Status
                                       </TableHead>
                                     )
                                   ) : null}
                                   {hasBundleColumn('downloads') ? (
                                     <TableHead
-                                      className="w-[90px] border-r border-border text-right whitespace-nowrap"
+                                      className="w-[90px]  text-right whitespace-nowrap"
                                       title={STAT_COLUMN_HINTS.downloads}
                                     >
                                       Downloads
@@ -1171,7 +1195,7 @@ export function ProductDashboard({
                                   ) : null}
                                   {hasBundleColumn('applied') ? (
                                     <TableHead
-                                      className="w-[85px] border-r border-border text-right whitespace-nowrap"
+                                      className="w-[85px]  text-right whitespace-nowrap"
                                       title={STAT_COLUMN_HINTS.applied}
                                     >
                                       Applied
@@ -1179,7 +1203,7 @@ export function ProductDashboard({
                                   ) : null}
                                   {hasBundleColumn('errors') ? (
                                     <TableHead
-                                      className="w-[70px] border-r border-border text-right whitespace-nowrap"
+                                      className="w-[70px]  text-right whitespace-nowrap"
                                       title={STAT_COLUMN_HINTS.errors}
                                     >
                                       Errors
@@ -1187,7 +1211,7 @@ export function ProductDashboard({
                                   ) : null}
                                   {hasBundleColumn('rollbacks') ? (
                                     <TableHead
-                                      className="w-[90px] border-r border-border text-right whitespace-nowrap"
+                                      className="w-[90px]  text-right whitespace-nowrap"
                                       title={STAT_COLUMN_HINTS.rollbacks}
                                     >
                                       Rollbacks
@@ -1212,25 +1236,25 @@ export function ProductDashboard({
                                   return (
                                     <TableRow key={b.version}>
                                       {hasBundleColumn('version') ? (
-                                        <TableCell className="border-r border-border font-mono text-sm font-semibold">
+                                        <TableCell className=" font-mono text-sm font-semibold">
                                           <span className="block truncate" title={b.version}>
                                             {b.version}
                                           </span>
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('size') ? (
-                                        <TableCell className="border-r border-border text-xs text-muted-foreground">
+                                        <TableCell className=" text-xs text-muted-foreground">
                                           {formatBytes(b.size)}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('uploaded') ? (
-                                        <TableCell className="border-r border-border text-xs text-muted-foreground">
+                                        <TableCell className=" text-xs text-muted-foreground">
                                           {formatDate(b.createdAt)}
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('targets') ? (
                                         !hideChannelColumns ? (
-                                          <TableCell className="border-r border-border">
+                                          <TableCell className="">
                                             {b.deployedTargets.length === 0 ? (
                                               <span className="text-xs text-muted-foreground">
                                                 Not released
@@ -1274,7 +1298,7 @@ export function ProductDashboard({
                                             )}
                                           </TableCell>
                                         ) : (
-                                          <TableCell className="border-r border-border">
+                                          <TableCell className="">
                                             {b.isLive ? (
                                               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25">
                                                 <Check
@@ -1300,7 +1324,7 @@ export function ProductDashboard({
                                         )
                                       ) : null}
                                       {hasBundleColumn('downloads') ? (
-                                        <TableCell className="border-r border-border text-right text-xs tabular-nums text-muted-foreground">
+                                        <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
                                           <span
                                             className="inline-flex items-center justify-end gap-1"
                                             title={STAT_COLUMN_HINTS.downloads}
@@ -1311,7 +1335,7 @@ export function ProductDashboard({
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('applied') ? (
-                                        <TableCell className="border-r border-border text-right text-xs tabular-nums text-muted-foreground">
+                                        <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
                                           <span
                                             className="inline-flex items-center justify-end gap-1"
                                             title={STAT_COLUMN_HINTS.applied}
@@ -1323,7 +1347,7 @@ export function ProductDashboard({
                                       ) : null}
                                       {hasBundleColumn('errors') ? (
                                         <TableCell
-                                          className={`border-r border-border text-right text-xs tabular-nums ${b.eventCounts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                                          className={` text-right text-xs tabular-nums ${b.eventCounts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
                                         >
                                           <span
                                             className="inline-flex items-center justify-end gap-1"
@@ -1336,7 +1360,7 @@ export function ProductDashboard({
                                       ) : null}
                                       {hasBundleColumn('rollbacks') ? (
                                         <TableCell
-                                          className={`border-r border-border text-right text-xs tabular-nums ${b.eventCounts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                                          className={` text-right text-xs tabular-nums ${b.eventCounts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
                                         >
                                           <span
                                             className="inline-flex items-center justify-end gap-1"
@@ -1402,12 +1426,17 @@ export function ProductDashboard({
               {/* Release History */}
               {selectedApp ? (
                 <section className="">
-                  <div className="mx-auto max-w-screen-xl">
-                    <div className="flex items-center gap-2 border-b border-border px-6 py-4">
-                      <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                        <Rocket className="size-4 text-muted-foreground" />
-                        Releases
-                      </h2>
+                  <div className="mx-auto max-w-screen-xl bg-muted/30">
+                    <div className="flex items-center gap-2 border-b border-border bg-background px-6 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <Rocket className="size-5 shrink-0 text-muted-foreground" />
+                        <div className="flex flex-col gap-0.5">
+                          <h2 className="text-sm font-semibold leading-tight">Releases</h2>
+                          <p className="text-xs leading-tight text-muted-foreground">
+                            What each channel is currently serving
+                          </p>
+                        </div>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1457,37 +1486,37 @@ export function ProductDashboard({
                           <div className="relative">
                             <div className="overflow-auto">
                               <Table
-                                className="table-fixed"
+                                className="table-fixed [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0"
                                 style={{ minWidth: `${releaseTableMinWidth}px` }}
                               >
                                 <TableHeader>
                                   <TableRow>
                                     {hasReleaseColumn('version') ? (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Bundle
                                       </TableHead>
                                     ) : null}
                                     {hasReleaseColumn('channel') && !hideChannelColumns ? (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Target
                                       </TableHead>
                                     ) : null}
                                     {hasReleaseColumn('previous') ? (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Previous
                                       </TableHead>
                                     ) : null}
                                     {hasReleaseColumn('releaser') ? (
-                                      <TableHead className="border-r border-border">
+                                      <TableHead className="">
                                         Releaser
                                       </TableHead>
                                     ) : null}
                                     {hasReleaseColumn('date') ? (
-                                      <TableHead className="border-r border-border">Date</TableHead>
+                                      <TableHead className="">Date</TableHead>
                                     ) : null}
                                     {hasReleaseColumn('downloads') ? (
                                       <TableHead
-                                        className="w-[90px] border-r border-border text-right whitespace-nowrap"
+                                        className="w-[90px]  text-right whitespace-nowrap"
                                         title={STAT_COLUMN_HINTS.downloads}
                                       >
                                         Downloads
@@ -1495,7 +1524,7 @@ export function ProductDashboard({
                                     ) : null}
                                     {hasReleaseColumn('applied') ? (
                                       <TableHead
-                                        className="w-[85px] border-r border-border text-right whitespace-nowrap"
+                                        className="w-[85px]  text-right whitespace-nowrap"
                                         title={STAT_COLUMN_HINTS.applied}
                                       >
                                         Applied
@@ -1503,7 +1532,7 @@ export function ProductDashboard({
                                     ) : null}
                                     {hasReleaseColumn('errors') ? (
                                       <TableHead
-                                        className="w-[70px] border-r border-border text-right whitespace-nowrap"
+                                        className="w-[70px]  text-right whitespace-nowrap"
                                         title={STAT_COLUMN_HINTS.errors}
                                       >
                                         Errors
@@ -1511,7 +1540,7 @@ export function ProductDashboard({
                                     ) : null}
                                     {hasReleaseColumn('rollbacks') ? (
                                       <TableHead
-                                        className="w-[90px] border-r border-border text-right whitespace-nowrap"
+                                        className="w-[90px]  text-right whitespace-nowrap"
                                         title={STAT_COLUMN_HINTS.rollbacks}
                                       >
                                         Rollbacks
@@ -1537,7 +1566,7 @@ export function ProductDashboard({
                                         className={isReverted ? 'opacity-50' : undefined}
                                       >
                                         {hasReleaseColumn('version') ? (
-                                          <TableCell className="border-r border-border">
+                                          <TableCell className="">
                                             <span className="flex items-center gap-1.5">
                                               <span
                                                 className="block max-w-full truncate font-mono text-sm font-medium"
@@ -1555,12 +1584,12 @@ export function ProductDashboard({
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('channel') && !hideChannelColumns ? (
-                                          <TableCell className="border-r border-border truncate text-sm text-muted-foreground">
+                                          <TableCell className=" truncate text-sm text-muted-foreground">
                                             {formatReleaseTarget(row.channel, row.runtimeVersion)}
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('previous') ? (
-                                          <TableCell className="border-r border-border font-mono text-xs text-muted-foreground">
+                                          <TableCell className=" font-mono text-xs text-muted-foreground">
                                             <span
                                               className="block truncate"
                                               title={row.previousBundleVersion ?? '—'}
@@ -1570,17 +1599,17 @@ export function ProductDashboard({
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('releaser') ? (
-                                          <TableCell className="border-r border-border truncate text-xs text-muted-foreground">
+                                          <TableCell className=" truncate text-xs text-muted-foreground">
                                             {formatReleasedBy(row.promotedBy)}
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('date') ? (
-                                          <TableCell className="border-r border-border truncate text-xs text-muted-foreground">
+                                          <TableCell className=" truncate text-xs text-muted-foreground">
                                             {formatDate(row.promotedAt)}
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('downloads') ? (
-                                          <TableCell className="border-r border-border text-right text-xs tabular-nums text-muted-foreground">
+                                          <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
                                             <span
                                               className="inline-flex items-center justify-end gap-1"
                                               title={STAT_COLUMN_HINTS.downloads}
@@ -1591,7 +1620,7 @@ export function ProductDashboard({
                                           </TableCell>
                                         ) : null}
                                         {hasReleaseColumn('applied') ? (
-                                          <TableCell className="border-r border-border text-right text-xs tabular-nums text-muted-foreground">
+                                          <TableCell className=" text-right text-xs tabular-nums text-muted-foreground">
                                             <span
                                               className="inline-flex items-center justify-end gap-1"
                                               title={STAT_COLUMN_HINTS.applied}
@@ -1603,7 +1632,7 @@ export function ProductDashboard({
                                         ) : null}
                                         {hasReleaseColumn('errors') ? (
                                           <TableCell
-                                            className={`border-r border-border text-right text-xs tabular-nums ${counts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                                            className={` text-right text-xs tabular-nums ${counts.downloadErrors > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
                                           >
                                             <span
                                               className="inline-flex items-center justify-end gap-1"
@@ -1616,7 +1645,7 @@ export function ProductDashboard({
                                         ) : null}
                                         {hasReleaseColumn('rollbacks') ? (
                                           <TableCell
-                                            className={`border-r border-border text-right text-xs tabular-nums ${counts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                                            className={` text-right text-xs tabular-nums ${counts.rollbacks > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
                                           >
                                             <span
                                               className="inline-flex items-center justify-end gap-1"
@@ -1683,13 +1712,16 @@ export function ProductDashboard({
               {/* Events */}
               {selectedApp ? (
                 <section className="">
-                  <div className="mx-auto max-w-screen-xl">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border px-6 py-4">
-                      <div className="flex items-center gap-2 mr-5">
-                        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                          <Activity className="size-4 text-muted-foreground" />
-                          Events
-                        </h2>
+                  <div className="mx-auto max-w-screen-xl bg-muted/30">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 py-4">
+                      <div className="mr-5 flex items-center gap-2.5">
+                        <Activity className="size-5 shrink-0 text-muted-foreground" />
+                        <div className="flex flex-col gap-0.5">
+                          <h2 className="text-sm font-semibold leading-tight">Events</h2>
+                          <p className="text-xs leading-tight text-muted-foreground">
+                            Recent device update activity
+                          </p>
+                        </div>
                       </div>
 
                       <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-1 sm:flex-wrap sm:items-center">
@@ -1836,15 +1868,15 @@ export function ProductDashboard({
                     ) : (
                       <div className="relative">
                         <div className="overflow-auto">
-                          <Table className="min-w-[600px]">
+                          <Table className="min-w-[600px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0">
                             <TableHeader>
                               <TableRow>
-                                <TableHead className="border-r border-border">Time</TableHead>
-                                <TableHead className="border-r border-border">Platform</TableHead>
-                                <TableHead className="border-r border-border">Action</TableHead>
+                                <TableHead className="">Time</TableHead>
+                                <TableHead className="">Platform</TableHead>
+                                <TableHead className="">Action</TableHead>
                                 <TableHead
                                   className={
-                                    !hideChannelColumns ? 'border-r border-border' : undefined
+                                    !hideChannelColumns ? '' : undefined
                                   }
                                 >
                                   Bundle Version
@@ -1855,17 +1887,17 @@ export function ProductDashboard({
                             <TableBody>
                               {appEvents.slice(0, visibleEventCount).map((ev) => (
                                 <TableRow key={ev.id}>
-                                  <TableCell className="border-r border-border truncate text-xs text-muted-foreground">
+                                  <TableCell className=" truncate text-xs text-muted-foreground">
                                     {formatDate(ev.createdAt)}
                                   </TableCell>
-                                  <TableCell className="border-r border-border truncate text-xs text-muted-foreground">
+                                  <TableCell className=" truncate text-xs text-muted-foreground">
                                     {formatEventPlatform(ev.platform)}
                                   </TableCell>
-                                  <TableCell className="border-r border-border truncate text-xs text-muted-foreground">
+                                  <TableCell className=" truncate text-xs text-muted-foreground">
                                     {formatEventAction(ev.action)}
                                   </TableCell>
                                   <TableCell
-                                    className={`font-mono text-sm ${!hideChannelColumns ? 'border-r border-border' : ''}`}
+                                    className={`font-mono text-sm ${!hideChannelColumns ? '' : ''}`}
                                   >
                                     {ev.bundleVersion ? (
                                       <span className="block truncate" title={ev.bundleVersion}>

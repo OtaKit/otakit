@@ -146,12 +146,17 @@ export function OrganizationKeyAdmin({ initialKeys }: Props) {
   }
 
   return (
-    <section>
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          <KeyRound className="size-4 text-muted-foreground" />
-          API Keys
-        </h2>
+    <section className="bg-muted/30">
+      <div className="flex items-center justify-between border-b border-border bg-background p-5">
+        <div className="flex items-center gap-2.5">
+          <KeyRound className="size-5 shrink-0 text-muted-foreground" />
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-sm font-semibold leading-tight">API Keys</h2>
+            <p className="text-xs leading-tight text-muted-foreground">
+              Programmatic access for CI and the CLI
+            </p>
+          </div>
+        </div>
         <Button
           size="sm"
           variant="ghost"

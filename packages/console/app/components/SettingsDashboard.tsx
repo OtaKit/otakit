@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Building2,
+  ChevronsUpDown,
   CreditCard,
   LogOut,
   Mail,
@@ -54,6 +55,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -315,10 +317,10 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
       if (!response.ok) throw new Error(data.error ?? 'Failed to create');
       setNewOrgName('');
       setNewOrgDialogOpen(false);
-      toast.success('Organization created');
+      toast.success('Workspace created');
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create organization');
+      toast.error(error instanceof Error ? error.message : 'Failed to create workspace');
     } finally {
       setCreatingOrg(false);
     }
@@ -348,14 +350,14 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
         },
       );
       const data = await parseJson<ApiError>(response);
-      if (!response.ok) throw new Error(data.error ?? 'Failed to rename organization');
+      if (!response.ok) throw new Error(data.error ?? 'Failed to rename workspace');
       setRenameOrgDialogOpen(false);
       setRenameOrganizationId(null);
       setRenameOrgName('');
-      toast.success('Organization renamed');
+      toast.success('Workspace renamed');
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to rename organization');
+      toast.error(error instanceof Error ? error.message : 'Failed to rename workspace');
     } finally {
       setRenamingOrg(false);
     }
@@ -441,17 +443,20 @@ User ID: ${initialData.user.id}`,
       <DashboardHeader activeSection="settings" />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
-        <div className="pointer-events-none absolute inset-0 hidden justify-center sm:flex">
+        <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
           <div className="h-full w-full max-w-3xl border-x border-border" />
         </div>
         <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
           <section className="">
-            <div className="mx-auto max-w-3xl">
-              <div className="border-b border-border p-5">
-                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Mail className="size-4 text-muted-foreground" />
-                  Profile
-                </h2>
+            <div className="mx-auto max-w-3xl bg-muted/30">
+              <div className="flex items-center gap-2.5 border-b border-border bg-background p-5">
+                <Mail className="size-5 shrink-0 text-muted-foreground" />
+                <div className="flex flex-col gap-0.5">
+                  <h2 className="text-sm font-semibold leading-tight">Profile</h2>
+                  <p className="text-xs leading-tight text-muted-foreground">
+                    Your account and session
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-4 p-5">
                 <div className="min-w-0">
@@ -474,31 +479,36 @@ User ID: ${initialData.user.id}`,
           <Separator />
 
           <section className="">
-            <div className="mx-auto max-w-3xl">
-              <div className="flex items-center justify-between border-b border-border p-5">
-                <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Building2 className="size-4 text-muted-foreground" />
-                  Organization
-                </h2>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-16 justify-center"
-                  onClick={() => setNewOrgDialogOpen(true)}
-                >
-                  <Plus className="size-3.5" />
-                  New
-                </Button>
+            <div className="mx-auto max-w-3xl bg-muted/30">
+              <div className="flex items-center justify-between border-b border-border bg-background p-5">
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="size-5 shrink-0 text-muted-foreground" />
+                  <div className="flex flex-col gap-0.5">
+                    <h2 className="text-sm font-semibold leading-tight">Workspace</h2>
+                    <p className="text-xs leading-tight text-muted-foreground">
+                      Switch, rename, or create a workspace
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 p-5 pl-4">
                 <Select
                   value={initialData.activeOrganization.id}
-                  onValueChange={(value) => void switchOrganization(value)}
+                  onValueChange={(value) => {
+                    if (value === '__new_workspace__') {
+                      setNewOrgDialogOpen(true);
+                      return;
+                    }
+                    void switchOrganization(value);
+                  }}
                   disabled={isSwitchingOrganization}
                 >
-                  <SelectTrigger className="h-8 w-56 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent">
-                    <SelectValue placeholder="Select organization" />
+                  <SelectTrigger
+                    className="h-8 w-56 border-0 bg-transparent px-2 font-semibold shadow-none hover:bg-accent"
+                    icon={<ChevronsUpDown className="size-4 opacity-50" />}
+                  >
+                    <SelectValue placeholder="Select workspace" />
                   </SelectTrigger>
                   <SelectContent>
                     {membershipRows.map((membership) => (
@@ -506,6 +516,13 @@ User ID: ${initialData.user.id}`,
                         {membership.organizationName} ({membership.role})
                       </SelectItem>
                     ))}
+                    <SelectSeparator />
+                    <SelectItem value="__new_workspace__" className="text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Plus className="size-3.5" />
+                        New workspace
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 {canRenameActiveOrg ? (
@@ -513,7 +530,7 @@ User ID: ${initialData.user.id}`,
                     variant="ghost"
                     size="sm"
                     className="size-7 p-0 ml-auto"
-                    title="Rename current organization"
+                    title="Rename current workspace"
                     onClick={() =>
                       openRenameOrgDialog(
                         initialData.activeOrganization.id,
@@ -538,12 +555,15 @@ User ID: ${initialData.user.id}`,
           ) : (
             <>
               <section className="">
-                <div className="mx-auto max-w-3xl">
-                  <div className="border-b border-border p-5">
-                    <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                      <CreditCard className="size-4 text-muted-foreground" />
-                      Subscription
-                    </h2>
+                <div className="mx-auto max-w-3xl bg-muted/30">
+                  <div className="flex items-center gap-2.5 border-b border-border bg-background p-5">
+                    <CreditCard className="size-5 shrink-0 text-muted-foreground" />
+                    <div className="flex flex-col gap-0.5">
+                      <h2 className="text-sm font-semibold leading-tight">Subscription</h2>
+                      <p className="text-xs leading-tight text-muted-foreground">
+                        Plan and monthly usage
+                      </p>
+                    </div>
                   </div>
                   <div className="p-5">
                     <div className="flex items-center justify-between gap-4 py-3">
@@ -626,12 +646,17 @@ User ID: ${initialData.user.id}`,
               <Separator />
 
               <section className="">
-                <div className="mx-auto max-w-3xl">
-                  <div className="flex items-center justify-between border-b border-border p-5">
-                    <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                      <Users className="size-4 text-muted-foreground" />
-                      Members
-                    </h2>
+                <div className="mx-auto max-w-3xl bg-muted/30">
+                  <div className="flex items-center justify-between border-b border-border bg-background p-5">
+                    <div className="flex items-center gap-2.5">
+                      <Users className="size-5 shrink-0 text-muted-foreground" />
+                      <div className="flex flex-col gap-0.5">
+                        <h2 className="text-sm font-semibold leading-tight">Members</h2>
+                        <p className="text-xs leading-tight text-muted-foreground">
+                          People with access to this workspace
+                        </p>
+                      </div>
+                    </div>
                     {canManageTeam ? (
                       billingData?.billing.planKey === 'free' ? (
                         <Button
@@ -851,12 +876,12 @@ User ID: ${initialData.user.id}`,
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="size-4" />
-              Rename organization
+              Rename workspace
             </DialogTitle>
-            <DialogDescription>Update the organization name for all members.</DialogDescription>
+            <DialogDescription>Update the workspace name for all members.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="rename-org-name">Organization name</Label>
+            <Label htmlFor="rename-org-name">Workspace name</Label>
             <Input
               id="rename-org-name"
               value={renameOrgName}
@@ -902,11 +927,11 @@ User ID: ${initialData.user.id}`,
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Building2 className="size-4" />
-              Create organization
+              Create workspace
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="new-org-name">Organization name</Label>
+            <Label htmlFor="new-org-name">Workspace name</Label>
             <Input
               id="new-org-name"
               value={newOrgName}
