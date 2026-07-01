@@ -630,7 +630,7 @@ export default function LandingPage() {
             </h2>
           </div>
           <div className="px-8 py-6">
-            <Accordion type="single" collapsible className="max-w-3xl">
+            <Accordion type="single" collapsible className="w-full">
               {FAQ_ITEMS.map((item, i) => (
                 <AccordionItem key={i} value={`faq-${i}`}>
                   <AccordionTrigger className="text-base font-semibold">{item.q}</AccordionTrigger>
