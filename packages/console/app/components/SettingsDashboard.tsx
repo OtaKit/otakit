@@ -461,9 +461,7 @@ User ID: ${initialData.user.id}`,
                 <Mail className="size-6 shrink-0 text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
                   <h2 className="text-[15px] font-semibold leading-tight">Profile</h2>
-                  <p className="text-xs leading-tight text-muted-foreground">
-                    Your account
-                  </p>
+                  <p className="text-xs leading-tight text-muted-foreground">Your account</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 p-5">
@@ -568,9 +566,7 @@ User ID: ${initialData.user.id}`,
                     <CreditCard className="size-6 shrink-0 text-muted-foreground" />
                     <div className="flex flex-col gap-0.5">
                       <h2 className="text-[15px] font-semibold leading-tight">Subscription</h2>
-                      <p className="text-xs leading-tight text-muted-foreground">
-                        Plan and usage
-                      </p>
+                      <p className="text-xs leading-tight text-muted-foreground">Plan and usage</p>
                     </div>
                   </div>
                   <div className="p-5">
@@ -675,9 +671,7 @@ User ID: ${initialData.user.id}`,
                           disabled
                         >
                           <Lock className="size-3.5" />
-                          <span className="sr-only">
-                            Upgrade your plan to invite team members
-                          </span>
+                          <span className="sr-only">Upgrade your plan to invite team members</span>
                         </Button>
                       ) : (
                         <Button

@@ -65,8 +65,7 @@ export async function GET(
   }
 
   const rawRuntime = searchParams.get('runtime');
-  const runtimeVersion =
-    rawRuntime && rawRuntime !== 'all' ? rawRuntime.trim().slice(0, 64) : null;
+  const runtimeVersion = rawRuntime && rawRuntime !== 'all' ? rawRuntime.trim().slice(0, 64) : null;
 
   const rawReleaseId = searchParams.get('releaseId');
   const releaseId = rawReleaseId && rawReleaseId !== 'all' ? rawReleaseId.trim() : null;
