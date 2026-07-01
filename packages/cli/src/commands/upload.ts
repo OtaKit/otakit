@@ -65,6 +65,10 @@ export const uploadCommand = new Command('upload')
 
       const releaseChannel = resolveReleaseChannel(options.release);
 
+      if (options.forceImmediate === true && releaseChannel === undefined) {
+        console.warn('--force-immediate has no effect without --release; ignoring.');
+      }
+
       const spinner = ora('Creating zip archive...').start();
 
       const bundle = await (async () => {
