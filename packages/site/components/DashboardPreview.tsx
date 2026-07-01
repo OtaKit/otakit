@@ -1,4 +1,12 @@
+'use client';
+
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { animate, motion, useMotionValue, useTransform } from 'motion/react';
+
+// useLayoutEffect on the client (to position the ticker before paint, no flash),
+// useEffect on the server to avoid the SSR warning.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 import {
   Activity,
   BadgeCheck,
@@ -23,13 +31,13 @@ import {
 } from 'lucide-react';
 
 /* Static, fake-data mirror of the OtaKit console dashboard, used for the
-   landing-page mockup. It is hand-kept in visual sync with the real dashboard
-   (packages/console) so we never have to re-screenshot — update markup here
-   instead. No interactivity, no data fetching. */
+   landing-page mockup — now lightly animated: events stream in and the bundle
+   stats tick up, so it feels live. Hand-kept in visual sync with the real
+   dashboard (packages/console). */
 
 type Live = { channel: string; since: string; by: string; previous: string };
 
-const BUNDLES: Array<{
+type Bundle = {
   version: string;
   runtime: string;
   size: string;
@@ -41,7 +49,19 @@ const BUNDLES: Array<{
   applied: number;
   errors: number;
   rollbacks: number;
-}> = [
+};
+
+type EventRow = {
+  id: number;
+  time: string;
+  platform: 'iOS' | 'Android';
+  action: 'Downloaded' | 'Applied' | 'Download error' | 'Rollback';
+  bundle: string;
+  channel: string;
+  runtime: string;
+};
+
+const INITIAL_BUNDLES: Bundle[] = [
   {
     version: '1.4.2',
     runtime: 'api-v3',
@@ -83,22 +103,25 @@ const BUNDLES: Array<{
   },
 ];
 
-const EVENTS: Array<{
-  time: string;
-  platform: 'iOS' | 'Android';
-  action: 'Downloaded' | 'Applied' | 'Download error' | 'Rollback';
-  bundle: string;
-  channel: string;
-  runtime: string;
-}> = [
-  { time: '02:41 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { time: '02:39 PM', platform: 'Android', action: 'Downloaded', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { time: '02:37 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
-  { time: '02:34 PM', platform: 'Android', action: 'Download error', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { time: '02:31 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
-  { time: '02:21 PM', platform: 'iOS', action: 'Rollback', bundle: '1.4.0', channel: 'production', runtime: 'api-v2' },
-  { time: '02:16 PM', platform: 'Android', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
+// Rows visible in the events viewport (its height is frozen to exactly this).
+const VISIBLE_ROWS = 7;
+
+const INITIAL_EVENTS: EventRow[] = [
+  { id: 6, time: '2:41:08 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
+  { id: 5, time: '2:40:44 PM', platform: 'Android', action: 'Downloaded', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
+  { id: 4, time: '2:40:19 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
+  { id: 3, time: '2:39:52 PM', platform: 'Android', action: 'Download error', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
+  { id: 2, time: '2:39:25 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
+  { id: 1, time: '2:38:57 PM', platform: 'iOS', action: 'Rollback', bundle: '1.4.0', channel: 'production', runtime: 'api-v2' },
+  { id: 0, time: '2:38:30 PM', platform: 'Android', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
 ];
+
+const BUNDLE_ROUTES: Array<{ bundle: string; channel: string; runtime: string; weight: number }> = [
+  { bundle: '1.4.2', channel: 'production', runtime: 'api-v3', weight: 0.6 },
+  { bundle: '1.4.1', channel: 'beta', runtime: 'api-v3', weight: 0.3 },
+  { bundle: '1.4.0', channel: 'base', runtime: 'api-v2', weight: 0.1 },
+];
+
 
 const TABLE_CLASS =
   'w-full table-fixed text-xs ' +
@@ -107,6 +130,14 @@ const TABLE_CLASS =
   '[&_th]:border-r [&_td]:border-r [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0 ' +
   '[&_th:first-child]:pl-6 [&_td:first-child]:pl-6 [&_th:last-child]:pr-6 [&_td:last-child]:pr-6 ' +
   '[&_thead_tr]:border-b [&_tbody_tr]:border-b';
+
+// Events use a CSS grid (not a table) so rows can grow in smoothly.
+const EVENT_GRID =
+  'grid grid-cols-6 border-b border-border ' +
+  '[&>div]:flex [&>div]:items-center [&>div]:border-r [&>div]:border-border [&>div]:px-2 ' +
+  '[&>div:first-child]:pl-6 [&>div:last-child]:border-r-0 [&>div:last-child]:pr-6';
+const EVENT_HEADER_CLASS = `${EVENT_GRID} [&>div]:h-9 [&>div]:font-medium [&>div]:text-muted-foreground`;
+const EVENT_ROW_CLASS = `${EVENT_GRID} [&>div]:py-2`;
 
 function LivePill({ live }: { live: Live }) {
   return (
@@ -155,9 +186,113 @@ function FilterPill({ icon: Icon, label }: { icon: typeof Smartphone; label: str
   );
 }
 
+function Stat({ value }: { value: number }) {
+  // Smoothly tween the displayed number with motion.
+  const count = useMotionValue(value);
+  const text = useTransform(count, (v) => Math.round(v).toLocaleString());
+
+  useEffect(() => {
+    const controls = animate(count, value, { duration: 0.65, ease: 'easeOut' });
+    return () => controls.stop();
+  }, [value, count]);
+
+  return <motion.span className="tabular-nums">{text}</motion.span>;
+}
+
+function makeEvent(id: number, clock: Date): EventRow {
+  const r = Math.random();
+  const action: EventRow['action'] =
+    r < 0.5 ? 'Applied' : r < 0.82 ? 'Downloaded' : r < 0.93 ? 'Download error' : 'Rollback';
+  const platform: EventRow['platform'] = Math.random() < 0.5 ? 'iOS' : 'Android';
+
+  let acc = 0;
+  const pick = Math.random();
+  let route = BUNDLE_ROUTES[0];
+  for (const candidate of BUNDLE_ROUTES) {
+    acc += candidate.weight;
+    if (pick <= acc) {
+      route = candidate;
+      break;
+    }
+  }
+
+  clock.setTime(clock.getTime() + (5 + Math.floor(Math.random() * 28)) * 1000);
+  const time = clock.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  return { id, time, platform, action, bundle: route.bundle, channel: route.channel, runtime: route.runtime };
+}
+
 export function DashboardPreview() {
+  const [bundles, setBundles] = useState(INITIAL_BUNDLES);
+  const [events, setEvents] = useState(INITIAL_EVENTS);
+  const nextId = useRef(100);
+  const clock = useRef<Date | null>(null);
+
+  // Freeze the events viewport to its natural (7-row) height once, so the
+  // streaming rows animate *inside* a fixed box (clipped) instead of changing
+  // the preview's total height — which would make ScaleToFit rescale and the
+  // whole section jitter.
+  const listRef = useRef<HTMLDivElement>(null);
+  const [listHeight, setListHeight] = useState<number>();
+  useEffect(() => {
+    if (listRef.current) setListHeight(listRef.current.offsetHeight);
+  }, []);
+
+  // Ticker: on each new event the whole list glides down by exactly one row so
+  // the newest slides in at the top and the oldest slides out the (clipped)
+  // bottom — one smooth transform, nothing reflows.
+  const y = useMotionValue(0);
+  const lastTopId = useRef<number | undefined>(undefined);
+  useIsoLayoutEffect(() => {
+    const topId = events[0]?.id;
+    if (lastTopId.current === undefined) {
+      lastTopId.current = topId; // skip the initial mount
+      return;
+    }
+    if (topId === lastTopId.current || !listHeight) return;
+    lastTopId.current = topId;
+    const rowH = listHeight / VISIBLE_ROWS;
+    y.set(-rowH);
+    const controls = animate(y, 0, { duration: 0.6, ease: [0.16, 1, 0.3, 1] });
+    return () => controls.stop();
+  }, [events, listHeight, y]);
+
+  useEffect(() => {
+    if (!clock.current) {
+      const base = new Date();
+      base.setHours(14, 41, 30, 0);
+      clock.current = base;
+    }
+
+    const interval = setInterval(() => {
+      const event = makeEvent(nextId.current++, clock.current!);
+      // Keep one extra (clipped) buffer row so there's always a row to slide out.
+      setEvents((prev) => [event, ...prev].slice(0, VISIBLE_ROWS + 1));
+
+      if (event.action === 'Downloaded' || event.action === 'Applied') {
+        const bump = 1 + Math.floor(Math.random() * 3);
+        setBundles((prev) =>
+          prev.map((b) =>
+            b.version === event.bundle
+              ? event.action === 'Downloaded'
+                ? { ...b, downloads: b.downloads + bump }
+                : { ...b, applied: b.applied + bump }
+              : b,
+          ),
+        );
+      }
+    }, 2100);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="bg-background text-left text-foreground">
+
       {/* Top header */}
       <header className="flex h-14 items-center gap-4 border-b border-border px-6">
         <div className="flex items-center gap-2">
@@ -247,7 +382,7 @@ export function DashboardPreview() {
             </tr>
           </thead>
           <tbody>
-            {BUNDLES.map((b) => (
+            {bundles.map((b) => (
               <tr key={b.version}>
                 <td className="font-mono font-medium text-foreground">
                   <span className="inline-flex items-center gap-1">
@@ -273,8 +408,12 @@ export function DashboardPreview() {
                     {b.live.length === 0 && b.previous.length === 0 ? 'Not released' : null}
                   </div>
                 </td>
-                <td className="text-center tabular-nums">{b.downloads.toLocaleString()}</td>
-                <td className="text-center tabular-nums">{b.applied.toLocaleString()}</td>
+                <td className="text-center tabular-nums">
+                  <Stat value={b.downloads} />
+                </td>
+                <td className="text-center tabular-nums">
+                  <Stat value={b.applied} />
+                </td>
                 <td
                   className={`text-center tabular-nums ${b.errors > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
                 >
@@ -319,40 +458,52 @@ export function DashboardPreview() {
             </span>
           </div>
         </div>
-        <table className={TABLE_CLASS}>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Platform</th>
-              <th>Action</th>
-              <th>Bundle</th>
-              <th>Channel</th>
-              <th>Runtime</th>
-            </tr>
-          </thead>
-          <tbody>
-            {EVENTS.map((e, i) => (
-              <tr key={i}>
-                <td>{e.time}</td>
-                <td>{e.platform}</td>
-                <td
+        <div className="text-xs">
+          <div className={EVENT_HEADER_CLASS}>
+            <div>Time</div>
+            <div>Platform</div>
+            <div>Action</div>
+            <div>Bundle</div>
+            <div>Channel</div>
+            <div>Runtime</div>
+          </div>
+          <div
+            ref={listRef}
+            className="overflow-hidden"
+            style={listHeight ? { height: listHeight } : undefined}
+          >
+          <motion.div style={{ y }}>
+            {events.map((e) => (
+              <motion.div
+                key={e.id}
+                // Streamed rows (id >= 100) flash a fading highlight as they
+                // arrive; the seeded rows just render.
+                initial={e.id >= 100 ? { backgroundColor: 'rgba(59,130,246,0.14)' } : false}
+                animate={{ backgroundColor: 'rgba(59,130,246,0)' }}
+                transition={{ duration: 1.5, ease: 'easeOut' }}
+                className={EVENT_ROW_CLASS}
+              >
+                <div className="text-muted-foreground">{e.time}</div>
+                <div className="text-muted-foreground">{e.platform}</div>
+                <div
                   className={
                     e.action === 'Download error'
                       ? 'text-amber-600 dark:text-amber-400'
                       : e.action === 'Rollback'
                         ? 'text-destructive'
-                        : ''
+                        : 'text-muted-foreground'
                   }
                 >
                   {e.action}
-                </td>
-                <td className="font-mono text-foreground">{e.bundle}</td>
-                <td>{e.channel}</td>
-                <td className="font-mono">{e.runtime}</td>
-              </tr>
+                </div>
+                <div className="font-mono text-foreground">{e.bundle}</div>
+                <div className="text-muted-foreground">{e.channel}</div>
+                <div className="font-mono text-muted-foreground">{e.runtime}</div>
+              </motion.div>
             ))}
-          </tbody>
-        </table>
+          </motion.div>
+          </div>
+        </div>
       </div>
     </div>
   );
