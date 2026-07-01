@@ -16,7 +16,9 @@ export async function checkCompatibilityAgainstChannel(options: {
 }): Promise<CompatibilityResult> {
   const { api, channel, runtimeVersion, nativePackages } = options;
 
-  const { releases } = await api.listReleases(channel, { limit: 50 });
+  // 200 is the API's max page size; a channel whose lane baseline sits
+  // deeper than 200 releases back is treated as skipped (no baseline).
+  const { releases } = await api.listReleases(channel, { limit: 200 });
   const lane = runtimeVersion ?? null;
   const currentRelease = releases.find(
     (release) => !release.revertedAt && (release.runtimeVersion ?? null) === lane,

@@ -230,6 +230,23 @@ function compareEntry(local: NativePackage, remote: NativePackage): Compatibilit
     remoteVersion: remote.version,
   };
 
+  // Native code added for a platform the baseline never had (e.g. a plugin
+  // gains Android sources): devices on that platform need a store build,
+  // same as a brand-new plugin. The reverse (remote-only checksum) is a
+  // removal and stays compatible.
+  const addedPlatforms = [
+    ['ios', local.iosChecksum, remote.iosChecksum],
+    ['android', local.androidChecksum, remote.androidChecksum],
+  ].filter(([, localSum, remoteSum]) => localSum !== undefined && remoteSum === undefined);
+  if (addedPlatforms.length > 0) {
+    return {
+      ...base,
+      kind: 'native_code_changed',
+      incompatible: true,
+      note: `native code added for ${addedPlatforms.map(([platform]) => platform).join(' + ')} (not in the current release)`,
+    };
+  }
+
   const comparablePlatforms: Array<[string | undefined, string | undefined]> = [
     [local.iosChecksum, remote.iosChecksum],
     [local.androidChecksum, remote.androidChecksum],
