@@ -465,10 +465,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   /// manifest CDN path, so anything outside this charset (or a ".." sequence)
   /// is rejected before it is persisted or used.
   private func isValidChannelName(_ name: String) -> Bool {
-    guard name.range(of: "^[A-Za-z0-9._-]{1,64}$", options: .regularExpression) != nil else {
+    // \A/\z anchor the whole input: ICU's ^/$ would accept a trailing
+    // line terminator (e.g. "beta\n"), diverging from Android/server.
+    guard name.range(of: "\\A[A-Za-z0-9._-]{1,64}\\z", options: .regularExpression) != nil else {
       return false
     }
-    if name.contains("..") {
+    if name.contains("..") || name == "." {
       return false
     }
     return !["base", "default"].contains(name.lowercased())

@@ -578,7 +578,7 @@ public class UpdaterPlugin extends Plugin {
     if (!CHANNEL_NAME_PATTERN.matcher(name).matches()) {
       return false;
     }
-    if (name.contains("..")) {
+    if (name.contains("..") || ".".equals(name)) {
       return false;
     }
     String lower = name.toLowerCase(java.util.Locale.ROOT);

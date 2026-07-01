@@ -59,10 +59,23 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
 
   private static readonly OVERRIDE_CHANNEL_KEY = 'otakit_override_channel';
 
+  private static isValidChannelName(name: string): boolean {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(name) || name.includes('..') || name === '.') {
+      return false;
+    }
+    const lower = name.toLowerCase();
+    return lower !== 'base' && lower !== 'default';
+  }
+
   async setChannel(options: { channel: string | null }): Promise<void> {
     if (options.channel === null) {
       window.localStorage.removeItem(OtaKitWeb.OVERRIDE_CHANNEL_KEY);
       return;
+    }
+    if (!OtaKitWeb.isValidChannelName(options.channel)) {
+      throw new Error(
+        `Invalid channel name '${options.channel}': use 1-64 letters, numbers, '.', '_' or '-' (reserved names: base, default)`,
+      );
     }
     window.localStorage.setItem(OtaKitWeb.OVERRIDE_CHANNEL_KEY, options.channel);
   }
