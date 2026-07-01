@@ -78,14 +78,15 @@ function Code({ children }: { children: React.ReactNode }) {
 
 const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
   {
-    q: 'What are over-the-air (OTA) updates, and how do they work?',
+    q: 'How do over-the-air (OTA) updates work?',
     a: (
       <>
         <p>
-          OtaKit ships the <strong>web layer</strong> of your Capacitor app — the HTML, CSS,
-          JavaScript, and assets — straight to devices that already have your app installed, with no
-          App Store or Play Store submission. Your native binary (the compiled iOS/Android shell)
-          never changes; only the web bundle running inside it is swapped.
+          First, you ship your app to the App Store and Play Store the normal way — once — with the
+          OtaKit plugin installed. From then on, OtaKit delivers the <strong>web layer</strong> of
+          your Capacitor app (HTML, CSS, JavaScript, and assets) straight to devices that already
+          have it installed, with no new store submission. The native binary never changes; only the
+          web bundle running inside it is swapped.
         </p>
         <p>
           You run <Code>otakit upload --release</Code>, the bundle lands on the CDN, and the plugin
@@ -96,7 +97,7 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'What can I update over the air — and what still needs a store release?',
+    q: 'What can I update over the air?',
     a: (
       <>
         <p>
@@ -112,7 +113,7 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'Is this allowed by Apple and Google? Is it legal?',
+    q: 'Is this allowed by Apple and Google?',
     a: (
       <>
         <p>
@@ -142,7 +143,7 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'How is OtaKit different from Capgo — and why is it cheaper and more reliable?',
+    q: 'Why is OtaKit better than alternatives like Capgo?',
     a: (
       <>
         <p>
@@ -194,7 +195,7 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'Can I roll out to specific users or a percentage of devices?',
+    q: 'Can I roll out to specific users or a percentage?',
     a: (
       <p>
         Yes. Release to channels — production, beta, staging, or your own — target specific cohorts,
@@ -627,10 +628,6 @@ export default function LandingPage() {
             <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Questions, answered
             </h2>
-            <p className="mt-4 max-w-2xl text-muted-foreground">
-              How over-the-air updates work, what Apple and Google actually allow, and why OtaKit is
-              built differently.
-            </p>
           </div>
           <div className="px-8 py-6">
             <Accordion type="single" collapsible className="max-w-3xl">
