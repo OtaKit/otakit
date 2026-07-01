@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Separator } from '@/components/ui/separator';
 import { Pre } from '@/app/docs/CodeBlock';
 
@@ -65,7 +67,7 @@ export default function PluginReferencePage() {
         <ConfigRow
           field="runtimePolicy"
           type='"off" | "shadow" | "apply-staged" | "immediate"'
-          description="Cold-start policy used when runtimeVersion changes or resolves for the first time. Default: immediate."
+          description="Cold-start policy used when runtimeVersion changes or resolves for the first time — in practice, the app's first native install, or a native update where you bumped runtimeVersion in the plugin config. Default: immediate."
         />
         <ConfigRow
           field="checkInterval"
@@ -162,9 +164,22 @@ export default function PluginReferencePage() {
       </P>
       <P>
         When <Code>runtimeVersion</Code> changes, or when the app resolves a runtime lane for the
-        first time, OtaKit runs <Code>runtimePolicy</Code> on cold start. By default that policy is{' '}
+        first time, OtaKit runs <Code>runtimePolicy</Code> on cold start. In practice that means the
+        app&apos;s first native install, or a native update where you bumped{' '}
+        <Code>runtimeVersion</Code> in the plugin config. By default that policy is{' '}
         <Code>immediate</Code>, so fresh installs and new native shells catch up before that lane is
         marked resolved.
+      </P>
+      <P>
+        Want the full breakdown of how <Code>launchPolicy</Code>, <Code>resumePolicy</Code>, and{' '}
+        <Code>runtimePolicy</Code> combine? See the{' '}
+        <Link
+          href="/docs/update-strategies"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Update Strategies
+        </Link>{' '}
+        guide.
       </P>
 
       <Separator className="my-10" />

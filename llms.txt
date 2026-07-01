@@ -12,6 +12,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Next.js Guide: /docs/guide
 - React Guide: /docs/react
 - Channels: /docs/channels
+- Update Strategies: /docs/update-strategies
 - CI Automation: /docs/ci
 - Security: /docs/security
 - Self-hosting: /docs/self-host
@@ -24,7 +25,7 @@ How OtaKit works and where to start.
 
 OtaKit ships over-the-air updates for Capacitor apps. You build your web app, upload its bundle, and the plugin delivers that bundle to devices without store submissions or reviews.
 
-Start with setup
+Start with the quick setup
 
 ### How it works
 1. Create an app in the OtaKit dashboard and copy its `appId` into your `capacitor.config.ts` file.
@@ -43,9 +44,10 @@ Start with setup
 - **Self-hosting**: Run OtaKit on your own infrastructure when you need full control over delivery and trust.
 
 ### Getting started
-- **Setup**: Connect the default hosted OtaKit flow to your Capacitor app.
+- **Quick setup**: Connect the default hosted OtaKit flow to your Capacitor app.
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
 - **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
+- **Update Strategies**: How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, and configuration.
@@ -422,7 +424,7 @@ plugins: {
 - `runtimeVersion` (string): Optional native compatibility lane. Set it when a new store build must stop receiving older OTA bundles.
 - `launchPolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Cold-start policy after the current runtime lane is already resolved. Default: apply-staged.
 - `resumePolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Foreground resume policy. Default: shadow.
-- `runtimePolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Cold-start policy used when runtimeVersion changes or resolves for the first time. Default: immediate.
+- `runtimePolicy` ("off" | "shadow" | "apply-staged" | "immediate"): Cold-start policy used when runtimeVersion changes or resolves for the first time — in practice, the app's first native install, or a native update where you bumped runtimeVersion in the plugin config. Default: immediate.
 - `checkInterval` (number): Milliseconds between automatic background resume checks. Applies to `resumePolicy: "shadow"` and `resumePolicy: "apply-staged"` when no staged bundle is already waiting. Default: 600000. Set to 0 or a negative value to disable resume throttling.
 - `appReadyTimeout` (number): Milliseconds to wait for notifyAppReady(). Default: 10000.
 - `cdnUrl` (string): Optional CDN base URL for static manifest and bundle delivery. Leave unset for the hosted default.
@@ -451,7 +453,9 @@ If you ship a new store build and do not want it to keep consuming older OTA bun
 
 The CLI reads that same value automatically during upload, so releases stay inside the correct runtime lane without extra flags.
 
-When `runtimeVersion` changes, or when the app resolves a runtime lane for the first time, OtaKit runs `runtimePolicy` on cold start. By default that policy is `immediate`, so fresh installs and new native shells catch up before that lane is marked resolved.
+When `runtimeVersion` changes, or when the app resolves a runtime lane for the first time, OtaKit runs `runtimePolicy` on cold start. In practice that means the app's first native install, or a native update where you bumped `runtimeVersion` in the plugin config. By default that policy is `immediate`, so fresh installs and new native shells catch up before that lane is marked resolved.
+
+Want the full breakdown of how `launchPolicy`, `resumePolicy`, and `runtimePolicy` combine? See the Update Strategies guide.
 
 ### Automatic Flow (Default)
 
@@ -1173,6 +1177,45 @@ With that config:
 - Beta + production — use channels like `beta` and `production` to split audiences.
 - New store baseline: — bump `runtimeVersion` so the new native build starts a fresh OTA lane.
 
+## Update Strategies
+
+Route: /docs/update-strategies
+
+How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.
+
+OtaKit has one set of four policy values and three settings that decide when each one runs. The values — `off`, `shadow`, `apply-staged`, and `immediate` — describe what happens. `launchPolicy`, `resumePolicy`, and `runtimePolicy` describe when it happens. This guide walks through picking a combination; for the full field list see the Plugin API reference.
+
+### The four policy values
+- off — do nothing automatically. Nothing is checked, staged, or applied.
+- shadow — check for the latest update and stage it locally, but never apply it. The current session keeps running on the bundle it already has.
+- apply-staged — apply a bundle if one is already staged. If nothing is staged, it falls back to shadow behavior for that check.
+- immediate — check, stage, and apply the newest bundle right away when one is available.
+
+### When each setting runs
+- `launchPolicy` — every normal cold start, once the app's runtime lane is already resolved. This is the one most apps tune, since it covers the vast majority of app opens. Default: `apply-staged`.
+- `resumePolicy` — when the app returns to the foreground from the background, throttled by `checkInterval`. Default: `shadow`.
+- `runtimePolicy` — cold start specifically when `runtimeVersion` changes or resolves for the first time. In practice that's the app's first native install, or a native update where you bumped `runtimeVersion` in the plugin config before that release. Default: `immediate`, so a fresh runtime lane catches up fast instead of waiting on a bundle staged under the old lane.
+
+### Recommended combinations
+
+#### Hosted default — right for most apps
+
+`runtimePolicy: "immediate"`, `launchPolicy: "apply-staged"`, `resumePolicy: "shadow"`. Fast on first install, seamless between launches, and new bundles are ready to go as soon as a session restarts.
+
+#### Ship critical fixes instantly
+
+Set `launchPolicy` and `resumePolicy` to `immediate` as well. Devices apply a fix as soon as they check — even mid-session on resume. Trade-off: users can see the app reload while they're using it, so reserve this for cases where landing the fix fast matters more than a seamless reload.
+
+#### Update quietly, reload only with consent
+
+Set `launchPolicy` and `resumePolicy` to `shadow`. Bundles stage in the background and nothing ever activates on its own — call `apply()` yourself, for example from a "restart to update" banner once a staged bundle shows up in `getState()`.
+
+#### Full manual control
+
+Turn `launchPolicy`, `resumePolicy`, and `runtimePolicy` all `off`, then drive the lifecycle yourself with `check()`, `download()`, and `apply()`. Use this when your app wants to show its own update prompt or control install timing precisely — see the Manual Flow section of the Plugin API reference for the full pattern.
+
+Also see Channels & Runtime Version for how rollout audience and native compatibility lanes interact with these policies.
+
 ## CI Automation
 
 Route: /docs/ci
@@ -1336,7 +1379,7 @@ OtaKit is fully open source and can run on your own infrastructure. The managed 
 - Ingest Worker (`packages/ingest`) — Cloudflare Worker that receives device events and writes them to Tinybird. Required if you want to use dashboard analytics.
 - CDN bucket — public R2 or S3 bucket with a CDN domain. Serves manifest files and bundle zips directly to devices.
 
-The CLI (`packages/cli`) and Capacitor plugin (`packages/capacitor-plugin`) are client-side tools — they can be configured to point at your self-hosted services.
+The CLI (`packages/cli`) and Capacitor plugin ( `packages/capacitor-plugin`) are client-side tools — they can be configured to point at your self-hosted services.
 
 ### Required services
 - PostgreSQL 14+

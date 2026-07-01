@@ -109,6 +109,11 @@ export default function DocsOverviewPage() {
           description="Rollout tracks vs runtime compatibility lanes, and when to use each."
         />
         <NavCard
+          href="/docs/update-strategies"
+          title="Update Strategies"
+          description="How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply."
+        />
+        <NavCard
           href="/docs/ci"
           title="CI Automation"
           description="Build and ship bundles from GitHub Actions."

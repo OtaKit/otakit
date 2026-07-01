@@ -16,6 +16,11 @@ const DOCS = [
   { label: 'Next.js Guide', route: '/docs/guide', file: 'packages/site/app/docs/guide/page.tsx' },
   { label: 'React Guide', route: '/docs/react', file: 'packages/site/app/docs/react/page.tsx' },
   { label: 'Channels', route: '/docs/channels', file: 'packages/site/app/docs/channels/page.tsx' },
+  {
+    label: 'Update Strategies',
+    route: '/docs/update-strategies',
+    file: 'packages/site/app/docs/update-strategies/page.tsx',
+  },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   { label: 'Security', route: '/docs/security', file: 'packages/site/app/docs/security/page.tsx' },
   {

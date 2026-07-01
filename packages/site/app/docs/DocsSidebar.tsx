@@ -31,6 +31,7 @@ const NAV = [
       { label: 'Next.js Guide', href: '/docs/guide' },
       { label: 'React Guide', href: '/docs/react' },
       { label: 'Channels & Runtime Version', href: '/docs/channels' },
+      { label: 'Update Strategies', href: '/docs/update-strategies' },
       { label: 'CI automation', href: '/docs/ci' },
       { label: 'Self-hosting', href: '/docs/self-host' },
     ],
