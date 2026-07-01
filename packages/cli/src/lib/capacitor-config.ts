@@ -13,11 +13,14 @@ export const CAPACITOR_CONFIG_FILE_NAMES = [
 
 type UnknownRecord = Record<string, unknown>;
 
+export type UpdateStrategy = 'zip' | 'deltas';
+
 export interface CapacitorProjectConfig {
   configPath: string;
   appId?: string;
   channel?: string;
   runtimeVersion?: string;
+  updateStrategy?: UpdateStrategy;
   configuredServerUrl?: string;
   outputDir?: string;
 }
@@ -176,6 +179,10 @@ function extractProjectConfig(configPath: string, rawConfig: unknown): Capacitor
       otaKitConfig?.runtimeVersion,
       `${configPath}.plugins.OtaKit.runtimeVersion`,
     ),
+    updateStrategy: readOptionalUpdateStrategy(
+      otaKitConfig?.updateStrategy,
+      `${configPath}.plugins.OtaKit.updateStrategy`,
+    ),
     configuredServerUrl: readOptionalString(
       otaKitConfig?.serverUrl,
       `${configPath}.plugins.OtaKit.serverUrl`,
@@ -192,6 +199,17 @@ function asOptionalRecord(value: unknown, fieldPath: string): UnknownRecord | un
     throw new Error(`${fieldPath} must be an object.`);
   }
   return value;
+}
+
+function readOptionalUpdateStrategy(value: unknown, fieldPath: string): UpdateStrategy | undefined {
+  const raw = readOptionalString(value, fieldPath);
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (raw !== 'zip' && raw !== 'deltas') {
+    throw new Error(`${fieldPath} must be "zip" or "deltas".`);
+  }
+  return raw;
 }
 
 function readOptionalString(value: unknown, fieldPath: string): string | undefined {

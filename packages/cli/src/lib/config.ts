@@ -34,6 +34,7 @@ export interface ProjectConfig {
   appId?: string;
   channel?: string;
   runtimeVersion?: string;
+  updateStrategy?: 'zip' | 'deltas';
   configuredServerUrl?: string;
   outputDir?: string;
 }
@@ -42,6 +43,7 @@ export interface CliConfig extends ServerAuthConfig {
   appId: string;
   channel?: string;
   runtimeVersion?: string;
+  updateStrategy?: 'zip' | 'deltas';
   outputDir?: string;
 }
 
@@ -64,6 +66,7 @@ export interface ConfigResolveSnapshot {
   outputDir: ResolvedValue<string | null>;
   channel: ResolvedValue<string | null>;
   runtimeVersion: ResolvedValue<string | null>;
+  updateStrategy: ResolvedValue<'zip' | 'deltas' | null>;
   authToken: ResolvedValue<string | null>;
   authSource: AuthSource | null;
 }
@@ -169,6 +172,7 @@ export async function readProjectConfig(
     appId: projectConfig.appId,
     channel: projectConfig.channel,
     runtimeVersion: projectConfig.runtimeVersion,
+    updateStrategy: projectConfig.updateStrategy,
     configuredServerUrl: projectConfig.configuredServerUrl
       ? parseServerUrl(projectConfig.configuredServerUrl, cwd)
       : undefined,
@@ -251,6 +255,10 @@ export async function resolveConfigSnapshot(
   const runtimeVersionValue = runtimeVersionFromConfig ?? null;
   const runtimeVersionSource: ConfigValueSource = runtimeVersionFromConfig ? 'config' : 'none';
 
+  const updateStrategyFromConfig = projectConfig?.updateStrategy;
+  const updateStrategyValue = updateStrategyFromConfig ?? null;
+  const updateStrategySource: ConfigValueSource = updateStrategyFromConfig ? 'config' : 'none';
+
   const outputDirFromFlag = toNonEmptyString(options?.outputDir);
   const outputDirFromEnv = resolveEnvOutputDir();
   const outputDirFromConfig = projectConfig?.outputDir;
@@ -305,6 +313,10 @@ export async function resolveConfigSnapshot(
       value: runtimeVersionValue,
       source: runtimeVersionSource,
     },
+    updateStrategy: {
+      value: updateStrategyValue,
+      source: updateStrategySource,
+    },
     authToken: {
       value: authTokenValue,
       source: authTokenSource,
@@ -339,6 +351,7 @@ export async function requireConfig(options?: ConfigResolveOptions): Promise<Cli
     appId: snapshot.appId.value,
     channel: snapshot.channel.value ?? undefined,
     runtimeVersion: snapshot.runtimeVersion.value ?? undefined,
+    updateStrategy: snapshot.updateStrategy.value ?? undefined,
     outputDir: snapshot.outputDir.value ?? undefined,
     serverUrl: snapshot.serverUrl.value,
     authToken: snapshot.authToken.value,

@@ -26,6 +26,7 @@ final class BundleStore {
   private final Context context;
   private final SharedPreferences prefs;
   private final File bundlesDirectory;
+  private final File filesCacheDirectory;
   private final String builtinVersion;
   private final String nativeBuild;
   private final String appRuntimeVersion;
@@ -46,6 +47,16 @@ final class BundleStore {
       //noinspection ResultOfMethodCallIgnored
       bundlesDirectory.mkdirs();
     }
+    this.filesCacheDirectory = new File(this.context.getFilesDir(), "otakit_files");
+    if (!filesCacheDirectory.exists()) {
+      //noinspection ResultOfMethodCallIgnored
+      filesCacheDirectory.mkdirs();
+    }
+  }
+
+  /** Content-addressed file cache for the deltas strategy ({@code otakit_files/<sha256>}). */
+  File getFilesCacheDirectory() {
+    return filesCacheDirectory;
   }
 
   String getNativeBuild() {

@@ -1,11 +1,11 @@
-import { createReadStream, readFileSync, unlinkSync } from 'node:fs';
+import { createReadStream, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import type { ApiClient, Bundle } from './api.js';
+import type { ApiClient, Bundle, DeltaFileDescriptor } from './api.js';
 import { CliError } from './errors.js';
 import { hashFile } from './hash.js';
 import { getCliUserAgent } from './version.js';
@@ -132,6 +132,7 @@ export type UploadWorkflowOptions = {
   version: string;
   runtimeVersion?: string;
   releaseChannel?: string | null;
+  strategy?: 'zip' | 'deltas';
   onStatus?: (message: string) => void;
 };
 
@@ -143,6 +144,10 @@ export type UploadWorkflowResult = {
 export async function runUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
+  if (options.strategy === 'deltas') {
+    return runDeltaUploadWorkflow(options);
+  }
+
   const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
 
   validateBundleDirectory(sourcePath);
@@ -198,6 +203,155 @@ export async function runUploadWorkflow(
     process.off('SIGINT', cleanup);
     await removeFileIfExists(tempZipPath);
   }
+}
+
+/**
+ * Walk a bundle directory into relative posix file descriptors.
+ * Mirrors the zip walker's rules: symlinks are rejected, empty files included.
+ */
+export async function collectDeltaFiles(sourceDirectory: string): Promise<DeltaFileDescriptor[]> {
+  const files: DeltaFileDescriptor[] = [];
+
+  const walk = async (relativePath: string): Promise<void> => {
+    const currentPath = join(sourceDirectory, relativePath);
+    const entries = readdirSync(currentPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const nextRelativePath = relativePath ? join(relativePath, entry.name) : entry.name;
+      const absolutePath = join(sourceDirectory, nextRelativePath);
+      const posixPath = nextRelativePath.split('\\').join(posix.sep);
+
+      if (entry.isSymbolicLink()) {
+        throw new CliError(
+          [
+            `Unsupported symlink in bundle output: ${posixPath}`,
+            'Remove symlinks from the web build output before uploading.',
+          ].join('\n'),
+        );
+      }
+      if (entry.isDirectory()) {
+        await walk(nextRelativePath);
+        continue;
+      }
+      if (entry.isFile()) {
+        const fileStat = await stat(absolutePath);
+        files.push({
+          path: posixPath,
+          sha256: await hashFile(absolutePath),
+          size: fileStat.size,
+        });
+      }
+    }
+  };
+
+  await walk('');
+  return files;
+}
+
+async function uploadDeltaFileToPresignedUrl(
+  filePath: string,
+  size: number,
+  presignedUrl: string,
+): Promise<void> {
+  const body = createReadStream(filePath);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300_000);
+
+  const requestOptions: RequestInit & { duplex?: 'half' } = {
+    method: 'PUT',
+    body,
+    signal: controller.signal,
+    headers: {
+      // Must match the headers pinned into the presigned signature
+      // (console/lib/storage.ts::createPresignedFileUpload).
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(size),
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'User-Agent': getCliUserAgent(),
+    },
+    duplex: 'half',
+  };
+
+  try {
+    const response = await fetch(presignedUrl, requestOptions);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new CliError(`File upload failed (${response.status}): ${message || 'unknown error'}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+const DELTA_UPLOAD_CONCURRENCY = 8;
+
+async function runDeltaUploadWorkflow(
+  options: UploadWorkflowOptions,
+): Promise<UploadWorkflowResult> {
+  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
+
+  validateBundleDirectory(sourcePath);
+
+  onStatus?.('Hashing bundle files...');
+  const files = await collectDeltaFiles(sourcePath);
+  if (files.length === 0) {
+    throw new CliError(`No files found in ${sourcePath}`);
+  }
+
+  onStatus?.(`Requesting delta upload for ${files.length} files...`);
+  const initiated = await api.initiateDeltaUpload({
+    version,
+    runtimeVersion,
+    files,
+  });
+
+  const expiresAt = new Date(initiated.expiresAt);
+  if (expiresAt.getTime() - Date.now() < 60_000) {
+    throw new CliError('Presigned upload URLs have expired or are about to expire. Please retry.');
+  }
+
+  const pathByHash = new Map<string, { path: string; size: number }>();
+  for (const file of files) {
+    if (!pathByHash.has(file.sha256)) {
+      pathByHash.set(file.sha256, { path: file.path, size: file.size });
+    }
+  }
+
+  const uploads = initiated.uploads;
+  if (uploads.length > 0) {
+    onStatus?.(`Uploading ${uploads.length} new files (${files.length} total)...`);
+    let uploaded = 0;
+    for (let index = 0; index < uploads.length; index += DELTA_UPLOAD_CONCURRENCY) {
+      const chunk = uploads.slice(index, index + DELTA_UPLOAD_CONCURRENCY);
+      await Promise.all(
+        chunk.map(async (upload) => {
+          const source = pathByHash.get(upload.sha256);
+          if (!source) {
+            throw new CliError(`Server requested unknown file hash: ${upload.sha256}`);
+          }
+          await uploadDeltaFileToPresignedUrl(
+            join(sourcePath, source.path),
+            source.size,
+            upload.presignedUrl,
+          );
+          uploaded += 1;
+          onStatus?.(`Uploading new files: ${uploaded}/${uploads.length}`);
+        }),
+      );
+    }
+  } else {
+    onStatus?.('All files already uploaded (content reuse) — skipping upload.');
+  }
+
+  onStatus?.('Finalizing...');
+  const bundle = await api.finalizeDeltaUpload({ uploadId: initiated.uploadId });
+
+  if (releaseChannel !== undefined) {
+    onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
+    await api.release(releaseChannel, bundle.id);
+  }
+
+  return { bundle, releaseChannel };
 }
 
 function validateVersion(value: string | undefined, label: string): string | null {

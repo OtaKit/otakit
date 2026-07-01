@@ -8,6 +8,7 @@ export interface Bundle {
   sha256: string;
   size: number;
   runtimeVersion?: string | null;
+  strategy?: string;
   createdAt: string;
 }
 
@@ -15,6 +16,19 @@ export interface UploadInitResponse {
   uploadId: string;
   presignedUrl: string;
   storageKey: string;
+  expiresAt: string;
+}
+
+export interface DeltaFileDescriptor {
+  path: string;
+  sha256: string;
+  size: number;
+}
+
+export interface DeltaUploadInitResponse {
+  uploadId: string;
+  filesHash: string;
+  uploads: { sha256: string; presignedUrl: string }[];
   expiresAt: string;
 }
 
@@ -106,6 +120,24 @@ export class ApiClient {
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {
     return this.fetch(this.appPath('/bundles/finalize'), {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async initiateDeltaUpload(options: {
+    version: string;
+    runtimeVersion?: string;
+    files: DeltaFileDescriptor[];
+  }): Promise<DeltaUploadInitResponse> {
+    return this.fetch(this.appPath('/bundles/initiate-delta'), {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async finalizeDeltaUpload(options: { uploadId: string }): Promise<Bundle> {
+    return this.fetch(this.appPath('/bundles/finalize-delta'), {
       method: 'POST',
       body: JSON.stringify(options),
     });

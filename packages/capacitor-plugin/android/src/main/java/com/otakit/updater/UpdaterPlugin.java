@@ -928,9 +928,12 @@ public class UpdaterPlugin extends Plugin {
   private JSObject manifestToJSObject(ManifestClient.LatestManifest latest) {
     JSObject object = new JSObject();
     object.put("version", latest.version);
-    object.put("url", latest.url);
+    if (latest.url != null) {
+      object.put("url", latest.url);
+    }
     object.put("sha256", latest.sha256);
     object.put("size", latest.size);
+    object.put("strategy", latest.strategy);
     if (latest.runtimeVersion != null) {
       object.put("runtimeVersion", latest.runtimeVersion);
     }
@@ -942,6 +945,14 @@ public class UpdaterPlugin extends Plugin {
     ManifestClient.LatestManifest latest,
     String targetChannel
   ) throws Exception {
+    if ("deltas".equals(latest.strategy)) {
+      return assembleAndStage(latest, targetChannel);
+    }
+
+    if (latest.url == null) {
+      throw new IllegalStateException("Invalid download URL from manifest");
+    }
+
     return downloadAndStage(
       new URL(latest.url),
       latest.version,
@@ -951,6 +962,151 @@ public class UpdaterPlugin extends Plugin {
       targetChannel,
       latest.releaseId
     );
+  }
+
+  private static final String BUNDLE_FILE_LIST_NAME = "otakit_files.json";
+
+  /**
+   * Deltas strategy: fill content-cache misses and assemble the bundle from
+   * the cache, then hand it to the same staging path the zip flow uses.
+   */
+  private BundleInfo assembleAndStage(ManifestClient.LatestManifest manifest, String targetChannel)
+    throws Exception {
+    // Same conservative disk-space guard as the zip path.
+    if (manifest.size > 0) {
+      long requiredSpace = (long) (manifest.size * 2.5);
+      if (getFreeDiskSpace() < requiredSpace) {
+        sendDeviceEvent(
+          "download_error",
+          manifest.version,
+          manifest.runtimeVersion,
+          targetChannel,
+          manifest.releaseId,
+          "insufficient_disk_space"
+        );
+        throw new IllegalStateException("Insufficient disk space");
+      }
+    }
+
+    File assembleDirectory = new File(
+      getContext().getCacheDir(),
+      "otakit-assemble-" + System.currentTimeMillis()
+    );
+
+    try {
+      if (manifest.files == null || manifest.files.isEmpty()) {
+        throw new IllegalStateException("Delta manifest is missing its file list");
+      }
+
+      DeltaAssembler assembler = new DeltaAssembler(
+        store.getFilesCacheDirectory(),
+        allowInsecureUrls
+      );
+      assembler.validate(manifest.files, manifest.sha256);
+      assembler.seedFromBuiltinIfNeeded(getContext(), BUILTIN_ASSET_PATH, store.getNativeBuild());
+      assembler.assemble(manifest.files, assembleDirectory, getContext());
+
+      String bundleId = buildBundleId(manifest.version, manifest.releaseId, manifest.sha256);
+      File destination = coordinator.bundleDirectory(bundleId);
+      if (destination.exists()) {
+        deleteRecursively(destination);
+      }
+      moveDirectory(assembleDirectory, destination);
+
+      // Record this bundle's content hashes for cache pruning.
+      try {
+        org.json.JSONArray hashes = new org.json.JSONArray();
+        for (ManifestClient.ManifestFileEntry entry : manifest.files) {
+          hashes.put(entry.sha256.toLowerCase());
+        }
+        try (
+          FileOutputStream output = new FileOutputStream(
+            new File(destination, BUNDLE_FILE_LIST_NAME)
+          )
+        ) {
+          output.write(hashes.toString().getBytes(StandardCharsets.UTF_8));
+        }
+      } catch (Exception ignored) {}
+
+      BundleInfo info = new BundleInfo(
+        bundleId,
+        manifest.version,
+        manifest.runtimeVersion,
+        BundleStatus.PENDING,
+        System.currentTimeMillis(),
+        manifest.sha256,
+        destination.getAbsolutePath(),
+        targetChannel,
+        manifest.releaseId
+      );
+      java.util.List<String> cleanupBundleIds = coordinator.stageDownloadedBundle(info);
+      coordinator.cleanupBundles(cleanupBundleIds);
+
+      pruneDeltaCache(assembler);
+
+      sendDeviceEvent(
+        "downloaded",
+        manifest.version,
+        manifest.runtimeVersion,
+        targetChannel,
+        manifest.releaseId,
+        null
+      );
+      return info;
+    } catch (Exception e) {
+      sendDeviceEvent(
+        "download_error",
+        manifest.version,
+        manifest.runtimeVersion,
+        targetChannel,
+        manifest.releaseId,
+        e.getMessage()
+      );
+      throw e;
+    } finally {
+      if (assembleDirectory.exists()) {
+        try {
+          deleteRecursively(assembleDirectory);
+        } catch (Exception ignored) {}
+      }
+    }
+  }
+
+  /** Keep only cache entries referenced by live bundles (plus the builtin seed). */
+  private void pruneDeltaCache(DeltaAssembler assembler) {
+    java.util.Set<String> referenced = new java.util.HashSet<>();
+    String[] liveBundleIds = new String[] {
+      store.getCurrentBundleId(),
+      store.getFallbackBundleId(),
+      store.getStagedBundleId(),
+    };
+    for (String bundleId : liveBundleIds) {
+      if (bundleId == null) {
+        continue;
+      }
+      File listFile = new File(store.bundleDirectory(bundleId), BUNDLE_FILE_LIST_NAME);
+      if (!listFile.exists()) {
+        continue;
+      }
+      try (FileInputStream input = new FileInputStream(listFile)) {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) > 0) {
+          out.write(buffer, 0, read);
+        }
+        org.json.JSONArray hashes = new org.json.JSONArray(
+          new String(out.toByteArray(), StandardCharsets.UTF_8)
+        );
+        for (int index = 0; index < hashes.length(); index++) {
+          String hash = hashes.optString(index, null);
+          if (hash != null) {
+            referenced.add(hash.toLowerCase());
+          }
+        }
+      } catch (Exception ignored) {}
+    }
+    assembler.pruneCache(referenced);
   }
 
   private void moveDirectory(File source, File destination) throws Exception {

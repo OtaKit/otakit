@@ -14,7 +14,19 @@ type UploadOptions = {
   version?: string;
   strictVersion?: boolean;
   release?: string | boolean;
+  strategy?: string;
 };
+
+function resolveStrategy(
+  flagValue: string | undefined,
+  configValue: 'zip' | 'deltas' | undefined,
+): 'zip' | 'deltas' {
+  const raw = flagValue?.trim().toLowerCase();
+  if (raw !== undefined && raw !== 'zip' && raw !== 'deltas') {
+    throw new Error(`--strategy must be "zip" or "deltas" (got "${flagValue}")`);
+  }
+  return (raw as 'zip' | 'deltas' | undefined) ?? configValue ?? 'zip';
+}
 
 function resolveReleaseChannel(
   releaseOption: string | boolean | undefined,
@@ -38,6 +50,10 @@ export const uploadCommand = new Command('upload')
   .option('--version <version>', 'Version string (default: OTAKIT_VERSION, then auto-generated)')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
+  .option(
+    '--strategy <strategy>',
+    'Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects)',
+  )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -59,8 +75,11 @@ export const uploadCommand = new Command('upload')
       }
 
       const releaseChannel = resolveReleaseChannel(options.release);
+      const strategy = resolveStrategy(options.strategy, config.updateStrategy);
 
-      const spinner = ora('Creating zip archive...').start();
+      const spinner = ora(
+        strategy === 'deltas' ? 'Hashing bundle files...' : 'Creating zip archive...',
+      ).start();
 
       const bundle = await (async () => {
         try {
@@ -70,6 +89,7 @@ export const uploadCommand = new Command('upload')
             version,
             runtimeVersion: config.runtimeVersion,
             releaseChannel,
+            strategy,
             onStatus: (message) => {
               spinner.text = message;
             },

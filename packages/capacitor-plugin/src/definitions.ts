@@ -38,14 +38,16 @@ export interface LatestVersion {
   version: string;
   /** Native compatibility lane for this update. */
   runtimeVersion?: string;
-  /** Download URL */
-  url: string;
-  /** SHA-256 checksum */
+  /** Bundle download URL. Present for the 'zip' strategy; absent for 'deltas'. */
+  url?: string;
+  /** SHA-256 checksum: the zip hash for 'zip', the canonical filesHash for 'deltas'. */
   sha256: string;
-  /** Bundle size in bytes */
+  /** Bundle size in bytes (total decompressed size for 'deltas') */
   size: number;
   /** Release history ID associated with this manifest */
   releaseId: string;
+  /** Update strategy this manifest was published with. Defaults to 'zip'. */
+  strategy?: 'zip' | 'deltas';
 }
 
 export interface OtaKitState {

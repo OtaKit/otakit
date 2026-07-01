@@ -41,6 +41,23 @@ final class BundleStore {
     return directory
   }()
 
+  /// Content-addressed file cache for the deltas strategy (`otakit_files/<sha256>`).
+  private(set) lazy var filesCacheDirectory: URL = {
+    let appSupport = fileManager.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    ).first!
+    let directory = appSupport.appendingPathComponent(
+      "otakit_files",
+      isDirectory: true
+    )
+    try? fileManager.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    return directory
+  }()
+
   var builtinVersion: String {
     Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
   }

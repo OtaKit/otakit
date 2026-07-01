@@ -855,10 +855,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   ) -> [String: Any] {
     var payload: [String: Any] = [
       "version": latest.version,
-      "url": latest.url,
       "sha256": latest.sha256,
       "size": latest.size,
+      "strategy": latest.strategy,
     ]
+    if let url = latest.url {
+      payload["url"] = url
+    }
     if let runtimeVersion = latest.runtimeVersion {
       payload["runtimeVersion"] = runtimeVersion
     }
@@ -870,7 +873,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     _ manifest: LatestManifest,
     targetChannel: String?
   ) async throws -> BundleInfo {
-    guard let url = URL(string: manifest.url) else {
+    if manifest.strategy == "deltas" {
+      return try await assembleAndStage(manifest: manifest, targetChannel: targetChannel)
+    }
+
+    guard let urlString = manifest.url, let url = URL(string: urlString) else {
       throw NSError(
         domain: "OtaKit",
         code: 1,
@@ -887,6 +894,142 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       channel: targetChannel,
       releaseId: manifest.releaseId
     )
+  }
+
+  private static let bundleFileListName = "otakit_files.json"
+
+  /// Deltas strategy: fill content-cache misses and assemble the bundle from
+  /// the cache, then hand it to the same staging path the zip flow uses.
+  private func assembleAndStage(
+    manifest: LatestManifest,
+    targetChannel: String?
+  ) async throws -> BundleInfo {
+    // Same conservative disk-space guard as the zip path.
+    let requiredSpace = Int64(Double(manifest.size) * 2.5)
+    if getFreeDiskSpace() < requiredSpace {
+      sendDeviceEvent(
+        action: .downloadError,
+        bundleVersion: manifest.version,
+        runtimeVersion: manifest.runtimeVersion,
+        channel: targetChannel,
+        releaseId: manifest.releaseId,
+        detail: "insufficient_disk_space"
+      )
+      throw NSError(
+        domain: "OtaKit",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Insufficient disk space"]
+      )
+    }
+
+    let assembleDirectory = fileManager.temporaryDirectory
+      .appendingPathComponent("otakit-assemble-\(UUID().uuidString)", isDirectory: true)
+    defer {
+      try? fileManager.removeItem(at: assembleDirectory)
+    }
+
+    do {
+      guard let files = manifest.files, !files.isEmpty else {
+        throw NSError(
+          domain: "OtaKit",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "Delta manifest is missing its file list"]
+        )
+      }
+
+      let assembler = DeltaAssembler(
+        cacheDirectory: store.filesCacheDirectory,
+        downloader: downloader
+      )
+      try assembler.validate(files, expectedFilesHash: manifest.sha256)
+
+      if let builtinDirectory = Bundle.main.resourceURL?
+        .appendingPathComponent("public", isDirectory: true) {
+        assembler.seedFromBuiltinIfNeeded(
+          builtinDirectory: builtinDirectory,
+          nativeBuild: coordinator.nativeBuild
+        )
+      }
+
+      try await assembler.assemble(entries: files, into: assembleDirectory)
+
+      let bundleId = buildBundleId(
+        version: manifest.version,
+        releaseId: manifest.releaseId,
+        sha256: manifest.sha256
+      )
+      let destination = coordinator.bundleDirectory(for: bundleId)
+      if fileManager.fileExists(atPath: destination.path) {
+        try fileManager.removeItem(at: destination)
+      }
+      try fileManager.moveItem(at: assembleDirectory, to: destination)
+
+      // Record this bundle's content hashes for cache pruning.
+      let hashes = files.map { $0.sha256.lowercased() }
+      if let data = try? JSONSerialization.data(withJSONObject: hashes) {
+        try? data.write(
+          to: destination.appendingPathComponent(UpdaterPlugin.bundleFileListName),
+          options: .atomic
+        )
+      }
+
+      let info = BundleInfo(
+        id: bundleId,
+        version: manifest.version,
+        runtimeVersion: manifest.runtimeVersion,
+        status: .pending,
+        downloadedAt: Date(),
+        sha256: manifest.sha256,
+        path: destination.path,
+        channel: targetChannel,
+        releaseId: manifest.releaseId
+      )
+
+      let cleanupBundleIds = try coordinator.stageDownloadedBundle(info)
+      coordinator.cleanupBundles(cleanupBundleIds)
+
+      pruneDeltaCache(assembler: assembler)
+
+      sendDeviceEvent(
+        action: .downloaded,
+        bundleVersion: manifest.version,
+        runtimeVersion: manifest.runtimeVersion,
+        channel: targetChannel,
+        releaseId: manifest.releaseId
+      )
+      return info
+    } catch {
+      sendDeviceEvent(
+        action: .downloadError,
+        bundleVersion: manifest.version,
+        runtimeVersion: manifest.runtimeVersion,
+        channel: targetChannel,
+        releaseId: manifest.releaseId,
+        detail: error.localizedDescription
+      )
+      throw error
+    }
+  }
+
+  /// Keep only cache entries referenced by live bundles (plus the builtin seed).
+  private func pruneDeltaCache(assembler: DeltaAssembler) {
+    var referenced = Set<String>()
+    let liveBundleIds = [
+      store.getCurrentBundleId(),
+      store.getFallbackBundleId(),
+      store.getStagedBundleId(),
+    ]
+    for bundleId in liveBundleIds {
+      guard let bundleId else { continue }
+      let listURL = store.bundleDirectory(for: bundleId)
+        .appendingPathComponent(UpdaterPlugin.bundleFileListName)
+      guard let data = try? Data(contentsOf: listURL),
+            let hashes = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+        continue
+      }
+      referenced.formUnion(hashes.map { $0.lowercased() })
+    }
+    assembler.pruneCache(referencedHashes: referenced)
   }
 
   private func pruneIncompatibleBundles() {
