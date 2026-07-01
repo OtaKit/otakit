@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
 import { site } from '@/lib/site';
+import { Pre } from '@/app/docs/CodeBlock';
 
 export const metadata = {
   title: 'React Guide',
@@ -179,14 +180,6 @@ function P({ children }: { children: React.ReactNode }) {
 
 function Code({ children }: { children: React.ReactNode }) {
   return <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{children}</code>;
-}
-
-function Pre({ children }: { children: string }) {
-  return (
-    <pre className="mt-3 overflow-x-auto rounded-lg border bg-muted px-4 py-3 font-mono text-xs leading-6 text-muted-foreground">
-      {children}
-    </pre>
-  );
 }
 
 function Step({
