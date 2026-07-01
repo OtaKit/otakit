@@ -4,6 +4,12 @@ import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } 
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { ScaleToFit } from '@/components/ScaleToFit';
 import { site } from '@/lib/site';
@@ -52,6 +58,179 @@ const HERO_ICON_CLOUD: HeroIconCloudItem[] = [
     size: 78,
     opacity: 0.06,
     rotate: 12,
+  },
+];
+
+const STATS: { value: string; label: string }[] = [
+  { value: '100+', label: 'Apps registered' },
+  { value: '1,000,000+', label: 'Updates delivered' },
+  { value: '99.99%', label: 'Delivery uptime' },
+];
+
+// Inline code style for use inside FAQ answers.
+function Code({ children }: { children: React.ReactNode }) {
+  return (
+    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[13px] text-foreground">
+      {children}
+    </code>
+  );
+}
+
+const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
+  {
+    q: 'How do over-the-air (OTA) updates work?',
+    a: (
+      <>
+        <p>
+          First, you ship your app to the App Store and Play Store the normal way — once — with the
+          OtaKit plugin installed. From then on, OtaKit delivers the <strong>web layer</strong> of
+          your Capacitor app (HTML, CSS, JavaScript, and assets) straight to devices that already
+          have it installed, with no new store submission. The native binary never changes; only the
+          web bundle running inside it is swapped.
+        </p>
+        <p>
+          You run <Code>otakit upload --release</Code>, the bundle lands on the CDN, and the plugin
+          on each device checks for it, downloads it in the background, and activates it on the next
+          cold launch.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'What can I update over the air?',
+    a: (
+      <>
+        <p>
+          Anything in your web layer: JavaScript, CSS, HTML, copy, feature flags, images, and other
+          web assets.
+        </p>
+        <p>
+          What you <em>can’t</em> change over the air is native code, native plugins, or your
+          Capacitor native config — those still go through normal App Store and Play review. That is
+          the exact line Apple and Google draw, and OtaKit only ever touches the web layer.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'Is this allowed by Apple and Google?',
+    a: (
+      <>
+        <p>
+          Yes. Updating the web layer is explicitly permitted. Apple’s Developer Program License
+          Agreement <strong>§3.3.2</strong> allows interpreted code (JavaScript) to be downloaded
+          into an app as long as it (a) doesn’t change the app’s primary purpose, (b) doesn’t create
+          a store or storefront for other code, and (c) doesn’t bypass the OS’s signing, sandbox, or
+          security.
+        </p>
+        <p>
+          Capacitor runs your JavaScript inside Apple’s own WebKit web view, so web-bundle updates
+          sit squarely inside that rule. Google Play permits the same for interpreted/web code.
+          Because OtaKit never updates native binaries, you stay compliant — and your native
+          releases keep going through review as normal.
+        </p>
+        <p>
+          <a
+            href="https://developer.apple.com/support/terms/apple-developer-program-license-agreement/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Read Apple’s clause §3.3.2 →
+          </a>
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'Why is OtaKit better than alternatives like Capgo?',
+    a: (
+      <>
+        <p>
+          One fundamental, technical difference: OtaKit distributes every update over{' '}
+          <strong>Cloudflare’s global CDN</strong>. Your users’ devices never touch OtaKit’s own
+          servers — they pull bundles straight from Cloudflare’s edge, 100%.
+        </p>
+        <p>That has three consequences:</p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong>Reliability isn’t capped by our uptime.</strong> Delivery runs on Cloudflare’s
+            edge — one of the most resilient networks on earth — not on a server we operate.
+          </li>
+          <li>
+            <strong>Updates are fast everywhere.</strong> Every device downloads from the nearest
+            edge node worldwide, not from a single origin region.
+          </li>
+          <li>
+            <strong>It’s far cheaper.</strong> We don’t run or mark up bandwidth-heavy origin
+            infrastructure, so we price at a fraction of the alternatives — billed on updates
+            delivered, not seats, devices, bandwidth, or storage.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    q: 'What happens if I ship a broken update?',
+    a: (
+      <>
+        <p>
+          Every device calls <Code>notifyAppReady()</Code> once the new bundle has booted
+          successfully. If it doesn’t confirm within the launch window, OtaKit automatically rolls
+          that device back to the last known-good bundle — so a bad release can’t brick your app.
+        </p>
+        <p>You can also revert any channel to a previous bundle instantly from the dashboard.</p>
+      </>
+    ),
+  },
+  {
+    q: 'How fast do updates reach users?',
+    a: (
+      <p>
+        The bundle is live on the CDN the moment you release. By default the plugin downloads it in
+        the background and activates on the next cold launch, so most active users are updated
+        within a day — and critical fixes reach devices in minutes, not the days or weeks of store
+        review.
+      </p>
+    ),
+  },
+  {
+    q: 'Can I roll out to specific users or a percentage?',
+    a: (
+      <p>
+        Yes. Release to channels — production, beta, staging, or your own — target specific cohorts,
+        or stage a percentage rollout, then promote or roll back per channel from the dashboard or
+        CLI.
+      </p>
+    ),
+  },
+  {
+    q: 'Do I have to change my current release process?',
+    a: (
+      <p>
+        No. Install the plugin once and keep your normal native build-and-submit flow. OtaKit only
+        handles the web-layer updates in between store releases, and setup takes a few minutes.
+      </p>
+    ),
+  },
+  {
+    q: 'What do you track about my end users?',
+    a: (
+      <p>
+        Nothing about the users themselves. Because devices download directly from Cloudflare’s CDN,
+        OtaKit doesn’t fingerprint devices or track individuals. We count updates delivered for
+        billing and show you aggregate release analytics — that’s it.
+      </p>
+    ),
+  },
+  {
+    q: 'Is OtaKit open source?',
+    a: (
+      <p>
+        Yes — MIT-licensed and self-hostable. Run it on our hosted platform, or host the entire
+        stack yourself.
+      </p>
+    ),
   },
 ];
 
@@ -419,6 +598,50 @@ export default function LandingPage() {
                 Documentation
               </Button>
             </Link>
+          </div>
+        </div>
+      </section>
+
+      <Separator className="" />
+
+      {/* Stats */}
+      <section className="border-x border-border mx-auto max-w-screen-xl">
+        <div className="grid gap-px bg-border sm:grid-cols-3">
+          {STATS.map((s) => (
+            <div key={s.label} className="bg-background px-8 py-16 text-center">
+              <div className="text-4xl font-bold tracking-tight sm:text-5xl">{s.value}</div>
+              <div className="mt-3 text-sm text-muted-foreground">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <Separator className="" />
+
+      {/* FAQ */}
+      <section id="faq" className="border-x border-border mx-auto max-w-screen-xl">
+        <div className="overflow-hidden">
+          <div className="border-b border-border px-8 py-10 pt-30">
+            <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+              FAQ
+            </p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+              Questions, answered
+            </h2>
+          </div>
+          <div className="px-8 py-6">
+            <Accordion type="single" collapsible className="w-full">
+              {FAQ_ITEMS.map((item, i) => (
+                <AccordionItem key={i} value={`faq-${i}`}>
+                  <AccordionTrigger className="text-base font-semibold">{item.q}</AccordionTrigger>
+                  <AccordionContent>
+                    <div className="max-w-2xl space-y-3 text-[15px] leading-relaxed text-muted-foreground">
+                      {item.a}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
         </div>
       </section>
