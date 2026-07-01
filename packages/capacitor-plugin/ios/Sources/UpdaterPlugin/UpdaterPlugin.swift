@@ -620,7 +620,32 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       }
     }
 
-    let zipURL = try await downloader.download(from: url)
+    let zipURL: URL
+    do {
+      zipURL = try await downloader.download(from: url)
+    } catch {
+      // Network failures must report like every other download-path failure
+      // (Android's downloadZip already sits inside its try block).
+      sendDeviceEvent(
+        action: .downloadError,
+        bundleVersion: version,
+        runtimeVersion: runtimeVersion,
+        channel: channel,
+        releaseId: releaseId,
+        detail: error.localizedDescription
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: version,
+          runtimeVersion: runtimeVersion,
+          channel: channel,
+          releaseId: releaseId,
+          reason: failureReason(from: error)
+        )
+      )
+      throw error
+    }
 
     let extractDirectory = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)

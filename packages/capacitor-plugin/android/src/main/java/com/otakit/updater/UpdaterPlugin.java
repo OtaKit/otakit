@@ -1169,7 +1169,12 @@ public class UpdaterPlugin extends Plugin {
     if (message.contains("index.html")) {
       return "invalid_bundle";
     }
-    if (message.contains("zip") || message.contains("extract")) {
+    // ZipUtils throws SecurityException for guard violations and prefixes
+    // its messages with "Zip ". Don't match ".zip" anywhere in the message:
+    // network failures often carry the temp file path (…/otakit-….zip).
+    if (
+      e instanceof SecurityException || message.startsWith("zip ") || message.contains("extract")
+    ) {
       return "extract_failed";
     }
     return "download_failed";
