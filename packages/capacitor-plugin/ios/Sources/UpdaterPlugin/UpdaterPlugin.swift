@@ -413,6 +413,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
+      // eventPayload is non-nil only on a genuine trial -> success transition,
+      // so repeat notifyAppReady() calls never double-emit.
+      emitEvent("updateApplied", ["bundle": store.getCurrentBundle().toDictionary()])
     }
 
     call.resolve()
@@ -462,6 +465,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     let resolution = try classifyLatestManifest(manifest, targetChannel: targetChannel)
+
+    if case let .updateAvailable(available) = resolution {
+      emitEvent("updateAvailable", manifestToDictionary(available))
+    }
 
     if respectInterval {
       recordCheckTimestamp()
@@ -599,6 +606,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           releaseId: releaseId,
           detail: "insufficient_disk_space"
         )
+        emitEvent(
+          "downloadFailed",
+          failureEventData(
+            version: version,
+            runtimeVersion: runtimeVersion,
+            channel: channel,
+            releaseId: releaseId,
+            reason: "insufficient_disk_space"
+          )
+        )
         throw error
       }
     }
@@ -665,6 +682,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: channel,
         releaseId: releaseId
       )
+      emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
     } catch {
       sendDeviceEvent(
@@ -674,6 +692,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: channel,
         releaseId: releaseId,
         detail: error.localizedDescription
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: version,
+          runtimeVersion: runtimeVersion,
+          channel: channel,
+          releaseId: releaseId,
+          reason: failureReason(from: error)
+        )
       )
       throw error
     }
@@ -778,6 +806,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
+      emitEvent(
+        "rollback",
+        failureEventData(
+          version: eventPayload.bundleVersion ?? "",
+          runtimeVersion: eventPayload.runtimeVersion,
+          channel: eventPayload.channel,
+          releaseId: eventPayload.releaseId,
+          reason: reason
+        )
+      )
     }
 
     do {
@@ -941,6 +979,53 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     let digest = SHA256.hash(data: Data(identitySource.utf8))
     let suffix = digest.map { String(format: "%02x", $0) }.joined().prefix(12)
     return "\(normalized)-\(suffix)"
+  }
+
+  /// Emit a JS lifecycle event. `notifyListeners` marshals to the bridge
+  /// safely from any thread, so no manual dispatch is needed.
+  private func emitEvent(_ name: String, _ data: [String: Any]) {
+    notifyListeners(name, data: data)
+  }
+
+  private func failureEventData(
+    version: String,
+    runtimeVersion: String?,
+    channel: String?,
+    releaseId: String?,
+    reason: String
+  ) -> [String: Any] {
+    var data: [String: Any] = [
+      "version": version,
+      "reason": reason,
+    ]
+    if let runtimeVersion = trimToNil(runtimeVersion) {
+      data["runtimeVersion"] = runtimeVersion
+    }
+    if let channel = trimToNil(channel) {
+      data["channel"] = channel
+    }
+    if let releaseId = trimToNil(releaseId) {
+      data["releaseId"] = releaseId
+    }
+    return data
+  }
+
+  /// Map a native error to a stable event reason string.
+  private func failureReason(from error: Error) -> String {
+    if error is ZipUtilsError {
+      return "extract_failed"
+    }
+    let description = error.localizedDescription.lowercased()
+    if description.contains("hash mismatch") {
+      return "hash_mismatch"
+    }
+    if description.contains("disk space") {
+      return "insufficient_disk_space"
+    }
+    if description.contains("index.html") {
+      return "invalid_bundle"
+    }
+    return "download_failed"
   }
 
   private func sendDeviceEvent(

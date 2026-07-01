@@ -1,3 +1,5 @@
+import type { PluginListenerHandle } from '@capacitor/core';
+
 /**
  * Bundle status enum.
  */
@@ -93,6 +95,49 @@ export interface DownloadStagedResult {
 export type DownloadResult = DownloadNoUpdateResult | DownloadStagedResult;
 
 /**
+ * Payload for the `updateStaged` event: a bundle was downloaded, verified,
+ * and staged, ready to apply.
+ */
+export interface UpdateStagedEvent {
+  bundle: BundleInfo;
+}
+
+/**
+ * Payload for the `updateApplied` event: a newly activated bundle was
+ * confirmed healthy via notifyAppReady().
+ */
+export interface UpdateAppliedEvent {
+  bundle: BundleInfo;
+}
+
+/**
+ * Payload for the `downloadFailed` and `rollback` events.
+ */
+export interface UpdateFailedEvent {
+  version: string;
+  runtimeVersion?: string;
+  releaseId?: string;
+  channel?: string;
+  /** Stable failure reason, e.g. "hash_mismatch", "insufficient_disk_space", "notify_timeout". */
+  reason: string;
+}
+
+/**
+ * Update lifecycle events emitted by the plugin.
+ *
+ * Events fire only while the app process is alive. Reconcile with
+ * getState() and getLastFailure() on startup for anything that happened
+ * while no listener was attached (e.g. a bundle staged in a previous
+ * session, or a startup rollback).
+ */
+export type OtaKitEventName =
+  | 'updateAvailable'
+  | 'updateStaged'
+  | 'updateApplied'
+  | 'downloadFailed'
+  | 'rollback';
+
+/**
  * Plugin configuration for capacitor.config.ts.
  */
 export interface OtaKitConfig {
@@ -176,6 +221,41 @@ export interface OtaKitPlugin {
    * Returns null if no failure has occurred.
    */
   getLastFailure(): Promise<BundleInfo | null>;
+
+  /**
+   * Subscribe to update lifecycle events.
+   *
+   * Events fire only while the app is running. On startup, reconcile with
+   * getState() (anything staged while not listening) and getLastFailure()
+   * (startup rollbacks happen before JS boots and cannot reach a listener).
+   * apply() reloads the WebView and destroys the JS context, so attach
+   * `updateApplied` / `rollback` listeners early in app startup.
+   */
+  addListener(
+    eventName: 'updateAvailable',
+    listenerFunc: (latest: LatestVersion) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'updateStaged',
+    listenerFunc: (event: UpdateStagedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'updateApplied',
+    listenerFunc: (event: UpdateAppliedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'downloadFailed',
+    listenerFunc: (event: UpdateFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'rollback',
+    listenerFunc: (event: UpdateFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Remove all registered event listeners.
+   */
+  removeAllListeners(): Promise<void>;
 }
 
 export interface OtaKitBridgePlugin {
@@ -186,4 +266,9 @@ export interface OtaKitBridgePlugin {
   update(): Promise<void>;
   notifyAppReady(): Promise<void>;
   getLastFailure(): Promise<BundleInfo | null>;
+  addListener(
+    eventName: OtaKitEventName,
+    listenerFunc: (event: unknown) => void,
+  ): Promise<PluginListenerHandle>;
+  removeAllListeners(): Promise<void>;
 }

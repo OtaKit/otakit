@@ -210,8 +210,42 @@ of splitting it into separate `download()` and `apply()` calls.
 - they do not resolve back into the old JS context
 - call `notifyAppReady()` from normal startup after the reloaded app boots
 
-There is no listener/event API in this refactor. If an app later needs a
-smaller reactive surface, that can be added intentionally.
+## Events
+
+The plugin emits lifecycle events alongside the pull APIs:
+
+```ts
+OtaKit.addListener('updateAvailable', (latest) => {}); // newer bundle found, before download
+OtaKit.addListener('updateStaged', ({ bundle }) => {}); // downloaded + verified + staged
+OtaKit.addListener('updateApplied', ({ bundle }) => {}); // new bundle confirmed healthy
+OtaKit.addListener('downloadFailed', (failure) => {}); // non-terminal download/verify error
+OtaKit.addListener('rollback', (failure) => {}); // applied bundle reverted (notify timeout)
+OtaKit.removeAllListeners();
+```
+
+Events fire only while the app process is alive — there is no buffering or
+replay. Reconcile on startup:
+
+- a bundle staged in a previous session: `getState().staged`
+- a startup rollback (app restarted before `notifyAppReady()`): it happens
+  before any JS runs, so it never reaches a listener — check
+  `getLastFailure()`
+
+`apply()` reloads the WebView and destroys the JS context, so `updateApplied`
+fires in the _reloaded_ bundle. Attach `updateApplied`/`rollback` listeners
+early in app startup, not in the restart click handler.
+
+Download and stage are atomic in this plugin — there is a single
+`updateStaged` event, not separate "downloaded" and "staged" events.
+
+The headline pattern — background download via `shadow` policies, prompt to
+restart:
+
+```ts
+const state = await OtaKit.getState();
+if (state.staged) showRestartPrompt(state.staged);
+OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
+```
 
 ## Example manual flow
 
