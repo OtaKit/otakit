@@ -104,6 +104,11 @@ final class DeltaAssembler {
         return false;
       }
     }
+    // Metadata files the plugin writes into the bundle directory; an app
+    // file with the same root-level name would be overwritten.
+    if ("bundle.json".equals(path) || "otakit_files.json".equals(path)) {
+      return false;
+    }
     return true;
   }
 
@@ -192,7 +197,10 @@ final class DeltaAssembler {
       }
 
       if (!cached.exists()) {
-        copyFile(temporary, cached);
+        // Write via temp + rename so process death mid-copy can never leave
+        // a truncated file at a content-addressed path (exists() implies
+        // fully-written, hash-verified content).
+        atomicCopyIntoCache(temporary, cached);
       }
     } finally {
       //noinspection ResultOfMethodCallIgnored
@@ -299,9 +307,10 @@ final class DeltaAssembler {
       }
       File cached = cachePath(sha256);
       if (!cached.exists()) {
+        File staging = new File(cacheDirectory, ".tmp-" + java.util.UUID.randomUUID());
         try (
           InputStream input = assets.open(assetPath);
-          FileOutputStream output = new FileOutputStream(cached)
+          FileOutputStream output = new FileOutputStream(staging)
         ) {
           byte[] buffer = new byte[8192];
           int read;
@@ -309,6 +318,7 @@ final class DeltaAssembler {
             output.write(buffer, 0, read);
           }
         }
+        renameIntoCache(staging, cached);
       }
       hashes.add(sha256);
       return;
@@ -348,7 +358,7 @@ final class DeltaAssembler {
     }
     for (File item : items) {
       String name = item.getName();
-      if (BUILTIN_SEED_MARKER_NAME.equals(name)) {
+      if (BUILTIN_SEED_MARKER_NAME.equals(name) || name.startsWith(".tmp-")) {
         continue;
       }
       if (!keep.contains(name.toLowerCase())) {
@@ -359,6 +369,23 @@ final class DeltaAssembler {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────
+
+  private void atomicCopyIntoCache(File source, File destination) throws Exception {
+    File staging = new File(cacheDirectory, ".tmp-" + java.util.UUID.randomUUID());
+    copyFile(source, staging);
+    renameIntoCache(staging, destination);
+  }
+
+  private static void renameIntoCache(File staging, File destination) throws Exception {
+    if (!staging.renameTo(destination)) {
+      //noinspection ResultOfMethodCallIgnored
+      staging.delete();
+      // A concurrent writer may have won the rename; that's fine.
+      if (!destination.exists()) {
+        throw new IllegalStateException("Failed to move cached file into place: " + destination);
+      }
+    }
+  }
 
   private static void copyFile(File source, File destination) throws Exception {
     try (

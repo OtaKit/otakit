@@ -100,6 +100,11 @@ final class DeltaAssembler {
         return false
       }
     }
+    // Metadata files the plugin writes into the bundle directory; an app
+    // file with the same root-level name would be overwritten.
+    if path == "bundle.json" || path == "otakit_files.json" {
+      return false
+    }
     return true
   }
 
@@ -111,16 +116,18 @@ final class DeltaAssembler {
       throw DeltaAssemblerError.fileCountExceeded(entries.count)
     }
 
-    var seenPaths = Set<String>()
+    // Key on UTF-8 bytes, not String: Swift compares canonically-equivalent
+    // strings (NFC vs NFD) as equal, which would reject a manifest the
+    // server and Android both accept.
+    var seenPaths = Set<Data>()
     var totalSize: UInt64 = 0
     for entry in entries {
       guard isValidEntryPath(entry.path) else {
         throw DeltaAssemblerError.invalidPath(entry.path)
       }
-      guard !seenPaths.contains(entry.path) else {
+      guard seenPaths.insert(Data(entry.path.utf8)).inserted else {
         throw DeltaAssemblerError.duplicatePath(entry.path)
       }
-      seenPaths.insert(entry.path)
       if let size = entry.size, size > 0 {
         totalSize += UInt64(size)
         if totalSize > maxTotalSize {
@@ -129,7 +136,7 @@ final class DeltaAssembler {
       }
     }
 
-    guard seenPaths.contains("index.html") else {
+    guard seenPaths.contains(Data("index.html".utf8)) else {
       throw DeltaAssemblerError.missingIndexHtml
     }
 
@@ -170,7 +177,22 @@ final class DeltaAssembler {
     if fileManager.fileExists(atPath: destination.path) {
       return
     }
-    try fileManager.copyItem(at: temporary, to: destination)
+    // Write via temp + rename so a crash mid-copy can never leave a
+    // truncated file at a content-addressed path (exists() implies valid).
+    let staging = cacheDirectory.appendingPathComponent(
+      ".tmp-\(UUID().uuidString)",
+      isDirectory: false
+    )
+    try fileManager.copyItem(at: temporary, to: staging)
+    do {
+      try fileManager.moveItem(at: staging, to: destination)
+    } catch {
+      try? fileManager.removeItem(at: staging)
+      // A concurrent writer may have won the rename; that's fine.
+      if !fileManager.fileExists(atPath: destination.path) {
+        throw error
+      }
+    }
   }
 
   // MARK: - Assembly
@@ -250,7 +272,15 @@ final class DeltaAssembler {
       }
       let destination = cachePath(for: sha256)
       if !fileManager.fileExists(atPath: destination.path) {
-        try? fileManager.copyItem(at: item, to: destination)
+        let staging = cacheDirectory.appendingPathComponent(
+          ".tmp-\(UUID().uuidString)",
+          isDirectory: false
+        )
+        if (try? fileManager.copyItem(at: item, to: staging)) != nil {
+          if (try? fileManager.moveItem(at: staging, to: destination)) == nil {
+            try? fileManager.removeItem(at: staging)
+          }
+        }
       }
       hashes.append(sha256)
     }
@@ -275,7 +305,7 @@ final class DeltaAssembler {
       return
     }
     for item in items {
-      if item == DeltaAssembler.builtinSeedMarkerName {
+      if item == DeltaAssembler.builtinSeedMarkerName || item.hasPrefix(".tmp-") {
         continue
       }
       if !keep.contains(item.lowercased()) {

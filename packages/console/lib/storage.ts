@@ -165,14 +165,19 @@ export function buildFileObjectKey(appId: string, sha256: string): string {
 export async function createPresignedFileUpload(
   storageKey: string,
   size: number,
+  contentMd5: string,
 ): Promise<{ presignedUrl: string; expiresAt: Date }> {
   const { client, bucket, presignExpiresSeconds } = getStorageConfig();
 
+  // ContentMD5 makes storage verify the uploaded bytes: a PUT whose body
+  // doesn't match the client-declared MD5 is rejected, so a content-addressed
+  // key can never be filled with wrong-content data of the right length.
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: storageKey,
     ContentType: 'application/octet-stream',
     ContentLength: size,
+    ContentMD5: contentMd5,
     CacheControl: BUNDLE_CACHE_CONTROL,
   });
 

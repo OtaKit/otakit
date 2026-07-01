@@ -28,8 +28,15 @@ export interface DeltaFileEntry {
 }
 
 export type DeltaFilesParseResult =
-  | { ok: true; files: DeltaFileEntry[]; totalSize: number }
+  | { ok: true; files: DeltaFileEntry[]; totalSize: number; md5ByHash: Map<string, string> }
   | { ok: false; error: string };
+
+// Metadata files the plugin writes into the bundle directory; an app file
+// with the same root-level name would be overwritten at assembly time.
+const RESERVED_ROOT_FILES = new Set(['bundle.json', 'otakit_files.json']);
+
+// 16-byte MD5 as base64 (22 chars + '==').
+const MD5_BASE64_REGEX = /^[A-Za-z0-9+/]{22}==$/;
 
 function isValidDeltaPath(path: string): boolean {
   if (path.length === 0 || path.length > MAX_DELTA_PATH_LENGTH) {
@@ -42,6 +49,9 @@ function isValidDeltaPath(path: string): boolean {
     if (segment.length === 0 || segment === '.' || segment === '..') {
       return false;
     }
+  }
+  if (RESERVED_ROOT_FILES.has(path)) {
+    return false;
   }
   for (const char of path) {
     const code = char.codePointAt(0) ?? 0;
@@ -63,13 +73,14 @@ export function parseDeltaFiles(raw: unknown): DeltaFilesParseResult {
   const files: DeltaFileEntry[] = [];
   const seenPaths = new Set<string>();
   const sizeByHash = new Map<string, number>();
+  const md5ByHash = new Map<string, string>();
   let totalSize = 0;
 
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
       return { ok: false, error: 'Each file entry must be an object' };
     }
-    const { path, sha256, size } = entry as Record<string, unknown>;
+    const { path, sha256, size, md5 } = entry as Record<string, unknown>;
 
     if (typeof path !== 'string' || !isValidDeltaPath(path)) {
       return { ok: false, error: `Invalid file path: ${String(path)}` };
@@ -88,11 +99,20 @@ export function parseDeltaFiles(raw: unknown): DeltaFilesParseResult {
       return { ok: false, error: `Invalid size for ${path}` };
     }
 
+    if (typeof md5 !== 'string' || !MD5_BASE64_REGEX.test(md5)) {
+      return { ok: false, error: `Invalid md5 for ${path} (base64 of the 16-byte digest)` };
+    }
+
     const existingSize = sizeByHash.get(normalizedSha);
     if (existingSize !== undefined && existingSize !== size) {
       return { ok: false, error: `Conflicting sizes for content hash ${normalizedSha}` };
     }
+    const existingMd5 = md5ByHash.get(normalizedSha);
+    if (existingMd5 !== undefined && existingMd5 !== md5) {
+      return { ok: false, error: `Conflicting md5 for content hash ${normalizedSha}` };
+    }
     sizeByHash.set(normalizedSha, size);
+    md5ByHash.set(normalizedSha, md5);
 
     totalSize += size;
     files.push({ path, sha256: normalizedSha, size });
@@ -110,7 +130,7 @@ export function parseDeltaFiles(raw: unknown): DeltaFilesParseResult {
     };
   }
 
-  return { ok: true, files, totalSize };
+  return { ok: true, files, totalSize, md5ByHash };
 }
 
 function compareUtf8(a: string, b: string): number {

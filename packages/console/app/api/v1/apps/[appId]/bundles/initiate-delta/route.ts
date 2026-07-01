@@ -114,9 +114,14 @@ export async function POST(
   const uploads: { sha256: string; presignedUrl: string }[] = [];
   for (const entry of missing) {
     if (!entry) continue;
+    const md5 = parsed.md5ByHash.get(entry.sha256);
+    if (!md5) {
+      return NextResponse.json({ error: `Missing md5 for hash ${entry.sha256}` }, { status: 400 });
+    }
     const presigned = await createPresignedFileUpload(
       buildFileObjectKey(appId, entry.sha256),
       entry.size,
+      md5,
     );
     uploads.push({ sha256: entry.sha256, presignedUrl: presigned.presignedUrl });
     expiresAt = presigned.expiresAt;

@@ -7,11 +7,12 @@ import { tmpdir } from 'node:os';
 
 import type { ApiClient, Bundle, DeltaFileDescriptor } from './api.js';
 import { CliError } from './errors.js';
-import { hashFile } from './hash.js';
+import { hashFile, hashFileWithMd5 } from './hash.js';
 import { getCliUserAgent } from './version.js';
 import { createZip, removeFileIfExists, validateBundleDirectory } from './zip.js';
 
 const MAX_VERSION_LENGTH = 64;
+const MAX_DELTA_FILES = 5000; // mirrors the server cap (console/lib/delta-files.ts)
 
 const COMMIT_ENV_KEYS = [
   'OTAKIT_COMMIT_SHA',
@@ -235,10 +236,12 @@ export async function collectDeltaFiles(sourceDirectory: string): Promise<DeltaF
       }
       if (entry.isFile()) {
         const fileStat = await stat(absolutePath);
+        const hashes = await hashFileWithMd5(absolutePath);
         files.push({
           path: posixPath,
-          sha256: await hashFile(absolutePath),
+          sha256: hashes.sha256,
           size: fileStat.size,
+          md5: hashes.md5,
         });
       }
     }
@@ -251,6 +254,7 @@ export async function collectDeltaFiles(sourceDirectory: string): Promise<DeltaF
 async function uploadDeltaFileToPresignedUrl(
   filePath: string,
   size: number,
+  md5: string,
   presignedUrl: string,
 ): Promise<void> {
   const body = createReadStream(filePath);
@@ -266,6 +270,7 @@ async function uploadDeltaFileToPresignedUrl(
       // (console/lib/storage.ts::createPresignedFileUpload).
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(size),
+      'Content-MD5': md5,
       'Cache-Control': 'public, max-age=31536000, immutable',
       'User-Agent': getCliUserAgent(),
     },
@@ -297,6 +302,12 @@ async function runDeltaUploadWorkflow(
   if (files.length === 0) {
     throw new CliError(`No files found in ${sourcePath}`);
   }
+  if (files.length > MAX_DELTA_FILES) {
+    throw new CliError(
+      `Too many files for the delta strategy: ${files.length} (max ${MAX_DELTA_FILES}). ` +
+        'Consider updateStrategy: "zip" for this app.',
+    );
+  }
 
   onStatus?.(`Requesting delta upload for ${files.length} files...`);
   const initiated = await api.initiateDeltaUpload({
@@ -310,10 +321,10 @@ async function runDeltaUploadWorkflow(
     throw new CliError('Presigned upload URLs have expired or are about to expire. Please retry.');
   }
 
-  const pathByHash = new Map<string, { path: string; size: number }>();
+  const pathByHash = new Map<string, { path: string; size: number; md5: string }>();
   for (const file of files) {
     if (!pathByHash.has(file.sha256)) {
-      pathByHash.set(file.sha256, { path: file.path, size: file.size });
+      pathByHash.set(file.sha256, { path: file.path, size: file.size, md5: file.md5 });
     }
   }
 
@@ -332,6 +343,7 @@ async function runDeltaUploadWorkflow(
           await uploadDeltaFileToPresignedUrl(
             join(sourcePath, source.path),
             source.size,
+            source.md5,
             upload.presignedUrl,
           );
           uploaded += 1;

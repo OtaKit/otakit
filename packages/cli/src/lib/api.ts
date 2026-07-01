@@ -23,6 +23,8 @@ export interface DeltaFileDescriptor {
   path: string;
   sha256: string;
   size: number;
+  /** Base64 MD5, pinned into the presigned PUT as Content-MD5. */
+  md5: string;
 }
 
 export interface DeltaUploadInitResponse {
