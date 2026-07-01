@@ -30,6 +30,8 @@ const OtaKit: OtaKitPlugin = {
   notifyAppReady: () => NativeOtaKit.notifyAppReady(),
   getLastFailure: async (): Promise<BundleInfo | null> =>
     normalizeNullable(await NativeOtaKit.getLastFailure()),
+  setChannel: (options) => NativeOtaKit.setChannel(options),
+  getChannel: () => NativeOtaKit.getChannel(),
 };
 
 export * from './definitions';

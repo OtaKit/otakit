@@ -4,6 +4,7 @@ import type {
   OtaKitBridgePlugin,
   BundleInfo,
   BundleStatus,
+  ChannelInfo,
   CheckResult,
   DownloadResult,
   OtaKitState,
@@ -54,5 +55,23 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
 
   async getLastFailure(): Promise<BundleInfo | null> {
     return null;
+  }
+
+  private static readonly OVERRIDE_CHANNEL_KEY = 'otakit_override_channel';
+
+  async setChannel(options: { channel: string | null }): Promise<void> {
+    if (options.channel === null) {
+      window.localStorage.removeItem(OtaKitWeb.OVERRIDE_CHANNEL_KEY);
+      return;
+    }
+    window.localStorage.setItem(OtaKitWeb.OVERRIDE_CHANNEL_KEY, options.channel);
+  }
+
+  async getChannel(): Promise<ChannelInfo> {
+    const override = window.localStorage.getItem(OtaKitWeb.OVERRIDE_CHANNEL_KEY);
+    if (override !== null) {
+      return { channel: override, source: 'override' };
+    }
+    return { channel: null, source: 'config' };
   }
 }

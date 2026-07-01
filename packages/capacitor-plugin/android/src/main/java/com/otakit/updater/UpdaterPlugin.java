@@ -115,6 +115,8 @@ public class UpdaterPlugin extends Plugin {
   private static final String KEY_LAST_CHECK_TIMESTAMP = "last_check_timestamp";
   private static final String DEFAULT_RUNTIME_KEY = "__default__";
   private static final String BUILTIN_ASSET_PATH = "public";
+  private static final java.util.regex.Pattern CHANNEL_NAME_PATTERN =
+    java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
   private UpdaterCoordinator.StartupPreparation pendingStartupPreparation;
 
   @Override
@@ -524,6 +526,63 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     call.resolve(failed.toJSObject());
+  }
+
+  @PluginMethod
+  public void setChannel(PluginCall call) {
+    Object raw = call.getData().opt("channel");
+    if (raw == null || raw == org.json.JSONObject.NULL) {
+      store.setOverrideChannel(null);
+      call.resolve();
+      return;
+    }
+    if (!(raw instanceof String)) {
+      call.reject("channel must be a string or null");
+      return;
+    }
+    String name = (String) raw;
+    if (!isValidChannelName(name)) {
+      call.reject(
+        "Invalid channel name '" +
+          name +
+          "': use 1-64 letters, numbers, '.', '_' or '-' (reserved names: base, default)"
+      );
+      return;
+    }
+    store.setOverrideChannel(name);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void getChannel(PluginCall call) {
+    JSObject result = new JSObject();
+    String override = store.getOverrideChannel();
+    if (override != null) {
+      result.put("channel", override);
+      result.put("source", "override");
+      call.resolve(result);
+      return;
+    }
+    result.put("channel", channel != null ? channel : org.json.JSONObject.NULL);
+    result.put("source", "config");
+    call.resolve(result);
+  }
+
+  /**
+   * Mirrors the server's isValidChannelName (console/lib/validation.ts):
+   * charset regex plus reserved names. The channel is interpolated into the
+   * manifest CDN path, so anything outside this charset (or a ".." sequence)
+   * is rejected before it is persisted or used.
+   */
+  private boolean isValidChannelName(String name) {
+    if (!CHANNEL_NAME_PATTERN.matcher(name).matches()) {
+      return false;
+    }
+    if (name.contains("..")) {
+      return false;
+    }
+    String lower = name.toLowerCase(java.util.Locale.ROOT);
+    return !"base".equals(lower) && !"default".equals(lower);
   }
 
   private ManifestClient.LatestManifest fetchLatest(String channel) throws Exception {
@@ -1092,7 +1151,14 @@ public class UpdaterPlugin extends Plugin {
 
   private String resolveTargetChannel(String channel) {
     String resolved = trimToNull(channel);
-    return resolved != null ? resolved : this.channel;
+    if (resolved != null) {
+      return resolved;
+    }
+    String override = store.getOverrideChannel();
+    if (override != null) {
+      return override;
+    }
+    return this.channel;
   }
 
   private void sendDeviceEvent(

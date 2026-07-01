@@ -238,6 +238,42 @@ After the app reloads and starts again, call:
 await OtaKit.notifyAppReady();
 ```
 
+## Runtime channel switching
+
+`setChannel()` overrides the configured channel at runtime — for example a
+"Join beta" toggle in settings — without rebuilding the app:
+
+```ts
+// Opt into the beta channel; takes effect on the next check/download cycle.
+await OtaKit.setChannel({ channel: 'beta' });
+
+// Back to the channel from capacitor.config.ts (or the base channel).
+await OtaKit.setChannel({ channel: null });
+
+const { channel, source } = await OtaKit.getChannel();
+// source is 'override' after setChannel(), 'config' otherwise
+```
+
+The override is persisted across launches and slots into channel resolution
+as: explicit call argument → persisted override → config `channel` → base.
+`setChannel()` itself never checks, downloads, or reloads anything — call
+`OtaKit.download()` / `OtaKit.update()` afterwards if you want the switch to
+take effect immediately.
+
+Channel names must match `^[A-Za-z0-9._-]{1,64}$`, must not contain `..`, and
+must not be the reserved names `base` or `default` (matching server-side
+validation). Invalid names reject without persisting.
+
+Limitations to be aware of:
+
+- **Channels are public CDN paths.** A channel name is not a secret and this
+  cannot enforce private distribution — anyone who guesses the name can fetch
+  that channel's manifest.
+- **The backend is not aware of the switch.** There is no server-side record
+  of which device is on which channel; the switch is purely client-side.
+- **The channel must exist and have a release.** Switching to a channel with
+  no published manifest yields `no_update` until something is released there.
+
 ## Compatibility lanes
 
 - `channel` answers "who should get this rollout?"

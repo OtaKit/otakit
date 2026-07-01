@@ -92,6 +92,13 @@ export interface DownloadStagedResult {
 
 export type DownloadResult = DownloadNoUpdateResult | DownloadStagedResult;
 
+export interface ChannelInfo {
+  /** The effective release channel, or null for the base channel. */
+  channel: string | null;
+  /** Where the effective channel comes from: a runtime override or static config. */
+  source: 'override' | 'config';
+}
+
 /**
  * Plugin configuration for capacitor.config.ts.
  */
@@ -176,6 +183,22 @@ export interface OtaKitPlugin {
    * Returns null if no failure has occurred.
    */
   getLastFailure(): Promise<BundleInfo | null>;
+
+  /**
+   * Override the release channel at runtime (e.g. a "Join beta" toggle).
+   * Pass null to clear the override and return to the configured channel.
+   *
+   * The override is persisted across launches and takes effect on the next
+   * check/download/automatic cycle — it does not trigger anything by itself.
+   * Rejects invalid channel names without persisting.
+   */
+  setChannel(options: { channel: string | null }): Promise<void>;
+
+  /**
+   * Get the effective release channel and where it comes from
+   * (a runtime override or the static plugin config).
+   */
+  getChannel(): Promise<ChannelInfo>;
 }
 
 export interface OtaKitBridgePlugin {
@@ -186,4 +209,6 @@ export interface OtaKitBridgePlugin {
   update(): Promise<void>;
   notifyAppReady(): Promise<void>;
   getLastFailure(): Promise<BundleInfo | null>;
+  setChannel(options: { channel: string | null }): Promise<void>;
+  getChannel(): Promise<ChannelInfo>;
 }
