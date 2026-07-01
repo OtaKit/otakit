@@ -195,12 +195,11 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'Can I roll out to specific users or a percentage?',
+    q: 'Can I roll out to specific users?',
     a: (
       <p>
-        Yes. Release to channels — production, beta, staging, or your own — target specific cohorts,
-        or stage a percentage rollout, then promote or roll back per channel from the dashboard or
-        CLI.
+        Yes. Release to channels — production, beta, staging, or your own — to target specific
+        cohorts, then promote or roll back per channel from the dashboard or CLI.
       </p>
     ),
   },
