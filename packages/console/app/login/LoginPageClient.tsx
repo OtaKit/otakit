@@ -1,8 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
-import { FormEvent, useMemo, useState } from 'react';
+import { type CSSProperties, FormEvent, useMemo, useState } from 'react';
 import { ArrowLeft, LoaderCircle, Mail } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
@@ -15,15 +14,64 @@ type LoginPageClientProps = {
   googleEnabled: boolean;
   appleEnabled: boolean;
   githubEnabled: boolean;
+  siteUrl: string;
 };
 
 type Step = 'email' | 'otp';
 type SocialProvider = 'google' | 'apple' | 'github';
 
+type LoginIcon = {
+  src: string;
+  top: string;
+  left?: string;
+  right?: string;
+  size: number;
+  opacity: number;
+  rotate: number;
+  // Independent drift: delta x/y (px), rotation delta (deg), duration (s).
+  dx: number;
+  dy: number;
+  dr: number;
+  dur: number;
+};
+
+const LOGIN_ICON_CLOUD: LoginIcon[] = [
+  { src: '/app-icons/time-tracking.svg', top: '12%', left: '7%', size: 56, opacity: 0.1, rotate: -16, dx: 11, dy: -14, dr: 4, dur: 7.5 },
+  { src: '/app-icons/ai-chat.svg', top: '23%', left: '21%', size: 62, opacity: 0.07, rotate: 12, dx: -10, dy: -9, dr: -4.5, dur: 9 },
+  { src: '/app-icons/calorie-tracking.svg', top: '13%', right: '10%', size: 60, opacity: 0.09, rotate: -8, dx: 14, dy: 11, dr: 3, dur: 6.5 },
+  { src: '/app-icons/recording.svg', top: '43%', right: '6%', size: 46, opacity: 0.08, rotate: 20, dx: -9, dy: 13, dr: 5, dur: 8.5 },
+  { src: '/app-icons/fitness.svg', top: '60%', left: '6%', size: 84, opacity: 0.06, rotate: -18, dx: 15, dy: -11, dr: -3.5, dur: 7 },
+  { src: '/app-icons/budget.svg', top: '74%', right: '21%', size: 50, opacity: 0.09, rotate: 10, dx: -13, dy: -10, dr: 4, dur: 8 },
+  { src: '/app-icons/habit-tracker.svg', top: '80%', right: '9%', size: 70, opacity: 0.06, rotate: 14, dx: 10, dy: 14, dr: -3, dur: 6 },
+];
+
+/* Very gentle, endless drift + rotation for the login background icons only.
+   The base position/rotation lives on each icon's wrapper; this only nudges it
+   a couple of pixels and ~1.5deg. Disabled under prefers-reduced-motion. */
+const FLOAT_STYLES = `
+@keyframes login-float {
+  0% { transform: translate(0px, 0px) rotate(0deg); }
+  25% { transform: translate(var(--dx), 0px) rotate(var(--dr)); }
+  50% { transform: translate(var(--dx), var(--dy)) rotate(0deg); }
+  75% { transform: translate(0px, var(--dy)) rotate(calc(var(--dr) * -1)); }
+  100% { transform: translate(0px, 0px) rotate(0deg); }
+}
+.login-float-icon {
+  animation-name: login-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-float-icon { animation: none; }
+}
+`;
+
 export function LoginPageClient({
   googleEnabled,
   appleEnabled,
   githubEnabled,
+  siteUrl,
 }: LoginPageClientProps) {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -139,13 +187,51 @@ export function LoginPageClient({
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <Link
-        href="/"
+      {/* Joyful background — dot grid + floating app-icon cloud, matching the site hero */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <style>{FLOAT_STYLES}</style>
+        <div className="absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)] bg-[size:28px_28px] opacity-60" />
+        {LOGIN_ICON_CLOUD.map((icon, index) => (
+          <div
+            key={index}
+            className="absolute"
+            style={{
+              top: icon.top,
+              left: icon.left,
+              right: icon.right,
+              opacity: icon.opacity,
+              transform: `rotate(${icon.rotate}deg)`,
+            }}
+          >
+            <Image
+              src={icon.src}
+              alt=""
+              width={icon.size}
+              height={icon.size}
+              className="login-float-icon block select-none rounded-[22%]"
+              style={
+                {
+                  animationDuration: `${icon.dur}s`,
+                  animationDelay: `${-(index * 1.7)}s`,
+                  '--dx': `${icon.dx}px`,
+                  '--dy': `${icon.dy}px`,
+                  '--dr': `${icon.dr}deg`,
+                } as CSSProperties
+              }
+            />
+          </div>
+        ))}
+        <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
+      </div>
+
+      <a
+        href={siteUrl}
         className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:left-6 sm:top-6"
       >
         <ArrowLeft className="size-4" />
         Back
-      </Link>
+      </a>
 
       <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
         <div className="relative w-full max-w-md bg-card">
@@ -244,7 +330,7 @@ export function LoginPageClient({
                     ) : (
                       <Mail className="size-4" />
                     )}
-                    {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email'}
+                    {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email OTP'}
                   </Button>
                 </form>
               ) : (
@@ -296,13 +382,19 @@ export function LoginPageClient({
 
             <p className="mt-7 text-left text-xs leading-relaxed text-muted-foreground">
               By continuing, you agree to the{' '}
-              <Link href="/terms" className="underline underline-offset-4 hover:text-foreground">
+              <a
+                href={`${siteUrl}/terms`}
+                className="underline underline-offset-4 hover:text-foreground"
+              >
                 Terms of Use
-              </Link>{' '}
+              </a>{' '}
               and{' '}
-              <Link href="/policy" className="underline underline-offset-4 hover:text-foreground">
+              <a
+                href={`${siteUrl}/policy`}
+                className="underline underline-offset-4 hover:text-foreground"
+              >
                 Privacy Policy
-              </Link>
+              </a>
               .
             </p>
           </div>
