@@ -44,8 +44,7 @@ export function ScaleToFit({
     // the box height (innerHeight * scale) still recomputes on resize.
     setInnerHeight(inner.offsetHeight);
 
-    const updateScale = () =>
-      setScale(Math.min(maxScale, measure.clientWidth / designWidth));
+    const updateScale = () => setScale(Math.min(maxScale, measure.clientWidth / designWidth));
     updateScale();
     const ro = new ResizeObserver(updateScale);
     ro.observe(measure);

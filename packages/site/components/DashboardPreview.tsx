@@ -3,10 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
-
-// useLayoutEffect on the client (to position the ticker before paint, no flash),
-// useEffect on the server to avoid the SSR warning.
-const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 import {
   Activity,
   BadgeCheck,
@@ -29,6 +25,10 @@ import {
   SlidersHorizontal,
   Smartphone,
 } from 'lucide-react';
+
+// useLayoutEffect on the client (to position the ticker before paint, no flash),
+// useEffect on the server to avoid the SSR warning.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /* Static, fake-data mirror of the OtaKit console dashboard, used for the
    landing-page mockup — now lightly animated: events stream in and the bundle
@@ -68,7 +68,9 @@ const INITIAL_BUNDLES: Bundle[] = [
     size: '2.1 MB',
     date: 'Jun 30',
     time: '02:14 PM',
-    live: [{ channel: 'production', since: 'Jun 30, 02:14 PM', by: 'you@acme.com', previous: '1.4.0' }],
+    live: [
+      { channel: 'production', since: 'Jun 30, 02:14 PM', by: 'you@acme.com', previous: '1.4.0' },
+    ],
     previous: [],
     downloads: 1284,
     applied: 1201,
@@ -107,13 +109,69 @@ const INITIAL_BUNDLES: Bundle[] = [
 const VISIBLE_ROWS = 7;
 
 const INITIAL_EVENTS: EventRow[] = [
-  { id: 6, time: '2:41:08 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { id: 5, time: '2:40:44 PM', platform: 'Android', action: 'Downloaded', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { id: 4, time: '2:40:19 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
-  { id: 3, time: '2:39:52 PM', platform: 'Android', action: 'Download error', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
-  { id: 2, time: '2:39:25 PM', platform: 'iOS', action: 'Applied', bundle: '1.4.1', channel: 'beta', runtime: 'api-v3' },
-  { id: 1, time: '2:38:57 PM', platform: 'iOS', action: 'Rollback', bundle: '1.4.0', channel: 'production', runtime: 'api-v2' },
-  { id: 0, time: '2:38:30 PM', platform: 'Android', action: 'Applied', bundle: '1.4.2', channel: 'production', runtime: 'api-v3' },
+  {
+    id: 6,
+    time: '2:41:08 PM',
+    platform: 'iOS',
+    action: 'Applied',
+    bundle: '1.4.2',
+    channel: 'production',
+    runtime: 'api-v3',
+  },
+  {
+    id: 5,
+    time: '2:40:44 PM',
+    platform: 'Android',
+    action: 'Downloaded',
+    bundle: '1.4.2',
+    channel: 'production',
+    runtime: 'api-v3',
+  },
+  {
+    id: 4,
+    time: '2:40:19 PM',
+    platform: 'iOS',
+    action: 'Applied',
+    bundle: '1.4.1',
+    channel: 'beta',
+    runtime: 'api-v3',
+  },
+  {
+    id: 3,
+    time: '2:39:52 PM',
+    platform: 'Android',
+    action: 'Download error',
+    bundle: '1.4.2',
+    channel: 'production',
+    runtime: 'api-v3',
+  },
+  {
+    id: 2,
+    time: '2:39:25 PM',
+    platform: 'iOS',
+    action: 'Applied',
+    bundle: '1.4.1',
+    channel: 'beta',
+    runtime: 'api-v3',
+  },
+  {
+    id: 1,
+    time: '2:38:57 PM',
+    platform: 'iOS',
+    action: 'Rollback',
+    bundle: '1.4.0',
+    channel: 'production',
+    runtime: 'api-v2',
+  },
+  {
+    id: 0,
+    time: '2:38:30 PM',
+    platform: 'Android',
+    action: 'Applied',
+    bundle: '1.4.2',
+    channel: 'production',
+    runtime: 'api-v3',
+  },
 ];
 
 const BUNDLE_ROUTES: Array<{ bundle: string; channel: string; runtime: string; weight: number }> = [
@@ -121,7 +179,6 @@ const BUNDLE_ROUTES: Array<{ bundle: string; channel: string; runtime: string; w
   { bundle: '1.4.1', channel: 'beta', runtime: 'api-v3', weight: 0.3 },
   { bundle: '1.4.0', channel: 'base', runtime: 'api-v2', weight: 0.1 },
 ];
-
 
 const TABLE_CLASS =
   'w-full table-fixed text-xs ' +
@@ -223,7 +280,15 @@ function makeEvent(id: number, clock: Date): EventRow {
     second: '2-digit',
   });
 
-  return { id, time, platform, action, bundle: route.bundle, channel: route.channel, runtime: route.runtime };
+  return {
+    id,
+    time,
+    platform,
+    action,
+    bundle: route.bundle,
+    channel: route.channel,
+    runtime: route.runtime,
+  };
 }
 
 export function DashboardPreview() {
@@ -292,11 +357,16 @@ export function DashboardPreview() {
 
   return (
     <div className="bg-background text-left text-foreground">
-
       {/* Top header */}
       <header className="flex h-14 items-center gap-4 border-b border-border px-6">
         <div className="flex items-center gap-2">
-          <Image src="/logo.svg" alt="OtaKit" width={28} height={28} className="size-7 rounded-lg" />
+          <Image
+            src="/logo.svg"
+            alt="OtaKit"
+            width={28}
+            height={28}
+            className="size-7 rounded-lg"
+          />
           <span className="text-sm font-semibold tracking-tight">OtaKit</span>
         </div>
         <nav className="ml-auto flex items-center gap-1">
@@ -472,36 +542,36 @@ export function DashboardPreview() {
             className="overflow-hidden"
             style={listHeight ? { height: listHeight } : undefined}
           >
-          <motion.div style={{ y }}>
-            {events.map((e) => (
-              <motion.div
-                key={e.id}
-                // Streamed rows (id >= 100) flash a fading highlight as they
-                // arrive; the seeded rows just render.
-                initial={e.id >= 100 ? { backgroundColor: 'rgba(59,130,246,0.14)' } : false}
-                animate={{ backgroundColor: 'rgba(59,130,246,0)' }}
-                transition={{ duration: 1.5, ease: 'easeOut' }}
-                className={EVENT_ROW_CLASS}
-              >
-                <div className="text-muted-foreground">{e.time}</div>
-                <div className="text-muted-foreground">{e.platform}</div>
-                <div
-                  className={
-                    e.action === 'Download error'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : e.action === 'Rollback'
-                        ? 'text-destructive'
-                        : 'text-muted-foreground'
-                  }
+            <motion.div style={{ y }}>
+              {events.map((e) => (
+                <motion.div
+                  key={e.id}
+                  // Streamed rows (id >= 100) flash a fading highlight as they
+                  // arrive; the seeded rows just render.
+                  initial={e.id >= 100 ? { backgroundColor: 'rgba(59,130,246,0.14)' } : false}
+                  animate={{ backgroundColor: 'rgba(59,130,246,0)' }}
+                  transition={{ duration: 1.5, ease: 'easeOut' }}
+                  className={EVENT_ROW_CLASS}
                 >
-                  {e.action}
-                </div>
-                <div className="font-mono text-foreground">{e.bundle}</div>
-                <div className="text-muted-foreground">{e.channel}</div>
-                <div className="font-mono text-muted-foreground">{e.runtime}</div>
-              </motion.div>
-            ))}
-          </motion.div>
+                  <div className="text-muted-foreground">{e.time}</div>
+                  <div className="text-muted-foreground">{e.platform}</div>
+                  <div
+                    className={
+                      e.action === 'Download error'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : e.action === 'Rollback'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                    }
+                  >
+                    {e.action}
+                  </div>
+                  <div className="font-mono text-foreground">{e.bundle}</div>
+                  <div className="text-muted-foreground">{e.channel}</div>
+                  <div className="font-mono text-muted-foreground">{e.runtime}</div>
+                </motion.div>
+              ))}
+            </motion.div>
           </div>
         </div>
       </div>

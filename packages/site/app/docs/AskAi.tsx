@@ -68,9 +68,7 @@ export function AskAi() {
   return (
     <div ref={rootRef} className="fixed bottom-5 right-5 z-50 print:hidden">
       {open && (
-        <div
-          className="absolute bottom-full right-0 mb-2 w-48 origin-bottom-right overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg duration-150 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2"
-        >
+        <div className="absolute bottom-full right-0 mb-2 w-48 origin-bottom-right overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg duration-150 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2">
           {targets.map((t) => (
             <a
               key={t.label}

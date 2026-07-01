@@ -636,9 +636,7 @@ export function ProductDashboard({
   const bundleColumnOptions = useMemo(
     () =>
       BUNDLE_COLUMN_OPTIONS.map((option) =>
-        option.key === 'targets'
-          ? { ...option, label: 'Release' }
-          : option,
+        option.key === 'targets' ? { ...option, label: 'Release' } : option,
       ),
     [],
   );
@@ -1282,7 +1280,9 @@ export function ProductDashboard({
                                       {hasBundleColumn('targets') ? (
                                         <TableCell className="align-middle">
                                           {b.deployedTargets.length === 0 ? (
-                                            <span className="text-muted-foreground">Not released</span>
+                                            <span className="text-muted-foreground">
+                                              Not released
+                                            </span>
                                           ) : (
                                             <div className="flex flex-wrap items-center gap-1">
                                               {b.deployedTargets
@@ -1320,7 +1320,10 @@ export function ProductDashboard({
                                                           <ChevronDown className="size-2.5 shrink-0 opacity-50" />
                                                         </button>
                                                       </DropdownMenuTrigger>
-                                                      <DropdownMenuContent align="start" className="w-60">
+                                                      <DropdownMenuContent
+                                                        align="start"
+                                                        className="w-60"
+                                                      >
                                                         <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 px-2 py-1.5 text-[11px]">
                                                           <span className="text-muted-foreground">
                                                             Channel
@@ -1333,7 +1336,9 @@ export function ProductDashboard({
                                                               <span className="text-muted-foreground">
                                                                 Live since
                                                               </span>
-                                                              <span>{formatDate(rel.promotedAt)}</span>
+                                                              <span>
+                                                                {formatDate(rel.promotedAt)}
+                                                              </span>
                                                               <span className="text-muted-foreground">
                                                                 Released by
                                                               </span>
@@ -1484,7 +1489,6 @@ export function ProductDashboard({
                   </div>
                 </section>
               ) : null}
-
 
               {selectedApp ? <Separator className="" /> : null}
 
