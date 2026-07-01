@@ -59,10 +59,16 @@ export async function writeManifestFile(
   bundle: ManifestBundle,
 ): Promise<void> {
   const storageKey = buildManifestStorageKey(appId, channel, runtimeVersion);
-  // Stored as validated at initiate; re-parse defensively so a malformed
-  // row can never produce a manifest whose encryption block does not match
-  // what was signed.
-  const encryption = parseBundleEncryption(bundle.encryption) ?? null;
+  // Stored as validated at initiate; re-parse defensively. A malformed row
+  // must fail the sync loudly — silently publishing an unencrypted manifest
+  // for an encrypted object would make every device fail extraction.
+  const parsedEncryption = parseBundleEncryption(bundle.encryption);
+  if (parsedEncryption === null) {
+    throw new Error(
+      `Bundle ${bundle.version} has a malformed stored encryption envelope; refusing to publish its manifest`,
+    );
+  }
+  const encryption = parsedEncryption ?? null;
   const signature = signManifest({
     appId,
     channel,

@@ -703,7 +703,10 @@ public class UpdaterPlugin extends Plugin {
   ) throws Exception {
     // Check disk space before downloading
     if (expectedSize > 0) {
-      long requiredSpace = (long) (expectedSize * 2.5); // zip + extracted + buffer
+      // zip + extracted + buffer; encrypted bundles keep an extra decrypted
+      // zip copy on disk between decrypt and extract.
+      double multiplier = encryption != null ? 3.5 : 2.5;
+      long requiredSpace = (long) (expectedSize * multiplier);
       long availableSpace = getFreeDiskSpace();
       if (availableSpace < requiredSpace) {
         sendDeviceEvent(

@@ -286,7 +286,7 @@ decrypt your bundles.
 the app binary, so a determined attacker who reverse-engineers the app can
 extract it — true of every client-side encryption scheme. What it protects
 against: leaked or guessed CDN URLs, bucket misconfiguration, and casual
-inspection of stored objects. Update *forgery* is independently blocked by
+inspection of stored objects. Update _forgery_ is independently blocked by
 the ES256 manifest signature — which is also why encryption should only be
 used with manifest signing enabled (hosted default): the encryption
 parameters are covered by the signature.
@@ -295,14 +295,19 @@ Operational rules:
 
 - **Rollout order:** ship a store build containing `bundleKeys` **before**
   releasing encrypted bundles. Installed apps without the key cannot decrypt
-  and will stay on their current version (they keep running; updates fail
-  cleanly and surface via `getLastFailure()`).
+  and will stay on their current version (they keep running; the failure is
+  recorded as `download_error` telemetry and, if you listen for it, the
+  `downloadFailed` event — it does not appear in `getLastFailure()`, which
+  reports rollbacks only).
 - **Rotation:** `bundleKeys` is an array — ship old + new keys together
   during a transition, then drop the old key in a later store build.
 - **Key custody:** back the key up. Losing it means installed apps cannot
   receive updates until a store build ships a new key.
 - Decryption failures are never fatal: they behave like download failures —
   the running bundle is untouched and nothing unverified is ever applied.
+- **Memory:** decryption buffers the bundle in memory (roughly 2–3× the
+  bundle size at peak). Keep encrypted bundles comfortably under ~100 MB,
+  especially for low-end Android devices.
 
 ## Source areas
 

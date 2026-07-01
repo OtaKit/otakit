@@ -601,7 +601,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   ) async throws -> BundleInfo {
     // Check disk space before downloading
     if let size = expectedSize {
-      let requiredSpace = Int64(Double(size) * 2.5) // zip + extracted + buffer
+      // zip + extracted + buffer; encrypted bundles keep an extra decrypted
+      // zip copy on disk between decrypt and extract.
+      let multiplier = encryption != nil ? 3.5 : 2.5
+      let requiredSpace = Int64(Double(size) * multiplier)
       let availableSpace = getFreeDiskSpace()
       if availableSpace < requiredSpace {
         let error = NSError(
