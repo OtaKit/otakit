@@ -7,6 +7,46 @@ import { buildPublicObjectUrl, deleteBundleObject } from '@/lib/storage';
 
 export const runtime = 'nodejs';
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ appId: string; bundleId: string }> },
+) {
+  const routeParams = await params;
+  const appId = routeParams.appId;
+
+  const access = await resolveOrganizationAccess(request, appId);
+  if (!access.success) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+
+  const bundle = await db.bundle.findUnique({
+    where: { id: routeParams.bundleId },
+    select: {
+      id: true,
+      appId: true,
+      version: true,
+      sha256: true,
+      size: true,
+      runtimeVersion: true,
+      nativePackages: true,
+      createdAt: true,
+    },
+  });
+  if (!bundle || bundle.appId !== appId) {
+    return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    id: bundle.id,
+    version: bundle.version,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    runtimeVersion: bundle.runtimeVersion,
+    nativePackages: bundle.nativePackages,
+    createdAt: bundle.createdAt.toISOString(),
+  });
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ appId: string; bundleId: string }> },

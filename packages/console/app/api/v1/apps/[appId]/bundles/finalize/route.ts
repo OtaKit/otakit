@@ -129,6 +129,10 @@ export async function POST(
             session.metadata === null
               ? Prisma.JsonNull
               : (session.metadata as Prisma.InputJsonValue),
+          nativePackages:
+            session.nativePackages === null
+              ? Prisma.JsonNull
+              : (session.nativePackages as Prisma.InputJsonValue),
         },
       });
 

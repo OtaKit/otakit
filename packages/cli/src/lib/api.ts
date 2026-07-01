@@ -1,5 +1,6 @@
 import type { CliConfig } from './config.js';
 import { fetchCli } from './http.js';
+import type { NativePackage } from './native-deps.js';
 import { CLI_VERSION, getCliUserAgent } from './version.js';
 
 export interface Bundle {
@@ -9,6 +10,10 @@ export interface Bundle {
   size: number;
   runtimeVersion?: string | null;
   createdAt: string;
+}
+
+export interface BundleDetail extends Bundle {
+  nativePackages?: NativePackage[] | null;
 }
 
 export interface UploadInitResponse {
@@ -26,6 +31,7 @@ export interface Release {
   bundleVersion?: string;
   promotedAt: string;
   promotedBy?: string;
+  revertedAt?: string | null;
 }
 
 export class ApiClient {
@@ -97,11 +103,16 @@ export class ApiClient {
     runtimeVersion?: string;
     size: number;
     sha256: string;
+    nativePackages?: NativePackage[];
   }): Promise<UploadInitResponse> {
     return this.fetch(this.appPath('/bundles/initiate'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
+  }
+
+  async getBundle(bundleId: string): Promise<BundleDetail> {
+    return this.fetch(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`));
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {

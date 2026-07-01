@@ -115,3 +115,41 @@ function checkDepth(obj: unknown, current: number, max: number): boolean {
   }
   return true;
 }
+
+const MAX_NATIVE_PACKAGES = 200;
+const MAX_NATIVE_PACKAGES_SIZE = 32768;
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+/**
+ * Validate the native package set the CLI attaches at upload time for the
+ * compatibility guardrail. Shape per entry:
+ * { name, version, requestedVersion?, iosChecksum?, androidChecksum? }
+ */
+export function isValidNativePackages(nativePackages: unknown): boolean {
+  if (nativePackages === null || nativePackages === undefined) {
+    return true;
+  }
+  if (!Array.isArray(nativePackages)) {
+    return false;
+  }
+  if (nativePackages.length > MAX_NATIVE_PACKAGES) {
+    return false;
+  }
+  if (JSON.stringify(nativePackages).length > MAX_NATIVE_PACKAGES_SIZE) {
+    return false;
+  }
+  return nativePackages.every(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      !Array.isArray(entry) &&
+      typeof (entry as Record<string, unknown>).name === 'string' &&
+      typeof (entry as Record<string, unknown>).version === 'string' &&
+      isOptionalString((entry as Record<string, unknown>).requestedVersion) &&
+      isOptionalString((entry as Record<string, unknown>).iosChecksum) &&
+      isOptionalString((entry as Record<string, unknown>).androidChecksum),
+  );
+}
