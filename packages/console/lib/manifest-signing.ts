@@ -3,6 +3,16 @@ import crypto from 'node:crypto';
 const MANIFEST_PAYLOAD_HEADER = 'MANIFEST';
 const DEFAULT_MANIFEST_TTL_SECONDS = 31_536_000; // 1 year
 
+export type ManifestStrategy = 'zip' | 'deltas';
+
+export interface ManifestEncryptionInput {
+  alg: string;
+  kid: string;
+  wrapNonce: string;
+  wrappedDek: string;
+  nonce: string;
+}
+
 export interface ManifestSignatureInput {
   appId: string;
   channel: string | null;
@@ -10,6 +20,12 @@ export interface ManifestSignatureInput {
   sha256: string;
   size: number;
   runtimeVersion: string | null;
+  /** Update strategy baked into the manifest. Defaults to 'zip'. */
+  strategy?: ManifestStrategy;
+  /** Per-release emergency escalation flag. Defaults to false. */
+  forceImmediate?: boolean;
+  /** Bundle encryption parameters, or null when the bundle is not encrypted. */
+  encryption?: ManifestEncryptionInput | null;
 }
 
 export interface ManifestSignature {
@@ -51,10 +67,38 @@ function getSigningKey(): { privateKey: crypto.KeyObject; kid: string } | null {
 }
 
 /**
- * Build the deterministic canonical payload string.
+ * Encode the encryption block for the canonical payload.
+ *
+ * "null" when the bundle is not encrypted; otherwise a fixed-order
+ * pipe-joined string covering every encryption parameter, so tampering any
+ * of them invalidates the signature.
+ */
+function encodeEncryptionForPayload(
+  encryption: ManifestEncryptionInput | null | undefined,
+): string {
+  if (!encryption) {
+    return 'null';
+  }
+  return [
+    encryption.alg,
+    encryption.kid,
+    encryption.wrapNonce,
+    encryption.wrappedDek,
+    encryption.nonce,
+  ].join('|');
+}
+
+/**
+ * Build the deterministic canonical payload string (payload v2).
  *
  * Format: fixed field order, newline-separated, explicit "null" for missing values.
- * Both server and native plugins must produce the identical string.
+ * Both server and native plugins must produce the identical string
+ * (see ManifestVerifier.swift / ManifestVerifier.java).
+ *
+ * v2 adds `strategy`, `forceImmediate`, and `encryption` between
+ * `runtimeVersion` and `kid`. All three are always present with explicit
+ * defaults (`zip` / `false` / `null`) so future features populate existing
+ * fields instead of changing the format again.
  */
 export function buildCanonicalPayload(
   fields: ManifestSignatureInput,
@@ -70,6 +114,9 @@ export function buildCanonicalPayload(
     `sha256:${fields.sha256}`,
     `size:${fields.size}`,
     `runtimeVersion:${fields.runtimeVersion ?? 'null'}`,
+    `strategy:${fields.strategy ?? 'zip'}`,
+    `forceImmediate:${fields.forceImmediate ? 'true' : 'false'}`,
+    `encryption:${encodeEncryptionForPayload(fields.encryption)}`,
     `kid:${kid}`,
     `iat:${iat}`,
     `exp:${exp}`,

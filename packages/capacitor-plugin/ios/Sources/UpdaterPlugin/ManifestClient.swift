@@ -3,6 +3,14 @@ import Foundation
 private let baseChannelKey = "__base__"
 private let defaultRuntimeKey = "__default__"
 
+struct ManifestEncryption {
+  let alg: String
+  let kid: String
+  let wrapNonce: String
+  let wrappedDek: String
+  let nonce: String
+}
+
 struct LatestManifest {
   let version: String
   let url: String
@@ -10,6 +18,9 @@ struct LatestManifest {
   let size: Int
   let runtimeVersion: String?
   let releaseId: String
+  let strategy: String
+  let forceImmediate: Bool
+  let encryption: ManifestEncryption?
 }
 
 struct ManifestSignature {
@@ -112,6 +123,12 @@ enum ManifestClient {
       throw ManifestClientError.invalidResponse
     }
 
+    let strategy = (object["strategy"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .nilIfEmpty ?? "zip"
+    let forceImmediate = object["forceImmediate"] as? Bool ?? false
+    let encryption = try parseEncryption(object["encryption"])
+
     guard let dlURL = URL(string: downloadUrl) else {
       throw ManifestClientError.invalidURL
     }
@@ -133,6 +150,9 @@ enum ManifestClient {
         sha256: sha256,
         size: size,
         runtimeVersion: runtimeVersion,
+        strategy: strategy,
+        forceImmediate: forceImmediate,
+        encryption: encryption,
         signature: signature,
         trustedKeys: manifestKeys
       )
@@ -144,7 +164,31 @@ enum ManifestClient {
       sha256: sha256,
       size: size,
       runtimeVersion: runtimeVersion,
-      releaseId: releaseId
+      releaseId: releaseId,
+      strategy: strategy,
+      forceImmediate: forceImmediate,
+      encryption: encryption
+    )
+  }
+
+  private static func parseEncryption(_ rawValue: Any?) throws -> ManifestEncryption? {
+    guard let rawValue, !(rawValue is NSNull) else {
+      return nil
+    }
+    guard let object = rawValue as? [String: Any],
+          let alg = object["alg"] as? String,
+          let kid = object["kid"] as? String,
+          let wrapNonce = object["wrapNonce"] as? String,
+          let wrappedDek = object["wrappedDek"] as? String,
+          let nonce = object["nonce"] as? String else {
+      throw ManifestClientError.invalidResponse
+    }
+    return ManifestEncryption(
+      alg: alg,
+      kid: kid,
+      wrapNonce: wrapNonce,
+      wrappedDek: wrappedDek,
+      nonce: nonce
     )
   }
 

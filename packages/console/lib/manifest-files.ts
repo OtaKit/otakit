@@ -64,6 +64,9 @@ export async function writeManifestFile(
     sha256: bundle.sha256,
     size: bundle.size,
     runtimeVersion: bundle.runtimeVersion,
+    strategy: 'zip',
+    forceImmediate: false,
+    encryption: null,
   });
 
   await putTextObject({
@@ -76,6 +79,8 @@ export async function writeManifestFile(
       channel,
       runtimeVersion: bundle.runtimeVersion,
       releaseId: release.id,
+      strategy: 'zip',
+      forceImmediate: false,
       signature,
     }),
     contentType: 'application/json; charset=utf-8',

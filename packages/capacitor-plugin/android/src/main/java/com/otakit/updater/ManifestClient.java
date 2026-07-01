@@ -28,6 +28,23 @@ final class ManifestClient {
     }
   }
 
+  static final class ManifestEncryption {
+
+    final String alg;
+    final String kid;
+    final String wrapNonce;
+    final String wrappedDek;
+    final String nonce;
+
+    ManifestEncryption(String alg, String kid, String wrapNonce, String wrappedDek, String nonce) {
+      this.alg = alg;
+      this.kid = kid;
+      this.wrapNonce = wrapNonce;
+      this.wrappedDek = wrappedDek;
+      this.nonce = nonce;
+    }
+  }
+
   static final class LatestManifest {
 
     final String version;
@@ -36,6 +53,9 @@ final class ManifestClient {
     final int size;
     final String runtimeVersion;
     final String releaseId;
+    final String strategy;
+    final boolean forceImmediate;
+    final ManifestEncryption encryption;
 
     LatestManifest(
       String version,
@@ -43,7 +63,10 @@ final class ManifestClient {
       String sha256,
       int size,
       String runtimeVersion,
-      String releaseId
+      String releaseId,
+      String strategy,
+      boolean forceImmediate,
+      ManifestEncryption encryption
     ) {
       this.version = version;
       this.url = url;
@@ -51,6 +74,9 @@ final class ManifestClient {
       this.size = size;
       this.runtimeVersion = runtimeVersion;
       this.releaseId = releaseId;
+      this.strategy = strategy;
+      this.forceImmediate = forceImmediate;
+      this.encryption = encryption;
     }
   }
 
@@ -145,6 +171,16 @@ final class ManifestClient {
         throw new IllegalStateException("Manifest response missing required releaseId");
       }
 
+      String strategy = "zip";
+      if (json.has("strategy") && !json.isNull("strategy")) {
+        String rawStrategy = json.getString("strategy").trim();
+        if (!rawStrategy.isEmpty()) {
+          strategy = rawStrategy;
+        }
+      }
+      boolean forceImmediate = json.optBoolean("forceImmediate", false);
+      ManifestEncryption encryption = parseEncryption(json);
+
       requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
 
       if (manifestKeys == null || manifestKeys.isEmpty()) {
@@ -168,6 +204,9 @@ final class ManifestClient {
           sha256,
           size,
           responseRuntimeVersion,
+          strategy,
+          forceImmediate,
+          encryption,
           signature,
           manifestKeys
         );
@@ -179,11 +218,37 @@ final class ManifestClient {
         sha256,
         size,
         responseRuntimeVersion,
-        releaseId
+        releaseId,
+        strategy,
+        forceImmediate,
+        encryption
       );
     } finally {
       connection.disconnect();
     }
+  }
+
+  private static ManifestEncryption parseEncryption(JSONObject json) throws Exception {
+    if (!json.has("encryption") || json.isNull("encryption")) {
+      return null;
+    }
+    JSONObject encObj = json.getJSONObject("encryption");
+    if (
+      !encObj.has("alg") ||
+      !encObj.has("kid") ||
+      !encObj.has("wrapNonce") ||
+      !encObj.has("wrappedDek") ||
+      !encObj.has("nonce")
+    ) {
+      throw new IllegalStateException("Manifest encryption block is missing required fields");
+    }
+    return new ManifestEncryption(
+      encObj.getString("alg"),
+      encObj.getString("kid"),
+      encObj.getString("wrapNonce"),
+      encObj.getString("wrappedDek"),
+      encObj.getString("nonce")
+    );
   }
 
   private static String readStream(InputStream input) throws Exception {
