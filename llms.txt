@@ -1204,7 +1204,9 @@ OtaKit has one set of four policy values and three settings that decide when eac
 
 #### Ship critical fixes instantly
 
-Set `launchPolicy` and `resumePolicy` to `immediate` as well. Devices apply a fix as soon as they check — even mid-session on resume. Trade-off: users can see the app reload while they're using it, so reserve this for cases where landing the fix fast matters more than a seamless reload.
+Mark the release as force immediate — in the dashboard's release dialog or with `otakit release --force-immediate`. The flag is baked into the signed manifest, and devices on `shadow` or `apply-staged` policies escalate that one release to the immediate behavior: download, apply, and reload on their next check. No app rebuild, no config change.
+
+Bounds: it is "immediate on the next event/check", not push — delivery is bounded by lifecycle events and `checkInterval`. Policies set to `off` never fetch a manifest, so they never see the flag, and the trial/rollback safety net still applies. The reload can land mid-session, so reserve it for broken releases, not routine rollouts. (Compiling `immediate` policies into the app remains an option when you want this behavior for every release.)
 
 #### Update quietly, reload only with consent
 

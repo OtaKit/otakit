@@ -68,18 +68,24 @@ public class UpdaterPlugin extends Plugin {
 
     final String kind;
     final BundleInfo bundle;
+    final boolean forceImmediate;
 
-    private DownloadResolution(String kind, BundleInfo bundle) {
+    private DownloadResolution(String kind, BundleInfo bundle, boolean forceImmediate) {
       this.kind = kind;
       this.bundle = bundle;
+      this.forceImmediate = forceImmediate;
     }
 
     static DownloadResolution noUpdate() {
-      return new DownloadResolution("no_update", null);
+      return new DownloadResolution("no_update", null, false);
     }
 
-    static DownloadResolution staged(BundleInfo bundle) {
-      return new DownloadResolution("staged", bundle);
+    static DownloadResolution staged(BundleInfo bundle, boolean forceImmediate) {
+      return new DownloadResolution("staged", bundle, forceImmediate);
+    }
+
+    boolean isForcedStaged() {
+      return "staged".equals(kind) && forceImmediate;
     }
   }
 
@@ -290,14 +296,20 @@ public class UpdaterPlugin extends Plugin {
           return;
         }
         executeAutomaticUpdate("runtime apply-staged fallback", () -> {
-          downloadLatest(false, null);
+          DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case SHADOW:
         executeAutomaticUpdate("runtime shadow", () -> {
-          downloadLatest(false, null);
+          DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case IMMEDIATE:
@@ -327,10 +339,20 @@ public class UpdaterPlugin extends Plugin {
           android.util.Log.w("OtaKit", "launch apply-staged failed", e);
           return;
         }
-        executeAutomaticUpdate("launch apply-staged fallback", () -> downloadLatest(false, null));
+        executeAutomaticUpdate("launch apply-staged fallback", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case SHADOW:
-        executeAutomaticUpdate("launch shadow", () -> downloadLatest(false, null));
+        executeAutomaticUpdate("launch shadow", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case IMMEDIATE:
         executeAutomaticUpdate("launch immediate", () -> {
@@ -352,11 +374,19 @@ public class UpdaterPlugin extends Plugin {
           if (applyStaged(true)) {
             return;
           }
-          downloadLatest(true, null);
+          DownloadResolution result = downloadLatest(true, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case SHADOW:
-        executeAutomaticUpdate("resume shadow", () -> downloadLatest(true, null));
+        executeAutomaticUpdate("resume shadow", () -> {
+          DownloadResolution result = downloadLatest(true, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case IMMEDIATE:
         executeAutomaticUpdate("resume immediate", () -> {
@@ -572,10 +602,13 @@ public class UpdaterPlugin extends Plugin {
       case "no_update":
         return DownloadResolution.noUpdate();
       case "already_staged":
-        return DownloadResolution.staged(result.bundle);
+        return DownloadResolution.staged(result.bundle, result.latest.forceImmediate);
       case "update_available":
         try {
-          return DownloadResolution.staged(downloadLatestManifest(result.latest, targetChannel));
+          return DownloadResolution.staged(
+            downloadLatestManifest(result.latest, targetChannel),
+            result.latest.forceImmediate
+          );
         } catch (Exception e) {
           if (!isExpiredURLError(e)) {
             throw e;
@@ -591,10 +624,14 @@ public class UpdaterPlugin extends Plugin {
             case "no_update":
               return DownloadResolution.noUpdate();
             case "already_staged":
-              return DownloadResolution.staged(refreshedResolution.bundle);
+              return DownloadResolution.staged(
+                refreshedResolution.bundle,
+                refreshedResolution.latest.forceImmediate
+              );
             case "update_available":
               return DownloadResolution.staged(
-                downloadLatestManifest(refreshedResolution.latest, targetChannel)
+                downloadLatestManifest(refreshedResolution.latest, targetChannel),
+                refreshedResolution.latest.forceImmediate
               );
             default:
               throw new IllegalStateException(
@@ -935,6 +972,7 @@ public class UpdaterPlugin extends Plugin {
       object.put("runtimeVersion", latest.runtimeVersion);
     }
     object.put("releaseId", latest.releaseId);
+    object.put("forceImmediate", latest.forceImmediate);
     return object;
   }
 

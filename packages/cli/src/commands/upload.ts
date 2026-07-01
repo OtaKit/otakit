@@ -14,6 +14,7 @@ type UploadOptions = {
   version?: string;
   strictVersion?: boolean;
   release?: string | boolean;
+  forceImmediate?: boolean;
 };
 
 function resolveReleaseChannel(
@@ -38,6 +39,10 @@ export const uploadCommand = new Command('upload')
   .option('--version <version>', 'Version string (default: OTAKIT_VERSION, then auto-generated)')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
+  .option(
+    '--force-immediate',
+    'With --release: devices apply and reload on their next check (emergency fixes)',
+  )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -70,6 +75,7 @@ export const uploadCommand = new Command('upload')
             version,
             runtimeVersion: config.runtimeVersion,
             releaseChannel,
+            forceImmediate: options.forceImmediate === true,
             onStatus: (message) => {
               spinner.text = message;
             },

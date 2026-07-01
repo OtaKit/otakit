@@ -24,6 +24,7 @@ export interface Release {
   runtimeVersion?: string | null;
   bundleId: string;
   bundleVersion?: string;
+  forceImmediate?: boolean;
   promotedAt: string;
   promotedBy?: string;
 }
@@ -132,10 +133,15 @@ export class ApiClient {
   async release(
     channel: string | null,
     bundleId: string,
+    options?: { forceImmediate?: boolean },
   ): Promise<{ release: Release; previousRelease: Release | null }> {
     return this.fetch(this.appPath('/releases'), {
       method: 'POST',
-      body: JSON.stringify({ bundleId, channel }),
+      body: JSON.stringify({
+        bundleId,
+        channel,
+        forceImmediate: options?.forceImmediate ?? false,
+      }),
     });
   }
 

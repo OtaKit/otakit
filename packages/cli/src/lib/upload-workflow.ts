@@ -132,6 +132,7 @@ export type UploadWorkflowOptions = {
   version: string;
   runtimeVersion?: string;
   releaseChannel?: string | null;
+  forceImmediate?: boolean;
   onStatus?: (message: string) => void;
 };
 
@@ -143,7 +144,8 @@ export type UploadWorkflowResult = {
 export async function runUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
-  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
+  const { api, sourcePath, version, runtimeVersion, releaseChannel, forceImmediate, onStatus } =
+    options;
 
   validateBundleDirectory(sourcePath);
 
@@ -190,7 +192,7 @@ export async function runUploadWorkflow(
 
     if (releaseChannel !== undefined) {
       onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-      await api.release(releaseChannel, bundle.id);
+      await api.release(releaseChannel, bundle.id, { forceImmediate });
     }
 
     return { bundle, releaseChannel };

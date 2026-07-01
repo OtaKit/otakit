@@ -20,7 +20,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   private enum DownloadResolution {
     case noUpdate
-    case staged(BundleInfo)
+    case staged(BundleInfo, forceImmediate: Bool)
   }
 
   public let identifier = "UpdaterPlugin"
@@ -196,13 +196,19 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return
       }
       executeAutomaticUpdate(label: "runtime apply-staged fallback") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
         resolveCurrentRuntimeKey()
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "runtime shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
         resolveCurrentRuntimeKey()
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "runtime immediate") { [self] in
@@ -232,11 +238,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return
       }
       executeAutomaticUpdate(label: "launch apply-staged fallback") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "launch shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "launch immediate") { [self] in
@@ -257,11 +269,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         if try applyStaged(reloadAfterApply: true) {
           return
         }
-        _ = try await downloadLatest(respectInterval: true, channel: nil)
+        let result = try await downloadLatest(respectInterval: true, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "resume shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: true, channel: nil)
+        let result = try await downloadLatest(respectInterval: true, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "resume immediate") { [self] in
@@ -478,15 +496,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     switch result {
     case .noUpdate:
       return .noUpdate
-    case let .alreadyStaged(_, bundle):
-      return .staged(bundle)
+    case let .alreadyStaged(latest, bundle):
+      return .staged(bundle, forceImmediate: latest.forceImmediate)
     case let .updateAvailable(manifest):
       do {
         let bundle = try await downloadLatestManifest(
           manifest,
           targetChannel: targetChannel
         )
-        return .staged(bundle)
+        return .staged(bundle, forceImmediate: manifest.forceImmediate)
       } catch let error as NSError where isExpiredURLError(error) {
         guard let refreshed = try await fetchLatest(channel: targetChannel) else {
           return .noUpdate
@@ -495,14 +513,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         switch try classifyLatestManifest(refreshed, targetChannel: targetChannel) {
         case .noUpdate:
           return .noUpdate
-        case let .alreadyStaged(_, bundle):
-          return .staged(bundle)
+        case let .alreadyStaged(latest, bundle):
+          return .staged(bundle, forceImmediate: latest.forceImmediate)
         case let .updateAvailable(retryManifest):
           let bundle = try await downloadLatestManifest(
             retryManifest,
             targetChannel: targetChannel
           )
-          return .staged(bundle)
+          return .staged(bundle, forceImmediate: retryManifest.forceImmediate)
         }
       }
     }
@@ -555,12 +573,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     switch result {
     case .noUpdate:
       return ["kind": "no_update"]
-    case let .staged(bundle):
+    case let .staged(bundle, _):
       return [
         "kind": "staged",
         "bundle": bundle.toDictionary(),
       ]
     }
+  }
+
+  /// True when an automatic flow staged a bundle whose release is marked
+  /// force-immediate — the flow escalates to apply + reload.
+  private func isForcedStaged(_ result: DownloadResolution) -> Bool {
+    if case let .staged(_, forceImmediate) = result {
+      return forceImmediate
+    }
+    return false
   }
 
   private func isExpiredURLError(_ error: NSError) -> Bool {
@@ -863,6 +890,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       payload["runtimeVersion"] = runtimeVersion
     }
     payload["releaseId"] = latest.releaseId
+    payload["forceImmediate"] = latest.forceImmediate
     return payload
   }
 

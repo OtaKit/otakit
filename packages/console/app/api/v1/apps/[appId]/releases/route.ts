@@ -87,6 +87,7 @@ export async function GET(
       bundleVersion: release.bundle.version,
       previousBundleId: release.previousBundleId,
       previousBundleVersion: release.previousBundle?.version ?? null,
+      forceImmediate: release.forceImmediate,
       promotedAt: release.promotedAt.toISOString(),
       promotedBy: release.promotedBy,
       revertedAt: release.revertedAt?.toISOString() ?? null,
@@ -136,6 +137,12 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid channel' }, { status: 400 });
   }
 
+  const rawForceImmediate = body.forceImmediate;
+  if (rawForceImmediate !== undefined && typeof rawForceImmediate !== 'boolean') {
+    return NextResponse.json({ error: 'forceImmediate must be a boolean' }, { status: 400 });
+  }
+  const forceImmediate = rawForceImmediate === true;
+
   const bundle = await db.bundle.findUnique({
     where: { id: bundleId },
     select: { id: true, appId: true, version: true, runtimeVersion: true },
@@ -172,6 +179,7 @@ export async function POST(
     bundleId: bundle.id,
     previousBundleId: currentLatest?.bundleId ?? null,
     channel,
+    forceImmediate,
     promotedBy,
   });
   await syncManifestFileForLane(appId, channel, bundle.runtimeVersion);
@@ -184,6 +192,7 @@ export async function POST(
       bundleId: release.bundleId,
       bundleVersion: bundle.version,
       previousBundleId: release.previousBundleId,
+      forceImmediate: release.forceImmediate,
       promotedAt: release.promotedAt.toISOString(),
       promotedBy: release.promotedBy,
       revertedAt: null,

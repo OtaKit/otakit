@@ -88,6 +88,7 @@ export type ReleaseHistoryItem = {
   bundleVersion: string;
   previousBundleId: string | null;
   previousBundleVersion: string | null;
+  forceImmediate: boolean;
   promotedAt: string;
   promotedBy: string | null;
   revertedAt: string | null;
