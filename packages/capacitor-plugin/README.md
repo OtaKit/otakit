@@ -257,8 +257,52 @@ The plugin does not just download arbitrary zips from a URL.
 2. it verifies the manifest signature when keys are configured
 3. it compares the manifest with current, staged, and last-failed local state
 4. it downloads only when a newer usable bundle exists
-5. it verifies the zip against the manifest `sha256`
-6. it stages and later applies the bundle
+5. it verifies the downloaded object against the manifest `sha256`
+6. if the bundle is encrypted, it decrypts it (AES-256-GCM; the tag authenticates the plaintext)
+7. it stages and later applies the bundle
+
+## Bundle encryption (optional)
+
+Bundles can be end-to-end encrypted so that object storage and the CDN only
+ever hold ciphertext. Generate a key with `otakit generate-encryption-key`,
+put it in CI as `OTAKIT_ENCRYPTION_KEY` (the CLI then encrypts uploads), and
+ship the same key in the app:
+
+```ts
+plugins: {
+  OtaKit: {
+    // Inject from an env var at build time — never commit the key.
+    bundleKeys: [{ kid: process.env.OTAKIT_ENCRYPTION_KID!, key: process.env.OTAKIT_ENCRYPTION_KEY! }],
+  },
+},
+```
+
+Per upload the CLI generates a random data key (DEK), encrypts the zip with
+AES-256-GCM, and wraps the DEK under your app key; the wrapped DEK and nonces
+travel in the signed manifest. The server never sees the key and cannot
+decrypt your bundles.
+
+**Threat model — confidentiality, not DRM.** The decryption key ships inside
+the app binary, so a determined attacker who reverse-engineers the app can
+extract it — true of every client-side encryption scheme. What it protects
+against: leaked or guessed CDN URLs, bucket misconfiguration, and casual
+inspection of stored objects. Update *forgery* is independently blocked by
+the ES256 manifest signature — which is also why encryption should only be
+used with manifest signing enabled (hosted default): the encryption
+parameters are covered by the signature.
+
+Operational rules:
+
+- **Rollout order:** ship a store build containing `bundleKeys` **before**
+  releasing encrypted bundles. Installed apps without the key cannot decrypt
+  and will stay on their current version (they keep running; updates fail
+  cleanly and surface via `getLastFailure()`).
+- **Rotation:** `bundleKeys` is an array — ship old + new keys together
+  during a transition, then drop the old key in a later store build.
+- **Key custody:** back the key up. Losing it means installed apps cannot
+  receive updates until a store build ships a new key.
+- Decryption failures are never fatal: they behave like download failures —
+  the running bundle is untouched and nothing unverified is ever applied.
 
 ## Source areas
 

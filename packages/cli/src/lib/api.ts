@@ -97,6 +97,13 @@ export class ApiClient {
     runtimeVersion?: string;
     size: number;
     sha256: string;
+    encryption?: {
+      alg: string;
+      kid: string;
+      wrapNonce: string;
+      wrappedDek: string;
+      nonce: string;
+    };
   }): Promise<UploadInitResponse> {
     return this.fetch(this.appPath('/bundles/initiate'), {
       method: 'POST',

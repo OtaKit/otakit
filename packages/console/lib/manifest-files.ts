@@ -7,6 +7,7 @@ import {
   listStorageKeys,
   putTextObject,
 } from '@/lib/storage';
+import { parseBundleEncryption } from '@/lib/validation';
 
 const MANIFEST_CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
 const MANIFEST_PREFIX = 'manifests';
@@ -19,6 +20,7 @@ type ManifestBundle = {
   size: number;
   runtimeVersion: string | null;
   storageKey: string;
+  encryption?: unknown;
 };
 
 type ManifestRelease = {
@@ -57,6 +59,10 @@ export async function writeManifestFile(
   bundle: ManifestBundle,
 ): Promise<void> {
   const storageKey = buildManifestStorageKey(appId, channel, runtimeVersion);
+  // Stored as validated at initiate; re-parse defensively so a malformed
+  // row can never produce a manifest whose encryption block does not match
+  // what was signed.
+  const encryption = parseBundleEncryption(bundle.encryption) ?? null;
   const signature = signManifest({
     appId,
     channel,
@@ -66,7 +72,7 @@ export async function writeManifestFile(
     runtimeVersion: bundle.runtimeVersion,
     strategy: 'zip',
     forceImmediate: false,
-    encryption: null,
+    encryption,
   });
 
   await putTextObject({
@@ -81,6 +87,7 @@ export async function writeManifestFile(
       releaseId: release.id,
       strategy: 'zip',
       forceImmediate: false,
+      encryption,
       signature,
     }),
     contentType: 'application/json; charset=utf-8',
@@ -152,6 +159,7 @@ export async function syncManifestFileForLane(
           size: true,
           runtimeVersion: true,
           storageKey: true,
+          encryption: true,
         },
       },
     },
@@ -197,6 +205,7 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
           size: true,
           runtimeVersion: true,
           storageKey: true,
+          encryption: true,
         },
       },
     },

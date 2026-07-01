@@ -107,6 +107,7 @@ public class UpdaterPlugin extends Plugin {
   private String channel;
   private String runtimeVersion;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
+  private final java.util.Map<String, byte[]> bundleKeys = new java.util.HashMap<>();
   private long checkIntervalMs = 600_000;
   private boolean coldStartInProgress = false;
   private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
@@ -185,6 +186,38 @@ public class UpdaterPlugin extends Plugin {
 
     if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
+    }
+
+    try {
+      org.json.JSONArray rawBundleKeys = getConfig().getConfigJSON().optJSONArray("bundleKeys");
+      if (rawBundleKeys != null && rawBundleKeys.length() > 0) {
+        for (int i = 0; i < rawBundleKeys.length(); i++) {
+          org.json.JSONObject entry = rawBundleKeys.optJSONObject(i);
+          if (entry == null) {
+            continue;
+          }
+          String kid = entry.optString("kid", null);
+          String keyBase64 = entry.optString("key", null);
+          if (kid != null && keyBase64 != null) {
+            byte[] keyBytes = android.util.Base64.decode(keyBase64, android.util.Base64.DEFAULT);
+            if (keyBytes.length == 32) {
+              bundleKeys.put(kid, keyBytes);
+            }
+          }
+        }
+        if (bundleKeys.isEmpty()) {
+          android.util.Log.e(
+            "OtaKit",
+            "bundleKeys configured but all entries are invalid. Encrypted bundles cannot be decrypted."
+          );
+        }
+      }
+    } catch (Exception e) {
+      android.util.Log.e(
+        "OtaKit",
+        "Failed to parse bundleKeys. Encrypted bundles cannot be decrypted.",
+        e
+      );
     }
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
@@ -665,7 +698,8 @@ public class UpdaterPlugin extends Plugin {
     int expectedSize,
     String runtimeVersion,
     String channel,
-    String releaseId
+    String releaseId,
+    ManifestClient.ManifestEncryption encryption
   ) throws Exception {
     // Check disk space before downloading
     if (expectedSize > 0) {
@@ -685,12 +719,39 @@ public class UpdaterPlugin extends Plugin {
     }
 
     File downloadedZip = null;
+    File decryptedZip = null;
     File extractedDirectory = null;
 
     try {
       downloadedZip = downloadZip(url);
+      // The manifest sha256 covers the downloaded object as-is — the
+      // ciphertext when the bundle is encrypted.
       if (!HashUtils.verify(downloadedZip, expectedSha256)) {
         throw new IllegalStateException("Downloaded bundle hash mismatch");
+      }
+
+      File zipToExtract = downloadedZip;
+      if (encryption != null) {
+        byte[] kek = bundleKeys.get(encryption.kid);
+        if (kek == null) {
+          throw new IllegalStateException("no matching bundle key (kid " + encryption.kid + ")");
+        }
+        byte[] dek = BundleCrypto.unwrapDek(
+          kek,
+          android.util.Base64.decode(encryption.wrapNonce, android.util.Base64.DEFAULT),
+          android.util.Base64.decode(encryption.wrappedDek, android.util.Base64.DEFAULT)
+        );
+        decryptedZip = new File(
+          getContext().getCacheDir(),
+          "otakit-decrypted-" + System.currentTimeMillis() + ".zip"
+        );
+        BundleCrypto.decryptFile(
+          dek,
+          android.util.Base64.decode(encryption.nonce, android.util.Base64.DEFAULT),
+          downloadedZip,
+          decryptedZip
+        );
+        zipToExtract = decryptedZip;
       }
 
       extractedDirectory = new File(
@@ -701,7 +762,7 @@ public class UpdaterPlugin extends Plugin {
         throw new IllegalStateException("Cannot create temporary extraction directory");
       }
 
-      zipUtils.extractSecurely(downloadedZip, extractedDirectory);
+      zipUtils.extractSecurely(zipToExtract, extractedDirectory);
       File bundleRoot = resolveBundleRoot(extractedDirectory);
 
       String bundleId = buildBundleId(version, releaseId, expectedSha256);
@@ -741,6 +802,10 @@ public class UpdaterPlugin extends Plugin {
       if (downloadedZip != null && downloadedZip.exists()) {
         //noinspection ResultOfMethodCallIgnored
         downloadedZip.delete();
+      }
+      if (decryptedZip != null && decryptedZip.exists()) {
+        //noinspection ResultOfMethodCallIgnored
+        decryptedZip.delete();
       }
       if (extractedDirectory != null && extractedDirectory.exists()) {
         try {
@@ -949,7 +1014,8 @@ public class UpdaterPlugin extends Plugin {
       latest.size,
       latest.runtimeVersion,
       targetChannel,
-      latest.releaseId
+      latest.releaseId,
+      latest.encryption
     );
   }
 

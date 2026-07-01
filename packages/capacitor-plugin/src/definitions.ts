@@ -62,6 +62,13 @@ export interface OtaKitManifestKey {
   key: string;
 }
 
+export interface OtaKitBundleKey {
+  /** Key ID: first 16 hex chars of sha256(key). Printed by `otakit generate-encryption-key`. */
+  kid: string;
+  /** 256-bit AES key, base64. Inject from an env var at build time; do not commit. */
+  key: string;
+}
+
 export interface CheckNoUpdateResult {
   kind: 'no_update';
 }
@@ -125,6 +132,11 @@ export interface OtaKitConfig {
   cdnUrl?: string;
   /** Custom manifest verification keys for self-hosted or custom trust. */
   manifestKeys?: OtaKitManifestKey[];
+  /**
+   * Bundle decryption keys for end-to-end encrypted bundles.
+   * Array to allow rotation: ship old + new keys together during a transition.
+   */
+  bundleKeys?: OtaKitBundleKey[];
   /** Allow HTTP only for localhost development. Defaults to false. */
   allowInsecureUrls?: boolean;
 }

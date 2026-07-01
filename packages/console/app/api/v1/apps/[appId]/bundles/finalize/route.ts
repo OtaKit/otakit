@@ -129,6 +129,10 @@ export async function POST(
             session.metadata === null
               ? Prisma.JsonNull
               : (session.metadata as Prisma.InputJsonValue),
+          encryption:
+            session.encryption === null
+              ? Prisma.JsonNull
+              : (session.encryption as Prisma.InputJsonValue),
         },
       });
 

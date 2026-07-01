@@ -14,6 +14,7 @@ type UploadOptions = {
   version?: string;
   strictVersion?: boolean;
   release?: string | boolean;
+  encrypt?: boolean;
 };
 
 function resolveReleaseChannel(
@@ -38,6 +39,10 @@ export const uploadCommand = new Command('upload')
   .option('--version <version>', 'Version string (default: OTAKIT_VERSION, then auto-generated)')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
+  .option(
+    '--encrypt',
+    'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY (auto-enabled when the env var is set)',
+  )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -70,6 +75,7 @@ export const uploadCommand = new Command('upload')
             version,
             runtimeVersion: config.runtimeVersion,
             releaseChannel,
+            encrypt: options.encrypt,
             onStatus: (message) => {
               spinner.text = message;
             },
