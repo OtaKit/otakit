@@ -69,69 +69,107 @@ export default function BestFrameworksPage() {
       <h2>Side by side</h2>
       <DataTable headers={['', 'OtaKit', 'Capgo', 'Capawesome']} rows={comparisonRows} />
       <p>
-        The two cost rows are like-for-like: the same app, same user count, same four releases a
-        month, priced on each vendor&apos;s published tiers. A 20,000-user app pays OtaKit{' '}
-        <strong>$25</strong> and the others <strong>$79–83</strong> — three times more. At 250,000
-        users it&apos;s <strong>$25 versus $208–249</strong>, ten times more, every month, forever.
-        The gap only widens as you grow, because their meter is your user count and ours
-        isn&apos;t.
+        The two cost rows compare the exact same app — same users, four releases a month — on each
+        vendor&apos;s published pricing. Read them like this:
+      </p>
+      <ul>
+        <li>
+          At 20,000 users: OtaKit <strong>$25</strong>. Capgo <strong>~$83</strong>. Capawesome{' '}
+          <strong>$79</strong>. Roughly 3x.
+        </li>
+        <li>
+          At 250,000 users: OtaKit <strong>still $25</strong>. Capgo <strong>$208+</strong>.
+          Capawesome <strong>$249</strong>. Roughly 10x.
+        </li>
+      </ul>
+      <p>
+        The reason is simple: they charge per user, so their price grows with your app.
+        OtaKit charges per update delivered, so it doesn&apos;t.
       </p>
 
       <h2>Why the pricing model, not just the price, favors OtaKit</h2>
       <p>
-        MAU pricing taxes success: every user you win raises your bill whether you ship updates or
-        not. Capgo adds bandwidth and storage meters on top — three variables to forecast, and a
-        25&nbsp;MB bundle to a few thousand devices burns through allowances fast. OtaKit bills
-        one number, <strong>updates delivered</strong>: ship nothing in a quiet month, pay nothing
-        extra; the free tier alone (10,000 updates/mo, unlimited apps) covers many production apps
+        MAU pricing taxes success. Every user you win raises your bill — even in months you ship
+        nothing. Capgo adds bandwidth and storage meters on top, so you&apos;re forecasting three
+        variables instead of one.
+      </p>
+      <p>
+        OtaKit bills one number: <strong>updates delivered</strong>. Quiet month, nothing extra.
+        The free tier alone — 10,000 updates a month, unlimited apps — covers many production apps
         indefinitely.
       </p>
       <p>
-        And the privacy point bears repeating, because it&apos;s the same fact viewed from the
-        other side: a vendor can only bill you per user by <em>counting your users</em>. OtaKit
-        structurally can&apos;t track your users, because nothing in the system needs to know who
-        they are. Devices talk to a CDN, not to us.
+        The privacy win is the same fact from the other side. A vendor can only bill per user by{' '}
+        <em>counting your users</em>. OtaKit doesn&apos;t bill per user, so it never needs to know
+        who they are. Devices talk to a CDN, not to us.
       </p>
 
       <h2>OtaKit</h2>
       <p>
-        OtaKit is built around five primitives — <Code>appId</Code>, bundle, release, channel,
-        runtime version — and a security pipeline that&apos;s always on: every manifest
-        ES256-signed, every download SHA-256-verified before it runs, every activation provisional
-        until <Code>notifyAppReady()</Code> confirms a healthy boot. Broken releases roll back
-        on-device, automatically. Delta updates ship only changed files. End-to-end encryption
-        (AES-256-GCM, your key) is one flag away for code-sensitive apps. And the CLI does
-        something neither competitor offers: it checks at upload time whether your bundle depends
-        on native code the installed app doesn&apos;t have — catching the classic OTA crash before
-        it ships.
+        OtaKit keeps the model small — app, bundle, release, channel, runtime version — and makes
+        the safety non-negotiable:
       </p>
+      <ul>
+        <li>
+          <strong>Everything verified, always.</strong> Every manifest is ES256-signed and every
+          download SHA-256-checked before it runs. Not a setting — the default for everyone.
+        </li>
+        <li>
+          <strong>Broken releases fix themselves.</strong> A bundle isn&apos;t trusted until{' '}
+          <Code>notifyAppReady()</Code> confirms a healthy boot; otherwise the device rolls back
+          automatically.
+        </li>
+        <li>
+          <strong>Delta updates</strong> ship only the files that changed. Kilobytes, not
+          megabytes.
+        </li>
+        <li>
+          <strong>End-to-end encryption</strong> (AES-256-GCM, your key) is one flag away.
+        </li>
+        <li>
+          <strong>A guardrail nobody else has:</strong> the CLI checks at upload time whether your
+          bundle needs native code the installed app doesn&apos;t have — the classic OTA crash,
+          caught before it ships.
+        </li>
+      </ul>
       <p>
-        The whole stack — plugin, CLI, dashboard, ingest — is MIT-licensed in{' '}
-        <A href="https://github.com/OtaKit/otakit">one repo</A>, and self-hosting runs the same
-        code as the hosted platform. No other tool in the category can say that.
+        And the whole stack — plugin, CLI, dashboard, ingest — is MIT-licensed in{' '}
+        <A href="https://github.com/OtaKit/otakit">one repo</A>. Self-hosting runs the same code as
+        the hosted platform. No other tool in the category can say that.
       </p>
 
       <h2>Capgo</h2>
       <p>
         Capgo is the most established option and the broadest: live updates plus native builds,
-        store publishing, a large plugin catalog, and elaborate routing (per-device overrides,
-        cloud channel defaults, self-assignment). The breadth is real — and so is the cost of it: a
-        three-meter bill (MAU + bandwidth + storage), per-device identification to feed the MAU
-        meter, delivery through vendor infrastructure, and a routing model with enough states that
-        teams end up documenting it internally. If you want one vendor for builds, publishing, and
-        updates and you&apos;re comfortable with the metering, it&apos;s a credible choice. If you
-        want the best update platform specifically, the extra surface is weight, not value.
+        store publishing, a large plugin catalog, and elaborate routing controls.
+      </p>
+      <p>The breadth has a cost, and you pay it three ways:</p>
+      <ul>
+        <li>A three-meter bill — MAU, bandwidth, and storage — that&apos;s hard to forecast.</li>
+        <li>Per-device identification of your users, because the MAU meter requires it.</li>
+        <li>Updates delivered through vendor infrastructure, not straight from a CDN edge.</li>
+      </ul>
+      <p>
+        If you want one vendor for builds, publishing, and updates, it&apos;s a credible choice.
+        If you want the best update platform specifically, the extra surface is weight, not value.
       </p>
 
       <h2>Capawesome</h2>
       <p>
         Capawesome&apos;s Live Update plugin is well-engineered and comes from a respected plugin
-        vendor. The platform around it is the concern: the cloud is closed-source (only the plugin
-        is open), delivery runs through the vendor&apos;s own cloud, MAU gating starts at just
-        1,000 users on the $9 tier — a modestly successful side project outgrows it in its first
-        good month — and the same app that costs OtaKit $25 costs $249 at 250K users. It makes the
-        most sense if you&apos;re already paying for their Insider SDK ecosystem and want updates
-        bundled in.
+        vendor. The platform around it is where the questions start:
+      </p>
+      <ul>
+        <li>Only the plugin is open source — the cloud behind it is closed.</li>
+        <li>Delivery runs through the vendor&apos;s own cloud.</li>
+        <li>
+          The $9 tier covers just 1,000 users. One good month and you&apos;ve outgrown it.
+        </li>
+        <li>At 250K users you pay $249/mo — for what costs $25 on OtaKit.</li>
+      </ul>
+      <p>
+        It makes the most sense if you&apos;re already paying for their Insider SDK ecosystem and
+        want updates bundled in.
       </p>
 
       <h2>How to decide</h2>
