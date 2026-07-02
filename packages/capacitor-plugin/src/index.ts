@@ -30,6 +30,8 @@ const OtaKit: OtaKitPlugin = {
   notifyAppReady: () => NativeOtaKit.notifyAppReady(),
   getLastFailure: async (): Promise<BundleInfo | null> =>
     normalizeNullable(await NativeOtaKit.getLastFailure()),
+  setChannel: (options) => NativeOtaKit.setChannel(options),
+  getChannel: () => NativeOtaKit.getChannel(),
   // NativeOtaKit is the registerPlugin proxy, which implements Capacitor's
   // listener API; this plain-object wrapper must forward it explicitly.
   addListener: ((eventName: OtaKitEventName, listenerFunc: (event: unknown) => void) =>

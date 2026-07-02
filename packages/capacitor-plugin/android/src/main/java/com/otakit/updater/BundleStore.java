@@ -22,6 +22,7 @@ final class BundleStore {
   private static final String KEY_STAGED = "staged_bundle_id";
   private static final String KEY_LAST_FAILED_BUNDLE_INFO = "last_failed_bundle_info";
   private static final String KEY_LAST_RESOLVED_RUNTIME_KEY = "last_resolved_runtime_key";
+  private static final String KEY_OVERRIDE_CHANNEL = "override_channel";
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -215,6 +216,20 @@ final class BundleStore {
     } catch (Exception e) {
       return null;
     }
+  }
+
+  synchronized String getOverrideChannel() {
+    return prefs.getString(KEY_OVERRIDE_CHANNEL, null);
+  }
+
+  synchronized void setOverrideChannel(String channel) {
+    SharedPreferences.Editor editor = prefs.edit();
+    if (channel == null) {
+      editor.remove(KEY_OVERRIDE_CHANNEL);
+    } else {
+      editor.putString(KEY_OVERRIDE_CHANNEL, channel);
+    }
+    editor.commit();
   }
 
   synchronized String getLastResolvedRuntimeKey() {

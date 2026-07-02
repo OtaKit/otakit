@@ -33,6 +33,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "notifyAppReady", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getLastFailure", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "setChannel", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getChannel", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -427,6 +429,54 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
     call.resolve(failed.toDictionary())
+  }
+
+  @objc func setChannel(_ call: CAPPluginCall) {
+    let raw = call.options["channel"]
+    if raw == nil || raw is NSNull {
+      store.setOverrideChannel(nil)
+      call.resolve()
+      return
+    }
+    guard let name = raw as? String else {
+      call.reject("channel must be a string or null")
+      return
+    }
+    guard isValidChannelName(name) else {
+      call.reject(
+        "Invalid channel name '\(name)': use 1-64 letters, numbers, '.', '_' or '-' (reserved names: base, default)"
+      )
+      return
+    }
+    store.setOverrideChannel(name)
+    call.resolve()
+  }
+
+  @objc func getChannel(_ call: CAPPluginCall) {
+    if let override = store.getOverrideChannel() {
+      call.resolve(["channel": override, "source": "override"])
+      return
+    }
+    call.resolve([
+      "channel": channel ?? NSNull(),
+      "source": "config",
+    ])
+  }
+
+  /// Mirrors the server's isValidChannelName (console/lib/validation.ts):
+  /// charset regex plus reserved names. The channel is interpolated into the
+  /// manifest CDN path, so anything outside this charset (or a ".." sequence)
+  /// is rejected before it is persisted or used.
+  private func isValidChannelName(_ name: String) -> Bool {
+    // \A/\z anchor the whole input: ICU's ^/$ would accept a trailing
+    // line terminator (e.g. "beta\n"), diverging from Android/server.
+    guard name.range(of: "\\A[A-Za-z0-9._-]{1,64}\\z", options: .regularExpression) != nil else {
+      return false
+    }
+    if name.contains("..") || name == "." {
+      return false
+    }
+    return !["base", "default"].contains(name.lowercased())
   }
 
   private func fetchLatest(channel: String?) async throws -> LatestManifest? {
@@ -1130,6 +1180,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private func resolveTargetChannel(_ channel: String?) -> String? {
     if let channel = trimToNil(channel) {
       return channel
+    }
+    if let override = store.getOverrideChannel() {
+      return override
     }
     return self.channel
   }
