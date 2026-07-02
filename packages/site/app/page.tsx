@@ -696,47 +696,91 @@ export default function LandingPage() {
       <Separator className="" />
 
       {/* Footer */}
-      <footer className="border-x border-t border-border mx-auto max-w-screen-xl px-8 py-10">
-        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="OtaKit" width={20} height={20} className="size-5 rounded" />
-            <span className="text-sm font-medium text-foreground">OtaKit</span>
+      <footer className="border-x border-t border-border mx-auto max-w-screen-xl">
+        <div className="grid gap-10 px-8 py-14 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="lg:col-span-2">
+            <div className="flex items-center gap-2.5">
+              <Image
+                src="/logo.svg"
+                alt="OtaKit"
+                width={24}
+                height={24}
+                className="size-6 rounded-md"
+              />
+              <span className="text-[15px] font-semibold tracking-tight text-foreground">
+                OtaKit
+              </span>
+            </div>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+              Instant over-the-air updates for Capacitor apps. Open source, CDN-delivered, and free
+              to start.
+            </p>
+            <div className="mt-6 flex gap-5 text-sm text-muted-foreground">
+              <a
+                href={site.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-foreground"
+              >
+                GitHub
+              </a>
+              <a
+                href="https://otakit.hyperping.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-foreground"
+              >
+                Status
+              </a>
+              <Link href="/contact" className="transition-colors hover:text-foreground">
+                Contact
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm text-muted-foreground">
-            <Link href="/docs" className="transition-colors hover:text-foreground">
-              Docs
-            </Link>
-            <Link href="/blog" className="transition-colors hover:text-foreground">
-              Blog
-            </Link>
-            <Link href="#pricing" className="transition-colors hover:text-foreground">
-              Pricing
-            </Link>
-            <a
-              href={site.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
-              GitHub
-            </a>
-            <Link href="/contact" className="transition-colors hover:text-foreground">
-              Contact
-            </Link>
-            <Link href="/docs/security" className="transition-colors hover:text-foreground">
-              Security
-            </Link>
-            <a
-              href="https://otakit.hyperping.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
-              Status
-            </a>
-          </div>
+
+          <FooterColumn
+            title="Product"
+            links={[
+              { label: 'Pricing', href: '#pricing' },
+              { label: 'Dashboard', href: `${site.console}/dashboard` },
+              { label: 'Sign up', href: `${site.console}/login` },
+              { label: 'Security', href: '/docs/security' },
+              { label: 'Self-hosting', href: '/docs/self-host' },
+            ]}
+          />
+
+          <FooterColumn
+            title="Docs"
+            links={[
+              { label: 'Getting started', href: '/docs/setup' },
+              { label: 'Plugin API', href: '/docs/plugin' },
+              { label: 'CLI reference', href: '/docs/cli' },
+              { label: 'Channels & versions', href: '/docs/channels' },
+              { label: 'Update strategies', href: '/docs/update-strategies' },
+              { label: 'CI automation', href: '/docs/ci' },
+            ]}
+          />
+
+          <FooterColumn
+            title="Blog"
+            links={[
+              { label: 'How OTA updates work', href: '/blog/how-ota-works-for-capacitor-apps' },
+              {
+                label: 'App Store & Play rules',
+                href: '/blog/ota-policies-for-app-store-and-google-play',
+              },
+              {
+                label: 'Best live update tools',
+                href: '/blog/best-live-update-frameworks-for-capacitor-apps',
+              },
+              { label: 'Capgo alternative', href: '/blog/capgo-alternative' },
+              { label: 'Capawesome alternative', href: '/blog/capawesome-alternative' },
+              { label: 'All posts', href: '/blog' },
+            ]}
+          />
         </div>
-        <div className="mt-8 flex flex-col gap-4 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+
+        <div className="flex flex-col gap-4 border-t border-border px-8 py-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} OtaKit. Open source under MIT.</span>
           <div className="flex gap-6">
             <Link href="/terms" className="transition-colors hover:text-foreground">
@@ -753,6 +797,29 @@ export default function LandingPage() {
 }
 
 /* ─── Sub-components ───────────────────────────────────────────────── */
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: { label: string; href: string }[];
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+        {links.map((link) => (
+          <li key={link.href}>
+            <Link href={link.href} className="transition-colors hover:text-foreground">
+              {link.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function StepCard({
   number,
