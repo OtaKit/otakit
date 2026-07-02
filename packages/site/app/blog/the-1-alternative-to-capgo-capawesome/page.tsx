@@ -1,126 +1,146 @@
-import { BlogArticle, Callout, Code, Pre, A } from '../_components/BlogArticle';
+import { BlogArticle, Callout, Code, DataTable, Pre, A } from '../_components/BlogArticle';
 import { blogPostMetadata, getBlogPost } from '@/lib/blog';
 
 const post = getBlogPost('the-1-alternative-to-capgo-capawesome')!;
 
 export const metadata = blogPostMetadata(post.slug);
 
+const priceRows = [
+  ['5,000 users, 2 releases/mo', '$0 (free tier)', '$33 (Maker, 10K MAU)', '$29 (10K MAU)'],
+  ['50,000 users, 4 releases/mo', '$25 (Pro)', '$83 (Team, 100K MAU)', '$79 (50K MAU)'],
+  ['250,000 users, 4 releases/mo', '$25 (Pro)', '$208+ (Enterprise)', '$249 (250K MAU)'],
+];
+
 export default function AlternativePage() {
   return (
     <BlogArticle post={post}>
       <p>
-        If you&apos;re searching for a Capgo alternative or a Capawesome alternative, you probably
-        already know what live updates are — what you&apos;re really asking is whether there&apos;s
-        a tool with simpler pricing, less product sprawl, or fewer strings attached. That&apos;s
-        exactly the gap OtaKit was built to fill, and this post makes the case with specifics
-        rather than adjectives.
+        Let&apos;s not bury the conclusion: for live updates in Capacitor apps, OtaKit is the
+        better product at a fraction of the price. That&apos;s a strong claim from the people who
+        build it, so this post does what strong claims require — it shows the numbers, names the
+        architecture, and links the receipts.
       </p>
 
-      <h2>The three reasons teams switch</h2>
-
-      <h3>1. Pricing that ignores MAU entirely</h3>
+      <h2>Cheaper — and not by a little</h2>
       <p>
-        Capgo and Capawesome both meter monthly active users: as of July 2026, Capgo&apos;s entry
-        tier is $12/mo for 2,000 MAU (plus bandwidth and storage), and Capawesome&apos;s is $9/mo
-        for 1,000 MAU. Grow your user base and the bill grows with it — even in months where you
-        ship nothing.
+        Capgo and Capawesome both meter <strong>monthly active users</strong>: every active device
+        counts against your plan every month, whether you shipped fifty updates or none. Capgo adds
+        bandwidth and storage meters on top. As your app grows, your bill grows — automatically,
+        forever.
       </p>
       <p>
-        OtaKit bills on one number: <strong>updates delivered</strong>. The free tier covers 10,000
-        updates a month with unlimited apps and releases; Pro is $25/mo for a million. Your cost
-        tracks your release activity, not your popularity. A 100,000-user app that ships twice a
-        month often lands entirely inside the free tier of what would cost real money elsewhere.
+        OtaKit meters one thing: <strong>updates actually delivered</strong>. Free covers 10,000
+        updates a month with unlimited apps; Pro is $25/mo (billed yearly) for a million. Here is
+        what that means at real-world sizes, using each vendor&apos;s public pricing as of July
+        2026:
+      </p>
+      <DataTable
+        headers={['Your app', 'OtaKit', 'Capgo', 'Capawesome (Live Updates)']}
+        rows={priceRows}
+      />
+      <p>
+        The pattern is structural, not promotional. MAU pricing taxes your success: more users,
+        bigger bill, even in months you ship nothing. Per-update pricing tracks the value you
+        actually consume — and at every size above hobby scale, it comes out dramatically cheaper.
+        For the vendor-specific math, see the dedicated breakdowns:{' '}
+        <A href="/blog/capgo-alternative">OtaKit as a Capgo alternative</A> and{' '}
+        <A href="/blog/capawesome-alternative">OtaKit as a Capawesome alternative</A>.
       </p>
 
-      <h3>2. Devices never touch our servers</h3>
+      <h2>Better — because of one architectural decision</h2>
       <p>
-        OtaKit delivers every manifest and bundle from Cloudflare&apos;s edge — 100% of device
-        traffic goes CDN-direct. That has a reliability consequence (delivery uptime is
-        Cloudflare&apos;s, one of the most resilient networks on earth, not a vendor origin&apos;s)
-        and a privacy one: because we don&apos;t meter MAU, we don&apos;t identify devices. No
-        fingerprinting, no per-user tracking — just anonymous release analytics.
-      </p>
-
-      <h3>3. Open source without an asterisk</h3>
-      <p>
-        The entire OtaKit stack — Capacitor plugin, CLI, dashboard, ingest service — is
-        MIT-licensed in <A href="https://github.com/OtaKit/otakit">a single repo</A>, and the
-        self-hosted deployment runs the same code as the hosted platform. Capawesome open-sources
-        the plugin but not the cloud; Capgo&apos;s stack is source-available with licensing terms
-        worth reading before you depend on them. With OtaKit, leaving the hosted service is an
-        infrastructure decision, not a rewrite.
-      </p>
-
-      <h2>Feature parity where it counts</h2>
-      <p>
-        Choosing the simpler tool used to mean giving up features. It doesn&apos;t anymore — the
-        capabilities that actually matter in production are all here:
+        OtaKit delivers every manifest and every bundle from Cloudflare&apos;s global CDN edge —
+        100% of device traffic, no vendor origin servers in the path. That single decision produces
+        the three advantages that matter most in production:
       </p>
       <ul>
         <li>
-          <strong>Delta updates</strong> — devices download only the files that changed between
-          releases (per-file, content-addressed). Asset-heavy apps update in kilobytes.
+          <strong>Reliability.</strong> Update delivery runs on one of the most resilient networks
+          on earth, not on a startup&apos;s API servers. Our uptime can&apos;t cap your delivery.
         </li>
         <li>
-          <strong>End-to-end encryption</strong> — opt-in AES-256-GCM with a key only you hold;
-          storage and the CDN only ever see ciphertext.
+          <strong>Speed everywhere.</strong> Devices download from the nearest edge node on every
+          continent, not from a single origin region.
         </li>
         <li>
-          <strong>Automatic rollback</strong> — a bundle that doesn&apos;t confirm a healthy boot
-          via <Code>notifyAppReady()</Code> is rolled back on-device, automatically.
-        </li>
-        <li>
-          <strong>Channels with runtime switching</strong> — release to production, beta, or your
-          own tracks, and build a &ldquo;join the beta&rdquo; toggle with{' '}
-          <Code>setChannel()</Code>, no rebuild needed.
-        </li>
-        <li>
-          <strong>Emergency releases</strong> — <Code>--force-immediate</Code> makes devices apply
-          a critical fix on their very next check instead of the next cold start.
-        </li>
-        <li>
-          <strong>Native-compatibility guardrail</strong> — the CLI warns at upload time when your
-          bundle depends on native code the installed app doesn&apos;t have, catching the most
-          common OTA mistake before it ships.
-        </li>
-        <li>
-          <strong>Update lifecycle events</strong> — build a custom update UX on{' '}
-          <Code>updateAvailable</Code>, <Code>updateStaged</Code>, <Code>updateApplied</Code>, and{' '}
-          <Code>rollback</Code> listeners.
+          <strong>Privacy by construction.</strong> Because we don&apos;t bill by MAU, we never
+          need to identify devices. No fingerprinting, no per-user tracking — anonymous release
+          analytics only. MAU-billed vendors must count your users; that&apos;s what the meter is.
         </li>
       </ul>
 
-      <h2>What OtaKit deliberately isn&apos;t</h2>
+      <h2>Full feature parity where it counts</h2>
+      <p>Cheaper doesn&apos;t mean fewer capabilities. Everything production teams rely on is here:</p>
+      <ul>
+        <li>
+          <strong>Delta updates</strong> — per-file, content-addressed delivery; devices download
+          only what changed. Asset-heavy apps update in kilobytes.
+        </li>
+        <li>
+          <strong>End-to-end encryption</strong> — opt-in AES-256-GCM with a key only you hold;
+          the CDN and storage see ciphertext only.
+        </li>
+        <li>
+          <strong>Automatic rollback</strong> — every activation is provisional until{' '}
+          <Code>notifyAppReady()</Code> confirms a healthy boot; failures roll back on-device.
+        </li>
+        <li>
+          <strong>Channels with runtime switching</strong> — production, beta, or custom tracks,
+          plus <Code>setChannel()</Code> for in-app &ldquo;join the beta&rdquo; toggles.
+        </li>
+        <li>
+          <strong>Emergency releases</strong> — <Code>--force-immediate</Code> puts a critical fix
+          on devices at their very next check.
+        </li>
+        <li>
+          <strong>A native-compatibility guardrail</strong> — the CLI catches bundles that depend
+          on native code the installed app doesn&apos;t have, at upload time, before they ship.
+        </li>
+        <li>
+          <strong>Update lifecycle events</strong> — build any update UX you want on{' '}
+          <Code>updateAvailable</Code>, <Code>updateStaged</Code>, <Code>updateApplied</Code>, and{' '}
+          <Code>rollback</Code>.
+        </li>
+      </ul>
+
+      <h2>Open source without an asterisk</h2>
       <p>
-        Honesty clause: Capgo and Capawesome both also sell hosted native builds and app store
-        publishing. OtaKit doesn&apos;t — it does OTA, and only OTA. If you want one vendor for
-        your entire mobile pipeline, that&apos;s a legitimate reason to pick one of them. If you
-        want the best focused tool for live updates and you already have CI, that&apos;s the case
-        for OtaKit.
+        The entire OtaKit stack — plugin, CLI, dashboard, ingest — is MIT-licensed in{' '}
+        <A href="https://github.com/OtaKit/otakit">a single repository</A>, and the self-hosted
+        deployment runs the same code as the hosted platform. Capawesome open-sources only the
+        plugin; Capgo&apos;s licensing deserves a careful read before you depend on it. With
+        OtaKit, you can audit every line that touches your users, and leaving the hosted service
+        is an infrastructure decision, not a rewrite. A vendor you can walk away from is a vendor
+        that has to keep earning you.
+      </p>
+
+      <h2>Deliberately focused</h2>
+      <p>
+        Capgo and Capawesome bundle live updates with native build farms, store publishing, and
+        plugin catalogs. OtaKit does one job — safe, fast OTA for the web layer — and does it with
+        fewer concepts, a smaller API, and a release model your whole team can hold in their
+        heads. Your CI already builds your app. What it needs from an OTA vendor is delivery
+        that&apos;s cheap, safe, and boring. That&apos;s the product.
       </p>
 
       <Callout>
         <p>
-          OtaKit is the right alternative when you want to pay for updates delivered, keep your
-          users untracked, and be able to read — or run — every line of the stack yourself.
+          Same live updates. Stronger delivery architecture. No user tracking. Fully open source.
+          At 250,000 users: $25/mo instead of $208–249.
         </p>
       </Callout>
 
-      <h2>Try it in ten minutes</h2>
-      <p>The whole setup is four steps:</p>
+      <h2>Switching takes an afternoon</h2>
       <Pre>{`npm install @otakit/capacitor-updater
 # add appId to capacitor.config.ts, call notifyAppReady() on boot
 
 npm run build
 otakit upload --release`}</Pre>
       <p>
-        Start with the <A href="/docs/setup">setup guide</A>, see the full picture in the{' '}
-        <A href="/blog/best-live-update-frameworks-for-capacitor-apps">
-          side-by-side comparison
-        </A>
-        , or — if you&apos;re already running Capgo or Capawesome in production — go straight to
-        the <A href="/blog/migrate-from-capgo-and-capawesome">migration guide</A> with exact config
-        translations and a safe cutover plan.
+        Start with the <A href="/docs/setup">setup guide</A>, or go straight to the{' '}
+        <A href="/blog/migrate-from-capgo-and-capawesome">migration guide</A> — it translates your
+        exact Capgo or Capawesome config, API calls, and routing model into OtaKit, with a cutover
+        plan that keeps your existing install base safe.
       </p>
     </BlogArticle>
   );

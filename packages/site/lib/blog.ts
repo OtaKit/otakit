@@ -97,10 +97,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
   },
   {
     slug: 'the-1-alternative-to-capgo-capawesome',
-    title: 'The #1 alternative to Capgo and Capawesome',
-    seoTitle: 'The Best Capgo Alternative for Capacitor Live Updates (2026)',
+    title: 'Why OtaKit is the better, cheaper alternative to Capgo and Capawesome',
+    seoTitle: 'The Better, Cheaper Alternative to Capgo and Capawesome (2026)',
     description:
-      'Why teams switch to OtaKit: pricing that ignores MAU entirely, CDN-direct delivery, delta updates, end-to-end encryption, and a fully MIT-licensed stack you can self-host.',
+      'OtaKit delivers the same live updates for a fraction of the price: no MAU metering, CDN-direct delivery, delta updates, end-to-end encryption, and a fully MIT-licensed stack.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
     readingTime: '7 min read',
@@ -115,6 +115,53 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
+      { href: '/docs/security', label: 'Security' },
+    ],
+  },
+  {
+    slug: 'capgo-alternative',
+    title: 'The cheaper, better Capgo alternative for Capacitor live updates',
+    seoTitle: 'Capgo Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
+    description:
+      'Looking for a Capgo alternative? OtaKit ships the same live updates with no MAU or bandwidth metering — most apps pay $0–25/mo where Capgo charges $33–208+. Real price math inside.',
+    category: 'Comparison',
+    publishedAt: '2026-07-02',
+    readingTime: '6 min read',
+    keywords: [
+      'Capgo alternative',
+      'Capgo pricing',
+      'Capgo vs OtaKit',
+      'Capacitor live updates',
+      'capacitor-updater alternative',
+      'Capgo migration',
+    ],
+    order: 7,
+    relatedDocs: [
+      { href: '/docs/setup', label: 'Setup' },
+      { href: '/docs/cli', label: 'CLI reference' },
+      { href: '/docs/security', label: 'Security' },
+    ],
+  },
+  {
+    slug: 'capawesome-alternative',
+    title: 'The cheaper, better Capawesome alternative for live updates',
+    seoTitle: 'Capawesome Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
+    description:
+      'Looking for a Capawesome Live Update alternative? OtaKit has no MAU caps, a fully open-source stack, and CDN-direct delivery — most apps pay $0–25/mo where Capawesome charges $29–249.',
+    category: 'Comparison',
+    publishedAt: '2026-07-02',
+    readingTime: '6 min read',
+    keywords: [
+      'Capawesome alternative',
+      'Capawesome Live Update pricing',
+      'Capawesome vs OtaKit',
+      'Capacitor live updates',
+      'capacitor-live-update alternative',
+    ],
+    order: 8,
+    relatedDocs: [
+      { href: '/docs/setup', label: 'Setup' },
+      { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
     ],
   },
