@@ -373,7 +373,7 @@ export default function LandingPage() {
               <div>
                 <Link href={`${site.console}/login`}>
                   <Button size="lg" className="group rounded-full px-8">
-                    Start releasing free
+                    <span className="shimmer">Start releasing free</span>
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                 </Link>
@@ -637,7 +637,7 @@ export default function LandingPage() {
           <div className="mt-20 flex flex-col gap-4 sm:flex-row">
             <Link href={`${site.console}/login`}>
               <Button size="lg" className="group rounded-full px-8">
-                Get started free
+                <span className="shimmer">Get started free</span>
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
             </Link>
