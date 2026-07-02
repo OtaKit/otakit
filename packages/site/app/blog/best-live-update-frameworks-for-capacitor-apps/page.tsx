@@ -72,8 +72,8 @@ export default function BestFrameworksPage() {
       </p>
       <ul>
         <li>
-          At 5,000 users with 2 releases: OtaKit <strong>free</strong>. Capgo <strong>$33</strong>.
-          Capawesome <strong>$29</strong>. You pay nothing where they charge real money.
+          At 2,500 users: OtaKit <strong>free</strong>. Capgo <strong>$33</strong>. Capawesome{' '}
+          <strong>$29</strong>.
         </li>
         <li>
           At 20,000 users: OtaKit <strong>$25</strong>. Capgo <strong>~$83</strong>. Capawesome{' '}
