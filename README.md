@@ -6,7 +6,7 @@ Try it for free: [OtaKit.app](https://www.otakit.app/)
 
 ## Self-hosting
 
-OtaKit is hosted-first — the managed service at [otakit.app](https://www.otakit.app/) runs everything for you — but the entire platform is in this repo and can run on your own infrastructure. The minimal stack is the console (a standard Next.js app), Postgres, and an S3-compatible bucket behind a CDN; analytics, email, and billing are optional.
+OtaKit is hosted-first — the managed service at [otakit.app](https://www.otakit.app/) runs everything for you — but the entire platform is in this repo and can run on your own infrastructure. The minimal stack is the console (a standard Next.js app), Postgres, and an S3-compatible bucket behind a CDN.
 
 Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs/self-host)
 
