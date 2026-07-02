@@ -115,6 +115,7 @@ model Organization {
   apiKeys             OrganizationApiKey[]
   members             OrganizationMember[]
   invites             OrganizationInvite[]
+  auditLogs           AuditLog[]
   activeForUsers      User[]               @relation("UserActiveOrganization")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -160,6 +161,25 @@ model OrganizationApiKey {
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, revokedAt])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  // 'user' (dashboard session), 'key' (CLI/API key), 'system' (signup provisioning etc.)
+  actorType      String
+  actorId        String?
+  // Resolved at write time (email or "api-key:<name>") so entries survive
+  // member removal and key revocation.
+  actorLabel     String
+  action         String
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt(sort: Desc)])
 }
 
 // ── App & bundles ───────────────────────────────────────────────────

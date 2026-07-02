@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { db } from '@/lib/db';
 import { isValidAppSlug } from '@/lib/validation';
+import { accessActor, recordAuditLog } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +47,15 @@ export async function POST(request: NextRequest) {
         slug: true,
         createdAt: true,
       },
+    });
+
+    await recordAuditLog({
+      organizationId: access.access.organizationId,
+      actor: await accessActor(access.access),
+      action: 'app.created',
+      targetType: 'app',
+      targetId: app.id,
+      metadata: { slug: app.slug },
     });
 
     return NextResponse.json(

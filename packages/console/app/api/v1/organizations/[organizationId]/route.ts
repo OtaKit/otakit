@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { recordAuditLog } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -50,10 +51,24 @@ export async function PATCH(
     );
   }
 
+  const existing = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { name: true },
+  });
+
   const organization = await db.organization.update({
     where: { id: organizationId },
     data: { name },
     select: { id: true, name: true },
+  });
+
+  await recordAuditLog({
+    organizationId,
+    actor: { actorType: 'user', actorId: session.user.id, actorLabel: session.user.email },
+    action: 'organization.renamed',
+    targetType: 'organization',
+    targetId: organizationId,
+    metadata: { oldName: existing?.name, newName: organization.name },
   });
 
   return NextResponse.json({ organization });

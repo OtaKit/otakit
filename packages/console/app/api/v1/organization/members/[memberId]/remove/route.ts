@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
+import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,13 @@ export async function POST(
 
   const member = await db.organizationMember.findFirst({
     where: { id: memberId, organizationId: ctx.organizationId },
-    select: { id: true, organizationId: true, userId: true, role: true },
+    select: {
+      id: true,
+      organizationId: true,
+      userId: true,
+      role: true,
+      user: { select: { email: true } },
+    },
   });
 
   if (!member) {
@@ -35,16 +42,14 @@ export async function POST(
 
   // Hard-delete the membership
   await db.organizationMember.delete({ where: { id: memberId } });
-  console.log(
-    JSON.stringify({
-      audit: 'member_removed',
-      organizationId: ctx.organizationId,
-      actorId: ctx.userId,
-      targetMemberId: memberId,
-      targetUserId: member.userId,
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  await recordAuditLog({
+    organizationId: ctx.organizationId,
+    actor: sessionActor(ctx),
+    action: 'member.removed',
+    targetType: 'member',
+    targetId: member.userId,
+    metadata: { removedUserId: member.userId, removedEmail: member.user.email, role: member.role },
+  });
 
   // If removed user's default organization was this one, switch to another
   const user = await db.user.findUnique({

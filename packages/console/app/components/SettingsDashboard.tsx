@@ -12,8 +12,10 @@ import {
   LifeBuoy,
   LogOut,
   Mail,
+  MoreHorizontal,
   Pencil,
   Plus,
+  ScrollText,
   LoaderCircle,
   Send,
   Shield,
@@ -50,6 +52,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -532,21 +540,36 @@ User ID: ${initialData.user.id}`,
                   </SelectContent>
                 </Select>
                 {canRenameActiveOrg ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="size-7 p-0 ml-auto"
-                    title="Rename current workspace"
-                    onClick={() =>
-                      openRenameOrgDialog(
-                        initialData.activeOrganization.id,
-                        initialData.activeOrganization.name,
-                      )
-                    }
-                    disabled={isSwitchingOrganization}
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-7 p-0 ml-auto"
+                        title="Workspace actions"
+                        disabled={isSwitchingOrganization}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          openRenameOrgDialog(
+                            initialData.activeOrganization.id,
+                            initialData.activeOrganization.name,
+                          )
+                        }
+                      >
+                        <Pencil className="size-3.5" />
+                        Rename workspace
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => router.push('/dashboard/audit-log')}>
+                        <ScrollText className="size-3.5" />
+                        View audit log
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 ) : null}
               </div>
             </div>

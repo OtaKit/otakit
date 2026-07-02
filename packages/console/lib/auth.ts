@@ -5,6 +5,7 @@ import { nextCookies } from 'better-auth/next-js';
 
 import { db } from './db';
 import { sendOtpEmail } from './email';
+import { recordAuditLog } from './audit-log';
 
 const isDev = process.env.NODE_ENV === 'development';
 const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -120,7 +121,7 @@ export const auth = betterAuth({
  * sign-in hook.
  */
 export async function provisionUser(userId: string, email: string) {
-  await db.$transaction(async (tx) => {
+  const appliedInvites = await db.$transaction(async (tx) => {
     // 1. Apply pending invites for this email
     const pendingInvites = await tx.organizationInvite.findMany({
       where: { email: email.toLowerCase(), acceptedAt: null, revokedAt: null },
@@ -173,5 +174,19 @@ export async function provisionUser(userId: string, email: string) {
         data: { activeOrganizationId: memberships[0].organizationId },
       });
     }
+
+    return pendingInvites;
   });
+
+  // Signup flow — there is no acting session; attribute to the joining user.
+  for (const invite of appliedInvites) {
+    await recordAuditLog({
+      organizationId: invite.organizationId,
+      actor: { actorType: 'system', actorId: userId, actorLabel: email },
+      action: 'member.joined',
+      targetType: 'member',
+      targetId: userId,
+      metadata: { email, role: invite.role },
+    });
+  }
 }

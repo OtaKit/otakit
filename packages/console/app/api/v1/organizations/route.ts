@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { recordAuditLog } from '@/lib/audit-log';
 
 export async function POST(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -38,6 +39,15 @@ export async function POST(request: NextRequest) {
     });
 
     return t;
+  });
+
+  await recordAuditLog({
+    organizationId: organization.id,
+    actor: { actorType: 'user', actorId: session.user.id, actorLabel: session.user.email },
+    action: 'organization.created',
+    targetType: 'organization',
+    targetId: organization.id,
+    metadata: { name: organization.name },
   });
 
   return NextResponse.json(

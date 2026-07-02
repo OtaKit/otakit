@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
+import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,7 @@ export async function DELETE(
 
   const invite = await db.organizationInvite.findUnique({
     where: { id: inviteId },
-    select: { id: true, organizationId: true, acceptedAt: true },
+    select: { id: true, organizationId: true, acceptedAt: true, email: true, role: true },
   });
 
   if (!invite || invite.organizationId !== ctx.organizationId) {
@@ -34,6 +35,15 @@ export async function DELETE(
   }
 
   await db.organizationInvite.delete({ where: { id: inviteId } });
+
+  await recordAuditLog({
+    organizationId: ctx.organizationId,
+    actor: sessionActor(ctx),
+    action: 'invite.revoked',
+    targetType: 'invite',
+    targetId: invite.id,
+    metadata: { email: invite.email, role: invite.role },
+  });
 
   return NextResponse.json({ deleted: inviteId });
 }

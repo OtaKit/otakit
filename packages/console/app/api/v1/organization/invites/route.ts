@@ -4,6 +4,7 @@ import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
 import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { sendInviteEmail, sendTeamAccessGrantedEmail } from '@/lib/email';
+import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -112,16 +113,6 @@ export async function POST(request: NextRequest) {
       createdByUserId: ctx.userId,
     },
   });
-  console.log(
-    JSON.stringify({
-      audit: 'invite_created',
-      organizationId: ctx.organizationId,
-      actorId: ctx.userId,
-      inviteEmail: email,
-      role,
-      timestamp: new Date().toISOString(),
-    }),
-  );
 
   const organization = await db.organization.findUnique({
     where: { id: ctx.organizationId },
@@ -139,6 +130,15 @@ export async function POST(request: NextRequest) {
     await db.organizationInvite.update({
       where: { id: invite.id },
       data: { acceptedAt: new Date() },
+    });
+
+    await recordAuditLog({
+      organizationId: ctx.organizationId,
+      actor: sessionActor(ctx),
+      action: 'member.added',
+      targetType: 'member',
+      targetId: existingUser.id,
+      metadata: { email, role },
     });
 
     if (shouldSendEmails) {
@@ -170,6 +170,17 @@ export async function POST(request: NextRequest) {
           `  Link: ${loginUrl}`,
       );
     }
+
+    // Recorded after the email step so a rolled-back invite (send failure
+    // deletes the row above) never leaves an audit entry.
+    await recordAuditLog({
+      organizationId: ctx.organizationId,
+      actor: sessionActor(ctx),
+      action: 'invite.created',
+      targetType: 'invite',
+      targetId: invite.id,
+      metadata: { email, role },
+    });
   }
 
   return NextResponse.json(

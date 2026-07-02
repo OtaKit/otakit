@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { inspectUploadedObject, UploadedObjectNotFoundError } from '@/lib/storage';
 
@@ -151,6 +152,21 @@ export async function POST(
       });
 
       return createdBundle;
+    });
+
+    await recordAuditLog({
+      organizationId: access.access.organizationId,
+      actor: await accessActor(access.access),
+      action: 'bundle.uploaded',
+      targetType: 'bundle',
+      targetId: bundle.id,
+      metadata: {
+        appId,
+        version: bundle.version,
+        size: bundle.size,
+        runtimeVersion: bundle.runtimeVersion,
+        strategy: 'zip',
+      },
     });
 
     return NextResponse.json(serializeBundle(bundle), { status: 201 });

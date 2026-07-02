@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
 import { db } from '@/lib/db';
 import { buildPublicObjectUrl, deleteBundleObject } from '@/lib/storage';
@@ -64,6 +65,7 @@ export async function DELETE(
     select: {
       id: true,
       appId: true,
+      version: true,
       storageKey: true,
     },
   });
@@ -89,6 +91,15 @@ export async function DELETE(
 
   await db.bundle.delete({
     where: { id: bundle.id },
+  });
+
+  await recordAuditLog({
+    organizationId: access.access.organizationId,
+    actor: await accessActor(access.access),
+    action: 'bundle.deleted',
+    targetType: 'bundle',
+    targetId: bundle.id,
+    metadata: { appId, version: bundle.version },
   });
 
   try {

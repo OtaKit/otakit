@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
+import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,7 @@ export async function POST(
 
   const existing = await db.organizationApiKey.findUnique({
     where: { id: keyId },
-    select: { id: true, organizationId: true, revokedAt: true },
+    select: { id: true, organizationId: true, revokedAt: true, name: true },
   });
 
   if (!existing || existing.organizationId !== ctx.organizationId) {
@@ -41,15 +42,14 @@ export async function POST(
     data: { revokedAt: new Date() },
     select: { id: true, revokedAt: true },
   });
-  console.log(
-    JSON.stringify({
-      audit: 'api_key_revoked',
-      organizationId: ctx.organizationId,
-      actorId: ctx.userId,
-      keyId: revoked.id,
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  await recordAuditLog({
+    organizationId: ctx.organizationId,
+    actor: sessionActor(ctx),
+    action: 'api_key.revoked',
+    targetType: 'api_key',
+    targetId: revoked.id,
+    metadata: { keyName: existing.name },
+  });
 
   return NextResponse.json({
     id: revoked.id,

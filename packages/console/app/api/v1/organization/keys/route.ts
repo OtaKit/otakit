@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionContext } from '@/lib/session';
 import { db } from '@/lib/db';
 import { generateOrganizationApiKey } from '@/lib/organization-keys';
+import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 
 export const runtime = 'nodejs';
 
@@ -44,16 +45,14 @@ export async function POST(request: NextRequest) {
       createdAt: true,
     },
   });
-  console.log(
-    JSON.stringify({
-      audit: 'api_key_created',
-      organizationId: ctx.organizationId,
-      actorId: ctx.userId,
-      keyId: key.id,
-      keyName: key.name,
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  await recordAuditLog({
+    organizationId: ctx.organizationId,
+    actor: sessionActor(ctx),
+    action: 'api_key.created',
+    targetType: 'api_key',
+    targetId: key.id,
+    metadata: { keyName: key.name, keyPrefix: key.keyPrefix },
+  });
 
   return NextResponse.json(
     {

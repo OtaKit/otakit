@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
@@ -183,6 +184,22 @@ export async function POST(
     promotedBy,
   });
   await syncManifestFileForLane(appId, channel, bundle.runtimeVersion);
+
+  await recordAuditLog({
+    organizationId: access.access.organizationId,
+    actor: await accessActor(access.access, promotedBy),
+    action: 'release.created',
+    targetType: 'release',
+    targetId: release.id,
+    metadata: {
+      appId,
+      bundleVersion: bundle.version,
+      runtimeVersion: bundle.runtimeVersion,
+      channel,
+      forceImmediate,
+      previousBundleVersion: currentLatest?.bundle.version ?? null,
+    },
+  });
 
   return NextResponse.json({
     release: {
