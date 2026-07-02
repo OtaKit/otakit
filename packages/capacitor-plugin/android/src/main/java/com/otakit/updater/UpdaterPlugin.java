@@ -512,6 +512,11 @@ public class UpdaterPlugin extends Plugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
+      // eventPayload is non-null only on a genuine trial -> success transition,
+      // so repeat notifyAppReady() calls never double-emit.
+      JSObject appliedData = new JSObject();
+      appliedData.put("bundle", store.getCurrentBundle().toJSObject());
+      emitEvent("updateApplied", appliedData);
     }
     call.resolve();
   }
@@ -557,6 +562,10 @@ public class UpdaterPlugin extends Plugin {
     }
 
     CheckResolution resolution = classifyLatestManifest(latest, targetChannel);
+
+    if ("update_available".equals(resolution.kind) && resolution.latest != null) {
+      emitEvent("updateAvailable", manifestToJSObject(resolution.latest));
+    }
 
     if (respectInterval) {
       recordCheckTimestamp();
@@ -680,6 +689,10 @@ public class UpdaterPlugin extends Plugin {
           releaseId,
           "insufficient_disk_space"
         );
+        emitEvent(
+          "downloadFailed",
+          failureEventData(version, runtimeVersion, channel, releaseId, "insufficient_disk_space")
+        );
         throw new IllegalStateException("Insufficient disk space");
       }
     }
@@ -726,6 +739,9 @@ public class UpdaterPlugin extends Plugin {
       coordinator.cleanupBundles(cleanupBundleIds);
 
       sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
+      JSObject stagedData = new JSObject();
+      stagedData.put("bundle", info.toJSObject());
+      emitEvent("updateStaged", stagedData);
       return info;
     } catch (Exception e) {
       sendDeviceEvent(
@@ -735,6 +751,10 @@ public class UpdaterPlugin extends Plugin {
         channel,
         releaseId,
         e.getMessage()
+      );
+      emitEvent(
+        "downloadFailed",
+        failureEventData(version, runtimeVersion, channel, releaseId, failureReason(e))
       );
       throw e;
     } finally {
@@ -856,6 +876,18 @@ public class UpdaterPlugin extends Plugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
+      emitEvent(
+        "rollback",
+        failureEventData(
+          preparation.eventPayload.bundleVersion != null
+            ? preparation.eventPayload.bundleVersion
+            : "",
+          preparation.eventPayload.runtimeVersion,
+          preparation.eventPayload.channel,
+          preparation.eventPayload.releaseId,
+          reason
+        )
+      );
     }
 
     try {
@@ -1093,6 +1125,59 @@ public class UpdaterPlugin extends Plugin {
   private String resolveTargetChannel(String channel) {
     String resolved = trimToNull(channel);
     return resolved != null ? resolved : this.channel;
+  }
+
+  /**
+   * Emit a JS lifecycle event. notifyListeners marshals to the bridge
+   * safely from any thread, so no manual dispatch is needed.
+   */
+  private void emitEvent(String name, JSObject data) {
+    notifyListeners(name, data);
+  }
+
+  private JSObject failureEventData(
+    String version,
+    String runtimeVersion,
+    String channel,
+    String releaseId,
+    String reason
+  ) {
+    JSObject data = new JSObject();
+    data.put("version", version);
+    data.put("reason", reason);
+    if (trimToNull(runtimeVersion) != null) {
+      data.put("runtimeVersion", runtimeVersion.trim());
+    }
+    if (trimToNull(channel) != null) {
+      data.put("channel", channel.trim());
+    }
+    if (trimToNull(releaseId) != null) {
+      data.put("releaseId", releaseId.trim());
+    }
+    return data;
+  }
+
+  /** Map a native error to a stable event reason string. */
+  private String failureReason(Exception e) {
+    String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+    if (message.contains("hash mismatch")) {
+      return "hash_mismatch";
+    }
+    if (message.contains("disk space")) {
+      return "insufficient_disk_space";
+    }
+    if (message.contains("index.html")) {
+      return "invalid_bundle";
+    }
+    // ZipUtils throws SecurityException for guard violations and prefixes
+    // its messages with "Zip ". Don't match ".zip" anywhere in the message:
+    // network failures often carry the temp file path (…/otakit-….zip).
+    if (
+      e instanceof SecurityException || message.startsWith("zip ") || message.contains("extract")
+    ) {
+      return "extract_failed";
+    }
+    return "download_failed";
   }
 
   private void sendDeviceEvent(

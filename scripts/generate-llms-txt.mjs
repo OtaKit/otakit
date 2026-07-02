@@ -21,6 +21,11 @@ const DOCS = [
     route: '/docs/update-strategies',
     file: 'packages/site/app/docs/update-strategies/page.tsx',
   },
+  {
+    label: 'Events & Listeners',
+    route: '/docs/events',
+    file: 'packages/site/app/docs/events/page.tsx',
+  },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   { label: 'Security', route: '/docs/security', file: 'packages/site/app/docs/security/page.tsx' },
   {
