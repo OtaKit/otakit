@@ -90,6 +90,12 @@ export default function LandingPage() {
             >
               Docs
             </Link>
+            <Link
+              href="/blog"
+              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Blog
+            </Link>
             <div className="ml-3 flex items-center gap-2">
               <Link href="https://console.otakit.app/dashboard">
                 <Button variant="ghost" size="sm">
@@ -443,6 +449,7 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm text-muted-foreground">
             <Link href="/docs" className="transition-colors hover:text-foreground">Docs</Link>
+            <Link href="/blog" className="transition-colors hover:text-foreground">Blog</Link>
             <Link href="#pricing" className="transition-colors hover:text-foreground">Pricing</Link>
             <a href="https://github.com/OtaKit/otakit" target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">GitHub</a>
             <Link href="/contact" className="transition-colors hover:text-foreground">Contact</Link>

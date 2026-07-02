@@ -3,14 +3,11 @@ import Link from 'next/link';
 
 import { Separator } from '@/components/ui/separator';
 
-import { DocsMobileNav, DocsSidebar } from './DocsSidebar';
-
-export default function DocsLayout({ children }: { children: React.ReactNode }) {
+export default function BlogLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="m-3 min-h-screen border border-border bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-2xl">
         <div className="mx-auto flex h-14 max-w-screen-xl items-center gap-4 px-6">
-          <DocsMobileNav />
           <Link
             href="/"
             className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80"
@@ -25,12 +22,14 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             OtaKit
           </Link>
           <Separator orientation="vertical" className="h-5" />
-          <Link href="/docs" className="text-sm text-foreground">
-            Docs
-          </Link>
-          <Link href="/blog" className="text-sm text-muted-foreground hover:text-foreground">
-            Blog
-          </Link>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link href="/docs" className="text-muted-foreground hover:text-foreground">
+              Docs
+            </Link>
+            <Link href="/blog" className="text-foreground">
+              Blog
+            </Link>
+          </nav>
           <div className="ml-auto">
             <Link
               href="https://console.otakit.app/dashboard"
@@ -42,14 +41,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-screen-xl border-0 sm:border-x sm:border-border">
-        <DocsSidebar />
-        <main className="min-w-0 flex-1 py-10">
-          <div className="px-6 [&>[role=none]]:-mx-6 [&>[role=none]]:w-[calc(100%+3rem)]">
-            {children}
-          </div>
-        </main>
-      </div>
+      <main className="mx-auto max-w-screen-xl border-x border-border">{children}</main>
     </div>
   );
 }
