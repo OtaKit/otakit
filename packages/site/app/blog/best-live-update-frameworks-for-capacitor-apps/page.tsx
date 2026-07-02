@@ -9,8 +9,6 @@ const comparisonRows = [
   ['Pricing based on', 'Updates delivered', 'Monthly active users + bandwidth + storage', 'Monthly active users'],
   ['Free tier', '10,000 updates/mo, unlimited apps', 'Trial-oriented free tier', '14-day trial'],
   ['First paid tier', '$25/mo (1M updates)', '$12/mo (2,000 MAU)', '$9/mo (1,000 MAU)'],
-  ['Cost: 20,000 users, 4 releases/mo', '$25 (Pro)', '~$83 (Team tier)', '$79 (Team tier)'],
-  ['Cost: 250,000 users, 4 releases/mo', '$25 (Pro)', '$208+ (Enterprise)', '$249 (Business)'],
   ['Device delivery path', '100% CDN edge (Cloudflare)', 'Vendor servers', 'Vendor cloud'],
   ['End-user tracking', 'None (no device IDs)', 'Per-device (MAU metering)', 'Per-device (MAU metering)'],
   ['Security defaults', 'Signed manifests + SHA-256, always on', 'Optional signing/encryption setup', 'Optional public-key setup'],
@@ -69,8 +67,8 @@ export default function BestFrameworksPage() {
       <h2>Side by side</h2>
       <DataTable headers={['', 'OtaKit', 'Capgo', 'Capawesome']} rows={comparisonRows} />
       <p>
-        The two cost rows compare the exact same app — same users, four releases a month — on each
-        vendor&apos;s published pricing. Read them like this:
+        And here&apos;s what the exact same app costs — same users, four releases a month, each
+        vendor&apos;s published pricing:
       </p>
       <ul>
         <li>
