@@ -32,6 +32,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { trackConversion } from '@/lib/gtag';
 import type {
   ApiError,
   AppSummary,
@@ -886,6 +887,7 @@ export function ProductDashboard({
       toast.success(
         `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
       );
+      trackConversion('release_created');
       await Promise.all([
         loadBundles(selectedAppId),
         loadEvents(selectedAppId),
@@ -977,6 +979,7 @@ export function ProductDashboard({
       setNewAppSlug('');
       if (data.id) setSelectedAppId(data.id);
       toast.success('App created');
+      trackConversion('app_created');
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create app');
