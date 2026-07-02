@@ -36,6 +36,8 @@ function hintFor(route: string): Hint {
   if (route === '/') return { changeFrequency: 'weekly', priority: 1 };
   if (route === '/docs') return { changeFrequency: 'weekly', priority: 0.8 };
   if (route.startsWith('/docs/')) return { changeFrequency: 'monthly', priority: 0.7 };
+  if (route === '/blog') return { changeFrequency: 'weekly', priority: 0.8 };
+  if (route.startsWith('/blog/')) return { changeFrequency: 'monthly', priority: 0.7 };
   if (route === '/policy' || route === '/terms') {
     return { changeFrequency: 'yearly', priority: 0.3 };
   }

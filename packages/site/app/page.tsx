@@ -291,6 +291,12 @@ export default function LandingPage() {
             >
               Docs
             </Link>
+            <Link
+              href="/blog"
+              className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
+            >
+              Blog
+            </Link>
             <div className="ml-3 flex items-center gap-2">
               <Link href={`${site.console}/dashboard`}>
                 <Button variant="ghost" size="sm">
@@ -699,6 +705,9 @@ export default function LandingPage() {
           <div className="flex flex-wrap gap-x-10 gap-y-4 text-sm text-muted-foreground">
             <Link href="/docs" className="transition-colors hover:text-foreground">
               Docs
+            </Link>
+            <Link href="/blog" className="transition-colors hover:text-foreground">
+              Blog
             </Link>
             <Link href="#pricing" className="transition-colors hover:text-foreground">
               Pricing
