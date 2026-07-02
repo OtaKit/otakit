@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
@@ -150,6 +151,91 @@ export async function inspectUploadedObject(storageKey: string): Promise<{ size:
   }
 
   return { size };
+}
+
+export function buildFileObjectKey(appId: string, sha256: string): string {
+  return `files/${appId}/${sha256}`;
+}
+
+/**
+ * Presign a PUT for a content-addressed file object (delta strategy).
+ * Content type and immutable cache header are pinned into the signature,
+ * so the uploader must send them verbatim.
+ */
+export async function createPresignedFileUpload(
+  storageKey: string,
+  size: number,
+  contentMd5: string,
+): Promise<{ presignedUrl: string; expiresAt: Date }> {
+  const { client, bucket, presignExpiresSeconds } = getStorageConfig();
+
+  // ContentMD5 makes storage verify the uploaded bytes: a PUT whose body
+  // doesn't match the client-declared MD5 is rejected, so a content-addressed
+  // key can never be filled with wrong-content data of the right length.
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: storageKey,
+    ContentType: 'application/octet-stream',
+    ContentLength: size,
+    ContentMD5: contentMd5,
+    CacheControl: BUNDLE_CACHE_CONTROL,
+  });
+
+  const presignedUrl = await getSignedUrl(client, command, {
+    expiresIn: presignExpiresSeconds,
+  });
+
+  return {
+    presignedUrl,
+    expiresAt: new Date(Date.now() + presignExpiresSeconds * 1000),
+  };
+}
+
+/**
+ * HeadObject wrapper that returns null for missing keys instead of throwing.
+ */
+export async function statStorageObject(storageKey: string): Promise<{ size: number } | null> {
+  const { client, bucket } = getStorageConfig();
+  try {
+    const response = await client.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+      }),
+    );
+    return { size: response.ContentLength ?? 0 };
+  } catch (error) {
+    const statusCode =
+      typeof error === 'object' &&
+      error !== null &&
+      '$metadata' in error &&
+      typeof (error as { $metadata?: { httpStatusCode?: unknown } }).$metadata?.httpStatusCode ===
+        'number'
+        ? (error as { $metadata: { httpStatusCode: number } }).$metadata.httpStatusCode
+        : undefined;
+    const errorName =
+      typeof error === 'object' && error !== null && 'name' in error
+        ? String((error as { name?: unknown }).name)
+        : '';
+    if (statusCode === 404 || errorName === 'NotFound' || errorName === 'NoSuchKey') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getTextObject(storageKey: string): Promise<string> {
+  const { client, bucket } = getStorageConfig();
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+    }),
+  );
+  if (!response.Body) {
+    throw new Error(`Storage object has no body: ${storageKey}`);
+  }
+  return response.Body.transformToString('utf-8');
 }
 
 function getCdnBaseUrl(): string {

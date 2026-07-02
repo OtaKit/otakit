@@ -45,10 +45,27 @@ final class ManifestClient {
     }
   }
 
+  static final class ManifestFileEntry {
+
+    final String path;
+    final String sha256;
+    final long size;
+    final String url;
+
+    ManifestFileEntry(String path, String sha256, long size, String url) {
+      this.path = path;
+      this.sha256 = sha256;
+      this.size = size;
+      this.url = url;
+    }
+  }
+
   static final class LatestManifest {
 
     final String version;
+    /** Bundle zip URL. Present for the zip strategy; null for deltas. */
     final String url;
+    /** Zip hash for the zip strategy; canonical filesHash for deltas. */
     final String sha256;
     final int size;
     final String runtimeVersion;
@@ -56,6 +73,8 @@ final class ManifestClient {
     final String strategy;
     final boolean forceImmediate;
     final ManifestEncryption encryption;
+    /** Per-file entries for the deltas strategy; null for zip. */
+    final java.util.List<ManifestFileEntry> files;
 
     LatestManifest(
       String version,
@@ -66,7 +85,8 @@ final class ManifestClient {
       String releaseId,
       String strategy,
       boolean forceImmediate,
-      ManifestEncryption encryption
+      ManifestEncryption encryption,
+      java.util.List<ManifestFileEntry> files
     ) {
       this.version = version;
       this.url = url;
@@ -77,6 +97,7 @@ final class ManifestClient {
       this.strategy = strategy;
       this.forceImmediate = forceImmediate;
       this.encryption = encryption;
+      this.files = files;
     }
   }
 
@@ -146,7 +167,6 @@ final class ManifestClient {
       JSONObject json = new JSONObject(payload);
 
       String version = json.getString("version");
-      String downloadUrl = json.getString("url");
       String sha256 = json.getString("sha256");
       int size = json.getInt("size");
 
@@ -183,7 +203,23 @@ final class ManifestClient {
       boolean forceImmediate = Boolean.TRUE.equals(rawForceImmediate);
       ManifestEncryption encryption = parseEncryption(json);
 
-      requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
+      String downloadUrl = null;
+      if (json.has("url") && !json.isNull("url")) {
+        String rawUrl = json.getString("url").trim();
+        if (!rawUrl.isEmpty()) {
+          downloadUrl = rawUrl;
+        }
+      }
+
+      java.util.List<ManifestFileEntry> files = null;
+      if ("deltas".equals(strategy)) {
+        files = parseFiles(json, allowInsecureUrls);
+      } else {
+        if (downloadUrl == null) {
+          throw new IllegalStateException("Manifest response missing required url");
+        }
+        requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
+      }
 
       if (manifestKeys == null || manifestKeys.isEmpty()) {
         android.util.Log.w(
@@ -223,11 +259,40 @@ final class ManifestClient {
         releaseId,
         strategy,
         forceImmediate,
-        encryption
+        encryption,
+        files
       );
     } finally {
       connection.disconnect();
     }
+  }
+
+  private static java.util.List<ManifestFileEntry> parseFiles(
+    JSONObject json,
+    boolean allowInsecureUrls
+  ) throws Exception {
+    if (!json.has("files") || json.isNull("files")) {
+      throw new IllegalStateException("Delta manifest is missing its file list");
+    }
+    org.json.JSONArray rawFiles = json.getJSONArray("files");
+    if (rawFiles.length() == 0) {
+      throw new IllegalStateException("Delta manifest has an empty file list");
+    }
+
+    java.util.List<ManifestFileEntry> entries = new java.util.ArrayList<>(rawFiles.length());
+    for (int index = 0; index < rawFiles.length(); index++) {
+      JSONObject rawFile = rawFiles.getJSONObject(index);
+      if (!rawFile.has("path") || !rawFile.has("sha256") || !rawFile.has("url")) {
+        throw new IllegalStateException("Delta manifest file entry is missing required fields");
+      }
+      String path = rawFile.getString("path");
+      String fileSha256 = rawFile.getString("sha256");
+      String fileUrl = rawFile.getString("url");
+      long fileSize = rawFile.optLong("size", -1);
+      requireHTTPS(new URL(fileUrl), allowInsecureUrls);
+      entries.add(new ManifestFileEntry(path, fileSha256, fileSize, fileUrl));
+    }
+    return entries;
   }
 
   private static ManifestEncryption parseEncryption(JSONObject json) throws Exception {

@@ -1,9 +1,12 @@
 import { db } from '@/lib/db';
 import { signManifest } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
+import { type DeltaFileEntry } from '@/lib/delta-files';
 import {
+  buildFileObjectKey,
   buildPublicObjectUrl,
   deleteStorageObject,
+  getTextObject,
   listStorageKeys,
   putTextObject,
 } from '@/lib/storage';
@@ -19,6 +22,7 @@ type ManifestBundle = {
   sha256: string;
   size: number;
   runtimeVersion: string | null;
+  strategy: string;
   storageKey: string;
   encryption?: unknown;
 };
@@ -60,6 +64,7 @@ export async function writeManifestFile(
   bundle: ManifestBundle,
 ): Promise<void> {
   const storageKey = buildManifestStorageKey(appId, channel, runtimeVersion);
+  const strategy = bundle.strategy === 'deltas' ? 'deltas' : 'zip';
   // Stored as validated at initiate; re-parse defensively. A malformed row
   // must fail the sync loudly — silently publishing an unencrypted manifest
   // for an encrypted object would make every device fail extraction.
@@ -77,26 +82,46 @@ export async function writeManifestFile(
     sha256: bundle.sha256,
     size: bundle.size,
     runtimeVersion: bundle.runtimeVersion,
-    strategy: 'zip',
+    strategy,
     forceImmediate: release.forceImmediate,
     encryption,
   });
 
+  // Every field here that is also in the signed payload (strategy,
+  // forceImmediate, encryption, sha256, size, …) must carry the exact same
+  // value passed to signManifest above, or verification fails on-device.
+  const manifest: Record<string, unknown> = {
+    version: bundle.version,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    channel,
+    runtimeVersion: bundle.runtimeVersion,
+    releaseId: release.id,
+    strategy,
+    forceImmediate: release.forceImmediate,
+    encryption,
+    signature,
+  };
+
+  if (strategy === 'deltas') {
+    // The bundle's storage object is the canonical file list written at
+    // finalize; expand it into per-file CDN URLs. sha256 above == filesHash.
+    const fileListRaw = await getTextObject(bundle.storageKey);
+    const fileList = JSON.parse(fileListRaw) as { files: DeltaFileEntry[] };
+    manifest.filesHash = bundle.sha256;
+    manifest.files = fileList.files.map((file) => ({
+      path: file.path,
+      sha256: file.sha256,
+      size: file.size,
+      url: buildPublicObjectUrl(buildFileObjectKey(appId, file.sha256)),
+    }));
+  } else {
+    manifest.url = buildPublicObjectUrl(bundle.storageKey);
+  }
+
   await putTextObject({
     storageKey,
-    body: JSON.stringify({
-      version: bundle.version,
-      url: buildPublicObjectUrl(bundle.storageKey),
-      sha256: bundle.sha256,
-      size: bundle.size,
-      channel,
-      runtimeVersion: bundle.runtimeVersion,
-      releaseId: release.id,
-      strategy: 'zip',
-      forceImmediate: release.forceImmediate,
-      encryption,
-      signature,
-    }),
+    body: JSON.stringify(manifest),
     contentType: 'application/json; charset=utf-8',
     cacheControl: MANIFEST_CACHE_CONTROL,
   });
@@ -165,6 +190,7 @@ export async function syncManifestFileForLane(
           sha256: true,
           size: true,
           runtimeVersion: true,
+          strategy: true,
           storageKey: true,
           encryption: true,
         },
@@ -211,6 +237,7 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
           sha256: true,
           size: true,
           runtimeVersion: true,
+          strategy: true,
           storageKey: true,
           encryption: true,
         },

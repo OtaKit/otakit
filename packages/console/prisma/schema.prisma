@@ -188,6 +188,9 @@ model Bundle {
   storageKey         String
   size               Int
   runtimeVersion     String?
+  // 'zip' (single archive) or 'deltas' (per-file content-addressed objects;
+  // storageKey points at the canonical file-list object, sha256 = filesHash)
+  strategy           String          @default("zip")
   metadata           Json?
   nativePackages     Json?
   encryption         Json?
@@ -228,6 +231,10 @@ model UploadSession {
   expectedSize   Int
   actualSize     Int?
   runtimeVersion String?
+  // 'zip' or 'deltas'; for deltas, files holds the validated
+  // [{ path, sha256, size }] list carried from initiate to finalize
+  strategy       String              @default("zip")
+  files          Json?
   metadata       Json?
   nativePackages Json?
   encryption     Json?
