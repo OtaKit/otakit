@@ -39,6 +39,34 @@ export default function SecurityPage() {
 
       <Separator className="my-10" />
 
+      <H2>End-to-end bundle encryption (optional)</H2>
+      <P>
+        For code-sensitive or regulated apps, bundles can be encrypted with AES-256-GCM before
+        upload. Generate a key with <Code>otakit generate-encryption-key</Code>, keep it in CI as{' '}
+        <Code>OTAKIT_ENCRYPTION_KEY</Code>, and ship the same key in the app&apos;s{' '}
+        <Code>bundleKeys</Code> config. Object storage and the CDN then only ever hold ciphertext —
+        a leaked URL or bucket exposes nothing readable, and even OtaKit cannot decrypt your code.
+      </P>
+      <P>
+        The encryption parameters are covered by the manifest signature, decryption happens on
+        device only after the download passes its hash check, and a decryption failure behaves like
+        a failed download: the running bundle is untouched. This is confidentiality, not DRM — the
+        key ships inside your binary, like every client-side scheme.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Native compatibility guardrail</H2>
+      <P>
+        The most common way OTA updates break an app is shipping a web bundle that calls native code
+        the installed shell doesn&apos;t have. At upload time the CLI fingerprints your native
+        plugin dependencies and compares them against the channel&apos;s current release — new or
+        changed native code produces a warning (or a CI failure with{' '}
+        <Code>--fail-on-incompatible</Code>) before the release ever ships.
+      </P>
+
+      <Separator className="my-10" />
+
       <H2>Automatic rollback</H2>
       <P>
         After a new bundle is activated, the app must call <Code>notifyAppReady()</Code> within a

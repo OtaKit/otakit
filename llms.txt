@@ -36,11 +36,15 @@ Start with the quick setup
 
 ### Features
 - **One-command shipping**: Build your web app, then release with otakit upload --release.
-- **Channels & runtime lanes**: Use channels for rollout tracks and runtimeVersion for native compatibility boundaries.
+- **Channels & runtime lanes**: Use channels for rollout tracks and runtimeVersion for native compatibility boundaries — and switch channels at runtime with setChannel().
+- **Delta updates**: Opt-in per-file updates: devices download only the files that changed between releases instead of the whole bundle.
 - **Automatic update delivery**: The normal flow checks and stages automatically, then activates according to the configured launch, resume, and runtime policies.
+- **Force-immediate releases**: Mark an emergency release force-immediate and devices apply and reload it on their next check, regardless of configured policies.
+- **Update lifecycle events**: Subscribe to updateAvailable, updateStaged, updateApplied, downloadFailed, and rollback to build your own update UX.
 - **Manual update control**: Turn automatic policies off when your app wants to show its own update prompt or control install timing.
 - **Safe activation & rollback**: A newly activated bundle must call notifyAppReady() or OtaKit rolls back automatically.
-- **SHA-256 verification**: Downloaded bundles are verified before activation so corrupted or tampered files are rejected.
+- **Signed & verified**: Signed manifests (ES256) and SHA-256 verification on every download, with optional end-to-end bundle encryption (AES-256-GCM).
+- **Native compatibility guardrail**: The CLI detects native-plugin changes at upload time and warns before you ship a web bundle the installed app shell can't run.
 - **Organization access & API keys**: Manage apps, members, and scoped keys inside an organization.
 - **Self-hosting**: Run OtaKit on your own infrastructure when you need full control over delivery and trust.
 
@@ -228,6 +232,11 @@ Options
 - `--version <version>`: Version string. Otherwise OTAKIT_VERSION, then auto-generated.
 - `--strict-version`: Require explicit or env-provided version.
 - `--release [channel]`: Release after upload. Omit channel to release to the base channel.
+- `--strategy <strategy>`: Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects; devices download only what changed).
+- `--force-immediate`: With --release: devices apply and reload this release on their next check (emergency fixes).
+- `--encrypt`: Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).
+- `--fail-on-incompatible`: Exit non-zero when the native compatibility check finds changes that need a store build.
+- `--ignore-compat`: Skip the native compatibility check.
 
 Example
 
@@ -241,11 +250,27 @@ Release a bundle to the base channel or a named channel. The bundle already carr
 
 Options
 - `--channel <channel>`: Target named channel. Omit it to use the base channel.
+- `--force-immediate`: Devices apply and reload this release on their next check (emergency fixes).
 
 Example
 
 ```txt
 otakit release --channel production
+```
+
+### otakit compatibility
+
+Check the local native plugin set against a channel's current release without uploading.
+
+Options
+- `--channel <channel>`: Channel to compare against. Omit for the base channel.
+- `--package-json <path>`: package.json used for native dependency detection.
+- `--node-modules <path>`: node_modules used for native dependency detection.
+
+Example
+
+```txt
+otakit compatibility --channel production
 ```
 
 ### otakit list
@@ -384,6 +409,16 @@ Example
 
 ```txt
 otakit generate-signing-key
+```
+
+### otakit generate-encryption-key
+
+Generate an AES-256 bundle encryption key. Keep it in CI as OTAKIT_ENCRYPTION_KEY and ship it in the app's bundleKeys config.
+
+Example
+
+```txt
+otakit generate-encryption-key
 ```
 
 ### Troubleshooting
@@ -1136,6 +1171,20 @@ Release to that channel:
 otakit upload --release staging
 ```
 
+#### Switching channels at runtime
+
+The configured channel is only the default — apps can override it at runtime with `setChannel()`, without shipping a new binary. The override persists across launches and takes effect on the next check; pass `null` to return to the configured channel.
+
+```txt
+// "Join the beta" toggle in a settings screen
+await OtaKit.setChannel({ channel: 'beta' });   // next check pulls from beta
+await OtaKit.setChannel({ channel: null });     // back to the configured channel
+
+const { channel, source } = await OtaKit.getChannel(); // source: 'override' | 'config'
+```
+
+Channel names are public CDN paths, so runtime switching is a rollout convenience — it can't enforce private access to a channel.
+
 #### Promoting across channels
 
 You can upload once, test on one channel, then promote the same bundle to another.
@@ -1191,7 +1240,7 @@ OtaKit has one set of four policy values and three settings that decide when eac
 - off — do nothing automatically. Nothing is checked, staged, or applied.
 - shadow — check for the latest update and stage it locally, but never apply it. The current session keeps running on the bundle it already has.
 - apply-staged — apply a bundle if one is already staged. If nothing is staged, it falls back to shadow behavior for that check.
-- immediate — check, stage, and apply the newest bundle right away when one is available.
+- immediate — check, stage, and apply the newest bundle right away when one is available. Note the reload can land mid-session, and since any individual release can be escalated with `--force-immediate` when it truly matters, you rarely want `immediate` compiled in as the default for launch or resume.
 
 ### When each setting runs
 - `launchPolicy` — every normal cold start, once the app's runtime lane is already resolved. This is the one most apps tune, since it covers the vast majority of app opens. Default: `apply-staged`.
@@ -1295,6 +1344,29 @@ OtaKit.addListener('updateAvailable', async (latest) => {
   }
 });
 await OtaKit.check();
+```
+
+#### Check for an update, download if the user says yes
+
+The same flow without listeners, driven entirely by the pull API — useful for a " Check for updates " button in a settings screen:
+
+```txt
+async function checkForUpdates() {
+  const result = await OtaKit.check();
+
+  if (result.kind === 'no_update') {
+    toast("You're up to date");
+    return;
+  }
+
+  // update_available or already_staged
+  if (await confirmDownload(result.latest.version)) {
+    const download = await OtaKit.download(); // no-op if already staged
+    if (download.kind === 'staged' && (await confirmRestart())) {
+      await OtaKit.apply(); // terminal: reloads into the new bundle
+    }
+  }
+}
 ```
 
 #### Post-update toast and failure reporting
@@ -1430,6 +1502,16 @@ The signing key stays on your server. The plugin only holds the public verificat
 ### Bundle verification
 
 Every bundle download is verified against the SHA-256 hash in the signed manifest. If the hash does not match — due to corruption, tampering, or a partial download — the bundle is discarded and the update is not applied.
+
+### End-to-end bundle encryption (optional)
+
+For code-sensitive or regulated apps, bundles can be encrypted with AES-256-GCM before upload. Generate a key with `otakit generate-encryption-key`, keep it in CI as `OTAKIT_ENCRYPTION_KEY`, and ship the same key in the app's `bundleKeys` config. Object storage and the CDN then only ever hold ciphertext — a leaked URL or bucket exposes nothing readable, and even OtaKit cannot decrypt your code.
+
+The encryption parameters are covered by the manifest signature, decryption happens on device only after the download passes its hash check, and a decryption failure behaves like a failed download: the running bundle is untouched. This is confidentiality, not DRM — the key ships inside your binary, like every client-side scheme.
+
+### Native compatibility guardrail
+
+The most common way OTA updates break an app is shipping a web bundle that calls native code the installed shell doesn't have. At upload time the CLI fingerprints your native plugin dependencies and compares them against the channel's current release — new or changed native code produces a warning (or a CI failure with `--fail-on-incompatible`) before the release ever ships.
 
 ### Automatic rollback
 

@@ -60,11 +60,23 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Channels & runtime lanes"
-          description="Use channels for rollout tracks and runtimeVersion for native compatibility boundaries."
+          description="Use channels for rollout tracks and runtimeVersion for native compatibility boundaries — and switch channels at runtime with setChannel()."
+        />
+        <Feature
+          title="Delta updates"
+          description="Opt-in per-file updates: devices download only the files that changed between releases instead of the whole bundle."
         />
         <Feature
           title="Automatic update delivery"
           description="The normal flow checks and stages automatically, then activates according to the configured launch, resume, and runtime policies."
+        />
+        <Feature
+          title="Force-immediate releases"
+          description="Mark an emergency release force-immediate and devices apply and reload it on their next check, regardless of configured policies."
+        />
+        <Feature
+          title="Update lifecycle events"
+          description="Subscribe to updateAvailable, updateStaged, updateApplied, downloadFailed, and rollback to build your own update UX."
         />
         <Feature
           title="Manual update control"
@@ -75,8 +87,12 @@ export default function DocsOverviewPage() {
           description="A newly activated bundle must call notifyAppReady() or OtaKit rolls back automatically."
         />
         <Feature
-          title="SHA-256 verification"
-          description="Downloaded bundles are verified before activation so corrupted or tampered files are rejected."
+          title="Signed & verified"
+          description="Signed manifests (ES256) and SHA-256 verification on every download, with optional end-to-end bundle encryption (AES-256-GCM)."
+        />
+        <Feature
+          title="Native compatibility guardrail"
+          description="The CLI detects native-plugin changes at upload time and warns before you ship a web bundle the installed app shell can't run."
         />
         <Feature
           title="Organization access & API keys"
@@ -92,7 +108,7 @@ export default function DocsOverviewPage() {
 
       <H2>Getting started</H2>
 
-      <div className="-mx-6 mt-4 -mb-10 grid w-[calc(100%+3rem)] gap-px overflow-hidden border-t border-border bg-border sm:grid-cols-2">
+      <div className="-mx-6 mt-4 -mb-10 grid w-[calc(100%+3rem)] gap-px overflow-hidden border-t border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
         <NavCard
           href="/docs/setup"
           title="Quick setup"
@@ -178,9 +194,9 @@ function NavCard({
   description: string;
 }) {
   return (
-    <Link href={href} className="group bg-background p-5 transition-colors hover:bg-muted/30">
+    <Link href={href} className="group bg-background p-4 transition-colors hover:bg-muted/30">
       <h3 className="text-sm font-medium group-hover:underline">{title}</h3>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </Link>
   );
 }

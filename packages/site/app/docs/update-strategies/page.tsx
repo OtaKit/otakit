@@ -43,7 +43,9 @@ export default function UpdateStrategiesPage() {
         </li>
         <li>
           <strong>immediate</strong> — check, stage, and apply the newest bundle right away when one
-          is available.
+          is available. Note the reload can land mid-session, and since any individual release can
+          be escalated with <Code>--force-immediate</Code> when it truly matters, you rarely want{' '}
+          <Code>immediate</Code> compiled in as the default for launch or resume.
         </li>
       </ul>
 

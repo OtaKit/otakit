@@ -1,6 +1,19 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Check, Lock, Rocket, Shield, Users, Zap, Globe } from 'lucide-react';
+import {
+  ArrowRight,
+  BellRing,
+  BookOpen,
+  Check,
+  FileDiff,
+  Lock,
+  Rocket,
+  Shield,
+  ShieldAlert,
+  Users,
+  Zap,
+  Globe,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -179,7 +192,16 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
           successfully. If it doesn’t confirm within the launch window, OtaKit automatically rolls
           that device back to the last known-good bundle — so a bad release can’t brick your app.
         </p>
-        <p>You can also revert any channel to a previous bundle instantly from the dashboard.</p>
+        <p>
+          You can also revert any channel to a previous bundle instantly from the dashboard, and
+          mark the fix <Code>force-immediate</Code> so devices apply it on their very next check
+          instead of waiting for the next cold launch.
+        </p>
+        <p>
+          Prevention is built in too: at upload time the CLI checks whether your web bundle depends
+          on native plugins the installed app shell doesn’t have — the most common way OTA updates
+          break — and warns (or fails CI) before the release ships.
+        </p>
       </>
     ),
   },
@@ -189,7 +211,8 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
       <p>
         The bundle is live on the CDN the moment you release. By default the plugin downloads it in
         the background and activates on the next cold launch, so most active users are updated
-        within a day — and critical fixes reach devices in minutes, not the days or weeks of store
+        within a day. For critical fixes, release with <Code>--force-immediate</Code>: devices apply
+        and reload the update on their very next check — minutes, not the days or weeks of store
         review.
       </p>
     ),
@@ -197,10 +220,49 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
   {
     q: 'Can I roll out to specific users?',
     a: (
-      <p>
-        Yes. Release to channels — production, beta, staging, or your own — to target specific
-        cohorts, then promote or roll back per channel from the dashboard or CLI.
-      </p>
+      <>
+        <p>
+          Yes. Release to channels — production, beta, staging, or your own — to target specific
+          cohorts, then promote or roll back per channel from the dashboard or CLI.
+        </p>
+        <p>
+          Apps can also switch channels at runtime with <Code>setChannel()</Code> — build a “join
+          the beta” toggle in your settings screen without shipping a new binary.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'How big are the update downloads?',
+    a: (
+      <>
+        <p>
+          By default each update is a single compressed bundle of your web layer. For asset-heavy
+          apps, opt into <strong>delta updates</strong>: every file is stored once by its content
+          hash, and devices download only the files that actually changed between releases.
+        </p>
+        <p>
+          A typical code-only change to a 50 MB app then downloads kilobytes instead of the full
+          bundle — and files already shipped inside the store binary are reused too.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'How are updates secured?',
+    a: (
+      <>
+        <p>
+          Every manifest is signed (ES256) and every download is SHA-256-verified before it is ever
+          applied, so bundles can’t be forged or tampered with in transit. Nothing unverified ever
+          reaches your users, and a bundle that fails its health check is rolled back automatically.
+        </p>
+        <p>
+          For regulated or code-sensitive apps, opt into <strong>end-to-end encryption</strong>:
+          bundles are encrypted with AES-256-GCM using a key only you hold — object storage and the
+          CDN only ever see ciphertext, and even OtaKit can’t read your code.
+        </p>
+      </>
     ),
   },
   {
@@ -459,22 +521,37 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Zap}
                 title="Instant delivery"
-                description="Updates land on devices in seconds. Fix critical bugs the moment you find them — no app store review."
+                description="Updates land on devices in seconds. Mark a release force-immediate and devices apply it on their very next check — perfect for emergency fixes."
               />
               <FeatureCard
                 icon={Rocket}
                 title="Channel-based releases"
-                description="Release bundles to production, staging, or custom channels. Roll back instantly if something goes wrong."
+                description="Release to production, staging, or custom channels — and switch channels at runtime for beta opt-in toggles. Roll back instantly if something goes wrong."
+              />
+              <FeatureCard
+                icon={FileDiff}
+                title="Delta updates"
+                description="Opt-in per-file updates: devices download only what changed between releases. A 50 MB asset-heavy app updates in kilobytes, not megabytes."
+              />
+              <FeatureCard
+                icon={Lock}
+                title="Secure by default"
+                description="Signed manifests, SHA-256 verification, HTTPS enforcement, and optional end-to-end bundle encryption — storage and CDN only ever hold ciphertext."
+              />
+              <FeatureCard
+                icon={ShieldAlert}
+                title="Native compatibility guardrail"
+                description="The CLI detects when your web bundle depends on native code the installed app shell doesn't have — and warns before the release ever ships."
+              />
+              <FeatureCard
+                icon={BellRing}
+                title="Update lifecycle events"
+                description="Subscribe to updateAvailable, updateStaged, updateApplied and more to build your own update UX — prompts, toasts, or fully silent."
               />
               <FeatureCard
                 icon={Shield}
                 title="App Store compliant"
                 description="OTA updates for web layers only — fully compliant with Apple and Google guidelines for Capacitor apps."
-              />
-              <FeatureCard
-                icon={Lock}
-                title="Secure by default"
-                description="SHA-256 bundle verification, signed manifests, HTTPS enforcement, and delivieries via Cloudflare CDN."
               />
               <FeatureCard
                 icon={Users}

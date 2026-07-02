@@ -56,6 +56,25 @@ export default function ChannelsPage() {
 
       <Separator className="my-6" />
 
+      <H3>Switching channels at runtime</H3>
+      <P>
+        The configured channel is only the default — apps can override it at runtime with{' '}
+        <Code>setChannel()</Code>, without shipping a new binary. The override persists across
+        launches and takes effect on the next check; pass <Code>null</Code> to return to the
+        configured channel.
+      </P>
+      <Pre>{`// "Join the beta" toggle in a settings screen
+await OtaKit.setChannel({ channel: 'beta' });   // next check pulls from beta
+await OtaKit.setChannel({ channel: null });     // back to the configured channel
+
+const { channel, source } = await OtaKit.getChannel(); // source: 'override' | 'config'`}</Pre>
+      <P>
+        Channel names are public CDN paths, so runtime switching is a rollout convenience — it
+        can&apos;t enforce private access to a channel.
+      </P>
+
+      <Separator className="my-6" />
+
       <H3>Promoting across channels</H3>
       <P>You can upload once, test on one channel, then promote the same bundle to another.</P>
       <Pre>{`# Upload and release to staging

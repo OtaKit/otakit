@@ -130,6 +130,28 @@ OtaKit.addListener('updateAvailable', async (latest) => {
 });
 await OtaKit.check();`}</Pre>
 
+      <H3>Check for an update, download if the user says yes</H3>
+      <P>
+        The same flow without listeners, driven entirely by the pull API — useful for a{'"'}Check
+        for updates{'"'} button in a settings screen:
+      </P>
+      <Pre>{`async function checkForUpdates() {
+  const result = await OtaKit.check();
+
+  if (result.kind === 'no_update') {
+    toast("You're up to date");
+    return;
+  }
+
+  // update_available or already_staged
+  if (await confirmDownload(result.latest.version)) {
+    const download = await OtaKit.download(); // no-op if already staged
+    if (download.kind === 'staged' && (await confirmRestart())) {
+      await OtaKit.apply(); // terminal: reloads into the new bundle
+    }
+  }
+}`}</Pre>
+
       <H3>Post-update toast and failure reporting</H3>
       <Pre>{`// attach at startup, in the reloaded bundle
 OtaKit.addListener('updateApplied', ({ bundle }) => {

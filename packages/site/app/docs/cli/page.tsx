@@ -134,6 +134,23 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               flag: '--release [channel]',
               desc: 'Release after upload. Omit channel to release to the base channel.',
             },
+            {
+              flag: '--strategy <strategy>',
+              desc: 'Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects; devices download only what changed).',
+            },
+            {
+              flag: '--force-immediate',
+              desc: 'With --release: devices apply and reload this release on their next check (emergency fixes).',
+            },
+            {
+              flag: '--encrypt',
+              desc: 'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).',
+            },
+            {
+              flag: '--fail-on-incompatible',
+              desc: 'Exit non-zero when the native compatibility check finds changes that need a store build.',
+            },
+            { flag: '--ignore-compat', desc: 'Skip the native compatibility check.' },
           ]}
           example="otakit upload --release"
         />
@@ -149,8 +166,34 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               flag: '--channel <channel>',
               desc: 'Target named channel. Omit it to use the base channel.',
             },
+            {
+              flag: '--force-immediate',
+              desc: 'Devices apply and reload this release on their next check (emergency fixes).',
+            },
           ]}
           example="otakit release --channel production"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit compatibility"
+          description="Check the local native plugin set against a channel's current release without uploading."
+          options={[
+            {
+              flag: '--channel <channel>',
+              desc: 'Channel to compare against. Omit for the base channel.',
+            },
+            {
+              flag: '--package-json <path>',
+              desc: 'package.json used for native dependency detection.',
+            },
+            {
+              flag: '--node-modules <path>',
+              desc: 'node_modules used for native dependency detection.',
+            },
+          ]}
+          example="otakit compatibility --channel production"
         />
 
         <Separator />
@@ -261,6 +304,15 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
           description="Generate an ES256 key pair for manifest signing."
           options={[]}
           example="otakit generate-signing-key"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit generate-encryption-key"
+          description="Generate an AES-256 bundle encryption key. Keep it in CI as OTAKIT_ENCRYPTION_KEY and ship it in the app's bundleKeys config."
+          options={[]}
+          example="otakit generate-encryption-key"
         />
       </div>
 
