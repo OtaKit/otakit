@@ -24,6 +24,7 @@ type UploadOptions = {
   ignoreCompat?: boolean;
   packageJson?: string;
   nodeModules?: string;
+  forceImmediate?: boolean;
 };
 
 function resolveReleaseChannel(
@@ -52,6 +53,10 @@ export const uploadCommand = new Command('upload')
   .option('--ignore-compat', 'Skip the native compatibility check')
   .option('--package-json <path>', 'package.json used for native dependency detection')
   .option('--node-modules <path>', 'node_modules used for native dependency detection')
+  .option(
+    '--force-immediate',
+    'With --release: devices apply and reload on their next check (emergency fixes)',
+  )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -109,6 +114,10 @@ export const uploadCommand = new Command('upload')
         }
       }
 
+      if (options.forceImmediate === true && releaseChannel === undefined) {
+        console.warn('--force-immediate has no effect without --release; ignoring.');
+      }
+
       const spinner = ora('Creating zip archive...').start();
 
       const bundle = await (async () => {
@@ -120,6 +129,7 @@ export const uploadCommand = new Command('upload')
             runtimeVersion: config.runtimeVersion,
             releaseChannel,
             nativePackages,
+            forceImmediate: options.forceImmediate === true,
             onStatus: (message) => {
               spinner.text = message;
             },

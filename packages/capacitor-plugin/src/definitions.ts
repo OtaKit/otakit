@@ -48,6 +48,12 @@ export interface LatestVersion {
   size: number;
   /** Release history ID associated with this manifest */
   releaseId: string;
+  /**
+   * True when the release is marked force-immediate: automatic flows apply
+   * and reload it on the next lifecycle event regardless of shadow or
+   * apply-staged policies. Manual API behavior is unchanged.
+   */
+  forceImmediate?: boolean;
 }
 
 export interface OtaKitState {

@@ -98,6 +98,25 @@ resumePolicy = 'off';
 runtimePolicy = 'off';
 ```
 
+## Force-immediate releases
+
+A release (or revert) can be marked **force immediate** in the dashboard or
+with `otakit release --force-immediate`. The flag is baked into the signed
+manifest; when a device's automatic flow sees it, `shadow` and `apply-staged`
+events escalate to the `immediate` behavior for that release: download, apply,
+and reload on that event.
+
+Bounds to keep in mind:
+
+- It is "immediate on the next event/check", not push — delivery is bounded by
+  lifecycle events and `checkInterval` (static CDN, no server→device channel).
+- `off` policies never fetch a manifest, so they never see the flag. `off`
+  stays the device-owned kill switch, and the manual APIs are unchanged.
+- Trial and rollback still apply: a forced bundle that never calls
+  `notifyAppReady()` rolls back like any other.
+- It reloads the app under the user, possibly mid-task. Use it for broken
+  releases, not routine rollouts.
+
 ## Check interval
 
 `checkInterval` defaults to 10 minutes and only applies to background resume

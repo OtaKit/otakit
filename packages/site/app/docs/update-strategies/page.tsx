@@ -3,7 +3,8 @@ import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
   title: 'Update Strategies',
-  description: 'How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.',
+  description:
+    'How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.',
 };
 
 export default function UpdateStrategiesPage() {
@@ -91,18 +92,27 @@ export default function UpdateStrategiesPage() {
 
       <H3>Ship critical fixes instantly</H3>
       <P>
-        Set <Code>launchPolicy</Code> and <Code>resumePolicy</Code> to <Code>immediate</Code> as
-        well. Devices apply a fix as soon as they check — even mid-session on resume. Trade-off:
-        users can see the app reload while they&apos;re using it, so reserve this for cases where
-        landing the fix fast matters more than a seamless reload.
+        Mark the release as <strong>force immediate</strong> — in the dashboard&apos;s release
+        dialog or with <Code>otakit release --force-immediate</Code>. The flag is baked into the
+        signed manifest, and devices on <Code>shadow</Code> or <Code>apply-staged</Code> policies
+        escalate that one release to the immediate behavior: download, apply, and reload on their
+        next check. No app rebuild, no config change.
+      </P>
+      <P>
+        Bounds: it is &quot;immediate on the next event/check&quot;, not push — delivery is bounded
+        by lifecycle events and <Code>checkInterval</Code>. Policies set to <Code>off</Code> never
+        fetch a manifest, so they never see the flag, and the trial/rollback safety net still
+        applies. The reload can land mid-session, so reserve it for broken releases, not routine
+        rollouts. (Compiling <Code>immediate</Code> policies into the app remains an option when you
+        want this behavior for every release.)
       </P>
 
       <H3>Update quietly, reload only with consent</H3>
       <P>
         Set <Code>launchPolicy</Code> and <Code>resumePolicy</Code> to <Code>shadow</Code>. Bundles
-        stage in the background and nothing ever activates on its own — call{' '}
-        <Code>apply()</Code> yourself, for example from a &quot;restart to update&quot; banner once
-        a staged bundle shows up in <Code>getState()</Code>.
+        stage in the background and nothing ever activates on its own — call <Code>apply()</Code>{' '}
+        yourself, for example from a &quot;restart to update&quot; banner once a staged bundle shows
+        up in <Code>getState()</Code>.
       </P>
 
       <H3>Full manual control</H3>

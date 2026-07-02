@@ -23,6 +23,7 @@ type ManifestBundle = {
 
 type ManifestRelease = {
   id: string;
+  forceImmediate: boolean;
 };
 
 export function getManifestChannelKey(channel: string | null): string {
@@ -65,7 +66,7 @@ export async function writeManifestFile(
     size: bundle.size,
     runtimeVersion: bundle.runtimeVersion,
     strategy: 'zip',
-    forceImmediate: false,
+    forceImmediate: release.forceImmediate,
     encryption: null,
   });
 
@@ -80,7 +81,7 @@ export async function writeManifestFile(
       runtimeVersion: bundle.runtimeVersion,
       releaseId: release.id,
       strategy: 'zip',
-      forceImmediate: false,
+      forceImmediate: release.forceImmediate,
       signature,
     }),
     contentType: 'application/json; charset=utf-8',

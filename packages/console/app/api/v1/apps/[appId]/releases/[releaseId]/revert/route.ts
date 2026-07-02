@@ -20,6 +20,19 @@ export async function POST(
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
+  // The body is optional (existing clients POST without one); when present it
+  // may carry a forceImmediate override for the release that becomes current.
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
+  const rawForceImmediate = body.forceImmediate;
+  if (rawForceImmediate !== undefined && typeof rawForceImmediate !== 'boolean') {
+    return NextResponse.json({ error: 'forceImmediate must be a boolean' }, { status: 400 });
+  }
+
   const targetRelease = await db.release.findFirst({
     where: { id: releaseId, appId },
     include: {
@@ -85,6 +98,18 @@ export async function POST(
     }),
   ]);
 
+  let effectiveNextCurrentRelease = nextCurrentRelease;
+  if (rawForceImmediate !== undefined && nextCurrentRelease) {
+    effectiveNextCurrentRelease = await db.release.update({
+      where: { id: nextCurrentRelease.id },
+      data: { forceImmediate: rawForceImmediate },
+      include: {
+        bundle: { select: { version: true, runtimeVersion: true } },
+        previousBundle: { select: { version: true } },
+      },
+    });
+  }
+
   await syncManifestFileForLane(appId, targetRelease.channel, targetRelease.bundle.runtimeVersion);
 
   return NextResponse.json({
@@ -101,19 +126,20 @@ export async function POST(
       revertedAt: revertedAt.toISOString(),
       revertedBy,
     },
-    currentRelease: nextCurrentRelease
+    currentRelease: effectiveNextCurrentRelease
       ? {
-          id: nextCurrentRelease.id,
-          channel: nextCurrentRelease.channel,
-          runtimeVersion: nextCurrentRelease.bundle.runtimeVersion,
-          bundleId: nextCurrentRelease.bundleId,
-          bundleVersion: nextCurrentRelease.bundle.version,
-          previousBundleId: nextCurrentRelease.previousBundleId,
-          previousBundleVersion: nextCurrentRelease.previousBundle?.version ?? null,
-          promotedAt: nextCurrentRelease.promotedAt.toISOString(),
-          promotedBy: nextCurrentRelease.promotedBy,
-          revertedAt: nextCurrentRelease.revertedAt?.toISOString() ?? null,
-          revertedBy: nextCurrentRelease.revertedBy,
+          id: effectiveNextCurrentRelease.id,
+          channel: effectiveNextCurrentRelease.channel,
+          runtimeVersion: effectiveNextCurrentRelease.bundle.runtimeVersion,
+          bundleId: effectiveNextCurrentRelease.bundleId,
+          bundleVersion: effectiveNextCurrentRelease.bundle.version,
+          previousBundleId: effectiveNextCurrentRelease.previousBundleId,
+          previousBundleVersion: effectiveNextCurrentRelease.previousBundle?.version ?? null,
+          forceImmediate: effectiveNextCurrentRelease.forceImmediate,
+          promotedAt: effectiveNextCurrentRelease.promotedAt.toISOString(),
+          promotedBy: effectiveNextCurrentRelease.promotedBy,
+          revertedAt: effectiveNextCurrentRelease.revertedAt?.toISOString() ?? null,
+          revertedBy: effectiveNextCurrentRelease.revertedBy,
         }
       : null,
   });

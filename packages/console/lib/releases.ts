@@ -7,6 +7,7 @@ export async function createRelease(
     bundleId: string;
     previousBundleId?: string | null;
     channel: string | null;
+    forceImmediate?: boolean;
     promotedBy?: string;
   },
 ): Promise<Release> {
@@ -16,6 +17,7 @@ export async function createRelease(
       bundleId: input.bundleId,
       previousBundleId: input.previousBundleId ?? null,
       channel: input.channel,
+      forceImmediate: input.forceImmediate ?? false,
       promotedBy: input.promotedBy,
     },
   });

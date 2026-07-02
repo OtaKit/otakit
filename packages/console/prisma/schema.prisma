@@ -208,6 +208,7 @@ model Release {
   previousBundle   Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
   previousBundleId String?
   channel          String?
+  forceImmediate   Boolean   @default(false)
   promotedAt       DateTime  @default(now())
   promotedBy       String?
   revertedAt       DateTime?
