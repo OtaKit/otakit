@@ -1556,138 +1556,231 @@ If you discover a security issue, please email security@otakit.app . We aim to r
 
 Route: /docs/self-host
 
-Run OtaKit on your own infrastructure.
+Run the full OtaKit platform on your own infrastructure, step by step.
 
-OtaKit is fully open source and can run on your own infrastructure. The managed service at otakit.app runs everything for you — self-hosting is the advanced path.
+OtaKit is MIT-licensed and fully open source — everything the hosted service runs is in the public repo. The fastest way to ship OTA updates is the managed service at otakit.app (free tier, zero infrastructure). But if you need full control over delivery, keys, and data, this guide walks you through running your own instance end to end.
 
-### What you deploy
-- Public site (`packages/site`) — landing page, docs, contact, and legal pages.
-- Console (`packages/console`) — Next.js control plane: auth, dashboard UI, API routes, billing, and Prisma migrations.
-- Ingest Worker (`packages/ingest`) — Cloudflare Worker that receives device events and writes them to Tinybird. Required if you want to use dashboard analytics.
-- CDN bucket — public R2 or S3 bucket with a CDN domain. Serves manifest files and bundle zips directly to devices.
+There is no all-in-one Docker image yet. The control plane is a standard Next.js app, so it runs anywhere Node.js runs — a VPS behind nginx, your own container, or Vercel — plus a Postgres database and an S3-compatible bucket. That's the whole required stack.
 
-The CLI (`packages/cli`) and Capacitor plugin ( `packages/capacitor-plugin`) are client-side tools — they can be configured to point at your self-hosted services.
+### How it works
 
-### Required services
-- PostgreSQL 14+
-- S3-compatible object storage (Cloudflare R2, AWS S3)
-- A public CDN domain in front of the storage bucket
-- At least one provider (Google, Apple, Github, or Email OTP via Resend) for sign-in
+Three things to understand before you deploy anything:
+The console publishes to storage.
+When you run
 
-### Environment variables
+otakit upload --release
+, the console API writes the bundle zip and a manifest JSON to your object storage bucket.
+Devices update from the CDN, not from your server.
+The Capacitor plugin fetches the manifest and bundle straight from the CDN domain in front of the bucket. Your console can be completely down and updates keep working.
+Everything else is optional.
+Analytics, email, billing, rate limiting, and CDN purge all degrade gracefully when their env vars are unset. You can start with the minimal stack and add pieces later.
 
-#### Dashboard — required
+### What you need
+
+#### Required
+Console
+(
+
+packages/console
+) — the Next.js control plane: dashboard, auth, API, and manifest publishing. This is the only server you must run.
+PostgreSQL 14+
+— apps, bundles, releases, users.
+S3-compatible object storage
+— Cloudflare R2 or AWS S3, for bundle zips and manifests.
+A public CDN domain
+in front of the bucket — devices download manifests and bundles from here.
+One sign-in method
+— Google, Apple, or GitHub OAuth credentials, or email OTP (needs Resend in production).
+
+#### Optional
+Ingest Worker + Tinybird
+(
+
+packages/ingest
+,
+
+tinybird/
+) — device event analytics. Without it, updates work fine; the dashboard just shows empty analytics.
+Manifest signing
+— ES256 signatures on manifests. Strongly recommended for production; see below.
+Resend
+— transactional email (OTP codes, invites). Without it, emails are logged to the server console.
+Cloudflare cache purge
+— instant CDN invalidation after a release. Without it, manifests may be stale until the CDN TTL (minutes) expires.
+Upstash Redis
+— API rate limiting. Without it, rate limiting is disabled.
+Polar
+— billing. Leave it unset when self-hosting: all organizations get unlimited usage and the billing UI is hidden.
+Public site
+(
+
+packages/site
+) — the marketing site and docs you're reading now. You don't need it.
+
+The CLI (`packages/cli`) and Capacitor plugin (`packages/capacitor-plugin`) run on your machine and inside your app — you point them at your instance in steps 6 and 7.
+
+### Step 1 — Clone and install
+
+You need Node.js 20.9+ and pnpm 9+.
 
 ```txt
-DATABASE_URL=postgresql://user:pass@localhost:5432/otakit
+git clone https://github.com/OtaKit/otakit
+cd otakit
+pnpm install
+```
 
-BETTER_AUTH_SECRET=your-random-secret    # openssl rand -hex 32
-BETTER_AUTH_URL=https://your-domain.com
-# At least one provider for sign-in
+### Step 2 — Create the database
+
+Any PostgreSQL 14+ works — a managed database (Neon, RDS, Supabase) or your own server. Note the connection string; you'll set it as `DATABASE_URL` in step 4.
+
+### Step 3 — Create the storage bucket and CDN
+
+Create a bucket on Cloudflare R2 or AWS S3 and put a public CDN domain in front of it (e.g. R2 custom domain, or CloudFront for S3). Generate S3 API credentials with read/write access to the bucket. The public domain becomes `CDN_BASE_URL` — devices will fetch manifests and bundles from it, so it must be publicly readable.
+
+### Step 4 — Configure the console
+
+Copy `packages/console/.env.example` to `.env`. It is annotated with the same required/optional split as this page. The required variables:
+
+```txt
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/otakit
+
+# API write secret for admin/CLI endpoints
+SECRET_KEY=change-me                     # openssl rand -hex 32
+
+# Auth + public URLs
+BETTER_AUTH_SECRET=change-me             # openssl rand -hex 32
+BETTER_AUTH_URL=https://console.your-domain.com
+NEXT_PUBLIC_APP_URL=https://console.your-domain.com
+NEXT_PUBLIC_SITE_URL=https://console.your-domain.com
+
+# At least one sign-in provider
 GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=....
-RESEND_API_KEY=...
-EMAIL_FROM=...
+GOOGLE_CLIENT_SECRET=...
+# or APPLE_CLIENT_ID / APPLE_CLIENT_SECRET
+# or GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
 
-R2_BUCKET=...
+# Object storage (R2 shown; any S3-compatible API works)
+R2_BUCKET=otakit-bundles
 R2_ACCESS_KEY=...
 R2_SECRET_KEY=...
-R2_ENDPOINT=https://....r2.cloudflarestorage.com
+R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+
+# Public CDN domain in front of the bucket
 CDN_BASE_URL=https://cdn.your-domain.com
-
-# Cloudflare CDN purge — instant cache invalidation after releases.
-# Without this, stale manifests may be served until CDN TTL expires.
-CF_ZONE_ID=...
-CF_API_TOKEN=...
-
-# Tinybird — device event analytics and dashboard counts.
-# Without this, the dashboard shows empty analytics and download counts return 0.
-TINYBIRD_API_HOST=https://api.tinybird.co
-TINYBIRD_READ_TOKEN=...
-
-# Manifest signing — ES256 signatures on manifest JSON.
-# Generate with: otakit generate-signing-key
-MANIFEST_SIGNING_KID=key-2026-01
-MANIFEST_SIGNING_KEY=-----BEGIN EC PRIVATE KEY-----...
-# Set MANIFEST_SIGNING_DISABLED=true to skip signing entirely.
 ```
 
-#### Ingest Worker
+Everything else in `.env.example` (Tinybird, Resend, Polar, Cloudflare purge, Upstash, signing) is optional and covered at the end of this page.
 
-Only needed if you want to use analytics. See `packages/ingest/wrangler.jsonc` and `packages/ingest/.env.example` for the full config. The Worker needs a Tinybird append token and a Cloudflare Queue.
-
-### Deploy
-
-#### Public site
+### Step 5 — Migrate, build, start
 
 ```txt
-git clone https://github.com/OtaKit/otakit
-cd otakit
-pnpm install
-
-cd packages/site
-pnpm build
-pnpm start
-```
-
-#### Console
-
-```txt
-git clone https://github.com/OtaKit/otakit
-cd otakit
-pnpm install
-
 cd packages/console
 npx prisma migrate deploy
 pnpm build
 pnpm start
 ```
 
-Runs on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS.
+The console listens on port 3000. Put a reverse proxy (nginx, Caddy) in front with HTTPS — or deploy it like any other Next.js app, to Vercel or your own container platform.
 
-#### Ingest Worker
+### Step 6 — Sign in and create your app
 
-```txt
-cd packages/ingest
-npx wrangler deploy
-```
+Open your console URL, sign in, and create an app. Copy its `appId` and create an API token (`otakit_sk_...`) for the CLI.
 
-#### Tinybird project
+### Step 7 — Point the CLI at your instance
 
 ```txt
-cd tinybird
-tb login
-tb deploy
+export OTAKIT_SERVER_URL=https://console.your-domain.com
+export OTAKIT_TOKEN=otakit_sk_...
 ```
 
-### Manifest signing
+Alternatively set `serverUrl` in the plugin config (next step) — the CLI reads it from `capacitor.config.*` automatically — and authenticate with `otakit login` instead of an env token.
 
-```txt
-otakit generate-signing-key
-```
+### Step 8 — Configure the plugin
 
-Add the private key to the dashboard env (`MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`). Add the public key to the Capacitor plugin config ( `manifestKeys`).
-
-### Configure the plugin
+In your app's `capacitor.config.ts`:
 
 ```txt
 plugins: {
   OtaKit: {
-    appId: "YOUR_OTAKIT_APP_ID",
-    cdnUrl: "https://cdn.your-domain.com",
-    ingestUrl: "https://ingest.your-domain.com/v1",  // omit if not using Tinybird
-    manifestKeys: [
+    appId: "YOUR_APP_ID",
+    cdnUrl: "https://cdn.your-domain.com",          // required: your CDN domain
+    serverUrl: "https://console.your-domain.com",   // optional: lets the CLI find your console
+    ingestUrl: "https://ingest.your-domain.com/v1", // optional: only with analytics (below)
+    manifestKeys: [                                  // optional: only with signing (below)
       { kid: "key-2026-01", key: "MFkwEwYH..." }
     ]
   }
 }
 ```
 
-### Configure the CLI
+### Step 9 — Ship a release and verify
 
 ```txt
-export OTAKIT_SERVER_URL=https://your-domain.com/api/v1
-export OTAKIT_TOKEN=otakit_sk_...
+# build your web assets, then:
+otakit upload --release
 ```
 
-Or set `serverUrl` in the Capacitor plugin config so the CLI can read it automatically.
+Confirm the release appears in your dashboard, and that the manifest is publicly readable at `{CDN_BASE_URL}/manifests/{appId}/__base__/__default__/manifest.json`. Then launch your app: on start or resume the plugin fetches that manifest, downloads the new bundle, and applies it. Your self-hosted pipeline is live.
+
+### Optional: manifest signing (recommended)
+
+Signing lets devices verify manifests were produced by your server, not just served from your CDN. Generate a key pair:
+
+```txt
+otakit generate-signing-key
+```
+
+Put the private key in the console env (`MANIFEST_SIGNING_KID`, `MANIFEST_SIGNING_KEY`) and the public key in the plugin config's `manifestKeys`. To run without signing, set `MANIFEST_SIGNING_DISABLED=true`.
+
+### Optional: analytics (Ingest Worker + Tinybird)
+
+Device events (downloaded, applied, rolled back) flow from the plugin to a Cloudflare Worker, which batches them into Tinybird. The dashboard reads its charts and download counts from Tinybird pipes.
+
+```txt
+# 1. Deploy the Tinybird project (datasources + pipes)
+cd tinybird
+tb login
+tb deploy
+
+# 2. Deploy the Worker
+cd packages/ingest
+npx wrangler secret put TINYBIRD_EVENTS_TOKEN   # Tinybird append token
+npx wrangler deploy
+```
+
+See `packages/ingest/README.md` for the Worker's queue and rate-limit bindings in `wrangler.jsonc`. Then set `TINYBIRD_API_HOST` and `TINYBIRD_READ_TOKEN` in the console env, and `ingestUrl` in the plugin config.
+
+### Optional: everything else
+Email
+— set
+
+RESEND_API_KEY
+and
+
+EMAIL_FROM
+to send OTP codes and invites via Resend.
+CDN purge
+— set
+
+CF_ZONE_ID
+and
+
+CF_API_TOKEN
+
+(Cloudflare) so releases invalidate cached manifests instantly.
+Rate limiting
+— set
+
+UPSTASH_REDIS_REST_URL
+and
+
+UPSTASH_REDIS_REST_TOKEN
+to rate-limit the API.
+Billing
+— Polar integration powers the hosted service's plans. Leave the
+
+POLAR_*
+vars unset for unlimited usage with no billing UI.
+
+Stuck on something? Email us or open an issue on GitHub — self-hosting reports help us make this guide better.

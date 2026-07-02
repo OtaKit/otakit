@@ -4,6 +4,12 @@ Fully open-source, self-hostable over-the-air update framework for Capacitor app
 
 Try it for free: [OtaKit.app](https://www.otakit.app/)
 
+## Self-hosting
+
+OtaKit is hosted-first — the managed service at [otakit.app](https://www.otakit.app/) runs everything for you — but the entire platform is in this repo and can run on your own infrastructure. The minimal stack is the console (a standard Next.js app), Postgres, and an S3-compatible bucket behind a CDN; analytics, email, and billing are optional.
+
+Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs/self-host)
+
 ## How it works
 
 1. Create an app in the dashboard.
