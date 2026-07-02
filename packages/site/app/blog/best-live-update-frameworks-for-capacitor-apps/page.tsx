@@ -7,7 +7,7 @@ export const metadata = blogPostMetadata(post.slug);
 
 const comparisonRows = [
   ['Pricing based on', 'Updates delivered', 'Monthly active users + bandwidth + storage', 'Monthly active users'],
-  ['Free tier', '10,000 updates/mo, unlimited apps', 'Trial-oriented free tier', '14-day trial'],
+  ['Free tier', '10,000 updates/mo, unlimited apps — free forever', '14-day trial', '14-day trial'],
   ['First paid tier', '$25/mo (1M updates)', '$12/mo (2,000 MAU)', '$9/mo (1,000 MAU)'],
   ['Device delivery path', '100% CDN edge (Cloudflare)', 'Vendor servers', 'Vendor cloud'],
   ['End-user tracking', 'None (no device IDs)', 'Per-device (MAU metering)', 'Per-device (MAU metering)'],
