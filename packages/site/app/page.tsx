@@ -117,10 +117,10 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
       <>
         <p>
           Yes. Updating the web layer is explicitly permitted. Apple’s Developer Program License
-          Agreement <strong>§3.3.2</strong> allows interpreted code (JavaScript) to be downloaded
-          into an app as long as it (a) doesn’t change the app’s primary purpose, (b) doesn’t create
-          a store or storefront for other code, and (c) doesn’t bypass the OS’s signing, sandbox, or
-          security.
+          Agreement <strong>§3.3.1(B)</strong> (formerly §3.3.2) allows interpreted code
+          (JavaScript) to be downloaded into an app as long as it (a) doesn’t change the app’s
+          primary purpose, (b) doesn’t create a store or storefront for other code, and (c) doesn’t
+          bypass the OS’s signing, sandbox, or security.
         </p>
         <p>
           Capacitor runs your JavaScript inside Apple’s own WebKit web view, so web-bundle updates
@@ -135,7 +135,7 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
             rel="noopener noreferrer"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            Read Apple’s clause §3.3.2 →
+            Read Apple’s clause §3.3.1(B) →
           </a>
         </p>
       </>

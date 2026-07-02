@@ -58,7 +58,7 @@ Start with the quick setup
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, and configuration.
 
-Need help with setup, billing, or rollout issues? Email SUPPORT_EMAIL or use the contact page .
+Need help with setup, billing, or rollout issues? Email support@otakit.app .
 
 ## Setup
 

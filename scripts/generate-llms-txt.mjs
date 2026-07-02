@@ -46,6 +46,9 @@ const ENTITY_MAP = new Map([
   ['&middot;', '·'],
 ]);
 
+// JSX expression identifiers that leak into extracted text as-is.
+const CONSTANT_MAP = new Map([['SUPPORT_EMAIL', 'support@otakit.app']]);
+
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
@@ -696,6 +699,9 @@ function decodeEntities(text) {
   let output = text;
   for (const [entity, value] of ENTITY_MAP.entries()) {
     output = output.replaceAll(entity, value);
+  }
+  for (const [identifier, value] of CONSTANT_MAP.entries()) {
+    output = output.replaceAll(identifier, value);
   }
   return output;
 }
