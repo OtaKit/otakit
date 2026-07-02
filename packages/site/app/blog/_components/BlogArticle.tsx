@@ -103,7 +103,7 @@ export function Pre({ children }: { children: string }) {
 }
 
 export function A({ href, children }: { href: string; children: React.ReactNode }) {
-  const external = href.startsWith('http');
+  const external = href.startsWith('http') || href.startsWith('mailto:');
   if (external) {
     return (
       <a

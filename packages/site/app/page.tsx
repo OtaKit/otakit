@@ -23,6 +23,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { ScaleToFit } from '@/components/ScaleToFit';
 import { site } from '@/lib/site';
@@ -601,7 +602,7 @@ export default function LandingPage() {
                   'Dedicated support',
                 ]}
                 cta="Contact sales"
-                href="/contact"
+                copyEmail={site.supportEmail}
               />
             </div>
           </div>
@@ -732,9 +733,12 @@ export default function LandingPage() {
               >
                 Status
               </a>
-              <Link href="/contact" className="transition-colors hover:text-foreground">
+              <CopyEmailLink
+                email={site.supportEmail}
+                className="cursor-pointer transition-colors hover:text-foreground"
+              >
                 Contact
-              </Link>
+              </CopyEmailLink>
             </div>
           </div>
 
@@ -745,24 +749,23 @@ export default function LandingPage() {
               { label: 'Dashboard', href: `${site.console}/dashboard` },
               { label: 'Sign up', href: `${site.console}/login` },
               { label: 'Security', href: '/docs/security' },
-              { label: 'Self-hosting', href: '/docs/self-host' },
             ]}
           />
 
           <FooterColumn
             title="Docs"
+            titleHref="/docs"
             links={[
               { label: 'Getting started', href: '/docs/setup' },
-              { label: 'Plugin API', href: '/docs/plugin' },
-              { label: 'CLI reference', href: '/docs/cli' },
               { label: 'Channels & versions', href: '/docs/channels' },
               { label: 'Update strategies', href: '/docs/update-strategies' },
-              { label: 'CI automation', href: '/docs/ci' },
+              { label: 'Self-hosting', href: '/docs/self-host' },
             ]}
           />
 
           <FooterColumn
             title="Blog"
+            titleHref="/blog"
             links={[
               { label: 'How OTA updates work', href: '/blog/how-ota-works-for-capacitor-apps' },
               {
@@ -770,12 +773,9 @@ export default function LandingPage() {
                 href: '/blog/ota-policies-for-app-store-and-google-play',
               },
               {
-                label: 'Best live update tools',
+                label: 'OtaKit vs Capgo vs Capawesome',
                 href: '/blog/best-live-update-frameworks-for-capacitor-apps',
               },
-              { label: 'Capgo alternative', href: '/blog/capgo-alternative' },
-              { label: 'Capawesome alternative', href: '/blog/capawesome-alternative' },
-              { label: 'All posts', href: '/blog' },
             ]}
           />
         </div>
@@ -800,14 +800,24 @@ export default function LandingPage() {
 
 function FooterColumn({
   title,
+  titleHref,
   links,
 }: {
   title: string;
+  titleHref?: string;
   links: { label: string; href: string }[];
 }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground">
+        {titleHref ? (
+          <Link href={titleHref} className="transition-colors hover:text-muted-foreground">
+            {title}
+          </Link>
+        ) : (
+          title
+        )}
+      </h3>
       <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
         {links.map((link) => (
           <li key={link.href}>
@@ -875,6 +885,7 @@ function PricingCard({
   cta,
   highlighted,
   href,
+  copyEmail,
 }: {
   name: string;
   price: string;
@@ -885,6 +896,7 @@ function PricingCard({
   cta: string;
   highlighted?: boolean;
   href?: string;
+  copyEmail?: string;
 }) {
   return (
     <div
@@ -916,11 +928,17 @@ function PricingCard({
         ))}
       </ul>
       <div className="mt-8">
-        <Link href={href ?? `${site.console}/login`} className="block">
-          <Button variant={highlighted ? 'default' : 'outline'} className="w-full">
-            {cta}
+        {copyEmail ? (
+          <Button variant={highlighted ? 'default' : 'outline'} className="w-full" asChild>
+            <CopyEmailLink email={copyEmail}>{cta}</CopyEmailLink>
           </Button>
-        </Link>
+        ) : (
+          <Link href={href ?? `${site.console}/login`} className="block">
+            <Button variant={highlighted ? 'default' : 'outline'} className="w-full">
+              {cta}
+            </Button>
+          </Link>
+        )}
       </div>
     </div>
   );

@@ -156,11 +156,7 @@ export default function DocsOverviewPage() {
         Need help with setup, billing, or rollout issues? Email{' '}
         <a href={SUPPORT_MAILTO} className="underline underline-offset-4 hover:text-foreground">
           {SUPPORT_EMAIL}
-        </a>{' '}
-        or use the{' '}
-        <Link href="/contact" className="underline underline-offset-4 hover:text-foreground">
-          contact page
-        </Link>
+        </a>
         .
       </p>
     </>

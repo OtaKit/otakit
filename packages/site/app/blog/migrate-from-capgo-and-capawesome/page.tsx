@@ -287,9 +287,10 @@ otakit upload --release --force-immediate         # emergency fix
 otakit upload --release --strategy deltas         # delta delivery`}</Pre>
       <p>
         Questions mid-migration? The <A href="/docs/setup">setup guide</A> and{' '}
-        <A href="/docs/update-strategies">update strategies</A> cover the details, and{' '}
-        <A href="/contact">we&apos;re happy to help</A> with gnarly routing models — we&apos;ve
-        probably seen yours.
+        <A href="/docs/update-strategies">update strategies</A> cover the details, and we&apos;re
+        happy to help with gnarly routing models at{' '}
+        <A href="mailto:support@otakit.app">support@otakit.app</A> — we&apos;ve probably seen
+        yours.
       </p>
     </BlogArticle>
   );
