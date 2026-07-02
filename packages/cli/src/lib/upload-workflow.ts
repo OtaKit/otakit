@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import type { ApiClient, Bundle } from './api.js';
 import { CliError } from './errors.js';
 import { hashFile } from './hash.js';
+import type { NativePackage } from './native-deps.js';
 import { getCliUserAgent } from './version.js';
 import { createZip, removeFileIfExists, validateBundleDirectory } from './zip.js';
 
@@ -132,6 +133,7 @@ export type UploadWorkflowOptions = {
   version: string;
   runtimeVersion?: string;
   releaseChannel?: string | null;
+  nativePackages?: NativePackage[];
   onStatus?: (message: string) => void;
 };
 
@@ -143,7 +145,8 @@ export type UploadWorkflowResult = {
 export async function runUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
-  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
+  const { api, sourcePath, version, runtimeVersion, releaseChannel, nativePackages, onStatus } =
+    options;
 
   validateBundleDirectory(sourcePath);
 
@@ -173,6 +176,7 @@ export async function runUploadWorkflow(
       runtimeVersion,
       size: zipStat.size,
       sha256,
+      nativePackages,
     });
 
     const expiresAt = new Date(initiated.expiresAt);

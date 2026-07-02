@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 
+import { compatibilityCommand } from './commands/compatibility.js';
 import { configCommand } from './commands/config.js';
 import { registerCommand } from './commands/register.js';
 import { uploadCommand } from './commands/upload.js';
@@ -25,6 +26,7 @@ program
 program.addCommand(configCommand);
 program.addCommand(registerCommand);
 program.addCommand(uploadCommand);
+program.addCommand(compatibilityCommand);
 program.addCommand(releaseCommand);
 program.addCommand(listCommand);
 program.addCommand(deleteCommand);

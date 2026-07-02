@@ -36,16 +36,18 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "yazl": "^2.5.1",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "dotenv": "^17.2.3",
-    "ora": "^9.1.0"
+    "ora": "^9.1.0",
+    "semver": "^7.8.5",
+    "yazl": "^2.5.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
-    "@types/yazl": "^2.4.5",
     "@types/node": "^25.2.0",
+    "@types/semver": "^7.7.1",
+    "@types/yazl": "^2.4.5",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.32.1"
