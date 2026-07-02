@@ -12,11 +12,11 @@ OtaKit Console — the dashboard, auth, and API server. Hosted at `console.otaki
 
 ## Cron endpoints
 
-`GET` routes for external schedulers:
+Routes for external schedulers:
 
-- `/api/cron/usage-aggregate` — daily billing usage rollup. Requires a
+- `GET /api/cron/usage-aggregate` — daily billing usage rollup. Requires a
   `Bearer` token matching `CRON_SECRET` (unset means always 401).
-- `/api/cron/auto-revert` — release health sweep (~every 10 min). If
+- `POST /api/cron/auto-revert` — release health sweep (~every 10 min). If
   `CRON_SECRET` is set, pass it as a `Bearer` header or `?secret=` query
   param (for schedulers that can only call a bare URL); if unset, the
   endpoint is open — the sweep is idempotent and can only revert releases

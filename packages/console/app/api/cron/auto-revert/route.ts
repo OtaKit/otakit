@@ -37,7 +37,7 @@ function isAuthorized(request: NextRequest): boolean {
   return safeEquals(token, cronSecret);
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized cron call' }, { status: 401 });
   }
