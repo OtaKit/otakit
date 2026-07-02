@@ -190,6 +190,7 @@ model Bundle {
   runtimeVersion     String?
   metadata           Json?
   nativePackages     Json?
+  encryption         Json?
   createdAt          DateTime        @default(now())
   releases           Release[]       @relation("ReleaseBundle")
   previousInReleases Release[]       @relation("ReleasePreviousBundle")
@@ -229,6 +230,7 @@ model UploadSession {
   runtimeVersion String?
   metadata       Json?
   nativePackages Json?
+  encryption     Json?
   storageKey     String
   status         UploadSessionStatus @default(initiated)
   bundle         Bundle?             @relation(fields: [bundleId], references: [id], onDelete: SetNull)

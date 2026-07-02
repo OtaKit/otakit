@@ -54,6 +54,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var channel: String?
   private var runtimeVersion: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
+  private var bundleKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
   private var checkIntervalMs: Int = 600_000
   private var foregroundObserver: NSObjectProtocol?
@@ -105,6 +106,22 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults
+    }
+
+    let rawBundleKeysValue = getConfig().getArray("bundleKeys")
+    if let rawBundleKeys = rawBundleKeysValue as? [[String: String]] {
+      bundleKeys = rawBundleKeys.compactMap { entry in
+        guard let kid = entry["kid"],
+              let keyBase64 = entry["key"],
+              let keyData = Data(base64Encoded: keyBase64),
+              keyData.count == 32 else { return nil }
+        return (kid: kid, key: keyData)
+      }
+      if bundleKeys.isEmpty && !rawBundleKeys.isEmpty {
+        print("[OtaKit] ERROR: bundleKeys configured but all entries are invalid. Encrypted bundles cannot be decrypted.")
+      }
+    } else if rawBundleKeysValue != nil {
+      print("[OtaKit] ERROR: bundleKeys has wrong format (expected array of {kid, key}). Encrypted bundles cannot be decrypted.")
     }
 
     pruneIncompatibleBundles()
@@ -663,11 +680,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     expectedSize: Int? = nil,
     runtimeVersion: String? = nil,
     channel: String? = nil,
-    releaseId: String? = nil
+    releaseId: String? = nil,
+    encryption: ManifestEncryption? = nil
   ) async throws -> BundleInfo {
     // Check disk space before downloading
     if let size = expectedSize {
-      let requiredSpace = Int64(Double(size) * 2.5) // zip + extracted + buffer
+      // zip + extracted + buffer; encrypted bundles keep an extra decrypted
+      // zip copy on disk between decrypt and extract.
+      let multiplier = encryption != nil ? 3.5 : 2.5
+      let requiredSpace = Int64(Double(size) * multiplier)
       let availableSpace = getFreeDiskSpace()
       if availableSpace < requiredSpace {
         let error = NSError(
@@ -726,12 +747,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let extractDirectory = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)
+    let decryptedZipURL = fileManager.temporaryDirectory
+      .appendingPathComponent("otakit-decrypted-\(UUID().uuidString).zip")
     defer {
       try? fileManager.removeItem(at: zipURL)
+      try? fileManager.removeItem(at: decryptedZipURL)
       try? fileManager.removeItem(at: extractDirectory)
     }
 
     do {
+      // The manifest sha256 covers the downloaded object as-is — the
+      // ciphertext when the bundle is encrypted.
       let valid = try HashUtils.verify(
         fileURL: zipURL,
         expectedSha256: expectedSha256
@@ -744,7 +770,26 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         )
       }
 
-      try zipUtils.extractSecurely(zipURL: zipURL, to: extractDirectory)
+      var zipToExtract = zipURL
+      if let encryption {
+        guard let bundleKey = bundleKeys.first(where: { $0.kid == encryption.kid }) else {
+          throw BundleCryptoError.noMatchingKey(encryption.kid)
+        }
+        let dek = try BundleCrypto.unwrapDek(
+          kek: bundleKey.key,
+          wrapNonceB64: encryption.wrapNonce,
+          wrappedDekB64: encryption.wrappedDek
+        )
+        try BundleCrypto.decryptFile(
+          dek: dek,
+          nonceB64: encryption.nonce,
+          input: zipURL,
+          output: decryptedZipURL
+        )
+        zipToExtract = decryptedZipURL
+      }
+
+      try zipUtils.extractSecurely(zipURL: zipToExtract, to: extractDirectory)
       let bundleRoot = try resolveBundleRoot(extractedDirectory: extractDirectory)
 
       let bundleId = buildBundleId(
@@ -1026,7 +1071,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       expectedSize: manifest.size,
       runtimeVersion: manifest.runtimeVersion,
       channel: targetChannel,
-      releaseId: manifest.releaseId
+      releaseId: manifest.releaseId,
+      encryption: manifest.encryption
     )
   }
 

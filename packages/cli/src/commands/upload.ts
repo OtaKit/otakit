@@ -25,6 +25,7 @@ type UploadOptions = {
   packageJson?: string;
   nodeModules?: string;
   forceImmediate?: boolean;
+  encrypt?: boolean;
 };
 
 function resolveReleaseChannel(
@@ -56,6 +57,10 @@ export const uploadCommand = new Command('upload')
   .option(
     '--force-immediate',
     'With --release: devices apply and reload on their next check (emergency fixes)',
+  )
+  .option(
+    '--encrypt',
+    'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY (auto-enabled when the env var is set)',
   )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
@@ -130,6 +135,7 @@ export const uploadCommand = new Command('upload')
             releaseChannel,
             nativePackages,
             forceImmediate: options.forceImmediate === true,
+            encrypt: options.encrypt,
             onStatus: (message) => {
               spinner.text = message;
             },

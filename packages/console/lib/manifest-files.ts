@@ -7,6 +7,7 @@ import {
   listStorageKeys,
   putTextObject,
 } from '@/lib/storage';
+import { parseBundleEncryption } from '@/lib/validation';
 
 const MANIFEST_CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
 const MANIFEST_PREFIX = 'manifests';
@@ -19,6 +20,7 @@ type ManifestBundle = {
   size: number;
   runtimeVersion: string | null;
   storageKey: string;
+  encryption?: unknown;
 };
 
 type ManifestRelease = {
@@ -58,6 +60,16 @@ export async function writeManifestFile(
   bundle: ManifestBundle,
 ): Promise<void> {
   const storageKey = buildManifestStorageKey(appId, channel, runtimeVersion);
+  // Stored as validated at initiate; re-parse defensively. A malformed row
+  // must fail the sync loudly — silently publishing an unencrypted manifest
+  // for an encrypted object would make every device fail extraction.
+  const parsedEncryption = parseBundleEncryption(bundle.encryption);
+  if (parsedEncryption === null) {
+    throw new Error(
+      `Bundle ${bundle.version} has a malformed stored encryption envelope; refusing to publish its manifest`,
+    );
+  }
+  const encryption = parsedEncryption ?? null;
   const signature = signManifest({
     appId,
     channel,
@@ -67,7 +79,7 @@ export async function writeManifestFile(
     runtimeVersion: bundle.runtimeVersion,
     strategy: 'zip',
     forceImmediate: release.forceImmediate,
-    encryption: null,
+    encryption,
   });
 
   await putTextObject({
@@ -82,6 +94,7 @@ export async function writeManifestFile(
       releaseId: release.id,
       strategy: 'zip',
       forceImmediate: release.forceImmediate,
+      encryption,
       signature,
     }),
     contentType: 'application/json; charset=utf-8',
@@ -153,6 +166,7 @@ export async function syncManifestFileForLane(
           size: true,
           runtimeVersion: true,
           storageKey: true,
+          encryption: true,
         },
       },
     },
@@ -198,6 +212,7 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
           size: true,
           runtimeVersion: true,
           storageKey: true,
+          encryption: true,
         },
       },
     },

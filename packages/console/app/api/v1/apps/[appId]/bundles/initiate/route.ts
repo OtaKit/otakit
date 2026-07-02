@@ -11,6 +11,7 @@ import {
   isValidRuntimeVersion,
   isValidVersion,
   normalizeOptionalRuntimeVersion,
+  parseBundleEncryption,
   parsePositiveInteger,
 } from '@/lib/validation';
 
@@ -112,6 +113,17 @@ export async function POST(
     );
   }
 
+  const encryption = parseBundleEncryption(body.encryption);
+  if (encryption === null) {
+    return NextResponse.json(
+      {
+        error:
+          'encryption must be {alg: "AES-256-GCM", kid, wrapNonce, wrappedDek, nonce} with base64 values',
+      },
+      { status: 400 },
+    );
+  }
+
   const existing = await db.bundle.findUnique({
     where: {
       appId_version: { appId, version },
@@ -143,6 +155,8 @@ export async function POST(
         nativePackages === null
           ? Prisma.JsonNull
           : (nativePackages as Prisma.InputJsonValue | undefined),
+      encryption:
+        encryption === undefined ? undefined : ({ ...encryption } as Prisma.InputJsonValue),
       storageKey,
       expiresAt,
     },

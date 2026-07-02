@@ -153,3 +153,68 @@ export function isValidNativePackages(nativePackages: unknown): boolean {
       isOptionalString((entry as Record<string, unknown>).androidChecksum),
   );
 }
+
+const ENCRYPTION_ALG = 'AES-256-GCM';
+const ENCRYPTION_KID_REGEX = /^[a-f0-9]{16}$/;
+const GCM_NONCE_LENGTH = 12;
+const WRAPPED_DEK_LENGTH = 48; // 32-byte DEK + 16-byte GCM tag
+
+export interface BundleEncryption {
+  alg: string;
+  kid: string;
+  wrapNonce: string;
+  wrappedDek: string;
+  nonce: string;
+}
+
+function decodedBase64Length(value: unknown): number | null {
+  if (typeof value !== 'string' || value.length === 0) {
+    return null;
+  }
+  const decoded = Buffer.from(value, 'base64');
+  // Round-trip to reject strings that are not valid base64.
+  if (decoded.toString('base64').replace(/=+$/, '') !== value.replace(/=+$/, '')) {
+    return null;
+  }
+  return decoded.length;
+}
+
+/**
+ * Validate the bundle encryption envelope sent by the CLI:
+ * exactly {alg, kid, wrapNonce, wrappedDek, nonce} with AES-256-GCM shapes.
+ */
+export function parseBundleEncryption(value: unknown): BundleEncryption | null | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (keys.join(',') !== 'alg,kid,nonce,wrapNonce,wrappedDek') {
+    return null;
+  }
+  if (record.alg !== ENCRYPTION_ALG) {
+    return null;
+  }
+  if (typeof record.kid !== 'string' || !ENCRYPTION_KID_REGEX.test(record.kid)) {
+    return null;
+  }
+  if (decodedBase64Length(record.wrapNonce) !== GCM_NONCE_LENGTH) {
+    return null;
+  }
+  if (decodedBase64Length(record.wrappedDek) !== WRAPPED_DEK_LENGTH) {
+    return null;
+  }
+  if (decodedBase64Length(record.nonce) !== GCM_NONCE_LENGTH) {
+    return null;
+  }
+  return {
+    alg: record.alg,
+    kid: record.kid,
+    wrapNonce: record.wrapNonce as string,
+    wrappedDek: record.wrappedDek as string,
+    nonce: record.nonce as string,
+  };
+}
