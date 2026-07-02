@@ -46,6 +46,9 @@ export interface Release {
   bundleId: string;
   bundleVersion?: string;
   forceImmediate?: boolean;
+  autoRevert?: boolean;
+  autoRevertRatePercent?: number;
+  autoRevertMinSample?: number;
   promotedAt: string;
   promotedBy?: string;
   revertedAt?: string | null;
@@ -185,14 +188,28 @@ export class ApiClient {
   async release(
     channel: string | null,
     bundleId: string,
-    options?: { forceImmediate?: boolean },
+    options?: {
+      forceImmediate?: boolean;
+      autoRevert?: boolean;
+      autoRevertRatePercent?: number;
+      autoRevertMinSample?: number;
+    },
   ): Promise<{ release: Release; previousRelease: Release | null }> {
+    const autoRevert = options?.autoRevert === true;
     return this.fetch(this.appPath('/releases'), {
       method: 'POST',
       body: JSON.stringify({
         bundleId,
         channel,
         forceImmediate: options?.forceImmediate ?? false,
+        autoRevert,
+        // The server rejects threshold fields unless autoRevert is true.
+        ...(autoRevert
+          ? {
+              autoRevertRatePercent: options?.autoRevertRatePercent,
+              autoRevertMinSample: options?.autoRevertMinSample,
+            }
+          : {}),
       }),
     });
   }

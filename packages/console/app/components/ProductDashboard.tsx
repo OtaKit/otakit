@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Rocket,
   RotateCcw,
+  ShieldAlert,
   SlidersHorizontal,
   Smartphone,
 } from 'lucide-react';
@@ -257,6 +258,13 @@ function formatReleaseTarget(channel: string | null, runtimeVersion: string | nu
   return runtimeVersion ? `${label} · ${runtimeVersion}` : label;
 }
 
+function parseIntegerInRange(raw: string, min: number, max: number): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return value >= min && value <= max ? value : null;
+}
+
 function isValidChannelName(channel: string): boolean {
   return CHANNEL_NAME_REGEX.test(channel) && !RESERVED_CHANNEL_NAMES.has(channel.toLowerCase());
 }
@@ -453,6 +461,9 @@ export function ProductDashboard({
     selectedTargetKey: string;
     newChannelName: string;
     forceImmediate: boolean;
+    autoRevert: boolean;
+    autoRevertRatePercent: string;
+    autoRevertMinSample: string;
   } | null>(null);
 
   // Revert
@@ -597,6 +608,17 @@ export function ProductDashboard({
       releaseSelectedTarget.channel,
       releaseSelectedTarget.runtimeVersion,
     );
+  const releaseAutoRevertRateValue =
+    releaseConfirm?.autoRevert === true
+      ? parseIntegerInRange(releaseConfirm.autoRevertRatePercent, 1, 95)
+      : null;
+  const releaseAutoRevertMinSampleValue =
+    releaseConfirm?.autoRevert === true
+      ? parseIntegerInRange(releaseConfirm.autoRevertMinSample, 10, 100000)
+      : null;
+  const releaseAutoRevertInvalid =
+    releaseConfirm?.autoRevert === true &&
+    (releaseAutoRevertRateValue === null || releaseAutoRevertMinSampleValue === null);
 
   const eventBundleOptions = useMemo(() => bundles.map((bundle) => bundle.version), [bundles]);
 
@@ -818,6 +840,9 @@ export function ProductDashboard({
       ),
       newChannelName: '',
       forceImmediate: false,
+      autoRevert: false,
+      autoRevertRatePercent: '20',
+      autoRevertMinSample: '50',
     });
   }
 
@@ -825,6 +850,7 @@ export function ProductDashboard({
     bundle: BundleSummaryItem,
     target: ReleaseTarget | null,
     forceImmediate = false,
+    autoRevert: { ratePercent: number; minSample: number } | null = null,
   ): Promise<boolean> {
     if (!selectedAppId || !target) return false;
     if (isCurrentOnTarget(bundle, target.channel, target.runtimeVersion)) {
@@ -842,7 +868,18 @@ export function ProductDashboard({
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bundleId: bundle.id, channel: target.channel, forceImmediate }),
+        body: JSON.stringify({
+          bundleId: bundle.id,
+          channel: target.channel,
+          forceImmediate,
+          autoRevert: autoRevert !== null,
+          ...(autoRevert
+            ? {
+                autoRevertRatePercent: autoRevert.ratePercent,
+                autoRevertMinSample: autoRevert.minSample,
+              }
+            : {}),
+        }),
       });
       const data = await parseJson<ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
@@ -867,13 +904,21 @@ export function ProductDashboard({
 
   async function confirmRelease() {
     if (!releaseConfirm) return;
-    if (releaseChannelError || releaseChannelMissing) {
+    if (releaseChannelError || releaseChannelMissing || releaseAutoRevertInvalid) {
       return;
     }
     await releaseBundle(
       releaseConfirm.bundle,
       releaseSelectedTarget,
       releaseConfirm.forceImmediate,
+      releaseConfirm.autoRevert &&
+        releaseAutoRevertRateValue !== null &&
+        releaseAutoRevertMinSampleValue !== null
+        ? {
+            ratePercent: releaseAutoRevertRateValue,
+            minSample: releaseAutoRevertMinSampleValue,
+          }
+        : null,
     );
   }
 
@@ -1315,7 +1360,7 @@ export function ProductDashboard({
                                                   );
                                                   const canRevert =
                                                     rel != null && rel.revertedAt === null;
-                                                  const detail = `Channel: ${entry.channel ?? 'base'}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}`;
+                                                  const detail = `Channel: ${entry.channel ?? 'base'}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}${rel?.autoRevert ? ` · auto-revert at ≥${rel.autoRevertRatePercent}% of ≥${rel.autoRevertMinSample} devices` : ''}`;
                                                   return (
                                                     <DropdownMenu key={tKey}>
                                                       <DropdownMenuTrigger asChild>
@@ -1324,7 +1369,14 @@ export function ProductDashboard({
                                                           title={detail}
                                                           className="inline-flex max-w-full items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/30 transition-colors hover:bg-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25"
                                                         >
-                                                          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                                          {rel?.autoRevert ? (
+                                                            <span className="relative flex size-1.5 shrink-0">
+                                                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                                                              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                                                            </span>
+                                                          ) : (
+                                                            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                                          )}
                                                           <span className="truncate">
                                                             {entry.channel ?? 'base'}
                                                           </span>
@@ -1378,6 +1430,18 @@ export function ProductDashboard({
                                                               </span>
                                                             </>
                                                           ) : null}
+                                                          {rel?.autoRevert ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Guard
+                                                              </span>
+                                                              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                                                Auto-revert at ≥{rel.autoRevertRatePercent}
+                                                                % of ≥{rel.autoRevertMinSample} devices
+                                                                / 24h
+                                                              </span>
+                                                            </>
+                                                          ) : null}
                                                         </div>
                                                         {canRevert ? (
                                                           <>
@@ -1413,12 +1477,21 @@ export function ProductDashboard({
                                                   const rel = releaseByKey.get(
                                                     `${b.version}::${tKey}`,
                                                   );
+                                                  const autoRevertedAt =
+                                                    rel?.revertedAt != null &&
+                                                    rel.revertedBy === 'system:auto-revert'
+                                                      ? rel.revertedAt
+                                                      : null;
+                                                  const wasAutoReverted = autoRevertedAt !== null;
                                                   return (
                                                     <span
                                                       key={tKey}
-                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}`}
-                                                      className="inline-flex max-w-full items-center rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
+                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}${autoRevertedAt ? ` · auto-reverted ${formatDate(autoRevertedAt)}` : ''}`}
+                                                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
                                                     >
+                                                      {wasAutoReverted ? (
+                                                        <ShieldAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                                                      ) : null}
                                                       <span className="truncate">
                                                         {entry.channel ?? 'base'}
                                                       </span>
@@ -1914,6 +1987,83 @@ export function ProductDashboard({
                   </p>
                 </div>
               </div>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="release-auto-revert"
+                  checked={releaseConfirm.autoRevert}
+                  onCheckedChange={(checked) =>
+                    setReleaseConfirm((current) =>
+                      current ? { ...current, autoRevert: checked === true } : current,
+                    )
+                  }
+                  disabled={releaseConfirmBusy}
+                />
+                <div className="grid w-full gap-1 leading-none">
+                  <Label htmlFor="release-auto-revert" className="text-sm font-normal">
+                    Auto-revert if unhealthy
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically revert this release when too many devices roll back within a 24
+                    hour window. Device-reported data.
+                  </p>
+                  {releaseConfirm.autoRevert ? (
+                    <div className="mt-2 grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="release-auto-revert-rate"
+                          className="text-xs font-normal text-muted-foreground"
+                        >
+                          Rollback rate (%)
+                        </Label>
+                        <Input
+                          id="release-auto-revert-rate"
+                          inputMode="numeric"
+                          value={releaseConfirm.autoRevertRatePercent}
+                          onChange={(event) =>
+                            setReleaseConfirm((current) =>
+                              current
+                                ? { ...current, autoRevertRatePercent: event.target.value }
+                                : current,
+                            )
+                          }
+                          disabled={releaseConfirmBusy}
+                          aria-invalid={releaseAutoRevertRateValue === null}
+                        />
+                        {releaseAutoRevertRateValue === null ? (
+                          <p className="text-xs text-destructive">Integer between 1 and 95.</p>
+                        ) : null}
+                      </div>
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="release-auto-revert-min-sample"
+                          className="text-xs font-normal text-muted-foreground"
+                        >
+                          Min. devices
+                        </Label>
+                        <Input
+                          id="release-auto-revert-min-sample"
+                          inputMode="numeric"
+                          value={releaseConfirm.autoRevertMinSample}
+                          onChange={(event) =>
+                            setReleaseConfirm((current) =>
+                              current
+                                ? { ...current, autoRevertMinSample: event.target.value }
+                                : current,
+                            )
+                          }
+                          disabled={releaseConfirmBusy}
+                          aria-invalid={releaseAutoRevertMinSampleValue === null}
+                        />
+                        {releaseAutoRevertMinSampleValue === null ? (
+                          <p className="text-xs text-destructive">
+                            Integer between 10 and 100000.
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               {releaseAlreadyCurrent ? (
                 <p className="text-xs text-muted-foreground">
                   This bundle is already current on{' '}
@@ -1940,7 +2090,8 @@ export function ProductDashboard({
                 releaseConfirm === null ||
                 releaseChannelMissing ||
                 releaseChannelError !== null ||
-                releaseAlreadyCurrent
+                releaseAlreadyCurrent ||
+                releaseAutoRevertInvalid
               }
               onClick={() => void confirmRelease()}
             >

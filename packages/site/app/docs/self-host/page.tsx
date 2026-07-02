@@ -271,6 +271,14 @@ npx wrangler deploy`}</Pre>
           send OTP codes and invites via Resend.
         </li>
         <li>
+          <strong>Auto-revert</strong> — releases published with the auto-revert flag are reverted
+          automatically when too many devices roll back within 24 hours. Requires analytics
+          (above) plus any scheduler calling <Code>GET /api/cron/auto-revert</Code> every ~10
+          minutes. If <Code>CRON_SECRET</Code> is set, pass it as a Bearer header or{' '}
+          <Code>?secret=</Code> query param; if unset, the endpoint is open (the sweep is
+          idempotent and only reverts releases whose own thresholds trip).
+        </li>
+        <li>
           <strong>CDN purge</strong> — set <Code>CF_ZONE_ID</Code> and <Code>CF_API_TOKEN</Code>{' '}
           (Cloudflare) so releases invalidate cached manifests instantly.
         </li>

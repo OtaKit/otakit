@@ -139,6 +139,9 @@ export type UploadWorkflowOptions = {
   strategy?: 'zip' | 'deltas';
   nativePackages?: NativePackage[];
   forceImmediate?: boolean;
+  autoRevert?: boolean;
+  autoRevertRatePercent?: number;
+  autoRevertMinSample?: number;
   encrypt?: boolean;
   onStatus?: (message: string) => void;
 };
@@ -187,6 +190,9 @@ export async function runUploadWorkflow(
     releaseChannel,
     nativePackages,
     forceImmediate,
+    autoRevert,
+    autoRevertRatePercent,
+    autoRevertMinSample,
     encrypt,
     onStatus,
   } = options;
@@ -260,7 +266,12 @@ export async function runUploadWorkflow(
 
     if (releaseChannel !== undefined) {
       onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-      await api.release(releaseChannel, bundle.id, { forceImmediate });
+      await api.release(releaseChannel, bundle.id, {
+        forceImmediate,
+        autoRevert,
+        autoRevertRatePercent,
+        autoRevertMinSample,
+      });
     }
 
     return { bundle, releaseChannel };
@@ -358,8 +369,18 @@ const DELTA_UPLOAD_CONCURRENCY = 8;
 async function runDeltaUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
-  const { api, sourcePath, version, runtimeVersion, releaseChannel, forceImmediate, onStatus } =
-    options;
+  const {
+    api,
+    sourcePath,
+    version,
+    runtimeVersion,
+    releaseChannel,
+    forceImmediate,
+    autoRevert,
+    autoRevertRatePercent,
+    autoRevertMinSample,
+    onStatus,
+  } = options;
 
   // Encrypted deltas are deliberately unsupported in v1: per-file encryption
   // with a per-bundle key would break content-addressed dedup (see plan 02).
@@ -434,7 +455,12 @@ async function runDeltaUploadWorkflow(
 
   if (releaseChannel !== undefined) {
     onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-    await api.release(releaseChannel, bundle.id, { forceImmediate });
+    await api.release(releaseChannel, bundle.id, {
+      forceImmediate,
+      autoRevert,
+      autoRevertRatePercent,
+      autoRevertMinSample,
+    });
   }
 
   return { bundle, releaseChannel };

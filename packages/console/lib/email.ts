@@ -202,6 +202,67 @@ Open settings: ${dashboardUrl}`;
   });
 }
 
+export async function sendAutoRevertEmail({
+  to,
+  appSlug,
+  channel,
+  runtimeVersion,
+  bundleVersion,
+  rollbacks,
+  attempts,
+  measuredRatePercent,
+  thresholdRatePercent,
+  minSample,
+  revertedToVersion,
+  suppressed,
+}: {
+  to: string;
+  appSlug: string;
+  channel: string | null;
+  runtimeVersion: string | null;
+  bundleVersion: string;
+  rollbacks: number;
+  attempts: number;
+  measuredRatePercent: number;
+  thresholdRatePercent: number;
+  minSample: number;
+  revertedToVersion: string | null;
+  suppressed: boolean;
+}): Promise<void> {
+  const lane = `${channel ?? 'base'}${runtimeVersion ? ` / runtime ${runtimeVersion}` : ''}`;
+  const dashboardUrl = `${APP_URL}/dashboard`;
+  const stats = `${rollbacks} of ${attempts} devices rolled back (${measuredRatePercent}%) in the last 24 hours (trigger: >=${thresholdRatePercent}% of >=${minSample}).`;
+
+  const subject = suppressed
+    ? `Auto-revert suppressed for ${appSlug} (${lane})`
+    : `Auto-reverted ${appSlug} ${bundleVersion} (${lane})`;
+
+  const actionText = suppressed
+    ? 'Not reverted automatically: the previous release on this lane was already auto-reverted within the last 24 hours. Manual action needed.'
+    : revertedToVersion
+      ? `Reverted automatically. Devices now receive ${revertedToVersion}.`
+      : 'Reverted automatically. No previous release on this lane — new installs receive the built-in bundle.';
+
+  const html = `
+<p>Release health alert for <strong>${escapeHtml(appSlug)}</strong> (${escapeHtml(lane)}).</p>
+<p>Release <strong>${escapeHtml(bundleVersion)}</strong>: ${escapeHtml(stats)}</p>
+<p>${escapeHtml(actionText)}</p>
+<p><a href="${escapeHtml(dashboardUrl)}">Open dashboard</a></p>
+  `.trim();
+
+  const text = `Release health alert for ${appSlug} (${lane}).
+Release ${bundleVersion}: ${stats}
+${actionText}
+Open dashboard: ${dashboardUrl}`;
+
+  await sendEmail({
+    to,
+    subject,
+    html,
+    text,
+  });
+}
+
 export async function sendSupportContactEmail({
   name,
   email,

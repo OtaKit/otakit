@@ -162,6 +162,11 @@ If a bundle is applied and never calls `notifyAppReady()`:
 The last failed applied bundle is persisted so the plugin does not immediately
 download and apply the same broken release again.
 
+On top of this per-device rollback, a release published with the auto-revert
+flag is reverted fleet-wide by the server when too many devices report
+rollbacks within a 24-hour window, so remaining devices never download the
+broken bundle.
+
 ## Automatic flow
 
 For the normal hosted path, most apps only need:

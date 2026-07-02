@@ -100,6 +100,7 @@ devices see on manifest checks.
 - `otakit whoami`
 - `otakit register --slug <slug>`
 - `otakit upload [path] [--release [channel]]`
+- `otakit upload --release --auto-revert [--auto-revert-rate <1-95>] [--auto-revert-min-sample <10-100000>]` — server reverts the release if too many devices roll back within 24h (defaults: 20% of ≥50)
 - `otakit release [bundleId] [--channel <channel>]`
 - `otakit releases [--channel <channel> | --base]`
 - `otakit list`

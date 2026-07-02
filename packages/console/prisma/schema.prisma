@@ -233,6 +233,9 @@ model Release {
   previousBundleId String?
   channel          String?
   forceImmediate   Boolean   @default(false)
+  autoRevert            Boolean @default(false)
+  autoRevertRatePercent Int     @default(20)
+  autoRevertMinSample   Int     @default(50)
   promotedAt       DateTime  @default(now())
   promotedBy       String?
   revertedAt       DateTime?

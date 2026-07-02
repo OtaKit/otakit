@@ -26,8 +26,27 @@ type UploadOptions = {
   packageJson?: string;
   nodeModules?: string;
   forceImmediate?: boolean;
+  autoRevert?: boolean;
+  autoRevertRate?: string;
+  autoRevertMinSample?: string;
   encrypt?: boolean;
 };
+
+function parseAutoRevertThreshold(
+  raw: string | undefined,
+  flag: string,
+  min: number,
+  max: number,
+): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new CliError(`${flag} must be an integer between ${min} and ${max} (got "${raw}")`);
+  }
+  return value;
+}
 
 function resolveStrategy(
   flagValue: string | undefined,
@@ -73,6 +92,18 @@ export const uploadCommand = new Command('upload')
   .option(
     '--force-immediate',
     'With --release: devices apply and reload on their next check (emergency fixes)',
+  )
+  .option(
+    '--auto-revert',
+    'With --release: automatically revert this release if too many devices roll back (24h window)',
+  )
+  .option(
+    '--auto-revert-rate <percent>',
+    'With --auto-revert: rollback share that triggers the revert (1-95, default 20)',
+  )
+  .option(
+    '--auto-revert-min-sample <count>',
+    'With --auto-revert: minimum applied+rollback events before the rate is trusted (10-100000, default 50)',
   )
   .option(
     '--encrypt',
@@ -140,6 +171,30 @@ export const uploadCommand = new Command('upload')
         console.warn('--force-immediate has no effect without --release; ignoring.');
       }
 
+      if (
+        options.autoRevert !== true &&
+        (options.autoRevertRate !== undefined || options.autoRevertMinSample !== undefined)
+      ) {
+        throw new CliError(
+          '--auto-revert-rate and --auto-revert-min-sample require --auto-revert.',
+        );
+      }
+      if (options.autoRevert === true && releaseChannel === undefined) {
+        console.warn('--auto-revert has no effect without --release; ignoring.');
+      }
+      const autoRevertRatePercent = parseAutoRevertThreshold(
+        options.autoRevertRate,
+        '--auto-revert-rate',
+        1,
+        95,
+      );
+      const autoRevertMinSample = parseAutoRevertThreshold(
+        options.autoRevertMinSample,
+        '--auto-revert-min-sample',
+        10,
+        100000,
+      );
+
       const spinner = ora(
         strategy === 'deltas' ? 'Hashing bundle files...' : 'Creating zip archive...',
       ).start();
@@ -155,6 +210,9 @@ export const uploadCommand = new Command('upload')
             strategy,
             nativePackages,
             forceImmediate: options.forceImmediate === true,
+            autoRevert: options.autoRevert === true,
+            autoRevertRatePercent,
+            autoRevertMinSample,
             encrypt: options.encrypt,
             onStatus: (message) => {
               spinner.text = message;

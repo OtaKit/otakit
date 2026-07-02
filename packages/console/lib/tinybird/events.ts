@@ -62,6 +62,9 @@ const BUNDLE_EVENT_COUNTS_PIPE =
 const ORGANIZATION_DOWNLOAD_COUNTS_PIPE =
   process.env.TINYBIRD_ORGANIZATION_DOWNLOAD_COUNTS_PIPE ?? 'organization_download_counts';
 
+const RELEASE_HEALTH_WINDOW_PIPE =
+  process.env.TINYBIRD_RELEASE_HEALTH_WINDOW_PIPE ?? 'release_health_window';
+
 const ID_BATCH_SIZE = 50;
 const APP_ID_BATCH_SIZE = 100;
 const VALID_ACTIONS: readonly DeviceEventAction[] = [
@@ -236,6 +239,67 @@ export async function getReleaseEventCounts(
       error,
     );
     return new Map();
+  }
+}
+
+export type ReleaseHealthCounts = { applied: number; rollbacks: number };
+
+/**
+ * Applied/rollback counts per release over a rolling window, for the
+ * auto-revert health check. Unlike the dashboard helpers this returns null
+ * on failure (not an empty map) so the caller can report the skip — either
+ * way, missing data can never trigger a revert.
+ */
+export async function getReleaseHealthWindowCounts(
+  appId: string,
+  releaseIds: string[],
+  from: Date,
+): Promise<Map<string, ReleaseHealthCounts> | null> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getReleaseHealthWindowCounts');
+    return null;
+  }
+  const uniqueReleaseIds = Array.from(
+    new Set(releaseIds.map((value) => value.trim()).filter(Boolean)),
+  );
+  const countsByReleaseId = new Map<string, ReleaseHealthCounts>();
+  if (uniqueReleaseIds.length === 0) {
+    return countsByReleaseId;
+  }
+
+  try {
+    for (const batch of chunk(uniqueReleaseIds, ID_BATCH_SIZE)) {
+      const rows = await queryTinybirdPipe<AggregateCountRow>(RELEASE_HEALTH_WINDOW_PIPE, {
+        app_id: appId,
+        release_ids: batch.join(','),
+        from_ts: from.toISOString(),
+      });
+
+      for (const row of rows) {
+        const releaseId = trimToNull(row.release_id);
+        const action = trimToNull(row.action);
+        if (!releaseId || (action !== 'applied' && action !== 'rollback')) {
+          continue;
+        }
+
+        const current = countsByReleaseId.get(releaseId) ?? { applied: 0, rollbacks: 0 };
+        if (action === 'applied') {
+          current.applied += parseCount(row.events_count);
+        } else {
+          current.rollbacks += parseCount(row.events_count);
+        }
+        countsByReleaseId.set(releaseId, current);
+      }
+    }
+
+    return countsByReleaseId;
+  } catch (error) {
+    logDashboardAnalyticsFailure(
+      'release_health_window',
+      { appId, releaseIds: uniqueReleaseIds.length },
+      error,
+    );
+    return null;
   }
 }
 

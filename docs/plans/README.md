@@ -24,8 +24,18 @@ endpoint.
 | 02 | [Bundle encryption (zip)](./02-bundle-encryption.md) | medium | CLI, API, DB, native | **v1 (with 06's signature change)** |
 | 05 | [Immediate-update splash](./05-immediate-update-splash.md) | small | native plugin | **v1 — opt-in, filler** |
 | 01 | [Update strategy: zip + opt-in deltas](./01-partial-delta-updates.md) | large | CLI, API, native | **first big rock after the small wins** |
+| 08 | [Auto-revert (per-release health guard)](./08-auto-revert.md) | small | DB (3 cols), API, CLI flags, Tinybird, cron, email | **implemented 2026-07-02** (pending Tinybird deploy + NextMQ cron + staging E2E) |
 
 Notes:
+- **Auto-revert (08)** is not Capgo parity — neither competitor documents a
+  fleet-level threshold revert. One `autoRevert` checkbox per release
+  (mirrors `forceImmediate` plumbing exactly) revealing per-release
+  thresholds (defaults: ≥50 trial attempts and ≥20% rollback rate in a fixed
+  24 h window ⇒ revert the lane + email owners/admins). Armed releases show
+  a pinging live dot + dropdown indicator in the console. Cron endpoint
+  triggered externally (NextMQ cron in production). Server-side only —
+  devices already self-revert — so it slots anywhere in the order without
+  touching the native plugin or the signed manifest.
 - **Listeners (07)** are the #1 eval-time gap — the docs currently say "there is
   no listener API." Every emission point co-locates with existing telemetry;
   iOS download progress plumbing already exists (`Downloader.swift`).

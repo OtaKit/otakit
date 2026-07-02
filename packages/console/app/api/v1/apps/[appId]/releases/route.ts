@@ -89,6 +89,9 @@ export async function GET(
       previousBundleId: release.previousBundleId,
       previousBundleVersion: release.previousBundle?.version ?? null,
       forceImmediate: release.forceImmediate,
+      autoRevert: release.autoRevert,
+      autoRevertRatePercent: release.autoRevertRatePercent,
+      autoRevertMinSample: release.autoRevertMinSample,
       promotedAt: release.promotedAt.toISOString(),
       promotedBy: release.promotedBy,
       revertedAt: release.revertedAt?.toISOString() ?? null,
@@ -144,6 +147,49 @@ export async function POST(
   }
   const forceImmediate = rawForceImmediate === true;
 
+  const rawAutoRevert = body.autoRevert;
+  if (rawAutoRevert !== undefined && typeof rawAutoRevert !== 'boolean') {
+    return NextResponse.json({ error: 'autoRevert must be a boolean' }, { status: 400 });
+  }
+  const autoRevert = rawAutoRevert === true;
+
+  const rawAutoRevertRatePercent = body.autoRevertRatePercent;
+  const rawAutoRevertMinSample = body.autoRevertMinSample;
+  if (!autoRevert && (rawAutoRevertRatePercent !== undefined || rawAutoRevertMinSample !== undefined)) {
+    return NextResponse.json(
+      { error: 'autoRevert thresholds require autoRevert to be true' },
+      { status: 400 },
+    );
+  }
+  if (
+    rawAutoRevertRatePercent !== undefined &&
+    (typeof rawAutoRevertRatePercent !== 'number' ||
+      !Number.isInteger(rawAutoRevertRatePercent) ||
+      rawAutoRevertRatePercent < 1 ||
+      rawAutoRevertRatePercent > 95)
+  ) {
+    return NextResponse.json(
+      { error: 'autoRevertRatePercent must be an integer between 1 and 95' },
+      { status: 400 },
+    );
+  }
+  if (
+    rawAutoRevertMinSample !== undefined &&
+    (typeof rawAutoRevertMinSample !== 'number' ||
+      !Number.isInteger(rawAutoRevertMinSample) ||
+      rawAutoRevertMinSample < 10 ||
+      rawAutoRevertMinSample > 100000)
+  ) {
+    return NextResponse.json(
+      { error: 'autoRevertMinSample must be an integer between 10 and 100000' },
+      { status: 400 },
+    );
+  }
+  const autoRevertRatePercent =
+    typeof rawAutoRevertRatePercent === 'number' ? rawAutoRevertRatePercent : undefined;
+  const autoRevertMinSample =
+    typeof rawAutoRevertMinSample === 'number' ? rawAutoRevertMinSample : undefined;
+
   const bundle = await db.bundle.findUnique({
     where: { id: bundleId },
     select: { id: true, appId: true, version: true, runtimeVersion: true },
@@ -181,6 +227,9 @@ export async function POST(
     previousBundleId: currentLatest?.bundleId ?? null,
     channel,
     forceImmediate,
+    autoRevert,
+    autoRevertRatePercent,
+    autoRevertMinSample,
     promotedBy,
   });
   await syncManifestFileForLane(appId, channel, bundle.runtimeVersion);
@@ -197,6 +246,13 @@ export async function POST(
       runtimeVersion: bundle.runtimeVersion,
       channel,
       forceImmediate,
+      autoRevert,
+      ...(autoRevert
+        ? {
+            autoRevertRatePercent: release.autoRevertRatePercent,
+            autoRevertMinSample: release.autoRevertMinSample,
+          }
+        : {}),
       previousBundleVersion: currentLatest?.bundle.version ?? null,
     },
   });
@@ -210,6 +266,9 @@ export async function POST(
       bundleVersion: bundle.version,
       previousBundleId: release.previousBundleId,
       forceImmediate: release.forceImmediate,
+      autoRevert: release.autoRevert,
+      autoRevertRatePercent: release.autoRevertRatePercent,
+      autoRevertMinSample: release.autoRevertMinSample,
       promotedAt: release.promotedAt.toISOString(),
       promotedBy: release.promotedBy,
       revertedAt: null,

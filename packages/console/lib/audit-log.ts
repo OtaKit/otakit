@@ -11,6 +11,8 @@ export type AuditAction =
   | 'bundle.deleted'
   | 'release.created'
   | 'release.reverted'
+  | 'release.auto_reverted'
+  | 'release.auto_revert_suppressed'
   | 'api_key.created'
   | 'api_key.revoked'
   | 'member.added'

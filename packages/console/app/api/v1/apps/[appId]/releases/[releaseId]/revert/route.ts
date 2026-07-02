@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { accessActor, recordAuditLog } from '@/lib/audit-log';
-import { db } from '@/lib/db';
-import { syncManifestFileForLane } from '@/lib/manifest-files';
+import { accessActor } from '@/lib/audit-log';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
+import { revertCurrentRelease } from '@/lib/releases';
 
 export const runtime = 'nodejs';
 
@@ -34,127 +33,59 @@ export async function POST(
     return NextResponse.json({ error: 'forceImmediate must be a boolean' }, { status: 400 });
   }
 
-  const targetRelease = await db.release.findFirst({
-    where: { id: releaseId, appId },
-    include: {
-      bundle: { select: { version: true, runtimeVersion: true } },
-      previousBundle: { select: { version: true } },
-    },
+  const revertedBy = await resolveReleaseActor(access.access);
+  const outcome = await revertCurrentRelease({
+    appId,
+    releaseId,
+    revertedBy,
+    actor: await accessActor(access.access, revertedBy),
+    organizationId: access.access.organizationId,
+    forceImmediate: rawForceImmediate,
   });
 
-  if (!targetRelease) {
-    return NextResponse.json({ error: 'Release not found' }, { status: 404 });
-  }
-
-  if (targetRelease.revertedAt !== null) {
-    return NextResponse.json({ error: 'Release is already reverted' }, { status: 409 });
-  }
-
-  const currentRelease = await db.release.findFirst({
-    where: {
-      appId,
-      channel: targetRelease.channel,
-      revertedAt: null,
-      bundle: {
-        is: {
-          runtimeVersion: targetRelease.bundle.runtimeVersion,
-        },
-      },
-    },
-    orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    select: { id: true },
-  });
-
-  if (!currentRelease || currentRelease.id !== targetRelease.id) {
+  if (!outcome.ok) {
+    if (outcome.reason === 'not_found') {
+      return NextResponse.json({ error: 'Release not found' }, { status: 404 });
+    }
+    if (outcome.reason === 'already_reverted') {
+      return NextResponse.json({ error: 'Release is already reverted' }, { status: 409 });
+    }
     return NextResponse.json(
       { error: 'Release is no longer current on this channel' },
       { status: 409 },
     );
   }
 
-  const revertedBy = await resolveReleaseActor(access.access);
-  const revertedAt = new Date();
-
-  const [revertedRelease, nextCurrentRelease] = await db.$transaction([
-    db.release.update({
-      where: { id: targetRelease.id },
-      data: { revertedAt, revertedBy },
-    }),
-    db.release.findFirst({
-      where: {
-        appId,
-        channel: targetRelease.channel,
-        revertedAt: null,
-        bundle: {
-          is: {
-            runtimeVersion: targetRelease.bundle.runtimeVersion,
-          },
-        },
-      },
-      orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-      include: {
-        bundle: { select: { version: true, runtimeVersion: true } },
-        previousBundle: { select: { version: true } },
-      },
-    }),
-  ]);
-
-  let effectiveNextCurrentRelease = nextCurrentRelease;
-  if (rawForceImmediate !== undefined && nextCurrentRelease) {
-    effectiveNextCurrentRelease = await db.release.update({
-      where: { id: nextCurrentRelease.id },
-      data: { forceImmediate: rawForceImmediate },
-      include: {
-        bundle: { select: { version: true, runtimeVersion: true } },
-        previousBundle: { select: { version: true } },
-      },
-    });
-  }
-
-  await syncManifestFileForLane(appId, targetRelease.channel, targetRelease.bundle.runtimeVersion);
-
-  await recordAuditLog({
-    organizationId: access.access.organizationId,
-    actor: await accessActor(access.access, revertedBy),
-    action: 'release.reverted',
-    targetType: 'release',
-    targetId: targetRelease.id,
-    metadata: {
-      appId,
-      channel: targetRelease.channel,
-      bundleVersion: targetRelease.bundle.version,
-      runtimeVersion: targetRelease.bundle.runtimeVersion,
-    },
-  });
+  const { targetRelease, nextCurrentRelease, revertedAt } = outcome;
 
   return NextResponse.json({
     release: {
-      id: revertedRelease.id,
-      channel: revertedRelease.channel,
+      id: targetRelease.id,
+      channel: targetRelease.channel,
       runtimeVersion: targetRelease.bundle.runtimeVersion,
-      bundleId: revertedRelease.bundleId,
+      bundleId: targetRelease.bundleId,
       bundleVersion: targetRelease.bundle.version,
-      previousBundleId: revertedRelease.previousBundleId,
+      previousBundleId: targetRelease.previousBundleId,
       previousBundleVersion: targetRelease.previousBundle?.version ?? null,
-      promotedAt: revertedRelease.promotedAt.toISOString(),
-      promotedBy: revertedRelease.promotedBy,
+      promotedAt: targetRelease.promotedAt.toISOString(),
+      promotedBy: targetRelease.promotedBy,
       revertedAt: revertedAt.toISOString(),
-      revertedBy,
+      revertedBy: outcome.revertedBy,
     },
-    currentRelease: effectiveNextCurrentRelease
+    currentRelease: nextCurrentRelease
       ? {
-          id: effectiveNextCurrentRelease.id,
-          channel: effectiveNextCurrentRelease.channel,
-          runtimeVersion: effectiveNextCurrentRelease.bundle.runtimeVersion,
-          bundleId: effectiveNextCurrentRelease.bundleId,
-          bundleVersion: effectiveNextCurrentRelease.bundle.version,
-          previousBundleId: effectiveNextCurrentRelease.previousBundleId,
-          previousBundleVersion: effectiveNextCurrentRelease.previousBundle?.version ?? null,
-          forceImmediate: effectiveNextCurrentRelease.forceImmediate,
-          promotedAt: effectiveNextCurrentRelease.promotedAt.toISOString(),
-          promotedBy: effectiveNextCurrentRelease.promotedBy,
-          revertedAt: effectiveNextCurrentRelease.revertedAt?.toISOString() ?? null,
-          revertedBy: effectiveNextCurrentRelease.revertedBy,
+          id: nextCurrentRelease.id,
+          channel: nextCurrentRelease.channel,
+          runtimeVersion: nextCurrentRelease.bundle.runtimeVersion,
+          bundleId: nextCurrentRelease.bundleId,
+          bundleVersion: nextCurrentRelease.bundle.version,
+          previousBundleId: nextCurrentRelease.previousBundleId,
+          previousBundleVersion: nextCurrentRelease.previousBundle?.version ?? null,
+          forceImmediate: nextCurrentRelease.forceImmediate,
+          promotedAt: nextCurrentRelease.promotedAt.toISOString(),
+          promotedBy: nextCurrentRelease.promotedBy,
+          revertedAt: nextCurrentRelease.revertedAt?.toISOString() ?? null,
+          revertedBy: nextCurrentRelease.revertedBy,
         }
       : null,
   });
