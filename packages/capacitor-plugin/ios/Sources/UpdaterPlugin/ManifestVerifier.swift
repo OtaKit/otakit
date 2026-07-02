@@ -31,6 +31,9 @@ enum ManifestVerifier {
     sha256: String,
     size: Int,
     runtimeVersion: String?,
+    strategy: String,
+    forceImmediate: Bool,
+    encryption: ManifestEncryption?,
     signature: ManifestSignature,
     trustedKeys: [ManifestKey]
   ) throws {
@@ -41,6 +44,9 @@ enum ManifestVerifier {
       sha256: sha256,
       size: size,
       runtimeVersion: runtimeVersion,
+      strategy: strategy,
+      forceImmediate: forceImmediate,
+      encryption: encryption,
       kid: signature.kid,
       iat: signature.iat,
       exp: signature.exp
@@ -78,6 +84,23 @@ enum ManifestVerifier {
     }
   }
 
+  /// Encode the encryption block for the canonical payload.
+  /// Must match the server's `encodeEncryptionForPayload` exactly.
+  private static func encodeEncryptionForPayload(_ encryption: ManifestEncryption?) -> String {
+    guard let encryption else {
+      return "null"
+    }
+    return [
+      encryption.alg,
+      encryption.kid,
+      encryption.wrapNonce,
+      encryption.wrappedDek,
+      encryption.nonce,
+    ].joined(separator: "|")
+  }
+
+  /// Canonical payload v2 — must match the server's `buildCanonicalPayload`
+  /// (console/lib/manifest-signing.ts) and the Android mirror byte-for-byte.
   private static func buildCanonicalPayload(
     appId: String,
     channel: String?,
@@ -85,6 +108,9 @@ enum ManifestVerifier {
     sha256: String,
     size: Int,
     runtimeVersion: String?,
+    strategy: String,
+    forceImmediate: Bool,
+    encryption: ManifestEncryption?,
     kid: String,
     iat: Int,
     exp: Int
@@ -97,6 +123,9 @@ enum ManifestVerifier {
       "sha256:\(sha256)",
       "size:\(size)",
       "runtimeVersion:\(runtimeVersion ?? "null")",
+      "strategy:\(strategy)",
+      "forceImmediate:\(forceImmediate ? "true" : "false")",
+      "encryption:\(encodeEncryptionForPayload(encryption))",
       "kid:\(kid)",
       "iat:\(iat)",
       "exp:\(exp)",

@@ -34,6 +34,9 @@ final class ManifestVerifier {
     String sha256,
     int size,
     String runtimeVersion,
+    String strategy,
+    boolean forceImmediate,
+    ManifestClient.ManifestEncryption encryption,
     ManifestClient.ManifestSignature signature,
     List<KeyEntry> trustedKeys
   ) throws Exception {
@@ -44,6 +47,9 @@ final class ManifestVerifier {
       sha256,
       size,
       runtimeVersion,
+      strategy,
+      forceImmediate,
+      encryption,
       signature.kid,
       signature.iat,
       signature.exp
@@ -91,6 +97,31 @@ final class ManifestVerifier {
     }
   }
 
+  /**
+   * Encode the encryption block for the canonical payload.
+   * Must match the server's encodeEncryptionForPayload exactly.
+   */
+  private static String encodeEncryptionForPayload(ManifestClient.ManifestEncryption encryption) {
+    if (encryption == null) {
+      return "null";
+    }
+    return (
+      encryption.alg +
+      "|" +
+      encryption.kid +
+      "|" +
+      encryption.wrapNonce +
+      "|" +
+      encryption.wrappedDek +
+      "|" +
+      encryption.nonce
+    );
+  }
+
+  /**
+   * Canonical payload v2 — must match the server's buildCanonicalPayload
+   * (console/lib/manifest-signing.ts) and the iOS mirror byte-for-byte.
+   */
   private static String buildCanonicalPayload(
     String appId,
     String channel,
@@ -98,6 +129,9 @@ final class ManifestVerifier {
     String sha256,
     int size,
     String runtimeVersion,
+    String strategy,
+    boolean forceImmediate,
+    ManifestClient.ManifestEncryption encryption,
     String kid,
     int iat,
     int exp
@@ -121,6 +155,15 @@ final class ManifestVerifier {
       "\n" +
       "runtimeVersion:" +
       (runtimeVersion != null ? runtimeVersion : "null") +
+      "\n" +
+      "strategy:" +
+      strategy +
+      "\n" +
+      "forceImmediate:" +
+      (forceImmediate ? "true" : "false") +
+      "\n" +
+      "encryption:" +
+      encodeEncryptionForPayload(encryption) +
       "\n" +
       "kid:" +
       kid +
