@@ -4,6 +4,7 @@
 
 declare global {
   interface Window {
+    dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
   }
 }
@@ -18,11 +19,26 @@ const CONVERSION_LABELS: Record<ConversionEvent, string | undefined> = {
   release_created: process.env.NEXT_PUBLIC_ADS_RELEASE_LABEL,
 };
 
+// gtag.js only processes Arguments objects pushed to the dataLayer, so this
+// must be a plain function using `arguments` — not an array push.
+function queueForGtag() {
+  // eslint-disable-next-line prefer-rest-params
+  window.dataLayer!.push(arguments);
+}
+
+// Safe at any time relative to the tag scripts: if gtag.js hasn't executed
+// yet, the event is queued on the dataLayer and drained when it loads.
+function gtagCall(...args: unknown[]) {
+  window.dataLayer = window.dataLayer || [];
+  const gtag = typeof window.gtag === 'function' ? window.gtag : queueForGtag;
+  gtag(...args);
+}
+
 export function trackConversion(event: ConversionEvent) {
-  if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
-  window.gtag('event', event);
+  if (typeof window === 'undefined') return;
+  gtagCall('event', event);
   const label = CONVERSION_LABELS[event];
   if (ADS_ID && label) {
-    window.gtag('event', 'conversion', { send_to: `${ADS_ID}/${label}` });
+    gtagCall('event', 'conversion', { send_to: `${ADS_ID}/${label}` });
   }
 }
