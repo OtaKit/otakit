@@ -99,45 +99,18 @@ OtaKit.addListener('updateStaged', ({ bundle }) => {
       <Separator className="my-10" />
 
       <h2 className="text-xl font-semibold tracking-tight">Use cases</h2>
-
-      <H3>Auto-download in the background, prompt to apply</H3>
       <P>
-        Let <Code>shadow</Code> mode do the background checking, downloading, throttling, and
-        deduplication for you, and only handle the prompt yourself:
+        From the smallest building block to the most hands-off setup — each pattern moves one more
+        step of the flow from your code into the plugin.
       </P>
-      <Pre>{`// capacitor.config.ts
-plugins: {
-  OtaKit: { launchPolicy: 'shadow', resumePolicy: 'shadow' }
-}`}</Pre>
-      <Pre>{`// app startup
-const state = await OtaKit.getState();
-if (state.staged) showRestartPrompt(state.staged);
-OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
 
-// in the prompt's accept handler
-await OtaKit.apply();`}</Pre>
-
-      <H3>Prompt before downloading</H3>
+      <H3>1. Check for an update, download if the user says yes</H3>
       <P>
-        Gate the download itself (for users on metered connections) by pairing manual mode with{' '}
-        <Code>updateAvailable</Code>:
-      </P>
-      <Pre>{`// capacitor.config.ts: { launchPolicy: 'off', resumePolicy: 'off' }
-OtaKit.addListener('updateAvailable', async (latest) => {
-  if (await confirmDownload(latest.version)) {
-    await OtaKit.download(); // emits updateStaged when done
-  }
-});
-await OtaKit.check();`}</Pre>
-
-      <H3>Check for an update, download if the user says yes</H3>
-      <P>
-        The same flow without listeners, driven entirely by the pull API — useful for a{'"'}Check
-        for updates{'"'} button in a settings screen:
+        The simplest pattern, no listeners at all — a &quot;Check for updates&quot; button in a
+        settings screen, driven entirely by the pull API:
       </P>
       <Pre>{`async function checkForUpdates() {
   const result = await OtaKit.check();
-
   if (result.kind === 'no_update') {
     toast("You're up to date");
     return;
@@ -152,7 +125,42 @@ await OtaKit.check();`}</Pre>
   }
 }`}</Pre>
 
-      <H3>Post-update toast and failure reporting</H3>
+      <H3>2. Ask before every download</H3>
+      <P>
+        Same consent flow, but event-driven instead of a button — pair manual mode with{' '}
+        <Code>updateAvailable</Code> so the user approves the download (useful on metered
+        connections):
+      </P>
+      <Pre>{`// capacitor.config.ts: { launchPolicy: 'off', resumePolicy: 'off' }
+OtaKit.addListener('updateAvailable', async (latest) => {
+  if (await confirmDownload(latest.version)) {
+    await OtaKit.download(); // emits updateStaged when done
+  }
+});
+await OtaKit.check();`}</Pre>
+
+      <H3>3. Auto-download in the background, prompt to apply</H3>
+      <P>
+        The most hands-off custom flow: <Code>shadow</Code> mode does the checking, downloading,
+        throttling, and deduplication, and your code only owns the restart prompt:
+      </P>
+      <Pre>{`// capacitor.config.ts
+plugins: {
+  OtaKit: { launchPolicy: 'shadow', resumePolicy: 'shadow' }
+}`}</Pre>
+      <Pre>{`// app startup
+const state = await OtaKit.getState();
+if (state.staged) showRestartPrompt(state.staged);
+OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
+
+// in the prompt's accept handler
+await OtaKit.apply();`}</Pre>
+
+      <H3>4. Confirm and report after the fact</H3>
+      <P>
+        Works alongside any of the above (or the fully automatic default) — a toast when an update
+        landed, and error reporting when one failed:
+      </P>
       <Pre>{`// attach at startup, in the reloaded bundle
 OtaKit.addListener('updateApplied', ({ bundle }) => {
   toast('Updated to ' + bundle.version);

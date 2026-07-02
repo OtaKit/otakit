@@ -2,7 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowRight,
-  BellRing,
   BookOpen,
   Check,
   FileDiff,
@@ -10,6 +9,7 @@ import {
   Rocket,
   Shield,
   ShieldAlert,
+  SlidersHorizontal,
   Users,
   Zap,
   Globe,
@@ -95,38 +95,23 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     a: (
       <>
         <p>
-          First, you ship your app to the App Store and Play Store the normal way — once — with the
-          OtaKit plugin installed. From then on, OtaKit delivers the <strong>web layer</strong> of
-          your Capacitor app (HTML, CSS, JavaScript, and assets) straight to devices that already
-          have it installed, with no new store submission. The native binary never changes; only the
-          web bundle running inside it is swapped.
+          You ship your app to the App Store and Play Store the normal way — once — with the OtaKit
+          plugin installed. From then on, OtaKit delivers the <strong>web layer</strong> of your
+          Capacitor app straight to devices, with no new store submission: you run{' '}
+          <Code>otakit upload --release</Code>, the bundle lands on the CDN, and each device
+          downloads it in the background and activates it on the next cold launch.
         </p>
         <p>
-          You run <Code>otakit upload --release</Code>, the bundle lands on the CDN, and the plugin
-          on each device checks for it, downloads it in the background, and activates it on the next
-          cold launch.
+          That covers anything in your web layer: JavaScript, CSS, HTML, copy, feature flags,
+          images, and other assets. What it <em>can’t</em> change is native code, native plugins, or
+          your Capacitor config — those still go through normal store review. That’s the exact line
+          Apple and Google draw, and OtaKit only ever touches the web layer.
         </p>
       </>
     ),
   },
   {
-    q: 'What can I update over the air?',
-    a: (
-      <>
-        <p>
-          Anything in your web layer: JavaScript, CSS, HTML, copy, feature flags, images, and other
-          web assets.
-        </p>
-        <p>
-          What you <em>can’t</em> change over the air is native code, native plugins, or your
-          Capacitor native config — those still go through normal App Store and Play review. That is
-          the exact line Apple and Google draw, and OtaKit only ever touches the web layer.
-        </p>
-      </>
-    ),
-  },
-  {
-    q: 'Is this allowed by Apple and Google?',
+    q: 'Are OTA updates allowed?',
     a: (
       <>
         <p>
@@ -193,14 +178,10 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
           that device back to the last known-good bundle — so a bad release can’t brick your app.
         </p>
         <p>
-          You can also revert any channel to a previous bundle instantly from the dashboard, and
-          mark the fix <Code>force-immediate</Code> so devices apply it on their very next check
-          instead of waiting for the next cold launch.
-        </p>
-        <p>
-          Prevention is built in too: at upload time the CLI checks whether your web bundle depends
-          on native plugins the installed app shell doesn’t have — the most common way OTA updates
-          break — and warns (or fails CI) before the release ships.
+          You can also revert any channel instantly from the dashboard, and mark the fix{' '}
+          <Code>force-immediate</Code> so devices apply it on their very next check. And to prevent
+          the most common OTA mistake in the first place, the CLI warns at upload time if your
+          bundle depends on native code the installed app doesn’t have.
         </p>
       </>
     ),
@@ -233,34 +214,18 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
-    q: 'How big are the update downloads?',
+    q: 'Is OtaKit secure?',
     a: (
       <>
         <p>
-          By default each update is a single compressed bundle of your web layer. For asset-heavy
-          apps, opt into <strong>delta updates</strong>: every file is stored once by its content
-          hash, and devices download only the files that actually changed between releases.
+          Every manifest is signed (ES256) and every download SHA-256-verified before it runs, so
+          bundles can’t be forged or tampered with — and anything that fails its health check rolls
+          back automatically.
         </p>
         <p>
-          A typical code-only change to a 50 MB app then downloads kilobytes instead of the full
-          bundle — and files already shipped inside the store binary are reused too.
-        </p>
-      </>
-    ),
-  },
-  {
-    q: 'How are updates secured?',
-    a: (
-      <>
-        <p>
-          Every manifest is signed (ES256) and every download is SHA-256-verified before it is ever
-          applied, so bundles can’t be forged or tampered with in transit. Nothing unverified ever
-          reaches your users, and a bundle that fails its health check is rolled back automatically.
-        </p>
-        <p>
-          For regulated or code-sensitive apps, opt into <strong>end-to-end encryption</strong>:
-          bundles are encrypted with AES-256-GCM using a key only you hold — object storage and the
-          CDN only ever see ciphertext, and even OtaKit can’t read your code.
+          For code-sensitive apps, optional <strong>end-to-end encryption</strong> (AES-256-GCM,
+          with a key only you hold) means storage and the CDN only ever see ciphertext — even OtaKit
+          can’t read your code.
         </p>
       </>
     ),
@@ -279,8 +244,8 @@ const FAQ_ITEMS: { q: string; a: React.ReactNode }[] = [
     a: (
       <p>
         Nothing about the users themselves. Because devices download directly from Cloudflare’s CDN,
-        OtaKit doesn’t fingerprint devices or track individuals. We count updates delivered for
-        billing and show you aggregate release analytics — that’s it.
+        OtaKit doesn’t fingerprint devices or track individuals. We collect anonymus updates events
+        for release analytics — that’s it.
       </p>
     ),
   },
@@ -521,32 +486,32 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Zap}
                 title="Instant delivery"
-                description="Updates land on devices in seconds. Mark a release force-immediate and devices apply it on their very next check — perfect for emergency fixes."
-              />
-              <FeatureCard
-                icon={Rocket}
-                title="Channel-based releases"
-                description="Release to production, staging, or custom channels — and switch channels at runtime for beta opt-in toggles. Roll back instantly if something goes wrong."
+                description="Updates land on devices in seconds — no store review. Force-immediate releases apply on the very next check."
               />
               <FeatureCard
                 icon={FileDiff}
                 title="Delta updates"
-                description="Opt-in per-file updates: devices download only what changed between releases. A 50 MB asset-heavy app updates in kilobytes, not megabytes."
+                description="Devices download only the files that changed between releases. Asset-heavy apps update in kilobytes, not megabytes."
+              />
+              <FeatureCard
+                icon={ShieldAlert}
+                title="Safe rollouts"
+                description="Broken updates roll back automatically, and the CLI catches native-compatibility mistakes before a release ever ships."
+              />
+              <FeatureCard
+                icon={Rocket}
+                title="Channel-based releases"
+                description="Release to production, beta, or custom channels — switchable at runtime. Roll back any channel instantly."
+              />
+              <FeatureCard
+                icon={SlidersHorizontal}
+                title="Custom update experience"
+                description="Silent and automatic out of the box — or hook into update events to ask before downloading and prompt to restart."
               />
               <FeatureCard
                 icon={Lock}
                 title="Secure by default"
-                description="Signed manifests, SHA-256 verification, HTTPS enforcement, and optional end-to-end bundle encryption — storage and CDN only ever hold ciphertext."
-              />
-              <FeatureCard
-                icon={ShieldAlert}
-                title="Native compatibility guardrail"
-                description="The CLI detects when your web bundle depends on native code the installed app shell doesn't have — and warns before the release ever ships."
-              />
-              <FeatureCard
-                icon={BellRing}
-                title="Update lifecycle events"
-                description="Subscribe to updateAvailable, updateStaged, updateApplied and more to build your own update UX — prompts, toasts, or fully silent."
+                description="Signed manifests, SHA-256 verification, HTTPS everywhere — and optional end-to-end encryption for your code."
               />
               <FeatureCard
                 icon={Shield}

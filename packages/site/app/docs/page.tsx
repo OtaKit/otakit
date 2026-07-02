@@ -60,11 +60,11 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Channels & runtime lanes"
-          description="Use channels for rollout tracks and runtimeVersion for native compatibility boundaries — and switch channels at runtime with setChannel()."
+          description="Channels for rollout tracks, runtimeVersion for native compatibility lanes — switchable at runtime with setChannel()."
         />
         <Feature
           title="Delta updates"
-          description="Opt-in per-file updates: devices download only the files that changed between releases instead of the whole bundle."
+          description="Opt-in per-file updates: devices download only the files that changed between releases."
         />
         <Feature
           title="Automatic update delivery"
@@ -72,11 +72,11 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Force-immediate releases"
-          description="Mark an emergency release force-immediate and devices apply and reload it on their next check, regardless of configured policies."
+          description="Emergency releases apply and reload on the device's next check, whatever its configured policies."
         />
         <Feature
           title="Update lifecycle events"
-          description="Subscribe to updateAvailable, updateStaged, updateApplied, downloadFailed, and rollback to build your own update UX."
+          description="updateAvailable, updateStaged, updateApplied, downloadFailed, rollback — build your own update UX."
         />
         <Feature
           title="Manual update control"
@@ -88,11 +88,11 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Signed & verified"
-          description="Signed manifests (ES256) and SHA-256 verification on every download, with optional end-to-end bundle encryption (AES-256-GCM)."
+          description="ES256-signed manifests and SHA-256 checks on every download, plus optional end-to-end encryption."
         />
         <Feature
           title="Native compatibility guardrail"
-          description="The CLI detects native-plugin changes at upload time and warns before you ship a web bundle the installed app shell can't run."
+          description="The CLI warns at upload time when a bundle depends on native code the installed app doesn't have."
         />
         <Feature
           title="Organization access & API keys"

@@ -43,9 +43,8 @@ export default function UpdateStrategiesPage() {
         </li>
         <li>
           <strong>immediate</strong> — check, stage, and apply the newest bundle right away when one
-          is available. Note the reload can land mid-session, and since any individual release can
-          be escalated with <Code>--force-immediate</Code> when it truly matters, you rarely want{' '}
-          <Code>immediate</Code> compiled in as the default for launch or resume.
+          is available. The reload can land mid-session — and since any release can be escalated
+          with <Code>--force-immediate</Code>, you rarely need this as the launch or resume default.
         </li>
       </ul>
 
@@ -92,44 +91,48 @@ export default function UpdateStrategiesPage() {
         launches, and new bundles are ready to go as soon as a session restarts.
       </P>
 
-      <H3>Ship critical fixes instantly</H3>
-      <P>
-        Mark the release as <strong>force immediate</strong> — in the dashboard&apos;s release
-        dialog or with <Code>otakit release --force-immediate</Code>. The flag is baked into the
-        signed manifest, and devices on <Code>shadow</Code> or <Code>apply-staged</Code> policies
-        escalate that one release to the immediate behavior: download, apply, and reload on their
-        next check. No app rebuild, no config change.
-      </P>
-      <P>
-        Bounds: it is &quot;immediate on the next event/check&quot;, not push — delivery is bounded
-        by lifecycle events and <Code>checkInterval</Code>. Policies set to <Code>off</Code> never
-        fetch a manifest, so they never see the flag, and the trial/rollback safety net still
-        applies. The reload can land mid-session, so reserve it for broken releases, not routine
-        rollouts. (Compiling <Code>immediate</Code> policies into the app remains an option when you
-        want this behavior for every release.)
-      </P>
-
       <H3>Update quietly, reload only with consent</H3>
       <P>
         Set <Code>launchPolicy</Code> and <Code>resumePolicy</Code> to <Code>shadow</Code>. Bundles
-        stage in the background and nothing ever activates on its own — call <Code>apply()</Code>{' '}
-        yourself, for example from a &quot;restart to update&quot; banner once a staged bundle shows
-        up in <Code>getState()</Code>.
+        stage in the background and nothing ever activates on its own — show a &quot;restart to
+        update&quot; prompt from the <Code>updateStaged</Code> event and call <Code>apply()</Code>{' '}
+        on accept (see{' '}
+        <Link
+          href="/docs/events"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Events &amp; Listeners
+        </Link>
+        ).
       </P>
 
       <H3>Full manual control</H3>
       <P>
-        Turn <Code>launchPolicy</Code>, <Code>resumePolicy</Code>, and <Code>runtimePolicy</Code>{' '}
-        all <Code>off</Code>, then drive the lifecycle yourself with <Code>check()</Code>,{' '}
-        <Code>download()</Code>, and <Code>apply()</Code>. Use this when your app wants to show its
-        own update prompt or control install timing precisely — see the Manual Flow section of the{' '}
+        Turn all three policies <Code>off</Code> and drive the lifecycle yourself with{' '}
+        <Code>check()</Code>, <Code>download()</Code>, and <Code>apply()</Code>. Use this when your
+        app owns the entire update experience — see the Manual Flow section of the{' '}
         <Link
           href="/docs/plugin"
           className="font-medium text-foreground underline underline-offset-4"
         >
           Plugin API
         </Link>{' '}
-        reference for the full pattern.
+        reference.
+      </P>
+
+      <H3>Ship critical fixes instantly</H3>
+      <P>
+        This one isn&apos;t a config — it&apos;s per release. Mark it{' '}
+        <strong>force immediate</strong> in the dashboard&apos;s release dialog or with{' '}
+        <Code>otakit release --force-immediate</Code>: the flag is baked into the signed manifest,
+        and devices on <Code>shadow</Code> or <Code>apply-staged</Code> escalate that one release to
+        immediate — download, apply, and reload on their next check. No rebuild, no config change.
+      </P>
+      <P>
+        It&apos;s &quot;immediate on the next check&quot;, not push, and the trial/rollback safety
+        net still applies. Policies set to <Code>off</Code> never fetch a manifest, so they never
+        see the flag. Because the reload can land mid-session, reserve it for broken releases — not
+        routine rollouts.
       </P>
 
       <Separator className="my-10" />
