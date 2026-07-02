@@ -1760,6 +1760,17 @@ and
 
 EMAIL_FROM
 to send OTP codes and invites via Resend.
+Auto-revert
+— releases published with the auto-revert flag are reverted automatically when too many devices roll back within 24 hours. Requires analytics (above) plus any scheduler calling
+
+POST /api/cron/auto-revert
+every ~10 minutes. If
+
+CRON_SECRET
+is set, pass it as a Bearer header or
+
+?secret=
+query param; if unset, the endpoint is open (the sweep is idempotent and only reverts releases whose own thresholds trip).
 CDN purge
 — set
 

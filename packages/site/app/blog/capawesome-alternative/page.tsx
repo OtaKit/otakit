@@ -100,7 +100,7 @@ export default function CapawesomeAlternativePage() {
 
       <h2>Switching from Capawesome</h2>
       <p>
-        The migration is mechanical: <Code>ready()</Code> becomes <Code>notifyAppReady()</Code>,{' '}
+        The APIs map almost one-to-one: <Code>ready()</Code> becomes <Code>notifyAppReady()</Code>,{' '}
         <Code>sync()</Code> becomes <Code>update()</Code>, <Code>defaultChannel</Code> becomes{' '}
         <Code>channel</Code>, and the background auto-update strategy is OtaKit&apos;s default
         behavior out of the box:
