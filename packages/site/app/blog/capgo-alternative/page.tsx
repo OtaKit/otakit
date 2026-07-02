@@ -19,7 +19,7 @@ const featureRows = [
   ['Automatic rollback', 'Yes — notifyAppReady() handshake', 'Yes'],
   ['Runtime channel switching', 'Yes — setChannel()', 'Yes'],
   ['Emergency releases', 'Yes — --force-immediate', 'Yes'],
-  ['Device delivery path', '100% Cloudflare CDN edge', 'Vendor servers + CDN'],
+  ['Device delivery path', '100% Cloudflare CDN edge', 'Vendor servers'],
   ['End-user tracking', 'None — no device identification', 'Per-device (MAU metering requires it)'],
   ['Open source', 'Entire stack, MIT', 'Source-available, license terms apply'],
   ['Release model', '5 concepts: app, bundle, release, channel, runtimeVersion', 'Channels + device overrides + cloud defaults + version filters'],
