@@ -13,6 +13,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - React Guide: /docs/react
 - Channels: /docs/channels
 - Update Strategies: /docs/update-strategies
+- Events & Listeners: /docs/events
 - CI Automation: /docs/ci
 - Security: /docs/security
 - Self-hosting: /docs/self-host
@@ -48,6 +49,7 @@ Start with the quick setup
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
 - **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **Update Strategies**: How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.
+- **Events & Listeners**: Subscribe to update lifecycle events: available, staged, applied, failed, rolled back.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, and configuration.
@@ -508,7 +510,7 @@ plugins: {
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 
-There is no listener API in the current plugin surface. If you want custom update UI, use `check()`, `getState()`, `download()`, and `apply()` directly.
+The plugin also emits lifecycle events — `updateAvailable`, `updateStaged`, `updateApplied`, `downloadFailed`, and `rollback` — via `OtaKit.addListener(...)`. See Events & Listeners for the full reference and the startup reconciliation pattern.
 
 After a successful `apply()` or an `update()` that installs a new bundle, the app reloads immediately. Call `notifyAppReady()` from the reloaded app startup, not in the same JS flow that triggered the activation.
 
@@ -1204,7 +1206,9 @@ OtaKit has one set of four policy values and three settings that decide when eac
 
 #### Ship critical fixes instantly
 
-Set `launchPolicy` and `resumePolicy` to `immediate` as well. Devices apply a fix as soon as they check — even mid-session on resume. Trade-off: users can see the app reload while they're using it, so reserve this for cases where landing the fix fast matters more than a seamless reload.
+Mark the release as force immediate — in the dashboard's release dialog or with `otakit release --force-immediate`. The flag is baked into the signed manifest, and devices on `shadow` or `apply-staged` policies escalate that one release to the immediate behavior: download, apply, and reload on their next check. No app rebuild, no config change.
+
+Bounds: it is "immediate on the next event/check", not push — delivery is bounded by lifecycle events and `checkInterval`. Policies set to `off` never fetch a manifest, so they never see the flag, and the trial/rollback safety net still applies. The reload can land mid-session, so reserve it for broken releases, not routine rollouts. (Compiling `immediate` policies into the app remains an option when you want this behavior for every release.)
 
 #### Update quietly, reload only with consent
 
@@ -1215,6 +1219,104 @@ Set `launchPolicy` and `resumePolicy` to `shadow`. Bundles stage in the backgrou
 Turn `launchPolicy`, `resumePolicy`, and `runtimePolicy` all `off`, then drive the lifecycle yourself with `check()`, `download()`, and `apply()`. Use this when your app wants to show its own update prompt or control install timing precisely — see the Manual Flow section of the Plugin API reference for the full pattern.
 
 Also see Channels & Runtime Version for how rollout audience and native compatibility lanes interact with these policies.
+
+## Events & Listeners
+
+Route: /docs/events
+
+Subscribe to update lifecycle events — update available, staged, applied, failed, rolled back.
+
+The plugin emits lifecycle events through the standard Capacitor listener API. Events complement — they don't replace — the pull APIs `check()` and `getState()`: listeners tell you the moment something happens while your app is running, and the pull APIs reconcile anything that happened while it wasn't.
+
+```txt
+import { OtaKit } from '@otakit/capacitor-updater';
+
+OtaKit.addListener('updateStaged', ({ bundle }) => {
+  // show "Update ready — restart now?" and call OtaKit.apply() on accept
+});
+```
+
+### Event reference
+- `updateAvailable` (LatestVersion): A check found a newer bundle, before any download starts. Fires on manual check() and at the start of automatic flows.
+- `updateStaged` ({ bundle: BundleInfo }): A bundle was downloaded, verified, and staged, ready to apply. Download and stage are atomic in OtaKit, so this is the single 'downloaded' event.
+- `updateApplied` ({ bundle: BundleInfo }): A newly activated bundle was confirmed healthy — fires when notifyAppReady() confirms the trial bundle, in the reloaded JS context.
+- `downloadFailed` ({ version, runtimeVersion?, releaseId?, channel?, reason }): A download, verification, or extraction failed. Non-terminal: the app keeps running its current bundle and retries on a later cycle.
+- `rollback` ({ version, runtimeVersion?, releaseId?, channel?, reason }): An applied bundle failed its health check (notifyAppReady timeout) and was reverted to the previous bundle.
+
+### Caveats
+- Events fire only while the app process is alive. Nothing is delivered for work that happened while the app was killed or before your listener attached — there is no buffering or replay.
+- Reconcile with `getState()` and `getLastFailure()` on startup. A bundle staged in a previous session shows up in `getState().staged`, and a startup rollback (the app restarted before `notifyAppReady()`) happens before any JS runs, so it can only be observed via `getLastFailure()`.
+- `apply()` destroys the old JS context. A listener registered before the restart will not see `updateApplied` — that event fires in the reloaded bundle. Attach `updateApplied` and `rollback` listeners early in app startup, not inside the restart click handler.
+- One `updateStaged`, no separate "downloaded" event. Download, hash verification, and staging are one atomic operation.
+
+The apply timeline, end to end:
+
+```txt
+updateStaged            (old context)
+  -> user taps "Restart"
+  -> OtaKit.apply()      (old JS context ends here; WebView reloads)
+  -> new bundle boots
+  -> app calls notifyAppReady()
+  -> updateApplied       (NEW context - attach this listener at startup)
+```
+
+### Use cases
+
+#### Auto-download in the background, prompt to apply
+
+Let `shadow` mode do the background checking, downloading, throttling, and deduplication for you, and only handle the prompt yourself:
+
+```txt
+// capacitor.config.ts
+plugins: {
+  OtaKit: { launchPolicy: 'shadow', resumePolicy: 'shadow' }
+}
+```
+
+```txt
+// app startup
+const state = await OtaKit.getState();
+if (state.staged) showRestartPrompt(state.staged);
+OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
+
+// in the prompt's accept handler
+await OtaKit.apply();
+```
+
+#### Prompt before downloading
+
+Gate the download itself (for users on metered connections) by pairing manual mode with `updateAvailable`:
+
+```txt
+// capacitor.config.ts: { launchPolicy: 'off', resumePolicy: 'off' }
+OtaKit.addListener('updateAvailable', async (latest) => {
+  if (await confirmDownload(latest.version)) {
+    await OtaKit.download(); // emits updateStaged when done
+  }
+});
+await OtaKit.check();
+```
+
+#### Post-update toast and failure reporting
+
+```txt
+// attach at startup, in the reloaded bundle
+OtaKit.addListener('updateApplied', ({ bundle }) => {
+  toast('Updated to ' + bundle.version);
+});
+OtaKit.addListener('downloadFailed', (e) => reportError('ota_download', e));
+OtaKit.addListener('rollback', (e) => reportError('ota_rollback', e));
+
+// startup rollbacks can't reach a listener - reconcile:
+const failure = await OtaKit.getLastFailure();
+if (failure) reportError('ota_rollback_startup', failure);
+```
+
+### Cleanup
+
+`addListener` resolves to a `PluginListenerHandle`; call `.remove()` on it when the owning UI unmounts, or `OtaKit.removeAllListeners()` to drop everything at once.
+
+Also see Update Strategies for choosing the policies these events observe, and the Plugin API reference for the full method list.
 
 ## CI Automation
 

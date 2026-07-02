@@ -6,8 +6,11 @@ import { dirname, join, posix, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ApiClient, Bundle, DeltaFileDescriptor } from './api.js';
+import type { BundleEncryptionParams } from './crypto.js';
+import { encryptFile, parseEncryptionKey } from './crypto.js';
 import { CliError } from './errors.js';
 import { hashFile, hashFileWithMd5 } from './hash.js';
+import type { NativePackage } from './native-deps.js';
 import { getCliUserAgent } from './version.js';
 import { createZip, removeFileIfExists, validateBundleDirectory } from './zip.js';
 
@@ -134,8 +137,35 @@ export type UploadWorkflowOptions = {
   runtimeVersion?: string;
   releaseChannel?: string | null;
   strategy?: 'zip' | 'deltas';
+  nativePackages?: NativePackage[];
+  forceImmediate?: boolean;
+  encrypt?: boolean;
   onStatus?: (message: string) => void;
 };
+
+export const ENCRYPTION_KEY_ENV = 'OTAKIT_ENCRYPTION_KEY';
+
+/**
+ * Resolve the bundle encryption key (KEK).
+ *
+ * Encryption is on when `--encrypt` is passed or when OTAKIT_ENCRYPTION_KEY
+ * is set in the environment; `--encrypt` without the env var is an error.
+ */
+export function resolveEncryptionKey(encryptFlag: boolean | undefined): Buffer | null {
+  const raw = process.env[ENCRYPTION_KEY_ENV]?.trim();
+  if (encryptFlag && !raw) {
+    throw new CliError(
+      [
+        `--encrypt requires the ${ENCRYPTION_KEY_ENV} environment variable.`,
+        'Generate a key with: otakit generate-encryption-key',
+      ].join('\n'),
+    );
+  }
+  if (!raw) {
+    return null;
+  }
+  return parseEncryptionKey(raw);
+}
 
 export type UploadWorkflowResult = {
   bundle: Bundle;
@@ -149,17 +179,34 @@ export async function runUploadWorkflow(
     return runDeltaUploadWorkflow(options);
   }
 
-  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
+  const {
+    api,
+    sourcePath,
+    version,
+    runtimeVersion,
+    releaseChannel,
+    nativePackages,
+    forceImmediate,
+    encrypt,
+    onStatus,
+  } = options;
 
   validateBundleDirectory(sourcePath);
+  const encryptionKey = resolveEncryptionKey(encrypt);
 
   const tempZipPath = join(tmpdir(), `otakit-${version}-${randomUUID()}.zip`);
+  const tempEncPath = `${tempZipPath}.enc`;
 
   const cleanup = () => {
     try {
       unlinkSync(tempZipPath);
     } catch {
       // Best-effort cleanup — the temp zip may never have been created.
+    }
+    try {
+      unlinkSync(tempEncPath);
+    } catch {
+      // Best-effort cleanup — the encrypted file may never have been created.
     }
     process.exit(1);
   };
@@ -169,16 +216,33 @@ export async function runUploadWorkflow(
     onStatus?.('Creating zip archive...');
     await createZip(sourcePath, tempZipPath);
 
+    let uploadPath = tempZipPath;
+    let encryption: BundleEncryptionParams | undefined;
+    if (encryptionKey) {
+      onStatus?.('Encrypting bundle...');
+      encryption = await encryptFile(encryptionKey, tempZipPath, tempEncPath);
+      uploadPath = tempEncPath;
+      console.warn(
+        '\nBundle encryption requires manifest signing to be enabled on the server ' +
+          '(hosted default). Without signing, encryption parameters are unauthenticated.',
+      );
+      console.warn(
+        `Ensure the installed app ships bundleKeys with kid ${encryption.kid}, or devices cannot decrypt this update.\n`,
+      );
+    }
+
     onStatus?.('Calculating SHA-256 checksum...');
-    const sha256 = await hashFile(tempZipPath);
-    const zipStat = await stat(tempZipPath);
+    const sha256 = await hashFile(uploadPath);
+    const uploadStat = await stat(uploadPath);
 
     onStatus?.('Requesting upload URL...');
     const initiated = await api.initiateUpload({
       version,
       runtimeVersion,
-      size: zipStat.size,
+      size: uploadStat.size,
       sha256,
+      nativePackages,
+      encryption,
     });
 
     const expiresAt = new Date(initiated.expiresAt);
@@ -187,7 +251,7 @@ export async function runUploadWorkflow(
     }
 
     onStatus?.('Uploading bundle...');
-    await uploadFileToPresignedUrl(tempZipPath, initiated.presignedUrl);
+    await uploadFileToPresignedUrl(uploadPath, initiated.presignedUrl);
 
     onStatus?.('Finalizing...');
     const bundle = await api.finalizeUpload({
@@ -196,13 +260,14 @@ export async function runUploadWorkflow(
 
     if (releaseChannel !== undefined) {
       onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-      await api.release(releaseChannel, bundle.id);
+      await api.release(releaseChannel, bundle.id, { forceImmediate });
     }
 
     return { bundle, releaseChannel };
   } finally {
     process.off('SIGINT', cleanup);
     await removeFileIfExists(tempZipPath);
+    await removeFileIfExists(tempEncPath);
   }
 }
 
@@ -293,7 +358,16 @@ const DELTA_UPLOAD_CONCURRENCY = 8;
 async function runDeltaUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
-  const { api, sourcePath, version, runtimeVersion, releaseChannel, onStatus } = options;
+  const { api, sourcePath, version, runtimeVersion, releaseChannel, forceImmediate, onStatus } =
+    options;
+
+  // Encrypted deltas are deliberately unsupported in v1: per-file encryption
+  // with a per-bundle key would break content-addressed dedup (see plan 02).
+  if (options.encrypt || process.env[ENCRYPTION_KEY_ENV]?.trim()) {
+    throw new CliError(
+      'The deltas strategy does not support encryption yet. Use updateStrategy "zip" for encrypted bundles, or unset OTAKIT_ENCRYPTION_KEY.',
+    );
+  }
 
   validateBundleDirectory(sourcePath);
 
@@ -360,7 +434,7 @@ async function runDeltaUploadWorkflow(
 
   if (releaseChannel !== undefined) {
     onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-    await api.release(releaseChannel, bundle.id);
+    await api.release(releaseChannel, bundle.id, { forceImmediate });
   }
 
   return { bundle, releaseChannel };

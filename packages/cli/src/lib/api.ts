@@ -1,5 +1,6 @@
 import type { CliConfig } from './config.js';
 import { fetchCli } from './http.js';
+import type { NativePackage } from './native-deps.js';
 import { CLI_VERSION, getCliUserAgent } from './version.js';
 
 export interface Bundle {
@@ -10,6 +11,10 @@ export interface Bundle {
   runtimeVersion?: string | null;
   strategy?: string;
   createdAt: string;
+}
+
+export interface BundleDetail extends Bundle {
+  nativePackages?: NativePackage[] | null;
 }
 
 export interface UploadInitResponse {
@@ -40,8 +45,10 @@ export interface Release {
   runtimeVersion?: string | null;
   bundleId: string;
   bundleVersion?: string;
+  forceImmediate?: boolean;
   promotedAt: string;
   promotedBy?: string;
+  revertedAt?: string | null;
 }
 
 export class ApiClient {
@@ -113,11 +120,23 @@ export class ApiClient {
     runtimeVersion?: string;
     size: number;
     sha256: string;
+    nativePackages?: NativePackage[];
+    encryption?: {
+      alg: string;
+      kid: string;
+      wrapNonce: string;
+      wrappedDek: string;
+      nonce: string;
+    };
   }): Promise<UploadInitResponse> {
     return this.fetch(this.appPath('/bundles/initiate'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
+  }
+
+  async getBundle(bundleId: string): Promise<BundleDetail> {
+    return this.fetch(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`));
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {
@@ -166,10 +185,15 @@ export class ApiClient {
   async release(
     channel: string | null,
     bundleId: string,
+    options?: { forceImmediate?: boolean },
   ): Promise<{ release: Release; previousRelease: Release | null }> {
     return this.fetch(this.appPath('/releases'), {
       method: 'POST',
-      body: JSON.stringify({ bundleId, channel }),
+      body: JSON.stringify({
+        bundleId,
+        channel,
+        forceImmediate: options?.forceImmediate ?? false,
+      }),
     });
   }
 

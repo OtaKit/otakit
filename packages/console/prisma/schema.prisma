@@ -192,6 +192,8 @@ model Bundle {
   // storageKey points at the canonical file-list object, sha256 = filesHash)
   strategy           String          @default("zip")
   metadata           Json?
+  nativePackages     Json?
+  encryption         Json?
   createdAt          DateTime        @default(now())
   releases           Release[]       @relation("ReleaseBundle")
   previousInReleases Release[]       @relation("ReleasePreviousBundle")
@@ -210,6 +212,7 @@ model Release {
   previousBundle   Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
   previousBundleId String?
   channel          String?
+  forceImmediate   Boolean   @default(false)
   promotedAt       DateTime  @default(now())
   promotedBy       String?
   revertedAt       DateTime?
@@ -233,6 +236,8 @@ model UploadSession {
   strategy       String              @default("zip")
   files          Json?
   metadata       Json?
+  nativePackages Json?
+  encryption     Json?
   storageKey     String
   status         UploadSessionStatus @default(initiated)
   bundle         Bundle?             @relation(fields: [bundleId], references: [id], onDelete: SetNull)

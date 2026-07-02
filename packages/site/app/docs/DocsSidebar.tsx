@@ -32,6 +32,7 @@ const NAV = [
       { label: 'React Guide', href: '/docs/react' },
       { label: 'Channels & Runtime Version', href: '/docs/channels' },
       { label: 'Update Strategies', href: '/docs/update-strategies' },
+      { label: 'Events & Listeners', href: '/docs/events' },
       { label: 'CI automation', href: '/docs/ci' },
       { label: 'Self-hosting', href: '/docs/self-host' },
     ],

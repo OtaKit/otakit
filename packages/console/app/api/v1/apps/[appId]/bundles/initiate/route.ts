@@ -7,9 +7,11 @@ import { db } from '@/lib/db';
 import { createPresignedUpload, getMaxBundleSize } from '@/lib/storage';
 import {
   isValidMetadata,
+  isValidNativePackages,
   isValidRuntimeVersion,
   isValidVersion,
   normalizeOptionalRuntimeVersion,
+  parseBundleEncryption,
   parsePositiveInteger,
 } from '@/lib/validation';
 
@@ -100,6 +102,28 @@ export async function POST(
     );
   }
 
+  const nativePackages = body.nativePackages;
+  if (!isValidNativePackages(nativePackages)) {
+    return NextResponse.json(
+      {
+        error:
+          'nativePackages must be an array of { name, version, requestedVersion?, iosChecksum?, androidChecksum? } (max 200 entries, 32KB)',
+      },
+      { status: 400 },
+    );
+  }
+
+  const encryption = parseBundleEncryption(body.encryption);
+  if (encryption === null) {
+    return NextResponse.json(
+      {
+        error:
+          'encryption must be {alg: "AES-256-GCM", kid, wrapNonce, wrappedDek, nonce} with base64 values',
+      },
+      { status: 400 },
+    );
+  }
+
   const existing = await db.bundle.findUnique({
     where: {
       appId_version: { appId, version },
@@ -127,6 +151,12 @@ export async function POST(
       runtimeVersion,
       metadata:
         metadata === null ? Prisma.JsonNull : (metadata as Prisma.InputJsonValue | undefined),
+      nativePackages:
+        nativePackages === null
+          ? Prisma.JsonNull
+          : (nativePackages as Prisma.InputJsonValue | undefined),
+      encryption:
+        encryption === undefined ? undefined : ({ ...encryption } as Prisma.InputJsonValue),
       storageKey,
       expiresAt,
     },

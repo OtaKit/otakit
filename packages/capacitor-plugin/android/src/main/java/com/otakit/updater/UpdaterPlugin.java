@@ -68,18 +68,24 @@ public class UpdaterPlugin extends Plugin {
 
     final String kind;
     final BundleInfo bundle;
+    final boolean forceImmediate;
 
-    private DownloadResolution(String kind, BundleInfo bundle) {
+    private DownloadResolution(String kind, BundleInfo bundle, boolean forceImmediate) {
       this.kind = kind;
       this.bundle = bundle;
+      this.forceImmediate = forceImmediate;
     }
 
     static DownloadResolution noUpdate() {
-      return new DownloadResolution("no_update", null);
+      return new DownloadResolution("no_update", null, false);
     }
 
-    static DownloadResolution staged(BundleInfo bundle) {
-      return new DownloadResolution("staged", bundle);
+    static DownloadResolution staged(BundleInfo bundle, boolean forceImmediate) {
+      return new DownloadResolution("staged", bundle, forceImmediate);
+    }
+
+    boolean isForcedStaged() {
+      return "staged".equals(kind) && forceImmediate;
     }
   }
 
@@ -107,6 +113,7 @@ public class UpdaterPlugin extends Plugin {
   private String channel;
   private String runtimeVersion;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
+  private final java.util.Map<String, byte[]> bundleKeys = new java.util.HashMap<>();
   private long checkIntervalMs = 600_000;
   private boolean coldStartInProgress = false;
   private static final String DEFAULT_INGEST_URL = "https://ingest.otakit.app/v1";
@@ -115,6 +122,8 @@ public class UpdaterPlugin extends Plugin {
   private static final String KEY_LAST_CHECK_TIMESTAMP = "last_check_timestamp";
   private static final String DEFAULT_RUNTIME_KEY = "__default__";
   private static final String BUILTIN_ASSET_PATH = "public";
+  private static final java.util.regex.Pattern CHANNEL_NAME_PATTERN =
+    java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
   private UpdaterCoordinator.StartupPreparation pendingStartupPreparation;
 
   @Override
@@ -185,6 +194,38 @@ public class UpdaterPlugin extends Plugin {
 
     if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
+    }
+
+    try {
+      org.json.JSONArray rawBundleKeys = getConfig().getConfigJSON().optJSONArray("bundleKeys");
+      if (rawBundleKeys != null && rawBundleKeys.length() > 0) {
+        for (int i = 0; i < rawBundleKeys.length(); i++) {
+          org.json.JSONObject entry = rawBundleKeys.optJSONObject(i);
+          if (entry == null) {
+            continue;
+          }
+          String kid = entry.optString("kid", null);
+          String keyBase64 = entry.optString("key", null);
+          if (kid != null && keyBase64 != null) {
+            byte[] keyBytes = android.util.Base64.decode(keyBase64, android.util.Base64.DEFAULT);
+            if (keyBytes.length == 32) {
+              bundleKeys.put(kid, keyBytes);
+            }
+          }
+        }
+        if (bundleKeys.isEmpty()) {
+          android.util.Log.e(
+            "OtaKit",
+            "bundleKeys configured but all entries are invalid. Encrypted bundles cannot be decrypted."
+          );
+        }
+      }
+    } catch (Exception e) {
+      android.util.Log.e(
+        "OtaKit",
+        "Failed to parse bundleKeys. Encrypted bundles cannot be decrypted.",
+        e
+      );
     }
 
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
@@ -290,14 +331,20 @@ public class UpdaterPlugin extends Plugin {
           return;
         }
         executeAutomaticUpdate("runtime apply-staged fallback", () -> {
-          downloadLatest(false, null);
+          DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case SHADOW:
         executeAutomaticUpdate("runtime shadow", () -> {
-          downloadLatest(false, null);
+          DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case IMMEDIATE:
@@ -327,10 +374,20 @@ public class UpdaterPlugin extends Plugin {
           android.util.Log.w("OtaKit", "launch apply-staged failed", e);
           return;
         }
-        executeAutomaticUpdate("launch apply-staged fallback", () -> downloadLatest(false, null));
+        executeAutomaticUpdate("launch apply-staged fallback", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case SHADOW:
-        executeAutomaticUpdate("launch shadow", () -> downloadLatest(false, null));
+        executeAutomaticUpdate("launch shadow", () -> {
+          DownloadResolution result = downloadLatest(false, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case IMMEDIATE:
         executeAutomaticUpdate("launch immediate", () -> {
@@ -352,11 +409,19 @@ public class UpdaterPlugin extends Plugin {
           if (applyStaged(true)) {
             return;
           }
-          downloadLatest(true, null);
+          DownloadResolution result = downloadLatest(true, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
         });
         return;
       case SHADOW:
-        executeAutomaticUpdate("resume shadow", () -> downloadLatest(true, null));
+        executeAutomaticUpdate("resume shadow", () -> {
+          DownloadResolution result = downloadLatest(true, null);
+          if (result.isForcedStaged()) {
+            requireApplyStaged(true);
+          }
+        });
         return;
       case IMMEDIATE:
         executeAutomaticUpdate("resume immediate", () -> {
@@ -512,6 +577,11 @@ public class UpdaterPlugin extends Plugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
+      // eventPayload is non-null only on a genuine trial -> success transition,
+      // so repeat notifyAppReady() calls never double-emit.
+      JSObject appliedData = new JSObject();
+      appliedData.put("bundle", store.getCurrentBundle().toJSObject());
+      emitEvent("updateApplied", appliedData);
     }
     call.resolve();
   }
@@ -524,6 +594,63 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     call.resolve(failed.toJSObject());
+  }
+
+  @PluginMethod
+  public void setChannel(PluginCall call) {
+    Object raw = call.getData().opt("channel");
+    if (raw == null || raw == org.json.JSONObject.NULL) {
+      store.setOverrideChannel(null);
+      call.resolve();
+      return;
+    }
+    if (!(raw instanceof String)) {
+      call.reject("channel must be a string or null");
+      return;
+    }
+    String name = (String) raw;
+    if (!isValidChannelName(name)) {
+      call.reject(
+        "Invalid channel name '" +
+          name +
+          "': use 1-64 letters, numbers, '.', '_' or '-' (reserved names: base, default)"
+      );
+      return;
+    }
+    store.setOverrideChannel(name);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void getChannel(PluginCall call) {
+    JSObject result = new JSObject();
+    String override = store.getOverrideChannel();
+    if (override != null) {
+      result.put("channel", override);
+      result.put("source", "override");
+      call.resolve(result);
+      return;
+    }
+    result.put("channel", channel != null ? channel : org.json.JSONObject.NULL);
+    result.put("source", "config");
+    call.resolve(result);
+  }
+
+  /**
+   * Mirrors the server's isValidChannelName (console/lib/validation.ts):
+   * charset regex plus reserved names. The channel is interpolated into the
+   * manifest CDN path, so anything outside this charset (or a ".." sequence)
+   * is rejected before it is persisted or used.
+   */
+  private boolean isValidChannelName(String name) {
+    if (!CHANNEL_NAME_PATTERN.matcher(name).matches()) {
+      return false;
+    }
+    if (name.contains("..") || ".".equals(name)) {
+      return false;
+    }
+    String lower = name.toLowerCase(java.util.Locale.ROOT);
+    return !"base".equals(lower) && !"default".equals(lower);
   }
 
   private ManifestClient.LatestManifest fetchLatest(String channel) throws Exception {
@@ -558,6 +685,10 @@ public class UpdaterPlugin extends Plugin {
 
     CheckResolution resolution = classifyLatestManifest(latest, targetChannel);
 
+    if ("update_available".equals(resolution.kind) && resolution.latest != null) {
+      emitEvent("updateAvailable", manifestToJSObject(resolution.latest));
+    }
+
     if (respectInterval) {
       recordCheckTimestamp();
     }
@@ -572,10 +703,13 @@ public class UpdaterPlugin extends Plugin {
       case "no_update":
         return DownloadResolution.noUpdate();
       case "already_staged":
-        return DownloadResolution.staged(result.bundle);
+        return DownloadResolution.staged(result.bundle, result.latest.forceImmediate);
       case "update_available":
         try {
-          return DownloadResolution.staged(downloadLatestManifest(result.latest, targetChannel));
+          return DownloadResolution.staged(
+            downloadLatestManifest(result.latest, targetChannel),
+            result.latest.forceImmediate
+          );
         } catch (Exception e) {
           if (!isExpiredURLError(e)) {
             throw e;
@@ -591,10 +725,14 @@ public class UpdaterPlugin extends Plugin {
             case "no_update":
               return DownloadResolution.noUpdate();
             case "already_staged":
-              return DownloadResolution.staged(refreshedResolution.bundle);
+              return DownloadResolution.staged(
+                refreshedResolution.bundle,
+                refreshedResolution.latest.forceImmediate
+              );
             case "update_available":
               return DownloadResolution.staged(
-                downloadLatestManifest(refreshedResolution.latest, targetChannel)
+                downloadLatestManifest(refreshedResolution.latest, targetChannel),
+                refreshedResolution.latest.forceImmediate
               );
             default:
               throw new IllegalStateException(
@@ -665,11 +803,15 @@ public class UpdaterPlugin extends Plugin {
     int expectedSize,
     String runtimeVersion,
     String channel,
-    String releaseId
+    String releaseId,
+    ManifestClient.ManifestEncryption encryption
   ) throws Exception {
     // Check disk space before downloading
     if (expectedSize > 0) {
-      long requiredSpace = (long) (expectedSize * 2.5); // zip + extracted + buffer
+      // zip + extracted + buffer; encrypted bundles keep an extra decrypted
+      // zip copy on disk between decrypt and extract.
+      double multiplier = encryption != null ? 3.5 : 2.5;
+      long requiredSpace = (long) (expectedSize * multiplier);
       long availableSpace = getFreeDiskSpace();
       if (availableSpace < requiredSpace) {
         sendDeviceEvent(
@@ -680,17 +822,48 @@ public class UpdaterPlugin extends Plugin {
           releaseId,
           "insufficient_disk_space"
         );
+        emitEvent(
+          "downloadFailed",
+          failureEventData(version, runtimeVersion, channel, releaseId, "insufficient_disk_space")
+        );
         throw new IllegalStateException("Insufficient disk space");
       }
     }
 
     File downloadedZip = null;
+    File decryptedZip = null;
     File extractedDirectory = null;
 
     try {
       downloadedZip = downloadZip(url);
+      // The manifest sha256 covers the downloaded object as-is — the
+      // ciphertext when the bundle is encrypted.
       if (!HashUtils.verify(downloadedZip, expectedSha256)) {
         throw new IllegalStateException("Downloaded bundle hash mismatch");
+      }
+
+      File zipToExtract = downloadedZip;
+      if (encryption != null) {
+        byte[] kek = bundleKeys.get(encryption.kid);
+        if (kek == null) {
+          throw new IllegalStateException("no matching bundle key (kid " + encryption.kid + ")");
+        }
+        byte[] dek = BundleCrypto.unwrapDek(
+          kek,
+          android.util.Base64.decode(encryption.wrapNonce, android.util.Base64.DEFAULT),
+          android.util.Base64.decode(encryption.wrappedDek, android.util.Base64.DEFAULT)
+        );
+        decryptedZip = new File(
+          getContext().getCacheDir(),
+          "otakit-decrypted-" + System.currentTimeMillis() + ".zip"
+        );
+        BundleCrypto.decryptFile(
+          dek,
+          android.util.Base64.decode(encryption.nonce, android.util.Base64.DEFAULT),
+          downloadedZip,
+          decryptedZip
+        );
+        zipToExtract = decryptedZip;
       }
 
       extractedDirectory = new File(
@@ -701,7 +874,7 @@ public class UpdaterPlugin extends Plugin {
         throw new IllegalStateException("Cannot create temporary extraction directory");
       }
 
-      zipUtils.extractSecurely(downloadedZip, extractedDirectory);
+      zipUtils.extractSecurely(zipToExtract, extractedDirectory);
       File bundleRoot = resolveBundleRoot(extractedDirectory);
 
       String bundleId = buildBundleId(version, releaseId, expectedSha256);
@@ -726,6 +899,9 @@ public class UpdaterPlugin extends Plugin {
       coordinator.cleanupBundles(cleanupBundleIds);
 
       sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
+      JSObject stagedData = new JSObject();
+      stagedData.put("bundle", info.toJSObject());
+      emitEvent("updateStaged", stagedData);
       return info;
     } catch (Exception e) {
       sendDeviceEvent(
@@ -736,11 +912,19 @@ public class UpdaterPlugin extends Plugin {
         releaseId,
         e.getMessage()
       );
+      emitEvent(
+        "downloadFailed",
+        failureEventData(version, runtimeVersion, channel, releaseId, failureReason(e))
+      );
       throw e;
     } finally {
       if (downloadedZip != null && downloadedZip.exists()) {
         //noinspection ResultOfMethodCallIgnored
         downloadedZip.delete();
+      }
+      if (decryptedZip != null && decryptedZip.exists()) {
+        //noinspection ResultOfMethodCallIgnored
+        decryptedZip.delete();
       }
       if (extractedDirectory != null && extractedDirectory.exists()) {
         try {
@@ -856,6 +1040,18 @@ public class UpdaterPlugin extends Plugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
+      emitEvent(
+        "rollback",
+        failureEventData(
+          preparation.eventPayload.bundleVersion != null
+            ? preparation.eventPayload.bundleVersion
+            : "",
+          preparation.eventPayload.runtimeVersion,
+          preparation.eventPayload.channel,
+          preparation.eventPayload.releaseId,
+          reason
+        )
+      );
     }
 
     try {
@@ -938,6 +1134,7 @@ public class UpdaterPlugin extends Plugin {
       object.put("runtimeVersion", latest.runtimeVersion);
     }
     object.put("releaseId", latest.releaseId);
+    object.put("forceImmediate", latest.forceImmediate);
     return object;
   }
 
@@ -960,7 +1157,8 @@ public class UpdaterPlugin extends Plugin {
       latest.size,
       latest.runtimeVersion,
       targetChannel,
-      latest.releaseId
+      latest.releaseId,
+      latest.encryption
     );
   }
 
@@ -983,6 +1181,16 @@ public class UpdaterPlugin extends Plugin {
           targetChannel,
           manifest.releaseId,
           "insufficient_disk_space"
+        );
+        emitEvent(
+          "downloadFailed",
+          failureEventData(
+            manifest.version,
+            manifest.runtimeVersion,
+            targetChannel,
+            manifest.releaseId,
+            "insufficient_disk_space"
+          )
         );
         throw new IllegalStateException("Insufficient disk space");
       }
@@ -1052,6 +1260,9 @@ public class UpdaterPlugin extends Plugin {
         manifest.releaseId,
         null
       );
+      JSObject stagedData = new JSObject();
+      stagedData.put("bundle", info.toJSObject());
+      emitEvent("updateStaged", stagedData);
       return info;
     } catch (Exception e) {
       sendDeviceEvent(
@@ -1061,6 +1272,16 @@ public class UpdaterPlugin extends Plugin {
         targetChannel,
         manifest.releaseId,
         e.getMessage()
+      );
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          manifest.version,
+          manifest.runtimeVersion,
+          targetChannel,
+          manifest.releaseId,
+          failureReason(e)
+        )
       );
       throw e;
     } finally {
@@ -1248,7 +1469,67 @@ public class UpdaterPlugin extends Plugin {
 
   private String resolveTargetChannel(String channel) {
     String resolved = trimToNull(channel);
-    return resolved != null ? resolved : this.channel;
+    if (resolved != null) {
+      return resolved;
+    }
+    String override = store.getOverrideChannel();
+    if (override != null) {
+      return override;
+    }
+    return this.channel;
+  }
+
+  /**
+   * Emit a JS lifecycle event. notifyListeners marshals to the bridge
+   * safely from any thread, so no manual dispatch is needed.
+   */
+  private void emitEvent(String name, JSObject data) {
+    notifyListeners(name, data);
+  }
+
+  private JSObject failureEventData(
+    String version,
+    String runtimeVersion,
+    String channel,
+    String releaseId,
+    String reason
+  ) {
+    JSObject data = new JSObject();
+    data.put("version", version);
+    data.put("reason", reason);
+    if (trimToNull(runtimeVersion) != null) {
+      data.put("runtimeVersion", runtimeVersion.trim());
+    }
+    if (trimToNull(channel) != null) {
+      data.put("channel", channel.trim());
+    }
+    if (trimToNull(releaseId) != null) {
+      data.put("releaseId", releaseId.trim());
+    }
+    return data;
+  }
+
+  /** Map a native error to a stable event reason string. */
+  private String failureReason(Exception e) {
+    String message = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+    if (message.contains("hash mismatch")) {
+      return "hash_mismatch";
+    }
+    if (message.contains("disk space")) {
+      return "insufficient_disk_space";
+    }
+    if (message.contains("index.html")) {
+      return "invalid_bundle";
+    }
+    // ZipUtils throws SecurityException for guard violations and prefixes
+    // its messages with "Zip ". Don't match ".zip" anywhere in the message:
+    // network failures often carry the temp file path (…/otakit-….zip).
+    if (
+      e instanceof SecurityException || message.startsWith("zip ") || message.contains("extract")
+    ) {
+      return "extract_failed";
+    }
+    return "download_failed";
   }
 
   private void sendDeviceEvent(

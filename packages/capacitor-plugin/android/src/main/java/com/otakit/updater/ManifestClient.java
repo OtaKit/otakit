@@ -198,7 +198,9 @@ final class ManifestClient {
           strategy = rawStrategy;
         }
       }
-      boolean forceImmediate = json.optBoolean("forceImmediate", false);
+      // Strict boolean (no string coercion) to match the iOS parser.
+      Object rawForceImmediate = json.opt("forceImmediate");
+      boolean forceImmediate = Boolean.TRUE.equals(rawForceImmediate);
       ManifestEncryption encryption = parseEncryption(json);
 
       String downloadUrl = null;

@@ -452,6 +452,7 @@ export function ProductDashboard({
     bundle: BundleSummaryItem;
     selectedTargetKey: string;
     newChannelName: string;
+    forceImmediate: boolean;
   } | null>(null);
 
   // Revert
@@ -461,6 +462,7 @@ export function ProductDashboard({
     runtimeVersion: string | null;
     currentVersion: string;
     previousVersion: string | null;
+    forceImmediate: boolean;
   } | null>(null);
   const [revertBusy, setRevertBusy] = useState(false);
 
@@ -815,12 +817,14 @@ export function ProductDashboard({
         getReleaseTargetsForRuntime(releaseTargets, bundle.runtimeVersion),
       ),
       newChannelName: '',
+      forceImmediate: false,
     });
   }
 
   async function releaseBundle(
     bundle: BundleSummaryItem,
     target: ReleaseTarget | null,
+    forceImmediate = false,
   ): Promise<boolean> {
     if (!selectedAppId || !target) return false;
     if (isCurrentOnTarget(bundle, target.channel, target.runtimeVersion)) {
@@ -838,7 +842,7 @@ export function ProductDashboard({
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bundleId: bundle.id, channel: target.channel }),
+        body: JSON.stringify({ bundleId: bundle.id, channel: target.channel, forceImmediate }),
       });
       const data = await parseJson<ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
@@ -866,7 +870,11 @@ export function ProductDashboard({
     if (releaseChannelError || releaseChannelMissing) {
       return;
     }
-    await releaseBundle(releaseConfirm.bundle, releaseSelectedTarget);
+    await releaseBundle(
+      releaseConfirm.bundle,
+      releaseSelectedTarget,
+      releaseConfirm.forceImmediate,
+    );
   }
 
   function openRevertConfirm(row: ReleaseHistoryItem) {
@@ -876,6 +884,7 @@ export function ProductDashboard({
       runtimeVersion: row.runtimeVersion,
       currentVersion: row.bundleVersion,
       previousVersion: row.previousBundleVersion ?? null,
+      forceImmediate: false,
     });
   }
 
@@ -887,6 +896,8 @@ export function ProductDashboard({
         `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(revertConfirm.releaseId)}/revert`,
         {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
         },
       );
       const data = await parseJson<ApiError>(res);
@@ -1354,6 +1365,16 @@ export function ProductDashboard({
                                                               </span>
                                                               <span className="truncate font-mono">
                                                                 {rel.previousBundleVersion}
+                                                              </span>
+                                                            </>
+                                                          ) : null}
+                                                          {rel?.forceImmediate ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Rollout
+                                                              </span>
+                                                              <span className="font-medium text-amber-600 dark:text-amber-400">
+                                                                Force immediate
                                                               </span>
                                                             </>
                                                           ) : null}
@@ -1872,6 +1893,27 @@ export function ProductDashboard({
                 <span className="text-muted-foreground">Release to</span>
                 <code className="font-mono text-xs">{releaseConfirm.bundle.version}</code>
               </div>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="release-force-immediate"
+                  checked={releaseConfirm.forceImmediate}
+                  onCheckedChange={(checked) =>
+                    setReleaseConfirm((current) =>
+                      current ? { ...current, forceImmediate: checked === true } : current,
+                    )
+                  }
+                  disabled={releaseConfirmBusy}
+                />
+                <div className="grid gap-1 leading-none">
+                  <Label htmlFor="release-force-immediate" className="text-sm font-normal">
+                    Force immediate update
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Devices apply and reload on their next check. For broken releases, not routine
+                    rollouts.
+                  </p>
+                </div>
+              </div>
               {releaseAlreadyCurrent ? (
                 <p className="text-xs text-muted-foreground">
                   This bundle is already current on{' '}
@@ -1956,6 +1998,28 @@ export function ProductDashboard({
                   bundle.
                 </p>
               )}
+              {revertConfirm.previousVersion ? (
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="revert-force-immediate"
+                    checked={revertConfirm.forceImmediate}
+                    onCheckedChange={(checked) =>
+                      setRevertConfirm((current) =>
+                        current ? { ...current, forceImmediate: checked === true } : current,
+                      )
+                    }
+                    disabled={revertBusy}
+                  />
+                  <div className="grid gap-1 leading-none">
+                    <Label htmlFor="revert-force-immediate" className="text-sm font-normal">
+                      Force immediate update
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Devices apply and reload the reverted-to release on their next check.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <DialogFooter>

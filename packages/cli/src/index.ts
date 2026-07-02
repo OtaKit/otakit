@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 
+import { compatibilityCommand } from './commands/compatibility.js';
 import { configCommand } from './commands/config.js';
 import { registerCommand } from './commands/register.js';
 import { uploadCommand } from './commands/upload.js';
@@ -10,6 +11,7 @@ import { listCommand } from './commands/list.js';
 import { deleteCommand } from './commands/delete.js';
 import { releasesCommand } from './commands/releases.js';
 import { generateSigningKeyCommand } from './commands/generate-signing-key.js';
+import { generateEncryptionKeyCommand } from './commands/generate-encryption-key.js';
 import { loginCommand } from './commands/login.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { logoutCommand } from './commands/logout.js';
@@ -25,11 +27,13 @@ program
 program.addCommand(configCommand);
 program.addCommand(registerCommand);
 program.addCommand(uploadCommand);
+program.addCommand(compatibilityCommand);
 program.addCommand(releaseCommand);
 program.addCommand(listCommand);
 program.addCommand(deleteCommand);
 program.addCommand(releasesCommand);
 program.addCommand(generateSigningKeyCommand);
+program.addCommand(generateEncryptionKeyCommand);
 program.addCommand(loginCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(logoutCommand);

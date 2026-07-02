@@ -20,7 +20,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   private enum DownloadResolution {
     case noUpdate
-    case staged(BundleInfo)
+    case staged(BundleInfo, forceImmediate: Bool)
   }
 
   public let identifier = "UpdaterPlugin"
@@ -33,6 +33,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "notifyAppReady", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getLastFailure", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "setChannel", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getChannel", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -52,6 +54,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var channel: String?
   private var runtimeVersion: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
+  private var bundleKeys: [(kid: String, key: Data)] = []
   private var trialTimeoutWorkItem: DispatchWorkItem?
   private var checkIntervalMs: Int = 600_000
   private var foregroundObserver: NSObjectProtocol?
@@ -103,6 +106,22 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults
+    }
+
+    let rawBundleKeysValue = getConfig().getArray("bundleKeys")
+    if let rawBundleKeys = rawBundleKeysValue as? [[String: String]] {
+      bundleKeys = rawBundleKeys.compactMap { entry in
+        guard let kid = entry["kid"],
+              let keyBase64 = entry["key"],
+              let keyData = Data(base64Encoded: keyBase64),
+              keyData.count == 32 else { return nil }
+        return (kid: kid, key: keyData)
+      }
+      if bundleKeys.isEmpty && !rawBundleKeys.isEmpty {
+        print("[OtaKit] ERROR: bundleKeys configured but all entries are invalid. Encrypted bundles cannot be decrypted.")
+      }
+    } else if rawBundleKeysValue != nil {
+      print("[OtaKit] ERROR: bundleKeys has wrong format (expected array of {kid, key}). Encrypted bundles cannot be decrypted.")
     }
 
     pruneIncompatibleBundles()
@@ -196,13 +215,19 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return
       }
       executeAutomaticUpdate(label: "runtime apply-staged fallback") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
         resolveCurrentRuntimeKey()
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "runtime shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
         resolveCurrentRuntimeKey()
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "runtime immediate") { [self] in
@@ -232,11 +257,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         return
       }
       executeAutomaticUpdate(label: "launch apply-staged fallback") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "launch shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: false, channel: nil)
+        let result = try await downloadLatest(respectInterval: false, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "launch immediate") { [self] in
@@ -257,11 +288,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         if try applyStaged(reloadAfterApply: true) {
           return
         }
-        _ = try await downloadLatest(respectInterval: true, channel: nil)
+        let result = try await downloadLatest(respectInterval: true, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .shadow:
       executeAutomaticUpdate(label: "resume shadow") { [self] in
-        _ = try await downloadLatest(respectInterval: true, channel: nil)
+        let result = try await downloadLatest(respectInterval: true, channel: nil)
+        if isForcedStaged(result) {
+          try requireApplyStaged(reloadAfterApply: true)
+        }
       }
     case .immediate:
       executeAutomaticUpdate(label: "resume immediate") { [self] in
@@ -413,6 +450,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
+      // eventPayload is non-nil only on a genuine trial -> success transition,
+      // so repeat notifyAppReady() calls never double-emit.
+      emitEvent("updateApplied", ["bundle": store.getCurrentBundle().toDictionary()])
     }
 
     call.resolve()
@@ -424,6 +464,54 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
     call.resolve(failed.toDictionary())
+  }
+
+  @objc func setChannel(_ call: CAPPluginCall) {
+    let raw = call.options["channel"]
+    if raw == nil || raw is NSNull {
+      store.setOverrideChannel(nil)
+      call.resolve()
+      return
+    }
+    guard let name = raw as? String else {
+      call.reject("channel must be a string or null")
+      return
+    }
+    guard isValidChannelName(name) else {
+      call.reject(
+        "Invalid channel name '\(name)': use 1-64 letters, numbers, '.', '_' or '-' (reserved names: base, default)"
+      )
+      return
+    }
+    store.setOverrideChannel(name)
+    call.resolve()
+  }
+
+  @objc func getChannel(_ call: CAPPluginCall) {
+    if let override = store.getOverrideChannel() {
+      call.resolve(["channel": override, "source": "override"])
+      return
+    }
+    call.resolve([
+      "channel": channel ?? NSNull(),
+      "source": "config",
+    ])
+  }
+
+  /// Mirrors the server's isValidChannelName (console/lib/validation.ts):
+  /// charset regex plus reserved names. The channel is interpolated into the
+  /// manifest CDN path, so anything outside this charset (or a ".." sequence)
+  /// is rejected before it is persisted or used.
+  private func isValidChannelName(_ name: String) -> Bool {
+    // \A/\z anchor the whole input: ICU's ^/$ would accept a trailing
+    // line terminator (e.g. "beta\n"), diverging from Android/server.
+    guard name.range(of: "\\A[A-Za-z0-9._-]{1,64}\\z", options: .regularExpression) != nil else {
+      return false
+    }
+    if name.contains("..") || name == "." {
+      return false
+    }
+    return !["base", "default"].contains(name.lowercased())
   }
 
   private func fetchLatest(channel: String?) async throws -> LatestManifest? {
@@ -463,6 +551,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let resolution = try classifyLatestManifest(manifest, targetChannel: targetChannel)
 
+    if case let .updateAvailable(available) = resolution {
+      emitEvent("updateAvailable", manifestToDictionary(available))
+    }
+
     if respectInterval {
       recordCheckTimestamp()
     }
@@ -478,15 +570,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     switch result {
     case .noUpdate:
       return .noUpdate
-    case let .alreadyStaged(_, bundle):
-      return .staged(bundle)
+    case let .alreadyStaged(latest, bundle):
+      return .staged(bundle, forceImmediate: latest.forceImmediate)
     case let .updateAvailable(manifest):
       do {
         let bundle = try await downloadLatestManifest(
           manifest,
           targetChannel: targetChannel
         )
-        return .staged(bundle)
+        return .staged(bundle, forceImmediate: manifest.forceImmediate)
       } catch let error as NSError where isExpiredURLError(error) {
         guard let refreshed = try await fetchLatest(channel: targetChannel) else {
           return .noUpdate
@@ -495,14 +587,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         switch try classifyLatestManifest(refreshed, targetChannel: targetChannel) {
         case .noUpdate:
           return .noUpdate
-        case let .alreadyStaged(_, bundle):
-          return .staged(bundle)
+        case let .alreadyStaged(latest, bundle):
+          return .staged(bundle, forceImmediate: latest.forceImmediate)
         case let .updateAvailable(retryManifest):
           let bundle = try await downloadLatestManifest(
             retryManifest,
             targetChannel: targetChannel
           )
-          return .staged(bundle)
+          return .staged(bundle, forceImmediate: retryManifest.forceImmediate)
         }
       }
     }
@@ -555,12 +647,21 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     switch result {
     case .noUpdate:
       return ["kind": "no_update"]
-    case let .staged(bundle):
+    case let .staged(bundle, _):
       return [
         "kind": "staged",
         "bundle": bundle.toDictionary(),
       ]
     }
+  }
+
+  /// True when an automatic flow staged a bundle whose release is marked
+  /// force-immediate — the flow escalates to apply + reload.
+  private func isForcedStaged(_ result: DownloadResolution) -> Bool {
+    if case let .staged(_, forceImmediate) = result {
+      return forceImmediate
+    }
+    return false
   }
 
   private func isExpiredURLError(_ error: NSError) -> Bool {
@@ -579,11 +680,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     expectedSize: Int? = nil,
     runtimeVersion: String? = nil,
     channel: String? = nil,
-    releaseId: String? = nil
+    releaseId: String? = nil,
+    encryption: ManifestEncryption? = nil
   ) async throws -> BundleInfo {
     // Check disk space before downloading
     if let size = expectedSize {
-      let requiredSpace = Int64(Double(size) * 2.5) // zip + extracted + buffer
+      // zip + extracted + buffer; encrypted bundles keep an extra decrypted
+      // zip copy on disk between decrypt and extract.
+      let multiplier = encryption != nil ? 3.5 : 2.5
+      let requiredSpace = Int64(Double(size) * multiplier)
       let availableSpace = getFreeDiskSpace()
       if availableSpace < requiredSpace {
         let error = NSError(
@@ -599,20 +704,60 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           releaseId: releaseId,
           detail: "insufficient_disk_space"
         )
+        emitEvent(
+          "downloadFailed",
+          failureEventData(
+            version: version,
+            runtimeVersion: runtimeVersion,
+            channel: channel,
+            releaseId: releaseId,
+            reason: "insufficient_disk_space"
+          )
+        )
         throw error
       }
     }
 
-    let zipURL = try await downloader.download(from: url)
+    let zipURL: URL
+    do {
+      zipURL = try await downloader.download(from: url)
+    } catch {
+      // Network failures must report like every other download-path failure
+      // (Android's downloadZip already sits inside its try block).
+      sendDeviceEvent(
+        action: .downloadError,
+        bundleVersion: version,
+        runtimeVersion: runtimeVersion,
+        channel: channel,
+        releaseId: releaseId,
+        detail: error.localizedDescription
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: version,
+          runtimeVersion: runtimeVersion,
+          channel: channel,
+          releaseId: releaseId,
+          reason: failureReason(from: error)
+        )
+      )
+      throw error
+    }
 
     let extractDirectory = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)
+    let decryptedZipURL = fileManager.temporaryDirectory
+      .appendingPathComponent("otakit-decrypted-\(UUID().uuidString).zip")
     defer {
       try? fileManager.removeItem(at: zipURL)
+      try? fileManager.removeItem(at: decryptedZipURL)
       try? fileManager.removeItem(at: extractDirectory)
     }
 
     do {
+      // The manifest sha256 covers the downloaded object as-is — the
+      // ciphertext when the bundle is encrypted.
       let valid = try HashUtils.verify(
         fileURL: zipURL,
         expectedSha256: expectedSha256
@@ -625,7 +770,26 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         )
       }
 
-      try zipUtils.extractSecurely(zipURL: zipURL, to: extractDirectory)
+      var zipToExtract = zipURL
+      if let encryption {
+        guard let bundleKey = bundleKeys.first(where: { $0.kid == encryption.kid }) else {
+          throw BundleCryptoError.noMatchingKey(encryption.kid)
+        }
+        let dek = try BundleCrypto.unwrapDek(
+          kek: bundleKey.key,
+          wrapNonceB64: encryption.wrapNonce,
+          wrappedDekB64: encryption.wrappedDek
+        )
+        try BundleCrypto.decryptFile(
+          dek: dek,
+          nonceB64: encryption.nonce,
+          input: zipURL,
+          output: decryptedZipURL
+        )
+        zipToExtract = decryptedZipURL
+      }
+
+      try zipUtils.extractSecurely(zipURL: zipToExtract, to: extractDirectory)
       let bundleRoot = try resolveBundleRoot(extractedDirectory: extractDirectory)
 
       let bundleId = buildBundleId(
@@ -665,6 +829,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: channel,
         releaseId: releaseId
       )
+      emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
     } catch {
       sendDeviceEvent(
@@ -674,6 +839,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: channel,
         releaseId: releaseId,
         detail: error.localizedDescription
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: version,
+          runtimeVersion: runtimeVersion,
+          channel: channel,
+          releaseId: releaseId,
+          reason: failureReason(from: error)
+        )
       )
       throw error
     }
@@ -778,6 +953,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     coordinator.cleanupBundles(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
+      emitEvent(
+        "rollback",
+        failureEventData(
+          version: eventPayload.bundleVersion ?? "",
+          runtimeVersion: eventPayload.runtimeVersion,
+          channel: eventPayload.channel,
+          releaseId: eventPayload.releaseId,
+          reason: reason
+        )
+      )
     }
 
     do {
@@ -866,6 +1051,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       payload["runtimeVersion"] = runtimeVersion
     }
     payload["releaseId"] = latest.releaseId
+    payload["forceImmediate"] = latest.forceImmediate
     return payload
   }
 
@@ -892,7 +1078,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       expectedSize: manifest.size,
       runtimeVersion: manifest.runtimeVersion,
       channel: targetChannel,
-      releaseId: manifest.releaseId
+      releaseId: manifest.releaseId,
+      encryption: manifest.encryption
     )
   }
 
@@ -914,6 +1101,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: targetChannel,
         releaseId: manifest.releaseId,
         detail: "insufficient_disk_space"
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: manifest.version,
+          runtimeVersion: manifest.runtimeVersion,
+          channel: targetChannel,
+          releaseId: manifest.releaseId,
+          reason: "insufficient_disk_space"
+        )
       )
       throw NSError(
         domain: "OtaKit",
@@ -997,6 +1194,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: targetChannel,
         releaseId: manifest.releaseId
       )
+      emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
     } catch {
       sendDeviceEvent(
@@ -1006,6 +1204,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         channel: targetChannel,
         releaseId: manifest.releaseId,
         detail: error.localizedDescription
+      )
+      emitEvent(
+        "downloadFailed",
+        failureEventData(
+          version: manifest.version,
+          runtimeVersion: manifest.runtimeVersion,
+          channel: targetChannel,
+          releaseId: manifest.releaseId,
+          reason: failureReason(from: error)
+        )
       )
       throw error
     }
@@ -1086,6 +1294,53 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return "\(normalized)-\(suffix)"
   }
 
+  /// Emit a JS lifecycle event. `notifyListeners` marshals to the bridge
+  /// safely from any thread, so no manual dispatch is needed.
+  private func emitEvent(_ name: String, _ data: [String: Any]) {
+    notifyListeners(name, data: data)
+  }
+
+  private func failureEventData(
+    version: String,
+    runtimeVersion: String?,
+    channel: String?,
+    releaseId: String?,
+    reason: String
+  ) -> [String: Any] {
+    var data: [String: Any] = [
+      "version": version,
+      "reason": reason,
+    ]
+    if let runtimeVersion = trimToNil(runtimeVersion) {
+      data["runtimeVersion"] = runtimeVersion
+    }
+    if let channel = trimToNil(channel) {
+      data["channel"] = channel
+    }
+    if let releaseId = trimToNil(releaseId) {
+      data["releaseId"] = releaseId
+    }
+    return data
+  }
+
+  /// Map a native error to a stable event reason string.
+  private func failureReason(from error: Error) -> String {
+    if error is ZipUtilsError {
+      return "extract_failed"
+    }
+    let description = error.localizedDescription.lowercased()
+    if description.contains("hash mismatch") {
+      return "hash_mismatch"
+    }
+    if description.contains("disk space") {
+      return "insufficient_disk_space"
+    }
+    if description.contains("index.html") {
+      return "invalid_bundle"
+    }
+    return "download_failed"
+  }
+
   private func sendDeviceEvent(
     action: DeviceEventAction,
     bundleVersion: String? = nil,
@@ -1163,6 +1418,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private func resolveTargetChannel(_ channel: String?) -> String? {
     if let channel = trimToNil(channel) {
       return channel
+    }
+    if let override = store.getOverrideChannel() {
+      return override
     }
     return self.channel
   }

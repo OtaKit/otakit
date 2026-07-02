@@ -11,6 +11,7 @@ type ReleaseOptions = {
   appId?: string;
   server?: string;
   channel?: string;
+  forceImmediate?: boolean;
 };
 
 export const releaseCommand = new Command('release')
@@ -19,6 +20,10 @@ export const releaseCommand = new Command('release')
   .option('--app-id <id>', 'App ID override')
   .option('--server <url>', 'Server URL override')
   .option('--channel <channel>', 'Channel name (omit for the base channel)')
+  .option(
+    '--force-immediate',
+    'Devices apply and reload this release on their next check (emergency fixes)',
+  )
   .action(async (bundleId: string | undefined, options: ReleaseOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -28,11 +33,13 @@ export const releaseCommand = new Command('release')
       const api = new ApiClient(config);
       const channel = options.channel ? normalizeChannel(options.channel) : null;
       const targetLabel = channel ?? 'base channel';
+      const forceImmediate = options.forceImmediate === true;
+      const forceLabel = forceImmediate ? ' (force immediate)' : '';
 
       if (bundleId) {
         const spinner = ora(`Releasing ${bundleId} to ${targetLabel}...`).start();
-        await api.release(channel, bundleId);
-        spinner.succeed(`Released ${bundleId} to ${targetLabel}.`);
+        await api.release(channel, bundleId, { forceImmediate });
+        spinner.succeed(`Released ${bundleId} to ${targetLabel}${forceLabel}.`);
         return;
       }
 
@@ -45,7 +52,7 @@ export const releaseCommand = new Command('release')
 
       const latest = bundles[0];
       spinner.text = `Releasing ${latest.version} to ${targetLabel}...`;
-      await api.release(channel, latest.id);
-      spinner.succeed(`Released ${latest.version} to ${targetLabel}.`);
+      await api.release(channel, latest.id, { forceImmediate });
+      spinner.succeed(`Released ${latest.version} to ${targetLabel}${forceLabel}.`);
     });
   });

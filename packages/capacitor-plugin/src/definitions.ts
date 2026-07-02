@@ -1,3 +1,5 @@
+import type { PluginListenerHandle } from '@capacitor/core';
+
 /**
  * Bundle status enum.
  */
@@ -48,6 +50,12 @@ export interface LatestVersion {
   releaseId: string;
   /** Update strategy this manifest was published with. Defaults to 'zip'. */
   strategy?: 'zip' | 'deltas';
+  /**
+   * True when the release is marked force-immediate: automatic flows apply
+   * and reload it on the next lifecycle event regardless of shadow or
+   * apply-staged policies. Manual API behavior is unchanged.
+   */
+  forceImmediate?: boolean;
 }
 
 export interface OtaKitState {
@@ -61,6 +69,13 @@ export type OtaKitPolicy = 'off' | 'shadow' | 'apply-staged' | 'immediate';
 
 export interface OtaKitManifestKey {
   kid: string;
+  key: string;
+}
+
+export interface OtaKitBundleKey {
+  /** Key ID: first 16 hex chars of sha256(key). Printed by `otakit generate-encryption-key`. */
+  kid: string;
+  /** 256-bit AES key, base64. Inject from an env var at build time; do not commit. */
   key: string;
 }
 
@@ -93,6 +108,56 @@ export interface DownloadStagedResult {
 }
 
 export type DownloadResult = DownloadNoUpdateResult | DownloadStagedResult;
+
+export interface ChannelInfo {
+  /** The effective release channel, or null for the base channel. */
+  channel: string | null;
+  /** Where the effective channel comes from: a runtime override or static config. */
+  source: 'override' | 'config';
+}
+
+/**
+ * Payload for the `updateStaged` event: a bundle was downloaded, verified,
+ * and staged, ready to apply.
+ */
+export interface UpdateStagedEvent {
+  bundle: BundleInfo;
+}
+
+/**
+ * Payload for the `updateApplied` event: a newly activated bundle was
+ * confirmed healthy via notifyAppReady().
+ */
+export interface UpdateAppliedEvent {
+  bundle: BundleInfo;
+}
+
+/**
+ * Payload for the `downloadFailed` and `rollback` events.
+ */
+export interface UpdateFailedEvent {
+  version: string;
+  runtimeVersion?: string;
+  releaseId?: string;
+  channel?: string;
+  /** Stable failure reason, e.g. "hash_mismatch", "insufficient_disk_space", "notify_timeout". */
+  reason: string;
+}
+
+/**
+ * Update lifecycle events emitted by the plugin.
+ *
+ * Events fire only while the app process is alive. Reconcile with
+ * getState() and getLastFailure() on startup for anything that happened
+ * while no listener was attached (e.g. a bundle staged in a previous
+ * session, or a startup rollback).
+ */
+export type OtaKitEventName =
+  | 'updateAvailable'
+  | 'updateStaged'
+  | 'updateApplied'
+  | 'downloadFailed'
+  | 'rollback';
 
 /**
  * Plugin configuration for capacitor.config.ts.
@@ -127,6 +192,11 @@ export interface OtaKitConfig {
   cdnUrl?: string;
   /** Custom manifest verification keys for self-hosted or custom trust. */
   manifestKeys?: OtaKitManifestKey[];
+  /**
+   * Bundle decryption keys for end-to-end encrypted bundles.
+   * Array to allow rotation: ship old + new keys together during a transition.
+   */
+  bundleKeys?: OtaKitBundleKey[];
   /** Allow HTTP only for localhost development. Defaults to false. */
   allowInsecureUrls?: boolean;
 }
@@ -178,6 +248,57 @@ export interface OtaKitPlugin {
    * Returns null if no failure has occurred.
    */
   getLastFailure(): Promise<BundleInfo | null>;
+
+  /**
+   * Override the release channel at runtime (e.g. a "Join beta" toggle).
+   * Pass null to clear the override and return to the configured channel.
+   *
+   * The override is persisted across launches and takes effect on the next
+   * check/download/automatic cycle — it does not trigger anything by itself.
+   * Rejects invalid channel names without persisting.
+   */
+  setChannel(options: { channel: string | null }): Promise<void>;
+
+  /**
+   * Get the effective release channel and where it comes from
+   * (a runtime override or the static plugin config).
+   */
+  getChannel(): Promise<ChannelInfo>;
+
+  /**
+   * Subscribe to update lifecycle events.
+   *
+   * Events fire only while the app is running. On startup, reconcile with
+   * getState() (anything staged while not listening) and getLastFailure()
+   * (startup rollbacks happen before JS boots and cannot reach a listener).
+   * apply() reloads the WebView and destroys the JS context, so attach
+   * `updateApplied` / `rollback` listeners early in app startup.
+   */
+  addListener(
+    eventName: 'updateAvailable',
+    listenerFunc: (latest: LatestVersion) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'updateStaged',
+    listenerFunc: (event: UpdateStagedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'updateApplied',
+    listenerFunc: (event: UpdateAppliedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'downloadFailed',
+    listenerFunc: (event: UpdateFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'rollback',
+    listenerFunc: (event: UpdateFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * Remove all registered event listeners.
+   */
+  removeAllListeners(): Promise<void>;
 }
 
 export interface OtaKitBridgePlugin {
@@ -188,4 +309,11 @@ export interface OtaKitBridgePlugin {
   update(): Promise<void>;
   notifyAppReady(): Promise<void>;
   getLastFailure(): Promise<BundleInfo | null>;
+  setChannel(options: { channel: string | null }): Promise<void>;
+  getChannel(): Promise<ChannelInfo>;
+  addListener(
+    eventName: OtaKitEventName,
+    listenerFunc: (event: unknown) => void,
+  ): Promise<PluginListenerHandle>;
+  removeAllListeners(): Promise<void>;
 }

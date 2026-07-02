@@ -64,8 +64,9 @@ export const releasesCommand = new Command('releases')
 
       for (const release of response.releases) {
         const bundleVersion = release.bundleVersion ? ` (${release.bundleVersion})` : '';
+        const forceLabel = release.forceImmediate ? ' [force-immediate]' : '';
         console.log(
-          `${formatReleaseLane(release.channel, release.runtimeVersion)}: ${release.bundleId}${bundleVersion} at ${release.promotedAt}`,
+          `${formatReleaseLane(release.channel, release.runtimeVersion)}: ${release.bundleId}${bundleVersion}${forceLabel} at ${release.promotedAt}`,
         );
       }
       console.log(`Total: ${response.total}`);

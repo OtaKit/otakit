@@ -271,9 +271,16 @@ await OtaKit.notifyAppReady();`}</Pre>
         />
       </div>
       <P>
-        There is no listener API in the current plugin surface. If you want custom update UI, use{' '}
-        <Code>check()</Code>, <Code>getState()</Code>, <Code>download()</Code>, and{' '}
-        <Code>apply()</Code> directly.
+        The plugin also emits lifecycle events — <Code>updateAvailable</Code>,{' '}
+        <Code>updateStaged</Code>, <Code>updateApplied</Code>, <Code>downloadFailed</Code>, and{' '}
+        <Code>rollback</Code> — via <Code>OtaKit.addListener(...)</Code>. See{' '}
+        <Link
+          href="/docs/events"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Events &amp; Listeners
+        </Link>{' '}
+        for the full reference and the startup reconciliation pattern.
       </P>
       <P>
         After a successful <Code>apply()</Code> or an <Code>update()</Code> that installs a new

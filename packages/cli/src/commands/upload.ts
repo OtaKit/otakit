@@ -3,8 +3,14 @@ import { Command } from 'commander';
 import ora from 'ora';
 
 import { ApiClient } from '../lib/api.js';
+import { checkCompatibilityAgainstChannel } from '../lib/compat-check.js';
 import { requireConfig } from '../lib/config.js';
-import { runCommand } from '../lib/errors.js';
+import { CliError, runCommand } from '../lib/errors.js';
+import {
+  collectNativePackages,
+  formatCompatibilityReport,
+  type NativePackage,
+} from '../lib/native-deps.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
 import { normalizeChannel } from '../lib/validate.js';
 
@@ -15,6 +21,12 @@ type UploadOptions = {
   strictVersion?: boolean;
   release?: string | boolean;
   strategy?: string;
+  failOnIncompatible?: boolean;
+  ignoreCompat?: boolean;
+  packageJson?: string;
+  nodeModules?: string;
+  forceImmediate?: boolean;
+  encrypt?: boolean;
 };
 
 function resolveStrategy(
@@ -54,6 +66,18 @@ export const uploadCommand = new Command('upload')
     '--strategy <strategy>',
     'Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects)',
   )
+  .option('--fail-on-incompatible', 'Exit non-zero when native compatibility check fails')
+  .option('--ignore-compat', 'Skip the native compatibility check')
+  .option('--package-json <path>', 'package.json used for native dependency detection')
+  .option('--node-modules <path>', 'node_modules used for native dependency detection')
+  .option(
+    '--force-immediate',
+    'With --release: devices apply and reload on their next check (emergency fixes)',
+  )
+  .option(
+    '--encrypt',
+    'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY (auto-enabled when the env var is set)',
+  )
   .action(async (path: string | undefined, options: UploadOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -77,6 +101,45 @@ export const uploadCommand = new Command('upload')
       const releaseChannel = resolveReleaseChannel(options.release);
       const strategy = resolveStrategy(options.strategy, config.updateStrategy);
 
+      // Always capture the native set so this upload becomes the baseline for
+      // the next one; --ignore-compat only skips the comparison.
+      let nativePackages: NativePackage[] | undefined;
+      try {
+        nativePackages = collectNativePackages({
+          packageJsonPath: options.packageJson,
+          nodeModulesPath: options.nodeModules,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Skipping native dependency detection: ${message}`);
+      }
+
+      if (nativePackages && !options.ignoreCompat) {
+        // Compare against the channel this bundle is headed for; a plain
+        // upload without --release is checked against the base channel.
+        const targetChannel = releaseChannel === undefined ? null : releaseChannel;
+        const result = await checkCompatibilityAgainstChannel({
+          api,
+          channel: targetChannel,
+          runtimeVersion: config.runtimeVersion,
+          nativePackages,
+        });
+
+        if (result.status === 'incompatible') {
+          console.error(formatCompatibilityReport(result));
+          if (options.failOnIncompatible) {
+            throw new CliError('Upload blocked: incompatible native changes detected.');
+          }
+          console.warn('Continuing upload despite incompatible native changes (warning only).');
+        } else if (result.status === 'skipped') {
+          console.log('Native compatibility check skipped (no baseline on this channel/lane yet).');
+        }
+      }
+
+      if (options.forceImmediate === true && releaseChannel === undefined) {
+        console.warn('--force-immediate has no effect without --release; ignoring.');
+      }
+
       const spinner = ora(
         strategy === 'deltas' ? 'Hashing bundle files...' : 'Creating zip archive...',
       ).start();
@@ -90,6 +153,9 @@ export const uploadCommand = new Command('upload')
             runtimeVersion: config.runtimeVersion,
             releaseChannel,
             strategy,
+            nativePackages,
+            forceImmediate: options.forceImmediate === true,
+            encrypt: options.encrypt,
             onStatus: (message) => {
               spinner.text = message;
             },

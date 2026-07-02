@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 
-import type { OtaKitBridgePlugin, OtaKitPlugin, BundleInfo } from './definitions';
+import type { OtaKitBridgePlugin, OtaKitPlugin, BundleInfo, OtaKitEventName } from './definitions';
 
 const NativeOtaKit = registerPlugin<OtaKitBridgePlugin>('OtaKit', {
   web: () => import('./web').then((m) => new m.OtaKitWeb()),
@@ -30,6 +30,13 @@ const OtaKit: OtaKitPlugin = {
   notifyAppReady: () => NativeOtaKit.notifyAppReady(),
   getLastFailure: async (): Promise<BundleInfo | null> =>
     normalizeNullable(await NativeOtaKit.getLastFailure()),
+  setChannel: (options) => NativeOtaKit.setChannel(options),
+  getChannel: () => NativeOtaKit.getChannel(),
+  // NativeOtaKit is the registerPlugin proxy, which implements Capacitor's
+  // listener API; this plain-object wrapper must forward it explicitly.
+  addListener: ((eventName: OtaKitEventName, listenerFunc: (event: unknown) => void) =>
+    NativeOtaKit.addListener(eventName, listenerFunc)) as OtaKitPlugin['addListener'],
+  removeAllListeners: () => NativeOtaKit.removeAllListeners(),
 };
 
 export * from './definitions';

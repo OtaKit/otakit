@@ -7,6 +7,7 @@ final class BundleStore {
     static let stagedBundleId = "otakit_staged_bundle_id"
     static let lastFailedBundleInfo = "otakit_last_failed_bundle_info"
     static let lastResolvedRuntimeKey = "otakit_last_resolved_runtime_key"
+    static let overrideChannel = "otakit_override_channel"
   }
 
   private let defaults = UserDefaults.standard
@@ -221,6 +222,18 @@ final class BundleStore {
       return nil
     }
     return try? decoder.decode(BundleInfo.self, from: data)
+  }
+
+  func getOverrideChannel() -> String? {
+    defaults.string(forKey: Keys.overrideChannel)
+  }
+
+  func setOverrideChannel(_ channel: String?) {
+    if let channel {
+      defaults.set(channel, forKey: Keys.overrideChannel)
+    } else {
+      defaults.removeObject(forKey: Keys.overrideChannel)
+    }
   }
 
   func getLastResolvedRuntimeKey() -> String? {
