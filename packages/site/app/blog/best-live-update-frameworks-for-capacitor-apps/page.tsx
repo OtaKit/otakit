@@ -67,8 +67,8 @@ export default function BestFrameworksPage() {
       <h2>Side by side</h2>
       <DataTable headers={['', 'OtaKit', 'Capgo', 'Capawesome']} rows={comparisonRows} />
       <p>
-        And here&apos;s what the exact same app costs — same users, four releases a month, each
-        vendor&apos;s published pricing:
+        And here&apos;s what the exact same app costs on each vendor&apos;s published pricing,
+        assuming weekly releases:
       </p>
       <ul>
         <li>
