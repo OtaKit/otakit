@@ -136,6 +136,36 @@ otakit upload --release`}</Pre>
 
       <Separator className="my-10" />
 
+      <H2>Keep delta updates small</H2>
+      <P>
+        With <Code>updateStrategy: &apos;deltas&apos;</Code>, OtaKit only downloads files whose{' '}
+        <em>contents</em> changed since the device&rsquo;s last bundle — images, fonts, and unchanged
+        chunks are reused from the on-device cache. Anything that rewrites files on every build
+        defeats that.
+      </P>
+      <P>
+        The common culprit is a <strong>non-deterministic build ID</strong>. Next.js (static export)
+        stamps a fresh random ID into every HTML file, RSC payload, and{' '}
+        <Code>_next/static/&lt;id&gt;/</Code> path on each build, so a one-line change re-downloads
+        ~20 files instead of one. Pin it so unchanged output stays byte-identical:
+      </P>
+      <Pre>{`// next.config.ts
+const nextConfig = {
+  output: 'export',
+  // Stable build ID → minimal OTA deltas. Per-chunk content hashes still
+  // handle cache-busting, so nothing goes stale.
+  generateBuildId: async () => 'my-app',
+};
+export default nextConfig;`}</Pre>
+      <P>
+        Vite already emits stable content-hashed filenames, so no change is needed there. To verify
+        determinism for any bundler, run your production build twice without editing source — the
+        output should be byte-for-byte identical (e.g. compare file hashes). If it is, a no-op
+        release downloads nothing and a one-file change downloads one file.
+      </P>
+
+      <Separator className="my-10" />
+
       <H2>Next</H2>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
