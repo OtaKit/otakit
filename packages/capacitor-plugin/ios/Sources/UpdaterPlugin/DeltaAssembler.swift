@@ -206,16 +206,23 @@ final class DeltaAssembler {
     }
     try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
 
-    let destinationPrefix = destination.standardizedFileURL.path.hasSuffix("/")
-      ? destination.standardizedFileURL.path
-      : destination.standardizedFileURL.path + "/"
+    // Resolve the destination's symlinks ONCE and derive every target from the
+    // resolved base. iOS's temp dir is /var/… (a symlink to /private/var/…);
+    // standardizedFileURL resolved it inconsistently between the base and the
+    // appended path, so the containment check compared /var vs /private/var and
+    // rejected every file. Building targets from the already-resolved base makes
+    // the prefix check exact (mirrors Android's getCanonicalPath() on both sides).
+    let canonicalDestination = destination.resolvingSymlinksInPath()
+    let destinationPrefix = canonicalDestination.path.hasSuffix("/")
+      ? canonicalDestination.path
+      : canonicalDestination.path + "/"
 
     for entry in entries {
       try await ensureCached(entry)
 
-      let target = destination.appendingPathComponent(entry.path, isDirectory: false)
+      let target = canonicalDestination.appendingPathComponent(entry.path, isDirectory: false)
       // Defense in depth alongside isValidEntryPath (mirrors ZipUtils).
-      guard target.standardizedFileURL.path.hasPrefix(destinationPrefix) else {
+      guard target.path.hasPrefix(destinationPrefix) else {
         throw DeltaAssemblerError.invalidPath(entry.path)
       }
       let parent = target.deletingLastPathComponent()
