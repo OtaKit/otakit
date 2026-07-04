@@ -129,6 +129,7 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [usageLoading, setUsageLoading] = useState(true);
   const [savingOverage, setSavingOverage] = useState(false);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
 
   const [newOrgDialogOpen, setNewOrgDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
@@ -411,6 +412,22 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
     }
   }
 
+  async function openBillingPortal() {
+    if (!canManageTeam) return;
+    setOpeningPortal(true);
+    toast.dismiss();
+    try {
+      const response = await fetch('/api/v1/organization/billing/portal');
+      const data = await parseJson<ApiError & { portalUrl?: string }>(response);
+      if (!response.ok) throw new Error(data.error ?? 'Failed to open billing portal');
+      if (data.portalUrl) window.open(data.portalUrl, '_blank');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to open billing portal');
+    } finally {
+      setOpeningPortal(false);
+    }
+  }
+
   async function sendFeedback() {
     const message = feedbackMessage.trim();
     if (message.length < 10) {
@@ -605,14 +622,31 @@ User ID: ${initialData.user.id}`,
                       </div>
                       {canManageTeam ? (
                         <div className="flex shrink-0 gap-2">
-                          <Button
-                            size="sm"
-                            className="h-8"
-                            onClick={() => setPricingDialogOpen(true)}
-                          >
-                            <ArrowUpRight className="size-3.5" />
-                            Upgrade subscription
-                          </Button>
+                          {billingData && billingData.billing.planKey !== 'free' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              onClick={() => void openBillingPortal()}
+                              disabled={openingPortal}
+                            >
+                              {openingPortal ? (
+                                <LoaderCircle className="size-3.5 animate-spin" />
+                              ) : (
+                                <ArrowUpRight className="size-3.5" />
+                              )}
+                              Manage subscription
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="h-8"
+                              onClick={() => setPricingDialogOpen(true)}
+                            >
+                              <ArrowUpRight className="size-3.5" />
+                              Upgrade subscription
+                            </Button>
+                          )}
                         </div>
                       ) : null}
                     </div>
