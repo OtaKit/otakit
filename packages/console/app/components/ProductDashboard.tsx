@@ -406,6 +406,10 @@ export function ProductDashboard({
   docsHref,
 }: ProductDashboardProps) {
   const router = useRouter();
+  // Docs live on the marketing site, not the console — resolve an absolute base
+  // so these links don't 404 against console.otakit.app.
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://otakit.app').replace(/\/+$/, '');
+  const docsUrl = docsHref ?? `${siteUrl}/docs`;
   const selectionStorageKey = 'selectedAppId';
   const [apps, setApps] = useState<AppSummary[]>(initialData.apps);
 
@@ -997,7 +1001,7 @@ export function ProductDashboard({
         brandHref={brandHref}
         dashboardHref={dashboardHref}
         settingsHref={settingsHref}
-        docsHref={docsHref}
+        docsHref={docsUrl}
       />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
@@ -1124,7 +1128,9 @@ export function ProductDashboard({
                         </div>
                         <p className="mt-4">
                           <Link
-                            href="/docs/setup"
+                            href={`${docsUrl}/setup`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
                           >
                             Read the setup guide
@@ -1170,7 +1176,9 @@ export function ProductDashboard({
                           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                             Build your web assets and upload them with the{' '}
                             <Link
-                              href="/docs/cli"
+                              href={`${docsUrl}/cli`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="underline underline-offset-4 hover:text-foreground"
                             >
                               CLI
@@ -1179,7 +1187,9 @@ export function ProductDashboard({
                           </p>
                           <p className="mt-4">
                             <Link
-                              href="/docs/setup"
+                              href={`${docsUrl}/setup`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
                             >
                               Read the setup guide
@@ -1770,7 +1780,9 @@ export function ProductDashboard({
                           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
                             Events appear here once devices with the{' '}
                             <Link
-                              href="/docs/plugin"
+                              href={`${docsUrl}/plugin`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="underline underline-offset-4 hover:text-foreground"
                             >
                               plugin
@@ -1779,7 +1791,9 @@ export function ProductDashboard({
                           </p>
                           <p className="mt-4">
                             <Link
-                              href="/docs/setup"
+                              href={`${docsUrl}/setup`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
                             >
                               Read the setup guide
