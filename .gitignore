@@ -63,3 +63,6 @@ packages/console/prisma/*.db-journal
 # Documentation source files (keep only the compiled docs)
 *.md.bak
 .vercel
+
+# Internal planning docs
+plans/
