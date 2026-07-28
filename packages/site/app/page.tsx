@@ -6,6 +6,7 @@ import {
   Check,
   FileDiff,
   Lock,
+  Mail,
   Percent,
   Rocket,
   Shield,
@@ -607,19 +608,27 @@ export default function LandingPage() {
                 copyEmail={site.supportEmail}
               />
             </div>
-            <div className="border-t border-border bg-amber-50 px-8 py-3.5">
-              <p className="flex flex-wrap items-center justify-center gap-2 text-sm text-amber-900">
+            <div className="border-t border-border bg-amber-50 px-8 py-4">
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-amber-900">
                 <Percent className="size-4 shrink-0 text-amber-600" />
                 <span>
-                  Get 50% off for a testimonial —{' '}
+                  Get <span className="font-semibold">50% off</span> for a testimonial
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="cursor-pointer border-amber-300 bg-white text-amber-900 shadow-xs hover:border-amber-400 hover:bg-amber-100 hover:text-amber-950 focus-visible:border-amber-400 focus-visible:ring-amber-400/50"
+                >
                   <CopyEmailLink
                     email={site.supportEmail}
-                    className="font-medium underline underline-offset-4 hover:text-amber-950"
+                    title={`Copy ${site.supportEmail} to clipboard`}
                   >
-                    contact us
+                    <Mail className="size-3.5" />
+                    Contact us
                   </CopyEmailLink>
-                </span>
-              </p>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
