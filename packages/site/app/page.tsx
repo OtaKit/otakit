@@ -6,6 +6,7 @@ import {
   Check,
   FileDiff,
   Lock,
+  Percent,
   Rocket,
   Shield,
   ShieldAlert,
@@ -605,6 +606,20 @@ export default function LandingPage() {
                 cta="Contact sales"
                 copyEmail={site.supportEmail}
               />
+            </div>
+            <div className="border-t border-border bg-amber-50 px-8 py-3.5">
+              <p className="flex flex-wrap items-center justify-center gap-2 text-sm text-amber-900">
+                <Percent className="size-4 shrink-0 text-amber-600" />
+                <span>
+                  Get 50% off for a testimonial —{' '}
+                  <CopyEmailLink
+                    email={site.supportEmail}
+                    className="font-medium underline underline-offset-4 hover:text-amber-950"
+                  >
+                    {site.supportEmail}
+                  </CopyEmailLink>
+                </span>
+              </p>
             </div>
           </div>
         </div>
