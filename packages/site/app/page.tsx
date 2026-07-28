@@ -616,7 +616,7 @@ export default function LandingPage() {
                     email={site.supportEmail}
                     className="font-medium underline underline-offset-4 hover:text-amber-950"
                   >
-                    {site.supportEmail}
+                    contact us
                   </CopyEmailLink>
                 </span>
               </p>
