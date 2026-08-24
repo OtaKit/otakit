@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Check, Leaf, LoaderCircle, Star } from 'lucide-react';
+import { Building2, Check, ChevronDown, Leaf, LoaderCircle, Rocket, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { ApiError } from '@/app/components/dashboard-types';
@@ -9,14 +9,22 @@ import { SUPPORT_MAILTO } from '@/lib/support';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-export type PlanKey = 'free' | 'pro' | 'enterprise';
+export type PlanKey = 'free' | 'starter' | 'pro' | 'enterprise';
 
 type BillingInterval = 'month' | 'year';
 
 export type PricingDialogBillingData = {
   billing: {
     planKey: PlanKey;
+    isActive: boolean;
+    downloadsLimit: number;
     polarCustomerId: string | null;
   };
 };
@@ -41,8 +49,7 @@ export function PricingDialog({
   const [billingData, setBillingData] = useState<PricingDialogBillingData | null>(
     initialBillingData ?? null,
   );
-  const [interval, setInterval] = useState<BillingInterval>('year');
-  const [checkingOut, setCheckingOut] = useState(false);
+  const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
 
   useEffect(() => {
@@ -50,7 +57,12 @@ export function PricingDialog({
     // Re-sync only when the meaningful billing fields change, not on every parent
     // re-render that hands us a fresh object identity (which would clobber state).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialBillingData?.billing.planKey, initialBillingData?.billing.polarCustomerId]);
+  }, [
+    initialBillingData?.billing.planKey,
+    initialBillingData?.billing.isActive,
+    initialBillingData?.billing.downloadsLimit,
+    initialBillingData?.billing.polarCustomerId,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,16 +114,25 @@ export function PricingDialog({
   }, [open, billingData, onBillingDataChange]);
 
   const currentPlan = billingData?.billing.planKey ?? 'free';
-  const hasPolarCustomer = Boolean(billingData?.billing.polarCustomerId);
+  const hasActiveSubscription = Boolean(
+    billingData?.billing.isActive &&
+    (currentPlan === 'starter' || currentPlan === 'pro') &&
+    billingData.billing.polarCustomerId,
+  );
+  const hasLegacyFreeAllowance =
+    currentPlan === 'free' && (billingData?.billing.downloadsLimit ?? 0) >= 100_000;
 
-  async function handleCheckout(billingInterval: BillingInterval) {
+  async function handleCheckout(
+    planKey: Extract<PlanKey, 'starter' | 'pro'>,
+    billingInterval: BillingInterval,
+  ) {
     if (!canManageBilling) return;
-    setCheckingOut(true);
+    setCheckingOut(planKey);
     try {
       const res = await fetch('/api/v1/organization/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: 'pro', interval: billingInterval }),
+        body: JSON.stringify({ planKey, interval: billingInterval }),
       });
       const data = await parseJson<ApiError & { checkoutUrl?: string }>(res);
       if (!res.ok) throw new Error(data.error ?? 'Failed to start checkout');
@@ -119,7 +140,7 @@ export function PricingDialog({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
     } finally {
-      setCheckingOut(false);
+      setCheckingOut(null);
     }
   }
 
@@ -138,26 +159,30 @@ export function PricingDialog({
     }
   }
 
-  const proPrice = interval === 'year' ? '$25' : '$50';
-  const proPriceNote = interval === 'year' ? 'billed $300/year — save 50%' : 'billed monthly';
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl p-8">
+      <DialogContent className="max-h-[85vh] overflow-y-auto p-8 sm:max-w-6xl">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-3">
-            <DialogTitle>Pricing</DialogTitle>
-            <BillingIntervalToggle value={interval} onChange={setInterval} />
-          </div>
+          <DialogTitle>Pricing</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          {hasLegacyFreeAllowance ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              Your workspace keeps its grandfathered Free allowance of 100,000 downloads per month.
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <PlanCard
               name="Free"
               price="$0"
               priceNote="forever"
-              subtitle="10,000 downloads / month*"
+              subtitle={
+                hasLegacyFreeAllowance
+                  ? '100,000 downloads / month (grandfathered)'
+                  : '5,000 downloads / month*'
+              }
               features={[
                 'Unlimited updates',
                 'Unlimited apps',
@@ -171,9 +196,46 @@ export function PricingDialog({
             />
 
             <PlanCard
+              name="Starter"
+              price="$10"
+              priceNote="Pay monthly, cancel anytime"
+              subtitle="100,000 downloads / month*"
+              features={[
+                'Everything in Free',
+                '20× update capacity',
+                'Single-member workspace',
+                'Hard cap — no overage',
+              ]}
+              current={currentPlan === 'starter'}
+              tag="Popular"
+              actionLabel={
+                currentPlan === 'starter'
+                  ? 'Current plan'
+                  : hasLegacyFreeAllowance
+                    ? 'Included in your Free plan'
+                    : hasActiveSubscription
+                      ? 'Manage subscription'
+                      : 'Choose Starter'
+              }
+              actionIcon={Rocket}
+              disabled={!canManageBilling || hasLegacyFreeAllowance}
+              loading={openingPortal || checkingOut === 'starter'}
+              onAction={
+                currentPlan === 'starter'
+                  ? undefined
+                  : hasLegacyFreeAllowance
+                    ? undefined
+                    : hasActiveSubscription
+                      ? () => void handleManageBilling()
+                      : () => void handleCheckout('starter', 'month')
+              }
+              highlighted
+            />
+
+            <PlanCard
               name="Pro"
-              price={proPrice}
-              priceNote={proPriceNote}
+              price="$25"
+              priceNote="billed $300/year — save 50%"
               subtitle="1,000,000 downloads / month*"
               features={[
                 'Everything in Free',
@@ -182,25 +244,40 @@ export function PricingDialog({
                 'Priority support',
               ]}
               current={currentPlan === 'pro'}
-              tag="Most popular"
+              tag="Best value"
               actionLabel={
                 currentPlan === 'pro'
                   ? 'Current plan'
-                  : hasPolarCustomer
+                  : hasActiveSubscription
                     ? 'Manage subscription'
                     : `Upgrade to Pro`
               }
               actionIcon={Star}
               disabled={!canManageBilling}
-              loading={openingPortal || checkingOut}
+              loading={openingPortal || checkingOut === 'pro'}
+              actionItems={
+                currentPlan !== 'pro' && !hasActiveSubscription
+                  ? [
+                      {
+                        label: 'Yearly',
+                        description: '$300/year · $25/month · save 50%',
+                        onSelect: () => void handleCheckout('pro', 'year'),
+                      },
+                      {
+                        label: 'Monthly',
+                        description: '$50/month',
+                        onSelect: () => void handleCheckout('pro', 'month'),
+                      },
+                    ]
+                  : undefined
+              }
               onAction={
                 currentPlan === 'pro'
                   ? undefined
-                  : hasPolarCustomer
+                  : hasActiveSubscription
                     ? () => void handleManageBilling()
-                    : () => void handleCheckout(interval)
+                    : undefined
               }
-              highlighted
             />
 
             <PlanCard
@@ -237,50 +314,12 @@ export function PricingDialog({
           ) : null}
 
           <p className="text-sm text-muted-foreground">
-            * Value-aligned pricing: pay for real downloaded updates. Overage on Pro is billed at
-            $50 per additional 1,000,000 downloads and can be turned off to cap spend.
+            * Value-aligned pricing: pay for real downloaded updates. Free and Starter stop at their
+            included limits. Optional Pro overage is $50 per additional 1,000,000 downloads.
           </p>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function BillingIntervalToggle({
-  value,
-  onChange,
-}: {
-  value: BillingInterval;
-  onChange: (value: BillingInterval) => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border p-0.5 text-xs">
-      <button
-        type="button"
-        onClick={() => onChange('month')}
-        className={`rounded-full px-3 py-1 transition-colors ${
-          value === 'month' ? 'bg-foreground text-background' : 'text-muted-foreground'
-        }`}
-      >
-        Monthly
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('year')}
-        className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
-          value === 'year' ? 'bg-foreground text-background' : 'text-muted-foreground'
-        }`}
-      >
-        Yearly
-        <span
-          className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-            value === 'year' ? 'bg-background/20' : 'bg-muted text-foreground'
-          }`}
-        >
-          -50%
-        </span>
-      </button>
-    </div>
   );
 }
 
@@ -296,6 +335,7 @@ function PlanCard({
   disabled = false,
   loading = false,
   onAction,
+  actionItems,
   highlighted = false,
   tag,
 }: {
@@ -310,6 +350,11 @@ function PlanCard({
   disabled?: boolean;
   loading?: boolean;
   onAction?: () => void;
+  actionItems?: Array<{
+    label: string;
+    description: string;
+    onSelect: () => void;
+  }>;
   highlighted?: boolean;
   tag?: string;
 }) {
@@ -347,16 +392,47 @@ function PlanCard({
       </ul>
 
       <div className="mt-auto pt-5">
-        <Button
-          className="w-full"
-          variant={current ? 'outline' : highlighted ? 'default' : 'outline'}
-          disabled={current || disabled || !onAction}
-          onClick={onAction}
-        >
-          {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
-          {!loading ? <ActionIcon className="size-3.5" /> : null}
-          {actionLabel}
-        </Button>
+        {actionItems && actionItems.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="w-full"
+                variant={highlighted ? 'default' : 'outline'}
+                disabled={disabled || loading}
+              >
+                {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
+                {!loading ? <ActionIcon className="size-3.5" /> : null}
+                {actionLabel}
+                <ChevronDown className="ml-auto size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              {actionItems.map((item) => (
+                <DropdownMenuItem
+                  key={item.label}
+                  className="items-start py-2.5"
+                  onSelect={item.onSelect}
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="text-xs text-muted-foreground">{item.description}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            className="w-full"
+            variant={current ? 'outline' : highlighted ? 'default' : 'outline'}
+            disabled={current || disabled || !onAction}
+            onClick={onAction}
+          >
+            {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
+            {!loading ? <ActionIcon className="size-3.5" /> : null}
+            {actionLabel}
+          </Button>
+        )}
       </div>
     </div>
   );

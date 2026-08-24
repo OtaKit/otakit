@@ -6,6 +6,7 @@ import {
   refreshOrganizationUsageSnapshot,
   updateOrganizationOverageEnabled,
 } from '@/lib/billing/usage';
+import { getOrganizationEntitlements } from '@/lib/billing/service';
 
 export const runtime = 'nodejs';
 
@@ -48,6 +49,16 @@ export async function PATCH(request: NextRequest) {
       { error: 'Invalid body. Expected { overageEnabled: boolean }.' },
       { status: 400 },
     );
+  }
+
+  if (body.overageEnabled) {
+    const entitlements = await getOrganizationEntitlements(ctx.organizationId);
+    if (!entitlements.limits.overage) {
+      return NextResponse.json(
+        { error: 'Additional usage is only available on the Pro plan.' },
+        { status: 400 },
+      );
+    }
   }
 
   const usage = await updateOrganizationOverageEnabled(ctx.organizationId, body.overageEnabled);

@@ -3,17 +3,20 @@ import { PlanKey } from '@prisma/client';
 export type PlanLimits = {
   downloads: number;
   teamMembers: boolean;
+  overage: boolean;
 };
 
 // Enterprise has no metered cap — it's a custom, operator-provisioned contract.
 // A finite-but-effectively-infinite ceiling keeps every `limit > 0` guard and
 // percentage calc honest while never blocking an enterprise org.
 export const ENTERPRISE_DOWNLOADS = Number.MAX_SAFE_INTEGER;
+export const NEW_FREE_DOWNLOADS = 5_000;
+export const LEGACY_FREE_DOWNLOADS = 100_000;
 
-const PLAN_LIMITS: Record<PlanKey, PlanLimits> = {
-  free: { downloads: 10_000, teamMembers: false },
-  pro: { downloads: 1_000_000, teamMembers: true },
-  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true },
+const PLAN_LIMITS: Record<Exclude<PlanKey, 'free'>, PlanLimits> = {
+  starter: { downloads: 100_000, teamMembers: false, overage: false },
+  pro: { downloads: 1_000_000, teamMembers: true, overage: true },
+  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true, overage: false },
 };
 
 /**
@@ -29,6 +32,7 @@ function getProductToPlanMap(): Map<string, PlanKey> {
 
   const map = new Map<string, PlanKey>();
   const entries: [string | undefined, PlanKey][] = [
+    [process.env.POLAR_PRODUCT_STARTER_MONTHLY, 'starter'],
     [process.env.POLAR_PRODUCT_PRO_MONTHLY, 'pro'],
     [process.env.POLAR_PRODUCT_PRO_YEARLY, 'pro'],
   ];
@@ -50,19 +54,30 @@ export function productIdToPlanKey(productId: string | null | undefined): PlanKe
   return planKey;
 }
 
-// Pro is the only self-serve paid plan. Free needs no checkout and Enterprise is
-// a contact-sales contract, so neither maps to a Polar product.
+// Starter is monthly-only. Pro supports both billing intervals. Free needs no
+// checkout and Enterprise is a contact-sales contract.
 export function planKeyToProductId(
   planKey: PlanKey,
   interval: BillingInterval = 'month',
 ): string | null {
-  if (planKey !== 'pro') return null;
-  return interval === 'year'
-    ? (process.env.POLAR_PRODUCT_PRO_YEARLY ?? null)
-    : (process.env.POLAR_PRODUCT_PRO_MONTHLY ?? null);
+  if (planKey === 'starter') {
+    return interval === 'month' ? (process.env.POLAR_PRODUCT_STARTER_MONTHLY ?? null) : null;
+  }
+  if (planKey === 'pro') {
+    return interval === 'year'
+      ? (process.env.POLAR_PRODUCT_PRO_YEARLY ?? null)
+      : (process.env.POLAR_PRODUCT_PRO_MONTHLY ?? null);
+  }
+  return null;
 }
 
-export function getPlanLimits(planKey: PlanKey): PlanLimits {
+export function getPlanLimits(
+  planKey: PlanKey,
+  freeDownloadsLimit: number = NEW_FREE_DOWNLOADS,
+): PlanLimits {
+  if (planKey === 'free') {
+    return { downloads: freeDownloadsLimit, teamMembers: false, overage: false };
+  }
   return PLAN_LIMITS[planKey];
 }
 

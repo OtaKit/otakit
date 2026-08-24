@@ -19,6 +19,7 @@ export type OrganizationEntitlements = {
 export type BillingState = {
   planKey: PlanKey;
   isActive: boolean;
+  downloadsLimit: number;
   polarSubscriptionId: string | null;
   polarCustomerId: string | null;
 };
@@ -30,13 +31,17 @@ export async function getOrganizationEntitlements(
 ): Promise<OrganizationEntitlements> {
   const organization = await db.organization.findUnique({
     where: { id: organizationId },
-    select: { planKey: true, isActive: true },
+    select: { planKey: true, isActive: true, freeDownloadsLimit: true },
   });
 
   const planKey = organization?.planKey ?? 'free';
   const isActive = organization?.isActive ?? false;
 
-  return { planKey, isActive, limits: getPlanLimits(planKey) };
+  return {
+    planKey,
+    isActive,
+    limits: getPlanLimits(planKey, organization?.freeDownloadsLimit),
+  };
 }
 
 // ── Billing state read ──────────────────────────────────────────────
@@ -47,6 +52,7 @@ export async function getBillingState(organizationId: string): Promise<BillingSt
     select: {
       planKey: true,
       isActive: true,
+      freeDownloadsLimit: true,
       polarSubscriptionId: true,
       polarCustomerId: true,
     },
@@ -56,6 +62,7 @@ export async function getBillingState(organizationId: string): Promise<BillingSt
     return {
       planKey: 'free',
       isActive: false,
+      downloadsLimit: getPlanLimits('free').downloads,
       polarSubscriptionId: null,
       polarCustomerId: null,
     };
@@ -64,6 +71,7 @@ export async function getBillingState(organizationId: string): Promise<BillingSt
   return {
     planKey: organization.planKey,
     isActive: organization.isActive,
+    downloadsLimit: getPlanLimits(organization.planKey, organization.freeDownloadsLimit).downloads,
     polarSubscriptionId: organization.polarSubscriptionId,
     polarCustomerId: organization.polarCustomerId,
   };
@@ -115,10 +123,14 @@ export async function refreshBillingState(organizationId: string): Promise<Billi
       isActive,
       polarCustomerId,
       polarSubscriptionId,
+      // Overage is a Pro-only opt-in. Clear it on cancellation or a move to
+      // Starter/Free so a stale toggle can never bypass those hard caps.
+      ...(planKey === 'pro' ? {} : { overageEnabled: false }),
     },
     select: {
       planKey: true,
       isActive: true,
+      freeDownloadsLimit: true,
       polarSubscriptionId: true,
       polarCustomerId: true,
     },
@@ -127,6 +139,7 @@ export async function refreshBillingState(organizationId: string): Promise<Billi
   return {
     planKey: organization.planKey,
     isActive: organization.isActive,
+    downloadsLimit: getPlanLimits(organization.planKey, organization.freeDownloadsLimit).downloads,
     polarSubscriptionId: organization.polarSubscriptionId,
     polarCustomerId: organization.polarCustomerId,
   };

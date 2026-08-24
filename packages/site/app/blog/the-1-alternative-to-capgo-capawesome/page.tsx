@@ -6,7 +6,7 @@ const post = getBlogPost('the-1-alternative-to-capgo-capawesome')!;
 export const metadata = blogPostMetadata(post.slug);
 
 const priceRows = [
-  ['5,000 users, 2 releases/mo', '$0 (free tier)', '$33 (Maker, 10K MAU)', '$29 (10K MAU)'],
+  ['5,000 users, 2 releases/mo', '$10 (Starter)', '$33 (Maker, 10K MAU)', '$29 (10K MAU)'],
   ['50,000 users, 4 releases/mo', '$25 (Pro)', '$83 (Team, 100K MAU)', '$79 (50K MAU)'],
   ['250,000 users, 4 releases/mo', '$25 (Pro)', '$208+ (Enterprise)', '$249 (250K MAU)'],
 ];
@@ -29,10 +29,10 @@ export default function AlternativePage() {
         forever.
       </p>
       <p>
-        OtaKit meters one thing: <strong>updates actually delivered</strong>. Free covers 10,000
-        updates a month with unlimited apps; Pro is $25/mo (billed yearly) for a million. Here is
-        what that means at real-world sizes, using each vendor&apos;s public pricing as of July
-        2026:
+        OtaKit meters one thing: <strong>updates actually delivered</strong>. Free covers 5,000
+        updates a month with unlimited apps; Starter is $10/mo for 100,000, and Pro starts at
+        $25/mo (billed yearly) for a million. Here is what that means at real-world sizes, using
+        each vendor&apos;s public pricing as of July 2026:
       </p>
       <DataTable
         headers={['Your app', 'OtaKit', 'Capgo', 'Capawesome (Live Updates)']}

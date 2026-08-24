@@ -12,9 +12,9 @@ import {
 
 export const runtime = 'nodejs';
 
-// Pro is the only self-serve checkout. Free is the default and Enterprise is
-// contact-sales.
-const VALID_PLAN_KEYS = new Set<string>(['pro']);
+// Starter and Pro are self-serve. Starter is intentionally monthly-only;
+// Enterprise remains contact-sales.
+const VALID_PLAN_KEYS = new Set<string>(['starter', 'pro']);
 const VALID_INTERVALS = new Set<string>(['month', 'year']);
 
 export async function POST(request: NextRequest) {
@@ -36,14 +36,28 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   if (!body || !VALID_PLAN_KEYS.has(body.planKey)) {
-    return NextResponse.json({ error: 'Invalid planKey. Must be "pro".' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid planKey. Must be "starter" or "pro".' },
+      { status: 400 },
+    );
   }
-  const interval: BillingInterval =
-    typeof body.interval === 'string' && VALID_INTERVALS.has(body.interval)
-      ? (body.interval as BillingInterval)
-      : 'month';
+  if (body.interval !== undefined && !VALID_INTERVALS.has(body.interval)) {
+    return NextResponse.json(
+      { error: 'Invalid interval. Must be "month" or "year".' },
+      { status: 400 },
+    );
+  }
+
+  const interval: BillingInterval = (body.interval as BillingInterval | undefined) ?? 'month';
 
   const planKey = body.planKey as PlanKey;
+  if (planKey === 'starter' && interval !== 'month') {
+    return NextResponse.json(
+      { error: 'Starter is available with monthly billing only.' },
+      { status: 400 },
+    );
+  }
+
   const productId = planKeyToProductId(planKey, interval);
   if (!productId) {
     return NextResponse.json({ error: 'Product not configured for this plan.' }, { status: 500 });
@@ -51,9 +65,9 @@ export async function POST(request: NextRequest) {
 
   const organization = await db.organization.findUnique({
     where: { id: ctx.organizationId },
-    select: { isActive: true, polarSubscriptionId: true },
+    select: { isActive: true },
   });
-  if (organization?.isActive && organization.polarSubscriptionId) {
+  if (organization?.isActive) {
     return NextResponse.json(
       {
         error:

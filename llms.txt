@@ -1118,6 +1118,25 @@ otakit upload --release
 
 Relaunch the app on your device. By default, OtaKit downloads the update in the background and activates it on the next cold launch.
 
+### Keep delta updates small
+
+With `updateStrategy: 'deltas'`, OtaKit only downloads files whose contents changed since the device&rsquo;s last bundle — images, fonts, and unchanged chunks are reused from the on-device cache. Anything that rewrites files on every build defeats that.
+
+The common culprit is a non-deterministic build ID. Next.js (static export) stamps a fresh random ID into every HTML file, RSC payload, and `_next/static/<id>/` path on each build, so a one-line change re-downloads ~20 files instead of one. Pin it so unchanged output stays byte-identical:
+
+```txt
+// next.config.ts
+const nextConfig = {
+  output: 'export',
+  // Stable build ID → minimal OTA deltas. Per-chunk content hashes still
+  // handle cache-busting, so nothing goes stale.
+  generateBuildId: async () => 'my-app',
+};
+export default nextConfig;
+```
+
+Vite already emits stable content-hashed filenames, so no change is needed there. To verify determinism for any bundler, run your production build twice without editing source — the output should be byte-for-byte identical (e.g. compare file hashes). If it is, a no-op release downloads nothing and a one-file change downloads one file.
+
 ### Next
 - Read Channels & Runtimes for release tracks and native compatibility boundaries.
 - Use the Plugin API and CLI reference for exact configuration and command details.
@@ -1760,6 +1779,17 @@ and
 
 EMAIL_FROM
 to send OTP codes and invites via Resend.
+Auto-revert
+— releases published with the auto-revert flag are reverted automatically when too many devices roll back within 24 hours. Requires analytics (above) plus any scheduler calling
+
+POST /api/cron/auto-revert
+every ~10 minutes. If
+
+CRON_SECRET
+is set, pass it as a Bearer header or
+
+?secret=
+query param; if unset, the endpoint is open (the sweep is idempotent and only reverts releases whose own thresholds trip).
 CDN purge
 — set
 

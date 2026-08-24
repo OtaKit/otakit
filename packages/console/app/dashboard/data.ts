@@ -94,6 +94,7 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       id: session.user.id,
       name: session.user.name,
       email: session.user.email,
+      createdAt: new Date(session.user.createdAt).toISOString(),
     },
     activeOrganization: {
       id: activeMembership.organization.id,

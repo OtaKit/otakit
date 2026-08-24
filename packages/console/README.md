@@ -34,3 +34,4 @@ pnpm --filter @otakit/console dev
 ```
 
 See `.env.example` for required environment variables.
+

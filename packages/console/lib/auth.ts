@@ -21,6 +21,9 @@ const trustedOrigins = Array.from(
     [
       process.env.BETTER_AUTH_URL,
       process.env.NEXT_PUBLIC_APP_URL,
+      // Vercel PR deployments use per-deployment hosts. Keep the wildcard
+      // scoped to this project instead of trusting every vercel.app tenant.
+      'https://otakit-console-*.vercel.app',
       appleEnabled ? 'https://appleid.apple.com' : null,
     ].filter((value): value is string => Boolean(value)),
   ),

@@ -22,6 +22,7 @@ type UsageOrganizationRecord = {
   id: string;
   name: string;
   planKey: PlanKey;
+  freeDownloadsLimit: number;
   usageBlocked: boolean;
   overageEnabled: boolean;
   usagePeriodStart: Date | null;
@@ -83,6 +84,7 @@ export async function getOrganizationUsageSnapshot(
     where: { id: organizationId },
     select: {
       planKey: true,
+      freeDownloadsLimit: true,
       usagePeriodStart: true,
       downloadsCount: true,
       usageBlocked: true,
@@ -92,7 +94,7 @@ export async function getOrganizationUsageSnapshot(
   });
 
   const planKey = organization?.planKey ?? 'free';
-  const limit = getPlanLimits(planKey).downloads;
+  const limit = getPlanLimits(planKey, organization?.freeDownloadsLimit).downloads;
   const inCurrentPeriod = isSameMonth(organization?.usagePeriodStart ?? null, currentPeriodStart);
   const downloadsCount = inCurrentPeriod ? (organization?.downloadsCount ?? 0) : 0;
   const usageBlocked = inCurrentPeriod ? (organization?.usageBlocked ?? false) : false;
@@ -107,7 +109,7 @@ export async function getOrganizationUsageSnapshot(
     limit,
     percentage,
     usageBlocked,
-    overageEnabled: organization?.overageEnabled ?? false,
+    overageEnabled: planKey === 'pro' && (organization?.overageEnabled ?? false),
     warningSent,
   };
 }
@@ -123,6 +125,7 @@ export async function updateOrganizationOverageEnabled(
     select: {
       id: true,
       planKey: true,
+      freeDownloadsLimit: true,
       usageBlocked: true,
       usagePeriodStart: true,
       usageCalculatedAt: true,
@@ -142,14 +145,22 @@ export async function updateOrganizationOverageEnabled(
     ? (organization.usageCalculatedAt ?? (downloadsCount > 0 ? new Date() : currentPeriodStart))
     : currentPeriodStart;
 
-  const limit = getPlanLimits(organization.planKey).downloads;
-  const usageBlocked = isPolarConfigured() ? !overageEnabled && downloadsCount >= limit : false;
+  const limits = getPlanLimits(organization.planKey, organization.freeDownloadsLimit);
+  if (overageEnabled && !limits.overage) {
+    throw new Error('Additional usage is only available on the Pro plan');
+  }
+
+  const effectiveOverageEnabled = limits.overage && overageEnabled;
+  const limit = limits.downloads;
+  const usageBlocked = isPolarConfigured()
+    ? !effectiveOverageEnabled && downloadsCount >= limit
+    : false;
   const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
   await db.organization.update({
     where: { id: organizationId },
     data: {
-      overageEnabled,
+      overageEnabled: effectiveOverageEnabled,
       usageBlocked,
       usagePeriodStart: currentPeriodStart,
       usageCalculatedAt,
@@ -167,7 +178,7 @@ export async function updateOrganizationOverageEnabled(
     limit,
     percentage: limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0,
     usageBlocked,
-    overageEnabled,
+    overageEnabled: effectiveOverageEnabled,
     warningSent,
   };
 }
@@ -300,7 +311,8 @@ async function refreshUsageForOrganization(
     periodStart,
     periodEndExclusive: periodEnd,
   });
-  const limit = getPlanLimits(organization.planKey).downloads;
+  const limits = getPlanLimits(organization.planKey, organization.freeDownloadsLimit);
+  const limit = limits.downloads;
   const percentage = limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0;
 
   let warningSent = previousWarning;
@@ -336,8 +348,9 @@ async function refreshUsageForOrganization(
     }
   }
 
+  const effectiveOverageEnabled = limits.overage && organization.overageEnabled;
   const usageBlocked = isPolarConfigured()
-    ? !organization.overageEnabled && downloadsCount >= limit
+    ? !effectiveOverageEnabled && downloadsCount >= limit
     : false;
   const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
 
@@ -348,6 +361,7 @@ async function refreshUsageForOrganization(
       usageCalculatedAt: now,
       downloadsCount,
       usageBlocked,
+      overageEnabled: effectiveOverageEnabled,
       warningSent,
     },
   });
@@ -371,7 +385,7 @@ async function refreshUsageForOrganization(
       limit,
       percentage,
       usageBlocked,
-      overageEnabled: organization.overageEnabled,
+      overageEnabled: effectiveOverageEnabled,
       warningSent,
     },
     warningThresholdSent,
@@ -389,6 +403,7 @@ export async function refreshOrganizationUsageSnapshot(
       id: true,
       name: true,
       planKey: true,
+      freeDownloadsLimit: true,
       usageBlocked: true,
       overageEnabled: true,
       usagePeriodStart: true,
@@ -413,6 +428,7 @@ export async function runUsageAggregationCron(): Promise<UsageRunStats> {
       id: true,
       name: true,
       planKey: true,
+      freeDownloadsLimit: true,
       usageBlocked: true,
       overageEnabled: true,
       usagePeriodStart: true,

@@ -4,8 +4,10 @@ import {
   ArrowRight,
   BookOpen,
   Check,
+  Copy,
   FileDiff,
   Lock,
+  Percent,
   Rocket,
   Shield,
   ShieldAlert,
@@ -76,8 +78,8 @@ const HERO_ICON_CLOUD: HeroIconCloudItem[] = [
 ];
 
 const STATS: { value: string; label: string }[] = [
-  { value: '100+', label: 'Apps registered' },
-  { value: '1,000,000+', label: 'Updates delivered' },
+  { value: '1,000+', label: 'Apps registered' },
+  { value: '10,000,000+', label: 'Updates delivered' },
   { value: '99.99%', label: 'Delivery uptime' },
 ];
 
@@ -366,7 +368,8 @@ export default function LandingPage() {
               </span> */}
             </h1>
             <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
-              Push updates directly to your Capacitor app without app store reviews.
+              Push over-the-air (OTA) updates directly to your Capacitor app without app store
+              reviews.
             </p>
             <div className="mt-20 flex flex-col items-start gap-4 sm:flex-row">
               <div>
@@ -554,17 +557,17 @@ export default function LandingPage() {
                 Simple, value-aligned pricing
               </h2>
               <p className="mt-4 max-w-3xl text-muted-foreground">
-                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth,
-                or storage.
+                Pricing is based on live updates delivered — no seat fees, end-user tracking,
+                bandwidth, or storage.
               </p>
             </div>
-            <div className="grid gap-px bg-border sm:grid-cols-3">
+            <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
               <PricingCard
                 name="Free"
                 price="$0"
                 period="/mo"
                 description="Free forever for early usage."
-                allowance="10,000 updates / month"
+                allowance="5,000 updates / month"
                 features={[
                   'Unlimited releases',
                   'Unlimited apps',
@@ -575,10 +578,31 @@ export default function LandingPage() {
                 cta="Get started free"
               />
               <PricingCard
+                name="Starter"
+                price="$10"
+                period="/mo"
+                description="Pay monthly, cancel anytime."
+                allowance="100,000 updates / month"
+                features={[
+                  'Everything in Free',
+                  '20× the Free allowance',
+                  'Single-member workspace',
+                  'Hard cap — no overage',
+                ]}
+                cta="Choose Starter"
+                highlighted
+              />
+              <PricingCard
                 name="Pro"
                 price="$25"
                 period="/mo"
-                description="Billed yearly ($300/yr) or $50 billed monthly."
+                description={
+                  <>
+                    Billed yearly ($300/yr)
+                    <br />
+                    or $50 billed monthly.
+                  </>
+                }
                 allowance="1,000,000 updates / month"
                 features={[
                   'Everything in Free',
@@ -587,7 +611,6 @@ export default function LandingPage() {
                   'Priority support',
                 ]}
                 cta="Start with Pro"
-                highlighted
               />
               <PricingCard
                 name="Enterprise"
@@ -604,6 +627,22 @@ export default function LandingPage() {
                 cta="Contact sales"
                 copyEmail={site.supportEmail}
               />
+            </div>
+            <div className="border-t border-border bg-amber-50 px-8 py-4">
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-amber-900">
+                <Percent className="size-4 shrink-0 text-amber-600" />
+                <span>
+                  Get <span className="font-semibold">50% off</span> for a testimonial —
+                </span>
+                <CopyEmailLink
+                  email={site.supportEmail}
+                  title={`Copy ${site.supportEmail} to clipboard`}
+                  className="inline-flex cursor-pointer items-center gap-1.5 font-medium underline decoration-amber-400 underline-offset-4 transition-colors hover:text-amber-950 hover:decoration-amber-700"
+                >
+                  Contact us
+                  <Copy className="size-3.5" />
+                </CopyEmailLink>
+              </div>
             </div>
           </div>
         </div>
@@ -890,7 +929,7 @@ function PricingCard({
   name: string;
   price: string;
   period: string;
-  description: string;
+  description: React.ReactNode;
   allowance: string;
   features: string[];
   cta: string;
@@ -907,7 +946,7 @@ function PricingCard({
       {highlighted && <div className="absolute inset-x-0 top-0 h-0.5 bg-emerald-500" />}
       {highlighted && (
         <div className="absolute top-3 right-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-          Recommended
+          Popular
         </div>
       )}
       <div>
