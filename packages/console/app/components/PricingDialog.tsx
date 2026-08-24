@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Check, Leaf, LoaderCircle, Star } from 'lucide-react';
+import { Building2, Check, Leaf, LoaderCircle, Rocket, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { ApiError } from '@/app/components/dashboard-types';
@@ -10,13 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-export type PlanKey = 'free' | 'pro' | 'enterprise';
+export type PlanKey = 'free' | 'starter' | 'pro' | 'enterprise';
 
 type BillingInterval = 'month' | 'year';
 
 export type PricingDialogBillingData = {
   billing: {
     planKey: PlanKey;
+    isActive: boolean;
+    downloadsLimit: number;
     polarCustomerId: string | null;
   };
 };
@@ -42,7 +44,7 @@ export function PricingDialog({
     initialBillingData ?? null,
   );
   const [interval, setInterval] = useState<BillingInterval>('year');
-  const [checkingOut, setCheckingOut] = useState(false);
+  const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
 
   useEffect(() => {
@@ -50,7 +52,12 @@ export function PricingDialog({
     // Re-sync only when the meaningful billing fields change, not on every parent
     // re-render that hands us a fresh object identity (which would clobber state).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialBillingData?.billing.planKey, initialBillingData?.billing.polarCustomerId]);
+  }, [
+    initialBillingData?.billing.planKey,
+    initialBillingData?.billing.isActive,
+    initialBillingData?.billing.downloadsLimit,
+    initialBillingData?.billing.polarCustomerId,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,16 +109,25 @@ export function PricingDialog({
   }, [open, billingData, onBillingDataChange]);
 
   const currentPlan = billingData?.billing.planKey ?? 'free';
-  const hasPolarCustomer = Boolean(billingData?.billing.polarCustomerId);
+  const hasActiveSubscription = Boolean(
+    billingData?.billing.isActive &&
+    (currentPlan === 'starter' || currentPlan === 'pro') &&
+    billingData.billing.polarCustomerId,
+  );
+  const hasLegacyFreeAllowance =
+    currentPlan === 'free' && (billingData?.billing.downloadsLimit ?? 0) >= 100_000;
 
-  async function handleCheckout(billingInterval: BillingInterval) {
+  async function handleCheckout(
+    planKey: Extract<PlanKey, 'starter' | 'pro'>,
+    billingInterval: BillingInterval,
+  ) {
     if (!canManageBilling) return;
-    setCheckingOut(true);
+    setCheckingOut(planKey);
     try {
       const res = await fetch('/api/v1/organization/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey: 'pro', interval: billingInterval }),
+        body: JSON.stringify({ planKey, interval: billingInterval }),
       });
       const data = await parseJson<ApiError & { checkoutUrl?: string }>(res);
       if (!res.ok) throw new Error(data.error ?? 'Failed to start checkout');
@@ -119,7 +135,7 @@ export function PricingDialog({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
     } finally {
-      setCheckingOut(false);
+      setCheckingOut(null);
     }
   }
 
@@ -143,7 +159,7 @@ export function PricingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl p-8">
+      <DialogContent className="max-h-[85vh] overflow-y-auto p-8 sm:max-w-6xl">
         <DialogHeader>
           <div className="flex items-center justify-between gap-3">
             <DialogTitle>Pricing</DialogTitle>
@@ -152,12 +168,22 @@ export function PricingDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          {hasLegacyFreeAllowance ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              Your workspace keeps its grandfathered Free allowance of 100,000 downloads per month.
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <PlanCard
               name="Free"
               price="$0"
               priceNote="forever"
-              subtitle="10,000 downloads / month*"
+              subtitle={
+                hasLegacyFreeAllowance
+                  ? '100,000 downloads / month (grandfathered)'
+                  : '5,000 downloads / month*'
+              }
               features={[
                 'Unlimited updates',
                 'Unlimited apps',
@@ -168,6 +194,43 @@ export function PricingDialog({
               actionLabel="Current plan"
               actionIcon={Leaf}
               disabled
+            />
+
+            <PlanCard
+              name="Starter"
+              price="$10"
+              priceNote="billed monthly only"
+              subtitle="100,000 downloads / month*"
+              features={[
+                'Everything in Free',
+                '20× update capacity',
+                'Single-member workspace',
+                'Hard cap — no overage',
+              ]}
+              current={currentPlan === 'starter'}
+              tag="Most popular"
+              actionLabel={
+                currentPlan === 'starter'
+                  ? 'Current plan'
+                  : hasLegacyFreeAllowance
+                    ? 'Included in your Free plan'
+                    : hasActiveSubscription
+                      ? 'Manage subscription'
+                      : 'Choose Starter'
+              }
+              actionIcon={Rocket}
+              disabled={!canManageBilling || hasLegacyFreeAllowance}
+              loading={openingPortal || checkingOut === 'starter'}
+              onAction={
+                currentPlan === 'starter'
+                  ? undefined
+                  : hasLegacyFreeAllowance
+                    ? undefined
+                    : hasActiveSubscription
+                      ? () => void handleManageBilling()
+                      : () => void handleCheckout('starter', 'month')
+              }
+              highlighted
             />
 
             <PlanCard
@@ -182,25 +245,24 @@ export function PricingDialog({
                 'Priority support',
               ]}
               current={currentPlan === 'pro'}
-              tag="Most popular"
+              tag="Best value"
               actionLabel={
                 currentPlan === 'pro'
                   ? 'Current plan'
-                  : hasPolarCustomer
+                  : hasActiveSubscription
                     ? 'Manage subscription'
                     : `Upgrade to Pro`
               }
               actionIcon={Star}
               disabled={!canManageBilling}
-              loading={openingPortal || checkingOut}
+              loading={openingPortal || checkingOut === 'pro'}
               onAction={
                 currentPlan === 'pro'
                   ? undefined
-                  : hasPolarCustomer
+                  : hasActiveSubscription
                     ? () => void handleManageBilling()
-                    : () => void handleCheckout(interval)
+                    : () => void handleCheckout('pro', interval)
               }
-              highlighted
             />
 
             <PlanCard
@@ -237,8 +299,8 @@ export function PricingDialog({
           ) : null}
 
           <p className="text-sm text-muted-foreground">
-            * Value-aligned pricing: pay for real downloaded updates. Overage on Pro is billed at
-            $50 per additional 1,000,000 downloads and can be turned off to cap spend.
+            * Value-aligned pricing: pay for real downloaded updates. Free and Starter stop at their
+            included limits. Optional Pro overage is $50 per additional 1,000,000 downloads.
           </p>
         </div>
       </DialogContent>

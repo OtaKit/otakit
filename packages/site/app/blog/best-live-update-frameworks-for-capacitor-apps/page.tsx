@@ -7,8 +7,8 @@ export const metadata = blogPostMetadata(post.slug);
 
 const comparisonRows = [
   ['Pricing based on', 'Updates delivered', 'Monthly active users + bandwidth + storage', 'Monthly active users'],
-  ['Free tier', '10,000 updates/mo, unlimited apps — free forever', '14-day trial', '14-day trial'],
-  ['First paid tier', '$25/mo (1M updates)', '$12/mo (2,000 MAU)', '$9/mo (1,000 MAU)'],
+  ['Free tier', '5,000 updates/mo, unlimited apps — free forever', '14-day trial', '14-day trial'],
+  ['First paid tier', '$10/mo (100K updates)', '$12/mo (2,000 MAU)', '$9/mo (1,000 MAU)'],
   ['Device delivery path', '100% CDN edge (Cloudflare)', 'Vendor servers', 'Vendor cloud'],
   ['End-user tracking', 'None (no device IDs)', 'Per-device (MAU metering)', 'Per-device (MAU metering)'],
   ['Security defaults', 'Signed manifests + SHA-256, always on', 'Optional signing/encryption setup', 'Optional public-key setup'],
@@ -54,8 +54,8 @@ export default function BestFrameworksPage() {
           a single user. Your privacy policy stays clean.
         </li>
         <li>
-          <strong>Dramatically cheaper.</strong> $25/mo where the others charge $79–249 for the
-          same app. The table below has the like-for-like scenarios.
+          <strong>Dramatically cheaper.</strong> $10–25/mo where the others charge $29–249 for
+          comparable apps. The table below has the like-for-like scenarios.
         </li>
         <li>
           <strong>Secure by default.</strong> ES256-signed manifests and SHA-256 verification on
@@ -72,11 +72,11 @@ export default function BestFrameworksPage() {
       </p>
       <ul>
         <li>
-          At 2,500 users: OtaKit <strong>free</strong>. Capgo <strong>$33</strong>. Capawesome{' '}
+          At 2,500 users: OtaKit <strong>$10</strong>. Capgo <strong>$33</strong>. Capawesome{' '}
           <strong>$29</strong>.
         </li>
         <li>
-          At 20,000 users: OtaKit <strong>$25</strong>. Capgo <strong>~$83</strong>. Capawesome{' '}
+          At 20,000 users: OtaKit <strong>$10</strong>. Capgo <strong>~$83</strong>. Capawesome{' '}
           <strong>$79</strong>. Roughly 3x.
         </li>
         <li>
@@ -97,8 +97,8 @@ export default function BestFrameworksPage() {
       </p>
       <p>
         OtaKit bills one number: <strong>updates delivered</strong>. Quiet month, nothing extra.
-        The free tier alone — 10,000 updates a month, unlimited apps — covers many production apps
-        indefinitely.
+        Free includes 5,000 updates a month with unlimited apps, while the $10 Starter plan raises
+        that allowance to 100,000 for growing apps.
       </p>
       <p>
         The privacy win is the same fact from the other side. A vendor can only bill per user by{' '}

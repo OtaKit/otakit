@@ -7,14 +7,14 @@ export const metadata = blogPostMetadata(post.slug);
 
 const priceRows = [
   ['1,000 users, 2 releases/mo', '$0 (free tier)', '$9 (Starter)'],
-  ['10,000 users, 2 releases/mo', '$0–25', '$29 (Professional)'],
+  ['10,000 users, 2 releases/mo', '$10 (Starter)', '$29 (Professional)'],
   ['50,000 users, 4 releases/mo', '$25 (Pro)', '$79 (Team)'],
   ['250,000 users, 4 releases/mo', '$25 (Pro)', '$249 (Business)'],
 ];
 
 const featureRows = [
   ['Billing meter', 'Updates delivered', 'Monthly active users'],
-  ['Free tier', '10,000 updates/mo, unlimited apps', '14-day trial'],
+  ['Free tier', '5,000 updates/mo, unlimited apps', '14-day trial'],
   ['Delta updates', 'Yes — per-file, content-addressed', 'Yes'],
   ['Bundle protection', 'Signed manifests (ES256) + SHA-256, always on; optional AES-256-GCM E2E encryption', 'Public-key signature verification'],
   ['Automatic rollback', 'Yes — notifyAppReady() handshake', 'Yes (rollback protection)'],
@@ -45,8 +45,9 @@ export default function CapawesomeAlternativePage() {
         a modestly successful side project outgrows the entry tier immediately.
       </p>
       <p>
-        OtaKit meters updates delivered, nothing else. Free covers 10,000 updates/month with
-        unlimited apps; Pro is $25/mo (billed yearly) for a million.
+        OtaKit meters updates delivered, nothing else. Free covers 5,000 updates/month with
+        unlimited apps; Starter is $10/mo for 100,000, and Pro starts at $25/mo (billed yearly)
+        for a million.
       </p>
       <DataTable headers={['Your app', 'OtaKit', 'Capawesome']} rows={priceRows} />
       <p>
@@ -94,7 +95,8 @@ export default function CapawesomeAlternativePage() {
       <Callout>
         <p>
           Bottom line: the same live updates with a stronger security pipeline, a fully
-          MIT-licensed stack, and no user tracking — $0–25/mo where Capawesome charges $29–249.
+          MIT-licensed stack, and no user tracking — $10–25/mo for typical paid usage where
+          Capawesome charges $29–249.
         </p>
       </Callout>
 

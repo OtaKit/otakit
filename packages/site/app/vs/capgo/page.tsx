@@ -84,11 +84,12 @@ const copy: ComparisonCopy = {
           <p>
             Capgo bills on three meters — monthly active users, bandwidth, and storage — so every
             active device counts against your plan every month, even if you ship nothing. OtaKit
-            bills on one meter: <strong>updates delivered</strong>. Free covers 10,000
-            updates/month with unlimited apps; Pro is $25/mo for 1 million.
+            bills on one meter: <strong>updates delivered</strong>. Free covers 5,000
+            updates/month with unlimited apps; Starter is $10/mo for 100,000, and Pro starts at
+            $25/mo for 1 million.
           </p>
           <p>
-            In practice: 10,000 users at 2 releases/mo is $0–25 on OtaKit vs $33 on Capgo; 50,000
+            In practice: 10,000 users at 2 releases/mo is $10 on OtaKit vs $33 on Capgo; 50,000
             users at 4 releases/mo is $25 vs $83; 500,000 users is $75 vs $208+. The{' '}
             <GuideLink href="/blog/capgo-alternative">full comparison</GuideLink> shows the math.
           </p>

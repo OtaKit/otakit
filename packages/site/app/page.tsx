@@ -557,17 +557,17 @@ export default function LandingPage() {
                 Simple, value-aligned pricing
               </h2>
               <p className="mt-4 max-w-3xl text-muted-foreground">
-                Pricing is based on live updates delivered — no seats, end-user tracking, bandwidth,
-                or storage.
+                Pricing is based on live updates delivered — no seat fees, end-user tracking,
+                bandwidth, or storage.
               </p>
             </div>
-            <div className="grid gap-px bg-border sm:grid-cols-3">
+            <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
               <PricingCard
                 name="Free"
                 price="$0"
                 period="/mo"
                 description="Free forever for early usage."
-                allowance="10,000 updates / month"
+                allowance="5,000 updates / month"
                 features={[
                   'Unlimited releases',
                   'Unlimited apps',
@@ -576,6 +576,21 @@ export default function LandingPage() {
                   'Real-time analytics',
                 ]}
                 cta="Get started free"
+              />
+              <PricingCard
+                name="Starter"
+                price="$10"
+                period="/mo"
+                description="Billed monthly. No annual plan."
+                allowance="100,000 updates / month"
+                features={[
+                  'Everything in Free',
+                  '20× the Free allowance',
+                  'Single-member workspace',
+                  'Hard cap — no overage',
+                ]}
+                cta="Start with Starter"
+                highlighted
               />
               <PricingCard
                 name="Pro"
@@ -590,7 +605,6 @@ export default function LandingPage() {
                   'Priority support',
                 ]}
                 cta="Start with Pro"
-                highlighted
               />
               <PricingCard
                 name="Enterprise"

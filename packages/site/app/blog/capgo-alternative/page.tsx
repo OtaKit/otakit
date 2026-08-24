@@ -7,7 +7,7 @@ export const metadata = blogPostMetadata(post.slug);
 
 const priceRows = [
   ['2,000 users, 2 releases/mo', '$0 (free tier)', '$12 (Solo)'],
-  ['10,000 users, 2 releases/mo', '$0–25', '$33 (Maker)'],
+  ['10,000 users, 2 releases/mo', '$10 (Starter)', '$33 (Maker)'],
   ['50,000 users, 4 releases/mo', '$25 (Pro)', '$83 (Team)'],
   ['500,000 users, 4 releases/mo', '$75 (Pro + overage)', '$208+ (Enterprise)'],
 ];
@@ -44,10 +44,10 @@ export default function CapgoAlternativePage() {
         each cap.
       </p>
       <p>
-        OtaKit bills on one meter: <strong>updates delivered</strong>. Free covers 10,000
-        updates/month with unlimited apps and releases; Pro is $25/mo (billed yearly) for 1
-        million, then $50 per additional million. No MAU count, no bandwidth meter, no storage
-        meter.
+        OtaKit bills on one meter: <strong>updates delivered</strong>. Free covers 5,000
+        updates/month with unlimited apps and releases; Starter is $10/mo for 100,000 updates, and
+        Pro is $25/mo (billed yearly) for 1 million, then $50 per additional million. No MAU count,
+        no bandwidth meter, no storage meter.
       </p>
       <DataTable headers={['Your app', 'OtaKit', 'Capgo']} rows={priceRows} />
       <p>
@@ -92,7 +92,7 @@ export default function CapgoAlternativePage() {
       <Callout>
         <p>
           Bottom line: the same live updates, delivered from a stronger network, with zero user
-          tracking and one predictable bill — $0–25/mo for most apps that pay Capgo $33–208+.
+          tracking and one predictable bill — $10–25/mo for most apps that pay Capgo $33–208+.
         </p>
       </Callout>
 

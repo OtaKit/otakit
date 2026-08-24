@@ -120,7 +120,8 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [billingData, setBillingData] = useState<{
     billing: {
       planKey: PlanKey;
-      isActive?: boolean;
+      isActive: boolean;
+      downloadsLimit: number;
       polarCustomerId: string | null;
     };
   } | null>(null);
@@ -144,18 +145,27 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [switchingOrganizationId, setSwitchingOrganizationId] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const isSwitchingOrganization = switchingOrganizationId !== null;
+  const planAllowsTeamMembers =
+    billingData?.billing.planKey === 'pro' || billingData?.billing.planKey === 'enterprise';
   const pricingDialogBillingData = useMemo<PricingDialogBillingData | null>(() => {
     if (!billingData) return null;
     return {
       billing: {
         planKey: billingData.billing.planKey,
+        isActive: billingData.billing.isActive,
+        downloadsLimit: billingData.billing.downloadsLimit,
         polarCustomerId: billingData.billing.polarCustomerId,
       },
     };
     // Recompute only when the meaningful billing fields change, not on every
     // billingData object identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [billingData?.billing.planKey, billingData?.billing.polarCustomerId]);
+  }, [
+    billingData?.billing.planKey,
+    billingData?.billing.isActive,
+    billingData?.billing.downloadsLimit,
+    billingData?.billing.polarCustomerId,
+  ]);
 
   const loadTeamData = useCallback(async () => {
     setLoadingTeam(true);
@@ -615,9 +625,13 @@ User ID: ${initialData.user.id}`,
                         <div className="text-sm">
                           {billingData?.billing.planKey === 'pro'
                             ? 'Pro'
-                            : billingData?.billing.planKey === 'enterprise'
-                              ? 'Enterprise'
-                              : 'Free'}
+                            : billingData?.billing.planKey === 'starter'
+                              ? 'Starter'
+                              : billingData?.billing.planKey === 'enterprise'
+                                ? 'Enterprise'
+                                : billingData && billingData.billing.downloadsLimit >= 100_000
+                                  ? 'Free (grandfathered)'
+                                  : 'Free'}
                         </div>
                       </div>
                       {canManageTeam ? (
@@ -719,7 +733,7 @@ User ID: ${initialData.user.id}`,
                       </div>
                     </div>
                     {canManageTeam ? (
-                      billingData?.billing.planKey === 'free' ? (
+                      !planAllowsTeamMembers ? (
                         <Button
                           size="icon"
                           variant="ghost"
@@ -1035,10 +1049,7 @@ User ID: ${initialData.user.id}`,
           setBillingData((current) => {
             if (!current) {
               return {
-                billing: {
-                  ...nextBillingData.billing,
-                  isActive: nextBillingData.billing.planKey !== 'free',
-                },
+                billing: nextBillingData.billing,
               };
             }
             return {

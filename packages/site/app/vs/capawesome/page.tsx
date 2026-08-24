@@ -83,8 +83,8 @@ const copy: ComparisonCopy = {
             Capawesome’s live-update plans are gated by monthly active users — $9/mo covers just
             1,000 MAU, then $29 (10K), $79 (50K), $249 (250K) — and every active device counts
             every month, whether you release or not. OtaKit meters{' '}
-            <strong>updates delivered</strong>, nothing else: Free covers 10,000 updates/month with
-            unlimited apps; Pro is $25/mo for 1 million.
+            <strong>updates delivered</strong>, nothing else: Free covers 5,000 updates/month with
+            unlimited apps; Starter is $10/mo for 100,000, and Pro starts at $25/mo for 1 million.
           </p>
           <p>
             At 250,000 users the difference is $25 vs $249 — ten to one, every month, for the same
