@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  // Team members are a paid entitlement — the free plan is single-seat.
+  // Team members are a Pro/Enterprise entitlement. Free and Starter are
+  // intentionally single-member workspaces.
   const entitlements = await getOrganizationEntitlements(ctx.organizationId);
   if (!entitlements.limits.teamMembers) {
     return NextResponse.json(

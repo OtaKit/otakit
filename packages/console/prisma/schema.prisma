@@ -78,6 +78,7 @@ model Verification {
 
 enum PlanKey {
   free
+  starter
   pro
   enterprise
 }
@@ -101,6 +102,9 @@ model Organization {
   name                String
   // Billing (Polar)
   planKey             PlanKey              @default(free)
+  // Persists the Free-tier allowance an organization was granted. Existing
+  // Free organizations are grandfathered at 100k; new organizations get 5k.
+  freeDownloadsLimit  Int                  @default(5000)
   isActive            Boolean              @default(false)
   polarCustomerId     String?
   polarSubscriptionId String?
