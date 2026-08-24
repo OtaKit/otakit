@@ -198,7 +198,7 @@ export function PricingDialog({
             <PlanCard
               name="Starter"
               price="$10"
-              priceNote="billed monthly only"
+              priceNote="Pay monthly, cancel anytime"
               subtitle="100,000 downloads / month*"
               features={[
                 'Everything in Free',
@@ -207,7 +207,7 @@ export function PricingDialog({
                 'Hard cap — no overage',
               ]}
               current={currentPlan === 'starter'}
-              tag="Most popular"
+              tag="Popular"
               actionLabel={
                 currentPlan === 'starter'
                   ? 'Current plan'

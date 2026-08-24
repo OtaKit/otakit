@@ -89,8 +89,8 @@ const HERO_ICON_CLOUD: HeroIconCloudItem[] = [
 ];
 
 const STATS: { value: string; label: string }[] = [
-  { value: '100+', label: 'Apps registered' },
-  { value: '1,000,000+', label: 'Updates delivered' },
+  { value: '1,000+', label: 'Apps registered' },
+  { value: '10,000,000+', label: 'Updates delivered' },
   { value: '99.99%', label: 'Delivery uptime' },
 ];
 
@@ -442,7 +442,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 name="Starter"
                 price="$10"
                 period="/mo"
-                description="Billed monthly. No annual plan."
+                description="Pay monthly, cancel anytime."
                 allowance="100,000 updates / month"
                 features={[
                   'Everything in Free',
@@ -450,7 +450,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                   'Single-member workspace',
                   'Hard cap — no overage',
                 ]}
-                cta="Start with Starter"
+                cta="Choose Starter"
                 highlighted
               />
               <PricingCard
@@ -791,7 +791,7 @@ function PricingCard({
       {highlighted && <div className="absolute inset-x-0 top-0 h-0.5 bg-emerald-500" />}
       {highlighted && (
         <div className="absolute top-3 right-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-          Recommended
+          Popular
         </div>
       )}
       <div>
