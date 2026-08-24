@@ -457,7 +457,13 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 name="Pro"
                 price="$25"
                 period="/mo"
-                description="Billed yearly ($300/yr) or $50 billed monthly."
+                description={
+                  <>
+                    Billed yearly ($300/yr)
+                    <br />
+                    or $50 billed monthly.
+                  </>
+                }
                 allowance="1,000,000 updates / month"
                 features={[
                   'Everything in Free',
@@ -768,7 +774,7 @@ function PricingCard({
   name: string;
   price: string;
   period: string;
-  description: string;
+  description: React.ReactNode;
   allowance: string;
   features: string[];
   cta: string;

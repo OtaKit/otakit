@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Check, Leaf, LoaderCircle, Rocket, Star } from 'lucide-react';
+import { Building2, Check, ChevronDown, Leaf, LoaderCircle, Rocket, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { ApiError } from '@/app/components/dashboard-types';
@@ -9,6 +9,12 @@ import { SUPPORT_MAILTO } from '@/lib/support';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type PlanKey = 'free' | 'starter' | 'pro' | 'enterprise';
 
@@ -43,7 +49,6 @@ export function PricingDialog({
   const [billingData, setBillingData] = useState<PricingDialogBillingData | null>(
     initialBillingData ?? null,
   );
-  const [interval, setInterval] = useState<BillingInterval>('year');
   const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
 
@@ -154,17 +159,11 @@ export function PricingDialog({
     }
   }
 
-  const proPrice = interval === 'year' ? '$25' : '$50';
-  const proPriceNote = interval === 'year' ? 'billed $300/year — save 50%' : 'billed monthly';
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto p-8 sm:max-w-6xl">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-3">
-            <DialogTitle>Pricing</DialogTitle>
-            <BillingIntervalToggle value={interval} onChange={setInterval} />
-          </div>
+          <DialogTitle>Pricing</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -235,8 +234,8 @@ export function PricingDialog({
 
             <PlanCard
               name="Pro"
-              price={proPrice}
-              priceNote={proPriceNote}
+              price="$25"
+              priceNote="billed $300/year — save 50%"
               subtitle="1,000,000 downloads / month*"
               features={[
                 'Everything in Free',
@@ -256,12 +255,28 @@ export function PricingDialog({
               actionIcon={Star}
               disabled={!canManageBilling}
               loading={openingPortal || checkingOut === 'pro'}
+              actionItems={
+                currentPlan !== 'pro' && !hasActiveSubscription
+                  ? [
+                      {
+                        label: 'Yearly',
+                        description: '$300/year · $25/month · save 50%',
+                        onSelect: () => void handleCheckout('pro', 'year'),
+                      },
+                      {
+                        label: 'Monthly',
+                        description: '$50/month',
+                        onSelect: () => void handleCheckout('pro', 'month'),
+                      },
+                    ]
+                  : undefined
+              }
               onAction={
                 currentPlan === 'pro'
                   ? undefined
                   : hasActiveSubscription
                     ? () => void handleManageBilling()
-                    : () => void handleCheckout('pro', interval)
+                    : undefined
               }
             />
 
@@ -308,44 +323,6 @@ export function PricingDialog({
   );
 }
 
-function BillingIntervalToggle({
-  value,
-  onChange,
-}: {
-  value: BillingInterval;
-  onChange: (value: BillingInterval) => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border p-0.5 text-xs">
-      <button
-        type="button"
-        onClick={() => onChange('month')}
-        className={`rounded-full px-3 py-1 transition-colors ${
-          value === 'month' ? 'bg-foreground text-background' : 'text-muted-foreground'
-        }`}
-      >
-        Monthly
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('year')}
-        className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${
-          value === 'year' ? 'bg-foreground text-background' : 'text-muted-foreground'
-        }`}
-      >
-        Yearly
-        <span
-          className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-            value === 'year' ? 'bg-background/20' : 'bg-muted text-foreground'
-          }`}
-        >
-          -50%
-        </span>
-      </button>
-    </div>
-  );
-}
-
 function PlanCard({
   name,
   price,
@@ -358,6 +335,7 @@ function PlanCard({
   disabled = false,
   loading = false,
   onAction,
+  actionItems,
   highlighted = false,
   tag,
 }: {
@@ -372,6 +350,11 @@ function PlanCard({
   disabled?: boolean;
   loading?: boolean;
   onAction?: () => void;
+  actionItems?: Array<{
+    label: string;
+    description: string;
+    onSelect: () => void;
+  }>;
   highlighted?: boolean;
   tag?: string;
 }) {
@@ -409,16 +392,47 @@ function PlanCard({
       </ul>
 
       <div className="mt-auto pt-5">
-        <Button
-          className="w-full"
-          variant={current ? 'outline' : highlighted ? 'default' : 'outline'}
-          disabled={current || disabled || !onAction}
-          onClick={onAction}
-        >
-          {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
-          {!loading ? <ActionIcon className="size-3.5" /> : null}
-          {actionLabel}
-        </Button>
+        {actionItems && actionItems.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="w-full"
+                variant={highlighted ? 'default' : 'outline'}
+                disabled={disabled || loading}
+              >
+                {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
+                {!loading ? <ActionIcon className="size-3.5" /> : null}
+                {actionLabel}
+                <ChevronDown className="ml-auto size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              {actionItems.map((item) => (
+                <DropdownMenuItem
+                  key={item.label}
+                  className="items-start py-2.5"
+                  onSelect={item.onSelect}
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium">{item.label}</span>
+                    <span className="text-xs text-muted-foreground">{item.description}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button
+            className="w-full"
+            variant={current ? 'outline' : highlighted ? 'default' : 'outline'}
+            disabled={current || disabled || !onAction}
+            onClick={onAction}
+          >
+            {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : null}
+            {!loading ? <ActionIcon className="size-3.5" /> : null}
+            {actionLabel}
+          </Button>
+        )}
       </div>
     </div>
   );
