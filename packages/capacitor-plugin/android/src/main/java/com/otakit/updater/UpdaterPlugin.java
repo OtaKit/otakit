@@ -319,7 +319,7 @@ public class UpdaterPlugin extends Plugin {
         if (hasStagedBundle) {
           resolveCurrentRuntimeKey();
           try {
-            if (!applyStaged(false)) {
+            if (!applyStaged()) {
               android.util.Log.w(
                 "OtaKit",
                 "Failed to apply a valid staged bundle during runtime handling"
@@ -334,7 +334,7 @@ public class UpdaterPlugin extends Plugin {
           DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -343,7 +343,7 @@ public class UpdaterPlugin extends Plugin {
           DownloadResolution result = downloadLatest(false, null);
           resolveCurrentRuntimeKey();
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -355,7 +355,7 @@ public class UpdaterPlugin extends Plugin {
             return;
           }
           resolveCurrentRuntimeKey();
-          requireApplyStaged(true);
+          requireApplyStaged();
         });
         return;
     }
@@ -367,7 +367,7 @@ public class UpdaterPlugin extends Plugin {
         return;
       case APPLY_STAGED:
         try {
-          if (applyStaged(false)) {
+          if (applyStaged()) {
             return;
           }
         } catch (Exception e) {
@@ -377,7 +377,7 @@ public class UpdaterPlugin extends Plugin {
         executeAutomaticUpdate("launch apply-staged fallback", () -> {
           DownloadResolution result = downloadLatest(false, null);
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -385,7 +385,7 @@ public class UpdaterPlugin extends Plugin {
         executeAutomaticUpdate("launch shadow", () -> {
           DownloadResolution result = downloadLatest(false, null);
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -393,7 +393,7 @@ public class UpdaterPlugin extends Plugin {
         executeAutomaticUpdate("launch immediate", () -> {
           DownloadResolution result = downloadLatest(false, null);
           if ("staged".equals(result.kind)) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -406,12 +406,12 @@ public class UpdaterPlugin extends Plugin {
         return;
       case APPLY_STAGED:
         executeAutomaticUpdate("resume apply-staged", () -> {
-          if (applyStaged(true)) {
+          if (applyStaged()) {
             return;
           }
           DownloadResolution result = downloadLatest(true, null);
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -419,7 +419,7 @@ public class UpdaterPlugin extends Plugin {
         executeAutomaticUpdate("resume shadow", () -> {
           DownloadResolution result = downloadLatest(true, null);
           if (result.isForcedStaged()) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -427,7 +427,7 @@ public class UpdaterPlugin extends Plugin {
         executeAutomaticUpdate("resume immediate", () -> {
           DownloadResolution result = downloadLatest(false, null);
           if ("staged".equals(result.kind)) {
-            requireApplyStaged(true);
+            requireApplyStaged();
           }
         });
         return;
@@ -539,7 +539,7 @@ public class UpdaterPlugin extends Plugin {
     }
     executor.execute(() -> {
       try {
-        requireApplyStaged(true);
+        requireApplyStaged();
       } catch (Exception e) {
         call.reject("apply failed: " + e.getMessage());
       } finally {
@@ -558,7 +558,7 @@ public class UpdaterPlugin extends Plugin {
       try {
         DownloadResolution result = downloadLatest(false, null);
         if ("staged".equals(result.kind)) {
-          requireApplyStaged(true);
+          requireApplyStaged();
           return;
         }
         call.resolve();
@@ -983,7 +983,7 @@ public class UpdaterPlugin extends Plugin {
     throw new IllegalStateException("Bundle archive does not contain index.html");
   }
 
-  private boolean applyStaged(boolean reloadAfterApply) throws Exception {
+  private boolean applyStaged() throws Exception {
     UpdaterCoordinator.ApplyPreparation preparation = coordinator.prepareApplyStaged(
       this::isCompatibleRuntime,
       this::isBundleUsable
@@ -994,9 +994,6 @@ public class UpdaterPlugin extends Plugin {
     }
 
     applyServerBasePathSynchronously(preparation.activationPath);
-    if (reloadAfterApply) {
-      reloadWebViewSynchronously();
-    }
 
     cancelTrialTimeout();
     if (preparation.trialBundleId != null) {
@@ -1005,8 +1002,8 @@ public class UpdaterPlugin extends Plugin {
     return true;
   }
 
-  private void requireApplyStaged(boolean reloadAfterApply) throws Exception {
-    if (!applyStaged(reloadAfterApply)) {
+  private void requireApplyStaged() throws Exception {
+    if (!applyStaged()) {
       throw new IllegalStateException("Expected a staged bundle to be ready for apply");
     }
   }
@@ -1015,7 +1012,7 @@ public class UpdaterPlugin extends Plugin {
     cancelTrialTimeout();
     trialTimeoutRunnable = () -> {
       if (coordinator.isCurrentTrialBundle(bundleId)) {
-        rollbackCurrentBundle("notify_timeout", true);
+        rollbackCurrentBundle("notify_timeout");
       }
     };
     mainHandler.postDelayed(trialTimeoutRunnable, appReadyTimeoutMs);
@@ -1028,7 +1025,7 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private void rollbackCurrentBundle(String reason, boolean shouldReload) {
+  private void rollbackCurrentBundle(String reason) {
     cancelTrialTimeout();
     UpdaterCoordinator.RollbackPreparation preparation = coordinator.prepareRollback(
       reason,
@@ -1056,9 +1053,6 @@ public class UpdaterPlugin extends Plugin {
 
     try {
       applyServerBasePathSynchronously(preparation.activationPath);
-      if (shouldReload) {
-        reloadWebViewSynchronously();
-      }
     } catch (Exception e) {
       android.util.Log.w("OtaKit", "rollback activation failed", e);
     }
@@ -1069,20 +1063,12 @@ public class UpdaterPlugin extends Plugin {
       if (bridge == null) {
         throw new IllegalStateException("Bridge not available for activation");
       }
-      if (path == null || path.isEmpty()) {
-        bridge.setServerAssetPath(BUILTIN_ASSET_PATH);
-      } else {
-        bridge.setServerBasePath(path);
-      }
-    });
-  }
-
-  private void reloadWebViewSynchronously() throws Exception {
-    runOnMainSynchronously(() -> {
-      if (bridge == null || bridge.getWebView() == null) {
-        throw new IllegalStateException("WebView not available for reload");
-      }
-      bridge.getWebView().reload();
+      WebViewActivation.activate(
+        path,
+        BUILTIN_ASSET_PATH,
+        bridge::setServerBasePath,
+        bridge::setServerAssetPath
+      );
     });
   }
 
