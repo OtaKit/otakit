@@ -447,8 +447,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 features={[
                   'Everything in Free',
                   '20× the Free allowance',
-                  'Single-member workspace',
-                  'Hard cap — no overage',
+                  'No additional usage fees',
                 ]}
                 cta="Choose Starter"
                 highlighted
@@ -456,19 +455,14 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
               <PricingCard
                 name="Pro"
                 price="$25"
-                period="/mo"
-                description={
-                  <>
-                    Billed yearly ($300/yr)
-                    <br />
-                    or $50 billed monthly.
-                  </>
-                }
+                period="/mo billed yearly"
+                description="or $50 billed monthly."
                 allowance="1,000,000 updates / month"
                 features={[
                   'Everything in Free',
+                  '10× the Starter allowance',
                   'Team members & roles',
-                  'Usage-based overage ($50 / extra 1M)',
+                  'Additional usage at $50 / 1M',
                   'Priority support',
                 ]}
                 cta="Start with Pro"
@@ -796,7 +790,7 @@ function PricingCard({
       )}
       <div>
         <h3 className="text-sm font-medium text-muted-foreground">{name}</h3>
-        <div className="mt-4 flex items-baseline gap-1">
+        <div className="mt-4 flex items-baseline gap-1 whitespace-nowrap">
           <span className="text-4xl font-bold tracking-tight">{price}</span>
           <span className="text-sm text-muted-foreground">{period}</span>
         </div>

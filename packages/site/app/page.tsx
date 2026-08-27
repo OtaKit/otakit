@@ -4,10 +4,8 @@ import {
   ArrowRight,
   BookOpen,
   Check,
-  Copy,
   FileDiff,
   Lock,
-  Percent,
   Rocket,
   Shield,
   ShieldAlert,
@@ -586,8 +584,7 @@ export default function LandingPage() {
                 features={[
                   'Everything in Free',
                   '20× the Free allowance',
-                  'Single-member workspace',
-                  'Hard cap — no overage',
+                  'No additional usage fees',
                 ]}
                 cta="Choose Starter"
                 highlighted
@@ -595,19 +592,14 @@ export default function LandingPage() {
               <PricingCard
                 name="Pro"
                 price="$25"
-                period="/mo"
-                description={
-                  <>
-                    Billed yearly ($300/yr)
-                    <br />
-                    or $50 billed monthly.
-                  </>
-                }
+                period="/mo billed yearly"
+                description="or $50 billed monthly."
                 allowance="1,000,000 updates / month"
                 features={[
                   'Everything in Free',
+                  '10× the Starter allowance',
                   'Team members & roles',
-                  'Usage-based overage ($50 / extra 1M)',
+                  'Additional usage at $50 / 1M',
                   'Priority support',
                 ]}
                 cta="Start with Pro"
@@ -627,22 +619,6 @@ export default function LandingPage() {
                 cta="Contact sales"
                 copyEmail={site.supportEmail}
               />
-            </div>
-            <div className="border-t border-border bg-amber-50 px-8 py-4">
-              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-amber-900">
-                <Percent className="size-4 shrink-0 text-amber-600" />
-                <span>
-                  Get <span className="font-semibold">50% off</span> for a testimonial —
-                </span>
-                <CopyEmailLink
-                  email={site.supportEmail}
-                  title={`Copy ${site.supportEmail} to clipboard`}
-                  className="inline-flex cursor-pointer items-center gap-1.5 font-medium underline decoration-amber-400 underline-offset-4 transition-colors hover:text-amber-950 hover:decoration-amber-700"
-                >
-                  Contact us
-                  <Copy className="size-3.5" />
-                </CopyEmailLink>
-              </div>
             </div>
           </div>
         </div>
@@ -951,7 +927,7 @@ function PricingCard({
       )}
       <div>
         <h3 className="text-sm font-medium text-muted-foreground">{name}</h3>
-        <div className="mt-4 flex items-baseline gap-1">
+        <div className="mt-4 flex items-baseline gap-1 whitespace-nowrap">
           <span className="text-4xl font-bold tracking-tight">{price}</span>
           <span className="text-sm text-muted-foreground">{period}</span>
         </div>
