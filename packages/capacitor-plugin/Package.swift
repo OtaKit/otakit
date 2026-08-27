@@ -22,6 +22,13 @@ let package = Package(
                 .product(name: "ZIPFoundation", package: "ZIPFoundation")
             ],
             path: "ios/Sources/UpdaterPlugin",
-            exclude: ["UpdaterPlugin.m"])
+            exclude: ["UpdaterPlugin.m"]),
+        .testTarget(
+            name: "UpdaterPluginTests",
+            dependencies: [
+                "UpdaterPlugin",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation")
+            ],
+            path: "ios/Tests/UpdaterPluginTests")
     ]
 )
