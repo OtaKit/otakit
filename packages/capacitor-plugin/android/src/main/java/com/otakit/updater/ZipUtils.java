@@ -24,7 +24,9 @@ final class ZipUtils {
       ZipEntry entry;
       while ((entry = zis.getNextEntry()) != null) {
         String name = entry.getName();
-        if (name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
+        if (
+          containsParentDirectoryComponent(name) || name.startsWith("/") || name.startsWith("\\")
+        ) {
           throw new SecurityException("Zip path traversal attempt: " + name);
         }
 
@@ -68,5 +70,14 @@ final class ZipUtils {
         totalSize += entrySize;
       }
     }
+  }
+
+  static boolean containsParentDirectoryComponent(String path) {
+    for (String component : path.split("/", -1)) {
+      if (component.equals("..")) {
+        return true;
+      }
+    }
+    return false;
   }
 }
