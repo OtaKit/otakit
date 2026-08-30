@@ -19,6 +19,8 @@
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:check:changed": "node scripts/check-changed-files.mjs format",
+    "lint:changed": "node scripts/check-changed-files.mjs lint",
     "build:plugin": "pnpm --filter @otakit/capacitor-updater build",
     "build:cli": "pnpm --filter @otakit/cli build",
     "lint": "pnpm -r lint",

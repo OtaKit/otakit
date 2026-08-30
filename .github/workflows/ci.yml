@@ -33,6 +33,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -62,8 +64,12 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Format check
-        run: pnpm format:check
+      - name: Format changed files
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm format:check:changed
 
-      - name: Lint
-        run: pnpm lint
+      - name: Lint changed files
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm lint:changed
