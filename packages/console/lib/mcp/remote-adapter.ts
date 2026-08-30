@@ -265,7 +265,12 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private async getAccountStatus(): Promise<ToolEnvelope> {
     const status = await getAccountStatus(this.connection.access);
-    return toolEnvelope('Read the current OtaKit plan and usage status.', json(status));
+    return toolEnvelope('Read the current OtaKit plan and usage status.', json(status), {
+      links: [
+        { label: 'Billing', url: status.links.billing },
+        { label: 'Usage', url: status.links.usage },
+      ],
+    });
   }
 
   private async listApps(input: JsonObject): Promise<ToolEnvelope> {

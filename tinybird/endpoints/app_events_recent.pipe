@@ -23,9 +23,9 @@ SQL >
       AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
       AND ({{ String(action, '') }} = '' OR action = {{ String(action, '') }})
       AND ({{ String(bundle_version, '') }} = '' OR bundle_version = {{ String(bundle_version, '') }})
-      AND ({{ String(channel, '') }} = ''
-           OR ({{ String(channel, '') }} = 'base' AND coalesce(channel, '') = '')
-           OR channel = {{ String(channel, '') }})
+      AND (({{ UInt8(channel_is_null, 0) }} = 1 AND coalesce(channel, '') = '')
+           OR ({{ UInt8(channel_is_null, 0) }} = 0
+               AND ({{ String(channel, '') }} = '' OR channel = {{ String(channel, '') }})))
       AND (({{ UInt8(runtime_version_is_null, 0) }} = 1 AND coalesce(runtime_version, '') = '')
            OR ({{ UInt8(runtime_version_is_null, 0) }} = 0
                AND ({{ String(runtime_version, '') }} = '' OR runtime_version = {{ String(runtime_version, '') }})))

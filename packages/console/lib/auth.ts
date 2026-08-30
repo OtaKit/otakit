@@ -12,6 +12,7 @@ import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
 import {
   OTAKIT_OAUTH_SCOPES,
+  isOtaKitOAuthScope,
   isLegacyMcpDcrEnabled,
   isRemoteMcpOAuthEnabled,
   remoteMcpResourceUrl,
@@ -86,10 +87,9 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
         postLogin: {
           page: '/oauth/select-organization',
-          shouldRedirect: async ({ scopes }) =>
-            scopes.some((scope) => OTAKIT_OAUTH_SCOPES.includes(scope as never)),
+          shouldRedirect: async ({ scopes }) => scopes.some(isOtaKitOAuthScope),
           consentReferenceId: async ({ user, scopes }) => {
-            if (!scopes.some((scope) => OTAKIT_OAUTH_SCOPES.includes(scope as never))) {
+            if (!scopes.some(isOtaKitOAuthScope)) {
               return undefined;
             }
             const userRow = await db.user.findUnique({

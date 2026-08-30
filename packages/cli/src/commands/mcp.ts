@@ -1,3 +1,4 @@
+import { realpathSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { createOtaKitMcpServer } from '@otakit/mcp-core';
@@ -37,7 +38,14 @@ export const mcpCommand = new Command('mcp')
   .option('--organization-id <id>', 'Bind this connection to a specific organization membership')
   .action(async (options: McpOptions) => {
     await runCommand(async () => {
-      const projectRoot = resolve(options.projectRoot ?? process.cwd());
+      const selectedRoot = resolve(options.projectRoot ?? process.cwd());
+      let projectRoot: string;
+      try {
+        projectRoot = realpathSync(selectedRoot);
+        if (!statSync(projectRoot).isDirectory()) throw new Error('not a directory');
+      } catch {
+        throw new CliError(`Project root is not a readable directory: ${selectedRoot}`);
+      }
       const snapshot = await resolveConfigSnapshot({
         cwd: projectRoot,
         appId: options.appId,

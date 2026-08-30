@@ -13,6 +13,7 @@ import {
 } from '@/lib/mcp/features';
 import {
   organizationKeyConnection,
+  RemoteMcpAuthError,
   resolveOAuthConnection,
   type RemoteMcpConnection,
 } from '@/lib/mcp/remote-auth';
@@ -190,14 +191,23 @@ async function serveAuthorized(
   return mcpHandler.fetch(request, { authInfo: authInfo(connection), parsedBody });
 }
 
-const oauthHandler = requireMcpAuth(
-  auth,
-  async (request, claims) => serveAuthorized(request, await resolveOAuthConnection(claims)),
-  {
-    resource: remoteMcpResourceUrl(),
-    challengeScopes: ['otakit:read'],
-  },
-);
+async function serveOAuthAuthorized(request: Request, claims: Record<string, unknown>) {
+  try {
+    return await serveAuthorized(request, await resolveOAuthConnection(claims));
+  } catch (error) {
+    if (error instanceof RemoteMcpAuthError) {
+      return jsonRpcError(401, error.message, {
+        'WWW-Authenticate': 'Bearer error="invalid_token"',
+      });
+    }
+    throw error;
+  }
+}
+
+const oauthHandler = requireMcpAuth(auth, serveOAuthAuthorized, {
+  resource: remoteMcpResourceUrl(),
+  challengeScopes: ['otakit:read'],
+});
 
 export async function POST(request: Request): Promise<Response> {
   if (!isRemoteMcpEnabled()) return jsonRpcError(404, 'Remote MCP is not enabled');

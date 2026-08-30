@@ -117,12 +117,11 @@ export const paginationShape = {
 export const uploadShape = {
   appId: appIdSchema,
   sourcePath: z.string().min(1).max(4096).optional(),
-  version: z.string().trim().min(1).max(120).optional(),
+  version: z.string().trim().min(1).max(64).optional(),
   versionMode: z.enum(['strict', 'auto']).optional(),
   runtimeVersion: runtimeVersionSchema.optional(),
   strategy: z.enum(['zip', 'deltas']).optional(),
   encrypt: z.boolean().optional(),
   packageJsonPath: z.string().min(1).max(4096).optional(),
   nodeModulesPath: z.string().min(1).max(4096).optional(),
-  compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
 };

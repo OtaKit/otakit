@@ -51,8 +51,8 @@ export async function getAccountStatus(access: OrganizationAccess) {
       periodEnd: nextPeriodStart(usage.periodStart),
     },
     links: {
-      billing: `${baseUrl}/settings/billing`,
-      usage: `${baseUrl}/settings/billing`,
+      billing: `${baseUrl}/dashboard/settings?pricing=1`,
+      usage: `${baseUrl}/dashboard/settings`,
     },
   };
 }

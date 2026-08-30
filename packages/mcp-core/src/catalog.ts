@@ -111,7 +111,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'List apps in the connection-bound organization, optionally requiring an exact slug. Never guesses an app when the slug is absent.',
     modes: both,
     inputSchema: z.object({
-      slug: z.string().trim().min(1).max(200).optional(),
+      slug: z.string().trim().min(1).max(120).optional(),
       cursor: cursorSchema,
       limit: z.number().int().min(1).max(50).optional(),
     }),
@@ -125,7 +125,14 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     description:
       'Register a validated app slug in the current organization and return its ID and minimal Capacitor configuration. Does not edit local files.',
     modes: both,
-    inputSchema: z.object({ slug: z.string().trim().min(1).max(200) }),
+    inputSchema: z.object({
+      slug: z
+        .string()
+        .trim()
+        .min(3)
+        .max(120)
+        .regex(/^[A-Za-z0-9._-]+$/),
+    }),
     annotations: write,
     oauthScopes: ['otakit:app:write'],
     allowOrganizationKey: true,
@@ -138,7 +145,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     modes: both,
     inputSchema: z.object({
       appId: appIdSchema,
-      version: z.string().trim().min(1).max(120).optional(),
+      version: z.string().trim().min(1).max(64).optional(),
       ...paginationShape,
     }),
     annotations: readOnly,
@@ -257,7 +264,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     inputSchema: z.object({
       appId: appIdSchema,
       releaseId: releaseIdSchema.optional(),
-      bundleVersion: z.string().trim().min(1).max(120).optional(),
+      bundleVersion: z.string().trim().min(1).max(64).optional(),
       action: z.enum(['downloaded', 'applied', 'download_error', 'rollback']).optional(),
       platform: z.enum(['ios', 'android']).optional(),
       channel: channelSchema.optional(),
@@ -361,6 +368,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       channel: channelSchema,
       expectedCurrentReleaseId: expectedCurrentReleaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
+      compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
       ...releaseOptionsShape,
     }),
     // The publish phase is idempotent, but the preceding artifact upload is

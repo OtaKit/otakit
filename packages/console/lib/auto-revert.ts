@@ -3,6 +3,7 @@ import { db } from './db';
 import { sendAutoRevertEmail } from './email';
 import { isReleaseReliabilityEnabled } from './release-features';
 import { revertCurrentRelease } from './releases';
+import { isOtaKitServiceError } from './services/errors';
 import { revertRelease } from './services/releases';
 import { getReleaseHealthWindowCounts } from './tinybird/events';
 
@@ -281,8 +282,12 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
           auditMetadata: healthMetadata,
         });
       } catch (error) {
-        // A human release/revert may win the lane lock after this sweep reads
-        // its candidates. The service rejects stale state without changing it.
+        if (
+          !isOtaKitServiceError(error) ||
+          (error.code !== 'STALE_RELEASE_STATE' && error.code !== 'RELEASE_NOT_CURRENT')
+        ) {
+          throw error;
+        }
         console.info('[AutoRevert] candidate changed before revert', {
           appId,
           releaseId: candidate.id,

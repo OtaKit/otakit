@@ -65,9 +65,28 @@ describe('event service', () => {
 
     expect(mocks.listRecentAppEventsWithStatus).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: 'base',
+        channel: undefined,
+        channelIsNull: true,
         runtimeVersion: undefined,
         runtimeVersionIsNull: true,
+      }),
+    );
+  });
+
+  it('does not confuse a named base channel with the unnamed base channel', async () => {
+    mocks.listRecentAppEventsWithStatus.mockResolvedValue({ available: true, data: [] });
+
+    await listEvents({
+      appId: 'app-1',
+      from: new Date('2026-01-01'),
+      limit: 50,
+      channel: 'base',
+    });
+
+    expect(mocks.listRecentAppEventsWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'base',
+        channelIsNull: false,
       }),
     );
   });

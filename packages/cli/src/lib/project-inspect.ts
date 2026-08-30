@@ -88,13 +88,14 @@ export async function inspectOtaKitProject(projectRoot: string) {
     ? resolve(configDirectory, snapshot.outputDir.value)
     : null;
   const notifyAppReadyPath = findNotifyAppReady(root);
+  const installedPluginVersion = pluginVersion(root);
   const findings: Array<{ level: 'error' | 'warning' | 'info'; message: string }> = [];
 
   if (!capacitor) findings.push({ level: 'error', message: 'No capacitor.config.* file found.' });
   if (!snapshot.appId.value) {
     findings.push({ level: 'error', message: 'plugins.OtaKit.appId is not configured.' });
   }
-  if (!pluginVersion(root)) {
+  if (!installedPluginVersion) {
     findings.push({ level: 'error', message: '@otakit/capacitor-updater is not in package.json.' });
   }
   if (!outputPath) {
@@ -125,7 +126,7 @@ export async function inspectOtaKitProject(projectRoot: string) {
           serverUrlSource: snapshot.serverUrl.source,
         }
       : null,
-    pluginVersion: pluginVersion(root),
+    pluginVersion: installedPluginVersion,
     buildOutput: outputPath ? { path: outputPath, exists: existsSync(outputPath) } : null,
     notifyAppReady: {
       found: notifyAppReadyPath !== null,

@@ -292,10 +292,12 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private getContext(): ToolEnvelope {
-    const scopes =
-      this.connection.actor.type === 'key'
-        ? ['otakit:read', 'otakit:app:write', 'otakit:bundle:write', 'otakit:release:write']
-        : ['otakit:read', 'otakit:app:write', 'otakit:bundle:write', 'otakit:release:write'];
+    const scopes = [
+      'otakit:read',
+      'otakit:app:write',
+      'otakit:bundle:write',
+      'otakit:release:write',
+    ];
     return toolEnvelope(
       `Connected locally to ${this.connection.organization.name} on ${this.connection.serverUrl}.`,
       json({
@@ -313,7 +315,12 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   private async getAccountStatus(): Promise<ToolEnvelope> {
     const status = await this.accountApi().request<JsonObject>('/api/v1/organization/status');
     return toolEnvelope('Read the current OtaKit plan and usage status.', json(status), {
-      links: [{ label: 'Billing and usage', url: `${this.connection.serverUrl}/settings/billing` }],
+      links: [
+        {
+          label: 'Billing and usage',
+          url: `${this.connection.serverUrl}/dashboard/settings?pricing=1`,
+        },
+      ],
     });
   }
 
@@ -731,18 +738,21 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         : (nullableString(input, 'runtimeVersion') ?? undefined);
     const channel = publish ? nullableString(input, 'channel') : null;
     const nativePackages = this.nativePackages(projectRoot, input);
-    const compatibilityDecision = optionalString(input, 'compatibilityDecision') ?? 'block';
+    const compatibilityDecision = publish
+      ? (optionalString(input, 'compatibilityDecision') ?? 'block')
+      : undefined;
     const api = this.api(appId);
-    const compatibility =
-      compatibilityDecision === 'skip'
+    const compatibility = publish
+      ? compatibilityDecision === 'skip'
         ? ({ status: 'skipped', findings: [] } as const)
         : await checkCompatibilityAgainstChannel({
             api,
             channel,
             runtimeVersion,
             nativePackages,
-          });
-    if (compatibility.status === 'incompatible' && compatibilityDecision !== 'proceed') {
+          })
+      : ({ status: 'not_checked', reason: 'upload_only', findings: [] } as const);
+    if (publish && compatibility.status === 'incompatible' && compatibilityDecision !== 'proceed') {
       throw new PublicToolError(
         'INCOMPATIBLE_NATIVE_CHANGE',
         'Upload blocked because native code differs from the current release lane',
@@ -750,11 +760,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       );
     }
 
-    const progress: string[] = [];
     const progressToken = context.mcpReq._meta?.progressToken;
     let progressCount = 0;
     const reportProgress = (message: string) => {
-      progress.push(message);
       progressCount += 1;
       if (progressToken === undefined) return;
       void context.mcpReq
@@ -806,7 +814,6 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
             publicationStatus: publication.publicationStatus,
             versionSource: resolvedVersion.source,
             compatibility,
-            progress,
           }),
           {
             warnings: [
@@ -835,7 +842,6 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         publicationStatus: release?.publicationStatus ?? 'uploaded',
         versionSource: resolvedVersion.source,
         compatibility,
-        progress,
       }),
       {
         warnings: [

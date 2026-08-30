@@ -7,6 +7,10 @@ export const OTAKIT_OAUTH_SCOPES = [
 
 export type OtaKitOAuthScope = (typeof OTAKIT_OAUTH_SCOPES)[number];
 
+export function isOtaKitOAuthScope(scope: string): scope is OtaKitOAuthScope {
+  return (OTAKIT_OAUTH_SCOPES as readonly string[]).includes(scope);
+}
+
 export function isRemoteMcpEnabled(): boolean {
   return process.env.OTAKIT_REMOTE_MCP_ENABLED === 'true';
 }

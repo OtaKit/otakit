@@ -280,10 +280,8 @@ enum ReleaseMutationOperation {
 }
 
 enum ReleaseMutationStatus {
-  started
   database_committed
   published
-  failed
 }
 
 // ── Organizations & membership ──────────────────────────────────────
@@ -449,7 +447,7 @@ model ReleaseMutation {
   operation      ReleaseMutationOperation
   idempotencyKey String
   requestHash    String
-  status         ReleaseMutationStatus    @default(started)
+  status         ReleaseMutationStatus
   appId          String
   releaseId      String?
   channel        String?

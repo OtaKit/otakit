@@ -1,9 +1,9 @@
-import type { MemberRole, PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 
 import { db } from '@/lib/db';
 import type { OrganizationAccess } from '@/lib/organization-access';
 
-import { OTAKIT_OAUTH_SCOPES, remoteMcpResourceUrl } from './features';
+import { OTAKIT_OAUTH_SCOPES, isOtaKitOAuthScope, remoteMcpResourceUrl } from './features';
 
 export type OAuthTokenClaims = Record<string, unknown>;
 
@@ -75,7 +75,7 @@ export async function resolveOAuthConnection(
 
   const scopes = scopesFromClaims(claims);
   const unsupportedScope = Array.from(scopes).find(
-    (scope) => scope !== 'offline_access' && !OTAKIT_OAUTH_SCOPES.includes(scope as never),
+    (scope) => scope !== 'offline_access' && !isOtaKitOAuthScope(scope),
   );
   if (unsupportedScope) {
     throw new RemoteMcpAuthError('INVALID_TOKEN', 'OAuth token contains an unsupported scope');
@@ -118,7 +118,7 @@ export async function resolveOAuthConnection(
       organizationId,
       actorType: 'user',
       actorId: userId,
-      role: membership.role as MemberRole,
+      role: membership.role,
     },
     scopes,
     credentialType: 'oauth',

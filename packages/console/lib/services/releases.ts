@@ -632,8 +632,9 @@ export async function publishRelease(
       include: releaseWithBundlesInclude,
     });
 
+    const mutationId = randomUUID();
     const initialResult: PublishReleaseResult = {
-      operationId: '',
+      operationId: mutationId,
       idempotencyKey,
       publicationStatus: 'manifest_sync_pending',
       release: toReleaseSummary(release),
@@ -642,6 +643,7 @@ export async function publishRelease(
     };
     const mutation = await tx.releaseMutation.create({
       data: {
+        id: mutationId,
         organizationId: input.organizationId,
         actorKey: keyActor,
         operation,
@@ -656,15 +658,7 @@ export async function publishRelease(
         expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
       },
     });
-    initialResult.operationId = mutation.id;
-    await tx.releaseMutation.update({
-      where: { id: mutation.id },
-      data: { result: jsonValue(initialResult) },
-    });
-    const storedMutation = await tx.releaseMutation.findUniqueOrThrow({
-      where: { id: mutation.id },
-    });
-    return { mutation: storedMutation, created: true };
+    return { mutation, created: true };
   }, RELEASE_TRANSACTION_OPTIONS);
 
   let result = storedResult<PublishReleaseResult>(transactionResult.mutation);
@@ -1013,8 +1007,9 @@ export async function revertRelease(
       });
     }
 
+    const mutationId = randomUUID();
     const initialResult: RevertReleaseResult = {
-      operationId: '',
+      operationId: mutationId,
       idempotencyKey,
       publicationStatus: 'manifest_sync_pending',
       release: toReleaseSummary(revertedRelease),
@@ -1022,6 +1017,7 @@ export async function revertRelease(
     };
     const mutation = await tx.releaseMutation.create({
       data: {
+        id: mutationId,
         organizationId: input.organizationId,
         actorKey: keyActor,
         operation,
@@ -1036,15 +1032,7 @@ export async function revertRelease(
         expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
       },
     });
-    initialResult.operationId = mutation.id;
-    await tx.releaseMutation.update({
-      where: { id: mutation.id },
-      data: { result: jsonValue(initialResult) },
-    });
-    const storedMutation = await tx.releaseMutation.findUniqueOrThrow({
-      where: { id: mutation.id },
-    });
-    return { mutation: storedMutation, created: true };
+    return { mutation, created: true };
   }, RELEASE_TRANSACTION_OPTIONS);
 
   let result = storedResult<RevertReleaseResult>(transactionResult.mutation);
@@ -1154,7 +1142,7 @@ export async function reconcilePendingReleaseMutations(
 
   await database.releaseMutation.deleteMany({
     where: {
-      status: { in: ['published', 'failed'] },
+      status: 'published',
       expiresAt: { lt: new Date() },
     },
   });

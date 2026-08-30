@@ -60,6 +60,34 @@ describe('OtaKit MCP tool catalog', () => {
       }).success,
     ).toBe(true);
   });
+
+  it('keeps upload-only inputs separate from release approval and enforces API bounds', () => {
+    const byName = new Map(OTAKIT_TOOL_CATALOG.map((tool) => [tool.name, tool]));
+    const appId = '7bb828f1-797c-4d07-8254-068cac664f69';
+
+    expect(
+      byName.get('upload_bundle')?.inputSchema.parse({
+        appId,
+        compatibilityDecision: 'skip',
+      }),
+    ).not.toHaveProperty('compatibilityDecision');
+    expect(
+      byName.get('upload_and_publish_bundle')?.inputSchema.parse({
+        appId,
+        channel: null,
+        expectedCurrentReleaseId: null,
+        idempotencyKey: 'release-attempt-1',
+        compatibilityDecision: 'skip',
+      }),
+    ).toHaveProperty('compatibilityDecision', 'skip');
+    expect(
+      byName.get('upload_bundle')?.inputSchema.safeParse({ appId, version: 'v'.repeat(65) })
+        .success,
+    ).toBe(false);
+    expect(byName.get('create_app')?.inputSchema.safeParse({ slug: 'bad slug' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('OtaKit MCP registry transport', () => {
@@ -113,6 +141,14 @@ describe('OtaKit MCP registry transport', () => {
     const result = await client.callTool({ name: 'get_context', arguments: {} });
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toMatchObject({
+      summary: 'Called get_context',
+      data: { tool: 'get_context' },
+      warnings: [],
+    });
+    expect(result.content).toHaveLength(1);
+    const text = result.content[0];
+    expect(text?.type).toBe('text');
+    expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
       summary: 'Called get_context',
       data: { tool: 'get_context' },
       warnings: [],

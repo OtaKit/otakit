@@ -1298,19 +1298,18 @@ same expected-state and idempotency contract.
 
 Store a short-lived mutation record keyed by organization, actor, operation, and
 idempotency key. Include a canonical request hash, state
-(`started`, `database_committed`, `published`, or `failed`), manifest-sync job
-reference, and serialized final response when available.
+(`database_committed` or `published`), and serialized response. The release and
+its mutation record are created in one database transaction, so there is no
+separate pre-commit state to recover.
 
 - Same key + same hash + `published`: return the original final result.
 - Same key + different hash: `409 IDEMPOTENCY_KEY_REUSED`.
 - Concurrent duplicate: only one performs the mutation.
-- A `started` or pre-commit `failed` retry can safely resume or re-run the
-  transaction without duplicating a release.
 - A `database_committed` retry resumes manifest synchronization and returns the
   repaired final response or the same release identity with a still-pending
   publication status.
-- Retain records long enough for realistic client/network retries; make the
-  retention configurable and document it.
+- Retain published records for seven days so realistic client/network retries
+  return the original result. Keep pending records until synchronization succeeds.
 
 For a retry of an already successful identical mutation, return the stored result
 after current authentication and authorization.

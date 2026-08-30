@@ -1,5 +1,5 @@
 CREATE TYPE "ReleaseMutationOperation" AS ENUM ('publish', 'revert');
-CREATE TYPE "ReleaseMutationStatus" AS ENUM ('started', 'database_committed', 'published', 'failed');
+CREATE TYPE "ReleaseMutationStatus" AS ENUM ('database_committed', 'published');
 
 CREATE TABLE "ReleaseMutation" (
     "id" TEXT NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE "ReleaseMutation" (
     "operation" "ReleaseMutationOperation" NOT NULL,
     "idempotencyKey" TEXT NOT NULL,
     "requestHash" TEXT NOT NULL,
-    "status" "ReleaseMutationStatus" NOT NULL DEFAULT 'started',
+    "status" "ReleaseMutationStatus" NOT NULL,
     "appId" TEXT NOT NULL,
     "releaseId" TEXT,
     "channel" TEXT,

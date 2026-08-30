@@ -15,9 +15,8 @@ export async function listEvents(input: {
 }) {
   const result = await listRecentAppEventsWithStatus({
     ...input,
-    // MCP uses null as an exact base-channel selector. Tinybird's empty value
-    // means "all channels", while the existing pipe uses "base" for null rows.
-    channel: input.channel === null ? 'base' : input.channel,
+    channel: input.channel ?? undefined,
+    channelIsNull: input.channel === null,
     runtimeVersion: input.runtimeVersion ?? undefined,
     runtimeVersionIsNull: input.runtimeVersion === null,
   });

@@ -3,7 +3,20 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  checkCompatibilityAgainstChannel: vi.fn(),
+  runUploadWorkflow: vi.fn(),
+}));
+
+vi.mock('../lib/compat-check.js', () => ({
+  checkCompatibilityAgainstChannel: mocks.checkCompatibilityAgainstChannel,
+}));
+vi.mock('../lib/upload-workflow.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/upload-workflow.js')>();
+  return { ...original, runUploadWorkflow: mocks.runUploadWorkflow };
+});
 
 import { OtaKitApiError } from '../lib/api.js';
 import {
@@ -26,6 +39,7 @@ async function fixture(): Promise<string> {
   temporaryRoots.push(root);
   await mkdir(join(root, 'src'));
   await mkdir(join(root, 'www'));
+  await mkdir(join(root, 'node_modules'));
   await writeFile(
     join(root, 'capacitor.config.json'),
     JSON.stringify({
@@ -64,6 +78,8 @@ function connection(projectRoot: string): LocalMcpConnectionContext {
 }
 
 describe('local OtaKit MCP adapter', () => {
+  afterEach(() => vi.resetAllMocks());
+
   it('returns a reusable uploaded bundle state when publication loses its expected lane', async () => {
     const release = async () => {
       throw new OtaKitApiError(
@@ -132,5 +148,40 @@ describe('local OtaKit MCP adapter', () => {
         {} as never,
       ),
     ).rejects.toMatchObject({ code: 'INVALID_PROJECT_PATH' });
+  });
+
+  it('uploads for later review without checking an unrelated release lane', async () => {
+    const root = await fixture();
+    mocks.runUploadWorkflow.mockResolvedValue({
+      bundle: {
+        id: 'f32627ca-9e8c-4358-90d8-bde732400081',
+        version: '1.0.0',
+      },
+    });
+    const adapter = new LocalOtaKitToolAdapter(connection(root));
+
+    const result = await adapter.invoke(
+      'upload_bundle',
+      {
+        appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+        sourcePath: 'www',
+        version: '1.0.0',
+      },
+      {
+        mcpReq: {
+          _meta: {},
+          notify: vi.fn(),
+          signal: new AbortController().signal,
+        },
+      } as never,
+    );
+
+    expect(mocks.checkCompatibilityAgainstChannel).not.toHaveBeenCalled();
+    expect(mocks.runUploadWorkflow).toHaveBeenCalledOnce();
+    expect(result.data).toMatchObject({
+      publicationStatus: 'uploaded',
+      compatibility: { status: 'not_checked', reason: 'upload_only', findings: [] },
+    });
+    expect(result.data).not.toHaveProperty('progress');
   });
 });

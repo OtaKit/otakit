@@ -100,7 +100,7 @@ export function createOtaKitMcpServer(options: {
           const output = await options.adapter.invoke(definition.name, input, context);
           const parsed = toolEnvelopeSchema.parse(output);
           return {
-            content: [{ type: 'text', text: parsed.summary }],
+            content: [{ type: 'text', text: JSON.stringify(parsed) }],
             structuredContent: parsed,
           };
         } catch (error) {
