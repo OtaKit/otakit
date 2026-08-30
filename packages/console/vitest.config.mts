@@ -13,6 +13,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    env: {
+      BETTER_AUTH_URL: 'https://console.example',
+      NEXT_PUBLIC_APP_URL: 'https://console.example',
+    },
     include: ['**/*.test.ts'],
     exclude: ['node_modules/**', '.next/**'],
     restoreMocks: true,

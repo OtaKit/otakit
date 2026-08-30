@@ -186,7 +186,9 @@ function laneLockKey(appId: string, channel: string | null, runtimeVersion: stri
 }
 
 async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+  // The PostgreSQL lock function returns the pseudo-type `void`, which Prisma
+  // cannot deserialize through $queryRaw. Execute it without reading a result.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 }
 
 function toReleaseSummary(release: ReleaseForSummary): ReleaseSummary {
