@@ -44,6 +44,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm --filter @otakit/console db:generate
+
       - name: Apply test database migrations
         run: pnpm --filter @otakit/console db:migrate
 
