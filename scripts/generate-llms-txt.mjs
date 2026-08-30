@@ -30,7 +30,7 @@ const DOCS = [
   },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   {
-    label: 'AI Agents & MCP',
+    label: 'AgentKit: MCP & Skills',
     route: '/docs/agents',
     file: 'packages/site/app/docs/agents/page.tsx',
   },
@@ -310,6 +310,11 @@ function renderElement(tagName, children, attributes, lines, state) {
     return;
   }
 
+  if (tagName === 'Notice') {
+    pushParagraph(lines, extractInline(children));
+    return;
+  }
+
   if (tagName === 'Step') {
     const number = getAttributeValue(attributes, 'number');
     const title = getAttributeValue(attributes, 'title');
@@ -357,6 +362,29 @@ function renderSelfClosing(tagName, attributes, lines) {
     const title = getAttributeValue(attributes, 'title');
     const description = getAttributeValue(attributes, 'description');
     pushBullet(lines, formatLabel(title, description));
+    return;
+  }
+
+  if (tagName === 'SummaryCard') {
+    const title = getAttributeValue(attributes, 'title');
+    const description = getAttributeValue(attributes, 'description');
+    pushBullet(lines, formatLabel(title, description));
+    return;
+  }
+
+  if (tagName === 'CapabilityRow') {
+    const capability = getAttributeValue(attributes, 'capability');
+    const local = getAttributeValue(attributes, 'local');
+    const remote = getAttributeValue(attributes, 'remote');
+    pushBullet(lines, `**${capability}**: Local MCP — ${local}; Remote MCP — ${remote}`);
+    return;
+  }
+
+  if (tagName === 'Workflow') {
+    const title = getAttributeValue(attributes, 'title');
+    const prompt = getAttributeValue(attributes, 'prompt');
+    pushHeading(lines, 4, title);
+    pushParagraph(lines, `Prompt: “${prompt}”`);
     return;
   }
 

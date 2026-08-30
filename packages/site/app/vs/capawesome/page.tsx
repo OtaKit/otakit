@@ -6,7 +6,7 @@ import { site } from '@/lib/site';
 export const metadata = {
   title: { absolute: 'Capawesome Alternative — OtaKit | Live Updates for Capacitor' },
   description:
-    'OtaKit is the Capawesome Live Update alternative with full OTA feature parity, a fully MIT-licensed stack, and CDN-direct delivery — $0–25/mo where Capawesome charges $29–249. No MAU caps, no user tracking.',
+    'OtaKit is the Capawesome Live Update alternative with a fully MIT-licensed stack, CDN-direct delivery, and an MCP + Agent Skill workflow. No MAU caps or user tracking.',
   alternates: { canonical: `${site.url}/vs/capawesome` },
 };
 
@@ -81,10 +81,10 @@ const copy: ComparisonCopy = {
         <>
           <p>
             Capawesome’s live-update plans are gated by monthly active users — $9/mo covers just
-            1,000 MAU, then $29 (10K), $79 (50K), $249 (250K) — and every active device counts
-            every month, whether you release or not. OtaKit meters{' '}
-            <strong>updates delivered</strong>, nothing else: Free covers 5,000 updates/month with
-            unlimited apps; Starter is $10/mo for 100,000, and Pro starts at $25/mo for 1 million.
+            1,000 MAU, then $29 (10K), $79 (50K), $249 (250K) — and every active device counts every
+            month, whether you release or not. OtaKit meters <strong>updates delivered</strong>,
+            nothing else: Free covers 5,000 updates/month with unlimited apps; Starter is $10/mo for
+            100,000, and Pro starts at $25/mo for 1 million.
           </p>
           <p>
             At 250,000 users the difference is $25 vs $249 — ten to one, every month, for the same
@@ -112,15 +112,35 @@ const copy: ComparisonCopy = {
       ),
     },
     {
+      q: 'Can I manage OtaKit from an AI coding agent?',
+      a: (
+        <>
+          <p>
+            Yes. <GuideLink href="/docs/agents">OtaKit AgentKit</GuideLink> combines a local MCP
+            server for project inspection, compatibility checks, packaging, and uploads; a remote
+            OAuth MCP server for account and release operations; and an open Agent Skill for the
+            full release and revert workflow.
+          </p>
+          <p>
+            Capawesome also publishes a remote MCP server and open Agent Skills, so this is not an
+            “AI versus no AI” comparison. OtaKit&apos;s distinction is the combination of a
+            project-aware local MCP server, a remote server with scoped OAuth, and one Skill that
+            preserves its exact release options, approval points, client-reported event detail, and
+            audit trail.
+          </p>
+        </>
+      ),
+    },
+    {
       q: 'How do I migrate from Capawesome?',
       a: (
         <>
           <p>
             The APIs map almost one-to-one: <Code>ready()</Code> becomes{' '}
             <Code>notifyAppReady()</Code>, <Code>sync()</Code> becomes <Code>update()</Code>,{' '}
-            <Code>defaultChannel</Code>{' '}
-            becomes <Code>channel</Code>, and the background auto-update strategy is OtaKit’s
-            default behavior out of the box. Swap the plugin, build, and upload.
+            <Code>defaultChannel</Code> becomes <Code>channel</Code>, and the background auto-update
+            strategy is OtaKit’s default behavior out of the box. Swap the plugin, build, and
+            upload.
           </p>
           <p>
             The{' '}
@@ -134,10 +154,10 @@ const copy: ComparisonCopy = {
       q: 'Are OTA updates allowed?',
       a: (
         <p>
-          Yes. Updating the web layer of a Capacitor app is explicitly permitted — Apple’s
-          Developer Program License Agreement <strong>§3.3.1(B)</strong> allows downloaded
-          JavaScript that runs in the system web view, and Google Play permits the same. OtaKit
-          never touches native binaries, so your releases stay compliant.
+          Yes. Updating the web layer of a Capacitor app is explicitly permitted — Apple’s Developer
+          Program License Agreement <strong>§3.3.1(B)</strong> allows downloaded JavaScript that
+          runs in the system web view, and Google Play permits the same. OtaKit never touches native
+          binaries, so your releases stay compliant.
         </p>
       ),
     },
@@ -148,8 +168,8 @@ const copy: ComparisonCopy = {
           Every device calls <Code>notifyAppReady()</Code> once the new bundle has booted
           successfully. If it doesn’t confirm within the launch window, OtaKit automatically rolls
           that device back to the last known-good bundle. You can also revert any channel instantly
-          from the dashboard, and the CLI warns at upload time if your bundle depends on native
-          code the installed app doesn’t have.
+          from the dashboard, and the CLI warns at upload time if your bundle depends on native code
+          the installed app doesn’t have.
         </p>
       ),
     },

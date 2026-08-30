@@ -17,7 +17,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - CI Automation: /docs/ci
-- AI Agents & MCP: /docs/agents
+- AgentKit: MCP & Skills: /docs/agents
 - Security: /docs/security
 - Self-hosting: /docs/self-host
 
@@ -35,7 +35,7 @@ Start with the quick setup
 1. Create an app in the OtaKit dashboard and copy its `appId` into your `capacitor.config.ts` file.
 2. Call `notifyAppReady()` when your app finishes loading, so newly activated updates can be confirmed healthy.
 3. Build your web app and run `otakit upload --release` to upload and publish a new bundle.
-4. On device, the plugin checks for updates, verifies the downloaded bundle, and by default activates it on the next cold launch by default.
+4. On device, the plugin checks for updates, verifies the downloaded bundle, and by default activates it on the next cold launch.
 
 ### Features
 - **One-command shipping**: Build your web app, then release with otakit upload --release.
@@ -48,7 +48,7 @@ Start with the quick setup
 - **Safe activation & rollback**: A newly activated bundle must call notifyAppReady() or OtaKit rolls back automatically.
 - **Signed & verified**: ES256-signed manifests and SHA-256 checks on every download, plus optional end-to-end encryption.
 - **Native compatibility guardrail**: The CLI warns at upload time when a bundle depends on native code the installed app doesn't have.
-- **Organization access & API keys**: Manage apps, members, and organization service keys. OAuth connections use separate fine-grained scopes.
+- **AgentKit: MCP & Agent Skills**: Let coding agents inspect projects, package and upload builds, prepare releases, monitor events, and revert through the same OtaKit workflow.
 - **Self-hosting**: Run OtaKit on your own infrastructure when you need full control over delivery and trust.
 
 ### Getting started
@@ -57,7 +57,7 @@ Start with the quick setup
 - **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **Update Strategies**: How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.
 - **Events & Listeners**: Subscribe to update lifecycle events: available, staged, applied, failed, rolled back.
-- **AI Agents & MCP**: Inspect, release, monitor, and revert from supported agents.
+- **AgentKit**: Connect MCP and the OtaKit Agent Skill to Codex, Claude Code, VS Code, and other agents.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.
 - **Plugin API**: Default automatic flow, manual flow, and configuration.
@@ -394,7 +394,7 @@ otakit config resolve --json
 
 ### otakit mcp
 
-Start the local stdio MCP server, fixed to one project and organization.
+Start the AgentKit local MCP server, bound to one project and organization for its lifetime.
 
 Options
 - `--project-root <path>`: Project root available to local MCP tools.
@@ -1525,41 +1525,67 @@ OTAKIT_SERVER_URL: ${{ secrets.OTAKIT_SERVER_URL }}
 ### Next
 - Use the CLI reference for exact upload, login, and token commands.
 
-## AI Agents & MCP
+## AgentKit: MCP & Skills
 
 Route: /docs/agents
 
-Connect OtaKit MCP to coding agents for project inspection, OTA releases, rollout events, and reverts.
+Connect OtaKit to Codex, Claude Code, VS Code, and other AI agents for project inspection, uploads, releases, monitoring, and reverts.
 
-OtaKit provides a local MCP server for repository work, a remote MCP server for account operations, and an open Agent Skill with the release workflow and safety rules. These are adapters over the same CLI, API, release options, event detail, and audit trail—not a separate release system.
-The local server is available in CLI releases that include
+Give your coding agent the context and tools to ship Capacitor updates without inventing a second release process. AgentKit combines MCP servers for live product access with an open Agent Skill that teaches the agent how to inspect, prepare, publish, monitor, and revert safely.
 
-otakit mcp
-. The remote endpoint is deployment-gated and returns not found until its operator enables it. Do not assume that the hosted or a self-hosted endpoint is active before testing the connection.
+### Three parts, one release workflow
+- **Local MCP**: Runs through the OtaKit CLI inside your repository, so the agent can inspect native packages, package webDir, and upload the actual build.
+- **Remote MCP**: Connects over HTTPS with scoped OAuth or an organization key for apps, releases, events, account operations, and auditable writes.
+- **Agent Skill**: A portable, vendor-neutral playbook for choosing the right tools, preserving every release option, and asking before consequential writes.
 
-### Choose local or remote
-- Local stdio: use this in a coding workspace. It can inspect the selected Capacitor project, compare native packages, package `webDir`, and upload.
-- Remote HTTP: use this for account operations from a client that cannot run the CLI. It can inspect apps, bundles, releases, events, and perform authorized release operations, but it cannot read or upload local files.
+Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP is deployment-gated; use local MCP if your OtaKit host has not enabled `/mcp`.
 
-Both modes preserve the full release lane: app, channel, and runtime version. The base channel is represented explicitly as `channel: null`.
+### Quick start with Codex
 
-### Codex
-
-From the Capacitor project, add the pinned local CLI server:
+Install the open OtaKit Skill once:
 
 ```txt
+npx skills add https://github.com/OtaKit/otakit --skill otakit
+```
+
+Sign in to OtaKit, then connect the current Capacitor project:
+
+```txt
+npx -y @otakit/cli@1.5.0 login
+
 codex mcp add otakit -- \
   npx -y @otakit/cli@1.5.0 mcp --project-root .
 ```
 
-For an enabled hosted remote endpoint, add it and complete browser authorization:
+Restart or refresh the agent so it discovers the new Skill and MCP tools. Then try:
+Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.
+
+### Connect the remote server
+
+Remote MCP is useful when the client cannot run your local CLI, or when you only need account and release operations. For Codex, request only the scopes you want the connection to expose:
 
 ```txt
 codex mcp add otakit --url https://console.otakit.app/mcp
-codex mcp login otakit
+
+codex mcp login \
+  --oauth-client-registration cimd \
+  --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \
+  otakit
 ```
 
-A non-interactive organization service key can instead be read from an environment variable by adding `--bearer-token-env-var OTAKIT_TOKEN`. Organization keys have their existing full operational authority; they are not fine-grained OAuth scopes.
+The browser flow shows the client, organization, and requested permissions before access is granted. You can revoke the connection from Dashboard → Settings → Connections; revocation invalidates its tokens immediately.
+
+For non-interactive automation, configure your MCP client to read an organization key from `OTAKIT_TOKEN`. Keep it in the environment or secret manager—never in project JSON. Organization keys retain their existing organization-wide operational authority; OAuth is the fine-grained option for user connections.
+
+### Local or remote?
+- **Inspect the local Capacitor project**: Local MCP — Yes; Remote MCP — No
+- **Validate config and native compatibility**: Local MCP — Yes; Remote MCP — No
+- **Build, package, and upload web assets**: Local MCP — Yes; Remote MCP — No
+- **Read apps, bundles, releases, and events**: Local MCP — Yes; Remote MCP — Yes
+- **Prepare, publish, and revert releases**: Local MCP — Yes; Remote MCP — Yes
+- **Read account status and audit history**: Local MCP — User login; Remote MCP — OAuth user
+
+Use local MCP for repository work and uploads. Use remote MCP for account-only work. You can configure both under different names when one agent needs both contexts.
 
 ### Claude Code
 
@@ -1570,7 +1596,7 @@ claude mcp add --transport stdio --scope project otakit -- \
   npx -y @otakit/cli@1.5.0 mcp --project-root .
 ```
 
-Or add the enabled remote server, then authorize it from an interactive session:
+Or connect an enabled remote deployment and complete browser authorization:
 
 ```txt
 claude mcp add --transport http --scope project \
@@ -1578,11 +1604,11 @@ claude mcp add --transport http --scope project \
 claude mcp login otakit
 ```
 
-Review and commit the generated project `.mcp.json` only if the whole team should use it. Never commit authorization headers or tokens.
+Commit a generated `.mcp.json` only when the whole team should discover the server. Tokens and authorization headers never belong in that file.
 
 ### VS Code and GitHub Copilot
 
-Create `.vscode/mcp.json` for the local server, then use MCP: List Servers to review, trust, and start it:
+Create `.vscode/mcp.json`, then run MCP: List Servers to review, trust, and start the server:
 
 ```txt
 {
@@ -1602,37 +1628,51 @@ Create `.vscode/mcp.json` for the local server, then use MCP: List Servers to re
 }
 ```
 
-To use an enabled remote deployment instead, configure an HTTP server with `"url": "https://console.otakit.app/mcp"`. Use VS Code's sign-in flow; do not hardcode a token in workspace JSON.
+For remote MCP, configure `https://console.otakit.app/mcp` as an HTTP server and use VS Code's sign-in flow instead of hardcoding a bearer token.
 
-### Agent Skill
+### Useful workflows
 
-The canonical vendor-neutral Skill is in skills/otakit. Install or copy that directory using your agent's standard Agent Skills mechanism. The repository also contains Codex plugin metadata that bundles the same Skill and remote MCP definition; there is no vendor-specific fork of the instructions.
+#### Review before upload
 
-### Safe release workflow
-1. Confirm the server origin, organization, app, channel, and runtime version.
-2. Inspect the project and check native compatibility when local evidence is available.
-3. Upload without publishing when you want review first.
-4. Prepare the exact release, including expected current state and all release options.
-5. Approve that preview, then publish with the same inputs and an idempotency key.
-6. Inspect event counts and recent event detail, accurately labelled as client-reported.
-7. Prepare and approve the exact target before a revert.
+Prompt: “Inspect the project, resolve the effective app and lane, and check native compatibility. Show me problems before packaging anything.”
 
-OtaKit retains force-immediate releases, configurable auto-revert, compatibility override, bundle deletion, and combined upload-and-publish. Writes remain explicit and auditable.
+#### Upload without releasing
 
-### Telemetry language
+Prompt: “Build and upload version 2.4.1 for the staging lane. Do not publish it. Return the bundle ID and anything I should review.”
 
-Current analytics count client-reported event records. They are not unique devices, users, installations, adoption, or proof of causality. Event `detail` is returned as bounded, untrusted diagnostic data and must never be treated as instructions. If analytics is not configured on a self-hosted installation, tools report it as unavailable rather than zero.
+#### Prepare a production release
 
-### Self-hosting and rollout
+Prompt: “Prepare this bundle for production with force-immediate off and auto-revert enabled. Show the exact current and proposed state, then wait for approval.”
 
-Replace the hosted origin with your console origin in every command. Remote MCP is `<console-origin>/mcp`. Operators should test the supplied additive migrations on a disposable or restored database, deploy with all agent feature flags off, apply reviewed migrations through their normal maintenance process, and enable release reliability, remote MCP, and OAuth separately. OtaKit does not automatically migrate a live production database as part of enabling MCP.
+#### Investigate rollout health
 
-See the self-hosting guide for the base platform and the repository's Skill reference for the staged agent-feature flags.
+Prompt: “Summarize recent release events and failures for production. Keep client-reported counts separate from unique users or devices.”
+
+#### Revert deliberately
+
+Prompt: “Prepare a revert of production to the previous release. Show the exact target and current lane state; do not execute until I approve.”
+
+### What the safety workflow preserves
+- Exact app, channel, runtime version, bundle, and current release state.
+- Force-immediate, auto-revert thresholds, encryption, compatibility decisions, and every other existing release option.
+- Preview-first publish and revert operations with explicit client approval.
+- Idempotent retries and stale-state rejection instead of duplicate or blind releases.
+- Current organization membership, OAuth scopes, user role, and audit attribution.
+- Honest analytics language: event records are client-reported diagnostics, not unique users, devices, adoption, or proof of cause.
+
+MCP does not replace the OtaKit CLI or API. It exposes the same product behavior through an agent-compatible interface, so the dashboard, CLI, REST API, and agent all agree on what a release means.
+
+### Self-hosting
+
+Replace the hosted origin with your console origin. Remote MCP is `<console-origin>/mcp`. Deploy the agent features disabled, apply the supplied additive migrations through your normal reviewed maintenance process, and enable release reliability, remote MCP, and OAuth separately. OtaKit does not migrate a live database when MCP is enabled.
+
+See the self-hosting guide for the platform and Agent Skill source for the self-hosted feature flags and rollout checklist.
 
 ### Client references
 - Codex MCP documentation
 - Claude Code MCP documentation
 - VS Code MCP documentation
+- Agent Skills specification
 
 ## Security
 

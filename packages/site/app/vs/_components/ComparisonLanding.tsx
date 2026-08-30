@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowRight,
+  Bot,
   BookOpen,
   Check,
   FileDiff,
@@ -10,7 +11,6 @@ import {
   Shield,
   ShieldAlert,
   SlidersHorizontal,
-  Users,
   Zap,
   Globe,
 } from 'lucide-react';
@@ -364,9 +364,9 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 description="OTA updates for web layers only — fully compliant with Apple and Google guidelines for Capacitor apps."
               />
               <FeatureCard
-                icon={Users}
-                title="Team & API keys"
-                description="Invite members, assign roles, and manage organization service keys."
+                icon={Bot}
+                title="MCP & Agent Skills"
+                description="Connect coding agents through local and remote MCP plus an open Agent Skill—then inspect projects, upload, release, monitor, and revert."
               />
               <FeatureCard
                 icon={Globe}

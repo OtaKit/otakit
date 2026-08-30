@@ -4,61 +4,132 @@ import { Pre } from '@/app/docs/CodeBlock';
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'OtaKit for AI Agents',
+  title: 'AgentKit: MCP & Agent Skills',
   description:
-    'Connect OtaKit MCP to coding agents for project inspection, OTA releases, rollout events, and reverts.',
+    'Connect OtaKit to Codex, Claude Code, VS Code, and other AI agents for project inspection, uploads, releases, monitoring, and reverts.',
 };
 
 export default function AgentsPage() {
   return (
     <>
-      <H1>OtaKit for AI Agents</H1>
-      <P>
-        OtaKit provides a local MCP server for repository work, a remote MCP server for account
-        operations, and an open Agent Skill with the release workflow and safety rules. These are
-        adapters over the same CLI, API, release options, event detail, and audit trail—not a
-        separate release system.
-      </P>
+      <H1>OtaKit AgentKit</H1>
+      <Lead>
+        Give your coding agent the context and tools to ship Capacitor updates without inventing a
+        second release process. AgentKit combines MCP servers for live product access with an open
+        Agent Skill that teaches the agent how to inspect, prepare, publish, monitor, and revert
+        safely.
+      </Lead>
+
+      <h2 className="sr-only">Three parts, one release workflow</h2>
+      <div className="-mx-6 mt-8 grid w-[calc(100%+3rem)] gap-px border-y border-border bg-border sm:grid-cols-3">
+        <SummaryCard
+          eyebrow="Project-aware"
+          title="Local MCP"
+          description="Runs through the OtaKit CLI inside your repository, so the agent can inspect native packages, package webDir, and upload the actual build."
+        />
+        <SummaryCard
+          eyebrow="Account-aware"
+          title="Remote MCP"
+          description="Connects over HTTPS with scoped OAuth or an organization key for apps, releases, events, account operations, and auditable writes."
+        />
+        <SummaryCard
+          eyebrow="Workflow-aware"
+          title="Agent Skill"
+          description="A portable, vendor-neutral playbook for choosing the right tools, preserving every release option, and asking before consequential writes."
+        />
+      </div>
 
       <Notice>
-        The local server is available in CLI releases that include <Code>otakit mcp</Code>. The
-        remote endpoint is deployment-gated and returns not found until its operator enables it. Do
-        not assume that the hosted or a self-hosted endpoint is active before testing the
-        connection.
+        Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP
+        is deployment-gated; use local MCP if your OtaKit host has not enabled <Code>/mcp</Code>.
       </Notice>
 
       <Separator className="my-10" />
 
-      <H2>Choose local or remote</H2>
-      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>
-          <strong>Local stdio:</strong> use this in a coding workspace. It can inspect the selected
-          Capacitor project, compare native packages, package <Code>webDir</Code>, and upload.
-        </li>
-        <li>
-          <strong>Remote HTTP:</strong> use this for account operations from a client that cannot
-          run the CLI. It can inspect apps, bundles, releases, events, and perform authorized
-          release operations, but it cannot read or upload local files.
-        </li>
-      </ul>
+      <H2>Quick start with Codex</H2>
+      <P>Install the open OtaKit Skill once:</P>
+      <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit`}</Pre>
+      <P>Sign in to OtaKit, then connect the current Capacitor project:</P>
+      <Pre>{`npx -y @otakit/cli@1.5.0 login
+
+codex mcp add otakit -- \\
+  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+      <P>Restart or refresh the agent so it discovers the new Skill and MCP tools. Then try:</P>
+      <Prompt>
+        Inspect this Capacitor project for OtaKit readiness. Check configuration and native
+        compatibility, but do not upload or change anything.
+      </Prompt>
+
+      <Separator className="my-10" />
+
+      <H2>Connect the remote server</H2>
       <P>
-        Both modes preserve the full release lane: app, channel, and runtime version. The base
-        channel is represented explicitly as <Code>channel: null</Code>.
+        Remote MCP is useful when the client cannot run your local CLI, or when you only need
+        account and release operations. For Codex, request only the scopes you want the connection
+        to expose:
+      </P>
+      <Pre>{`codex mcp add otakit --url https://console.otakit.app/mcp
+
+codex mcp login \\
+  --oauth-client-registration cimd \\
+  --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
+  otakit`}</Pre>
+      <P>
+        The browser flow shows the client, organization, and requested permissions before access is
+        granted. You can revoke the connection from{' '}
+        <strong>Dashboard → Settings → Connections</strong>; revocation invalidates its tokens
+        immediately.
+      </P>
+      <P>
+        For non-interactive automation, configure your MCP client to read an organization key from
+        <Code>OTAKIT_TOKEN</Code>. Keep it in the environment or secret manager—never in project
+        JSON. Organization keys retain their existing organization-wide operational authority; OAuth
+        is the fine-grained option for user connections.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>Codex</H2>
-      <P>From the Capacitor project, add the pinned local CLI server:</P>
-      <Pre>{`codex mcp add otakit -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
-      <P>For an enabled hosted remote endpoint, add it and complete browser authorization:</P>
-      <Pre>{`codex mcp add otakit --url https://console.otakit.app/mcp
-codex mcp login otakit`}</Pre>
+      <H2>Local or remote?</H2>
+      <div className="mt-4 overflow-x-auto border border-border">
+        <table className="min-w-full border-collapse text-left text-sm text-muted-foreground">
+          <CapabilityHeader />
+          <tbody className="[&_tr:last-child_td]:border-b-0">
+            <CapabilityRow
+              capability="Inspect the local Capacitor project"
+              local="Yes"
+              remote="No"
+            />
+            <CapabilityRow
+              capability="Validate config and native compatibility"
+              local="Yes"
+              remote="No"
+            />
+            <CapabilityRow
+              capability="Build, package, and upload web assets"
+              local="Yes"
+              remote="No"
+            />
+            <CapabilityRow
+              capability="Read apps, bundles, releases, and events"
+              local="Yes"
+              remote="Yes"
+            />
+            <CapabilityRow
+              capability="Prepare, publish, and revert releases"
+              local="Yes"
+              remote="Yes"
+            />
+            <CapabilityRow
+              capability="Read account status and audit history"
+              local="User login"
+              remote="OAuth user"
+            />
+          </tbody>
+        </table>
+      </div>
       <P>
-        A non-interactive organization service key can instead be read from an environment variable
-        by adding <Code>--bearer-token-env-var OTAKIT_TOKEN</Code>. Organization keys have their
-        existing full operational authority; they are not fine-grained OAuth scopes.
+        Use local MCP for repository work and uploads. Use remote MCP for account-only work. You can
+        configure both under different names when one agent needs both contexts.
       </P>
 
       <Separator className="my-10" />
@@ -67,21 +138,21 @@ codex mcp login otakit`}</Pre>
       <P>Add the local server to the current project:</P>
       <Pre>{`claude mcp add --transport stdio --scope project otakit -- \\
   npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
-      <P>Or add the enabled remote server, then authorize it from an interactive session:</P>
+      <P>Or connect an enabled remote deployment and complete browser authorization:</P>
       <Pre>{`claude mcp add --transport http --scope project \\
   otakit https://console.otakit.app/mcp
 claude mcp login otakit`}</Pre>
       <P>
-        Review and commit the generated project <Code>.mcp.json</Code> only if the whole team should
-        use it. Never commit authorization headers or tokens.
+        Commit a generated <Code>.mcp.json</Code> only when the whole team should discover the
+        server. Tokens and authorization headers never belong in that file.
       </P>
 
       <Separator className="my-10" />
 
       <H2>VS Code and GitHub Copilot</H2>
       <P>
-        Create <Code>.vscode/mcp.json</Code> for the local server, then use{' '}
-        <strong>MCP: List Servers</strong> to review, trust, and start it:
+        Create <Code>.vscode/mcp.json</Code>, then run <strong>MCP: List Servers</strong> to review,
+        trust, and start the server:
       </P>
       <Pre>{`{
   "servers": {
@@ -99,70 +170,75 @@ claude mcp login otakit`}</Pre>
   }
 }`}</Pre>
       <P>
-        To use an enabled remote deployment instead, configure an HTTP server with{' '}
-        <Code>{'"url": "https://console.otakit.app/mcp"'}</Code>. Use VS Code&apos;s sign-in flow;
-        do not hardcode a token in workspace JSON.
+        For remote MCP, configure <Code>https://console.otakit.app/mcp</Code> as an HTTP server and
+        use VS Code&apos;s sign-in flow instead of hardcoding a bearer token.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>Agent Skill</H2>
-      <P>
-        The canonical vendor-neutral Skill is in{' '}
-        <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">skills/otakit</A>.
-        Install or copy that directory using your agent&apos;s standard Agent Skills mechanism. The
-        repository also contains Codex plugin metadata that bundles the same Skill and remote MCP
-        definition; there is no vendor-specific fork of the instructions.
-      </P>
+      <H2>Useful workflows</H2>
+      <div className="mt-4 space-y-4">
+        <Workflow
+          title="Review before upload"
+          prompt="Inspect the project, resolve the effective app and lane, and check native compatibility. Show me problems before packaging anything."
+        />
+        <Workflow
+          title="Upload without releasing"
+          prompt="Build and upload version 2.4.1 for the staging lane. Do not publish it. Return the bundle ID and anything I should review."
+        />
+        <Workflow
+          title="Prepare a production release"
+          prompt="Prepare this bundle for production with force-immediate off and auto-revert enabled. Show the exact current and proposed state, then wait for approval."
+        />
+        <Workflow
+          title="Investigate rollout health"
+          prompt="Summarize recent release events and failures for production. Keep client-reported counts separate from unique users or devices."
+        />
+        <Workflow
+          title="Revert deliberately"
+          prompt="Prepare a revert of production to the previous release. Show the exact target and current lane state; do not execute until I approve."
+        />
+      </div>
 
       <Separator className="my-10" />
 
-      <H2>Safe release workflow</H2>
-      <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm text-muted-foreground">
-        <li>Confirm the server origin, organization, app, channel, and runtime version.</li>
+      <H2>What the safety workflow preserves</H2>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>Exact app, channel, runtime version, bundle, and current release state.</li>
         <li>
-          Inspect the project and check native compatibility when local evidence is available.
+          Force-immediate, auto-revert thresholds, encryption, compatibility decisions, and every
+          other existing release option.
         </li>
-        <li>Upload without publishing when you want review first.</li>
+        <li>Preview-first publish and revert operations with explicit client approval.</li>
         <li>
-          Prepare the exact release, including expected current state and all release options.
+          Idempotent retries and stale-state rejection instead of duplicate or blind releases.
         </li>
-        <li>Approve that preview, then publish with the same inputs and an idempotency key.</li>
+        <li>Current organization membership, OAuth scopes, user role, and audit attribution.</li>
         <li>
-          Inspect event counts and recent event detail, accurately labelled as client-reported.
+          Honest analytics language: event records are client-reported diagnostics, not unique
+          users, devices, adoption, or proof of cause.
         </li>
-        <li>Prepare and approve the exact target before a revert.</li>
-      </ol>
+      </ul>
       <P>
-        OtaKit retains force-immediate releases, configurable auto-revert, compatibility override,
-        bundle deletion, and combined upload-and-publish. Writes remain explicit and auditable.
+        MCP does not replace the OtaKit CLI or API. It exposes the same product behavior through an
+        agent-compatible interface, so the dashboard, CLI, REST API, and agent all agree on what a
+        release means.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>Telemetry language</H2>
+      <H2>Self-hosting</H2>
       <P>
-        Current analytics count client-reported event records. They are not unique devices, users,
-        installations, adoption, or proof of causality. Event <Code>detail</Code> is returned as
-        bounded, untrusted diagnostic data and must never be treated as instructions. If analytics
-        is not configured on a self-hosted installation, tools report it as unavailable rather than
-        zero.
-      </P>
-
-      <Separator className="my-10" />
-
-      <H2>Self-hosting and rollout</H2>
-      <P>
-        Replace the hosted origin with your console origin in every command. Remote MCP is{' '}
-        <Code>{'<console-origin>/mcp'}</Code>. Operators should test the supplied additive
-        migrations on a disposable or restored database, deploy with all agent feature flags off,
-        apply reviewed migrations through their normal maintenance process, and enable release
-        reliability, remote MCP, and OAuth separately. OtaKit does not automatically migrate a live
-        production database as part of enabling MCP.
+        Replace the hosted origin with your console origin. Remote MCP is{' '}
+        <Code>{'<console-origin>/mcp'}</Code>. Deploy the agent features disabled, apply the
+        supplied additive migrations through your normal reviewed maintenance process, and enable
+        release reliability, remote MCP, and OAuth separately. OtaKit does not migrate a live
+        database when MCP is enabled.
       </P>
       <P>
-        See the <LinkText href="/docs/self-host">self-hosting guide</LinkText> for the base platform
-        and the repository&apos;s Skill reference for the staged agent-feature flags.
+        See the <LinkText href="/docs/self-host">self-hosting guide</LinkText> for the platform and{' '}
+        <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">Agent Skill source</A>{' '}
+        for the self-hosted feature flags and rollout checklist.
       </P>
 
       <Separator className="my-10" />
@@ -180,21 +256,28 @@ claude mcp login otakit`}</Pre>
             VS Code MCP documentation
           </A>
         </li>
+        <li>
+          <A href="https://agentskills.io/">Agent Skills specification</A>
+        </li>
       </ul>
     </>
   );
 }
 
 function H1({ children }: { children: React.ReactNode }) {
-  return <h1 className="text-2xl font-bold tracking-tight">{children}</h1>;
+  return <h1 className="text-3xl font-bold tracking-tight">{children}</h1>;
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-lg font-semibold tracking-tight">{children}</h2>;
+  return <h2 className="text-xl font-semibold tracking-tight">{children}</h2>;
+}
+
+function Lead({ children }: { children: React.ReactNode }) {
+  return <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">{children}</p>;
 }
 
 function P({ children }: { children: React.ReactNode }) {
-  return <p className="mt-3 text-sm text-muted-foreground">{children}</p>;
+  return <p className="mt-3 text-sm leading-6 text-muted-foreground">{children}</p>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
@@ -203,9 +286,76 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-6 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+    <div className="mt-6 border-l-2 border-emerald-500 bg-emerald-500/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
       {children}
     </div>
+  );
+}
+
+function SummaryCard({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="bg-background p-5">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">
+        {eyebrow}
+      </p>
+      <h2 className="mt-2 text-base font-semibold">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function Prompt({ children }: { children: React.ReactNode }) {
+  return (
+    <blockquote className="mt-4 border-l-2 border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground">
+      “{children}”
+    </blockquote>
+  );
+}
+
+function Workflow({ title, prompt }: { title: string; prompt: string }) {
+  return (
+    <div className="border border-border p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">“{prompt}”</p>
+    </div>
+  );
+}
+
+function CapabilityRow({
+  capability,
+  local,
+  remote,
+}: {
+  capability: string;
+  local: string;
+  remote: string;
+}) {
+  return (
+    <tr className="align-top">
+      <td className="border-b border-border px-4 py-3">{capability}</td>
+      <td className="border-b border-border px-4 py-3">{local}</td>
+      <td className="border-b border-border px-4 py-3">{remote}</td>
+    </tr>
+  );
+}
+
+function CapabilityHeader() {
+  return (
+    <thead className="bg-muted/50 text-foreground">
+      <tr>
+        <th className="border-b border-border px-4 py-3 font-semibold">Capability</th>
+        <th className="border-b border-border px-4 py-3 font-semibold">Local MCP</th>
+        <th className="border-b border-border px-4 py-3 font-semibold">Remote MCP</th>
+      </tr>
+    </thead>
   );
 }
 

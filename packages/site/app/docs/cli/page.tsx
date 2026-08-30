@@ -292,7 +292,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
 
         <Command
           name="otakit mcp"
-          description="Start the local stdio MCP server, fixed to one project and organization."
+          description="Start the AgentKit local MCP server, bound to one project and organization for its lifetime."
           options={[
             { flag: '--project-root <path>', desc: 'Project root available to local MCP tools.' },
             {

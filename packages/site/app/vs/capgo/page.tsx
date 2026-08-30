@@ -6,7 +6,7 @@ import { site } from '@/lib/site';
 export const metadata = {
   title: { absolute: 'Capgo Alternative — OtaKit | Live Updates for Capacitor' },
   description:
-    'OtaKit is the Capgo alternative with full OTA feature parity — delta updates, channels, auto-rollback, E2E encryption — delivered from Cloudflare’s CDN at a fraction of the price. No MAU, bandwidth, or storage billing.',
+    'OtaKit is the Capgo alternative with delta updates, channels, auto-rollback, E2E encryption, and an MCP + Agent Skill workflow. No MAU, bandwidth, or storage billing.',
   alternates: { canonical: `${site.url}/vs/capgo` },
 };
 
@@ -84,9 +84,9 @@ const copy: ComparisonCopy = {
           <p>
             Capgo bills on three meters — monthly active users, bandwidth, and storage — so every
             active device counts against your plan every month, even if you ship nothing. OtaKit
-            bills on one meter: <strong>updates delivered</strong>. Free covers 5,000
-            updates/month with unlimited apps; Starter is $10/mo for 100,000, and Pro starts at
-            $25/mo for 1 million.
+            bills on one meter: <strong>updates delivered</strong>. Free covers 5,000 updates/month
+            with unlimited apps; Starter is $10/mo for 100,000, and Pro starts at $25/mo for 1
+            million.
           </p>
           <p>
             In practice: 10,000 users at 2 releases/mo is $10 on OtaKit vs $33 on Capgo; 50,000
@@ -114,6 +114,25 @@ const copy: ComparisonCopy = {
       ),
     },
     {
+      q: 'Can I manage OtaKit from an AI coding agent?',
+      a: (
+        <>
+          <p>
+            Yes. <GuideLink href="/docs/agents">OtaKit AgentKit</GuideLink> combines a local MCP
+            server for project inspection, compatibility checks, packaging, and uploads; a remote
+            OAuth MCP server for account and release operations; and an open Agent Skill that gives
+            agents the exact release and revert workflow.
+          </p>
+          <p>
+            Capgo also publishes MCP and Agent Skills, so the useful comparison is the workflow, not
+            an “AI” checkbox. OtaKit keeps the same channels, runtime lanes, encryption,
+            force-immediate, auto-revert, event detail, and audit trail across its CLI, API, and
+            agent interfaces.
+          </p>
+        </>
+      ),
+    },
+    {
       q: 'How do I migrate from Capgo?',
       a: (
         <>
@@ -124,7 +143,8 @@ const copy: ComparisonCopy = {
             OtaKit’s launch and resume policies. Swap the plugin, build, and upload.
           </p>
           <p>
-            The <GuideLink href="/blog/migrate-from-capgo-and-capawesome">migration guide</GuideLink>{' '}
+            The{' '}
+            <GuideLink href="/blog/migrate-from-capgo-and-capawesome">migration guide</GuideLink>{' '}
             covers the exact config translation, the API mapping table, and a production cutover
             plan that keeps your existing install base updating safely.
           </p>
@@ -135,10 +155,10 @@ const copy: ComparisonCopy = {
       q: 'Are OTA updates allowed?',
       a: (
         <p>
-          Yes. Updating the web layer of a Capacitor app is explicitly permitted — Apple’s
-          Developer Program License Agreement <strong>§3.3.1(B)</strong> allows downloaded
-          JavaScript that runs in the system web view, and Google Play permits the same. OtaKit
-          never touches native binaries, so your releases stay compliant.
+          Yes. Updating the web layer of a Capacitor app is explicitly permitted — Apple’s Developer
+          Program License Agreement <strong>§3.3.1(B)</strong> allows downloaded JavaScript that
+          runs in the system web view, and Google Play permits the same. OtaKit never touches native
+          binaries, so your releases stay compliant.
         </p>
       ),
     },
@@ -149,8 +169,8 @@ const copy: ComparisonCopy = {
           Every device calls <Code>notifyAppReady()</Code> once the new bundle has booted
           successfully. If it doesn’t confirm within the launch window, OtaKit automatically rolls
           that device back to the last known-good bundle. You can also revert any channel instantly
-          from the dashboard, and the CLI warns at upload time if your bundle depends on native
-          code the installed app doesn’t have.
+          from the dashboard, and the CLI warns at upload time if your bundle depends on native code
+          the installed app doesn’t have.
         </p>
       ),
     },
@@ -169,8 +189,8 @@ const copy: ComparisonCopy = {
       q: 'Is OtaKit open source?',
       a: (
         <p>
-          Yes — the entire stack (plugin, CLI, dashboard, server) is MIT-licensed and
-          self-hostable. Run it on our hosted platform, or host the whole thing yourself.
+          Yes — the entire stack (plugin, CLI, dashboard, server) is MIT-licensed and self-hostable.
+          Run it on our hosted platform, or host the whole thing yourself.
         </p>
       ),
     },

@@ -46,7 +46,7 @@ export default function DocsOverviewPage() {
         </li>
         <li>
           On device, the plugin checks for updates, verifies the downloaded bundle, and by default
-          activates it on the next cold launch by default.
+          activates it on the next cold launch.
         </li>
       </ol>
 
@@ -95,8 +95,8 @@ export default function DocsOverviewPage() {
           description="The CLI warns at upload time when a bundle depends on native code the installed app doesn't have."
         />
         <Feature
-          title="Organization access & API keys"
-          description="Manage apps, members, and organization service keys. OAuth connections use separate fine-grained scopes."
+          title="AgentKit: MCP & Agent Skills"
+          description="Let coding agents inspect projects, package and upload builds, prepare releases, monitor events, and revert through the same OtaKit workflow."
         />
         <Feature
           title="Self-hosting"
@@ -136,8 +136,8 @@ export default function DocsOverviewPage() {
         />
         <NavCard
           href="/docs/agents"
-          title="AI Agents & MCP"
-          description="Inspect, release, monitor, and revert from supported agents."
+          title="AgentKit"
+          description="Connect MCP and the OtaKit Agent Skill to Codex, Claude Code, VS Code, and other agents."
         />
         <NavCard
           href="/docs/ci"

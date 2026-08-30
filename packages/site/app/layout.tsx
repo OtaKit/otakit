@@ -21,6 +21,9 @@ export const metadata: Metadata = {
     'mobile app updates',
     'Ionic',
     'self-hosted',
+    'Model Context Protocol',
+    'MCP server',
+    'Agent Skills',
   ],
   openGraph: {
     title: 'OtaKit — Live updates for Capacitor apps',
