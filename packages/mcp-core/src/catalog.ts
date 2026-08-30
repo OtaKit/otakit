@@ -15,7 +15,7 @@ import {
   uploadShape,
   type OtaKitMcpMode,
   type OtaKitToolName,
-} from './contracts.js';
+} from './contracts';
 
 export type OtaKitToolDefinition = {
   name: OtaKitToolName;

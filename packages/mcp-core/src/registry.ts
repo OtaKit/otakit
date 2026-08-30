@@ -1,14 +1,14 @@
 import { McpServer, type CallToolResult, type ServerContext } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 
-import { OTAKIT_TOOL_CATALOG, toolDefinitionsForMode } from './catalog.js';
+import { OTAKIT_TOOL_CATALOG, toolDefinitionsForMode } from './catalog';
 import {
   PublicToolError,
   toolEnvelopeSchema,
   type OtaKitMcpMode,
   type OtaKitToolName,
   type ToolEnvelope,
-} from './contracts.js';
+} from './contracts';
 
 export type OtaKitToolAdapter = {
   invoke(
