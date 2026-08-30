@@ -13,17 +13,31 @@ if (errors.length > 0) {
   for (const error of errors) console.error(`- ${error}`);
   process.exitCode = 1;
 } else {
-  console.log('Agent Skill, plugin, and MCP registry metadata are consistent.');
+  console.log('Agent Skill, Codex and Claude plugins, and MCP metadata are consistent.');
 }
 
 async function validate() {
   const cliPackage = await readJson('packages/cli/package.json');
   const registry = await readJson('server.json');
-  const plugin = await readJson('.codex-plugin/plugin.json');
-  const mcp = await readJson('.mcp.json');
+  const codexPlugin = await readJson('.codex-plugin/plugin.json');
+  const claudePlugin = await readJson('.claude-plugin/plugin.json');
+  const claudeMarketplace = await readJson('.claude-plugin/marketplace.json');
+  const codexMcp = await readJson('.codex-mcp.json');
+  const claudeMcp = await readJson('.mcp.json');
   const skillText = await readText('skills/otakit/SKILL.md');
 
-  if (!cliPackage || !registry || !plugin || !mcp || skillText === null) return;
+  if (
+    !cliPackage ||
+    !registry ||
+    !codexPlugin ||
+    !claudePlugin ||
+    !claudeMarketplace ||
+    !codexMcp ||
+    !claudeMcp ||
+    skillText === null
+  ) {
+    return;
+  }
 
   const frontmatter = parseFrontmatter(skillText);
   expect(frontmatter.name === 'otakit', 'Skill frontmatter name must be `otakit`');
@@ -45,7 +59,13 @@ async function validate() {
     await expectFile(path.posix.join('skills/otakit', reference));
   }
 
-  const versions = [cliPackage.version, registry.version, plugin.version, frontmatter.version];
+  const versions = [
+    cliPackage.version,
+    registry.version,
+    codexPlugin.version,
+    claudePlugin.version,
+    frontmatter.version,
+  ];
   expect(
     versions.every((version) => version === versions[0]),
     `CLI, registry, plugin, and Skill versions must match (found ${versions.join(', ')})`,
@@ -55,23 +75,55 @@ async function validate() {
     cliPackage.mcpName === registry.name,
     'packages/cli/package.json mcpName must match server.json name',
   );
-  expect(plugin.name === 'otakit', 'Codex plugin name must be `otakit`');
-  expect(plugin.skills === './skills/', 'Codex plugin must use the canonical skills directory');
-  expect(plugin.mcpServers === './.mcp.json', 'Codex plugin must point to .mcp.json');
+  expect(codexPlugin.name === 'otakit', 'Codex plugin name must be `otakit`');
   expect(
-    plugin.interface?.privacyPolicyURL === 'https://otakit.app/policy',
+    codexPlugin.skills === './skills/',
+    'Codex plugin must use the canonical skills directory',
+  );
+  expect(
+    codexPlugin.mcpServers === './.codex-mcp.json',
+    'Codex plugin must point to its client-specific MCP configuration',
+  );
+  expect(
+    codexPlugin.interface?.privacyPolicyURL === 'https://otakit.app/policy',
     'Codex plugin must declare the public privacy policy',
   );
   expect(
-    plugin.interface?.termsOfServiceURL === 'https://otakit.app/terms',
+    codexPlugin.interface?.termsOfServiceURL === 'https://otakit.app/terms',
     'Codex plugin must declare the public terms',
   );
 
-  const remote = mcp.mcpServers?.otakit;
-  expect(remote?.type === 'http', 'Plugin MCP definition must use HTTP transport');
+  expect(claudePlugin.name === 'otakit', 'Claude plugin name must be `otakit`');
+  expect(
+    claudePlugin.skills === './skills/',
+    'Claude plugin must use the canonical skills directory',
+  );
+  expect(
+    claudePlugin.mcpServers === './.mcp.json',
+    'Claude plugin must point to the standard Claude MCP configuration',
+  );
+  const claudeRemote = claudeMcp.mcpServers?.['otakit-remote'];
+  expect(claudeRemote?.type === 'http', 'Claude plugin MCP definition must use HTTP transport');
+  expect(
+    claudeRemote?.url === 'https://console.otakit.app/mcp',
+    'Claude plugin MCP definition must use the canonical hosted endpoint',
+  );
+  expect(
+    claudeRemote?.oauth?.scopes ===
+      'otakit:read otakit:app:write otakit:bundle:write otakit:release:write',
+    'Claude plugin must request the complete OtaKit OAuth tool scope set',
+  );
+  expect(claudeMarketplace.name === 'otakit', 'Claude marketplace name must be `otakit`');
+  expect(
+    claudeMarketplace.plugins?.some((entry) => entry.name === 'otakit' && entry.source === './'),
+    'Claude marketplace must publish the repository-root OtaKit plugin',
+  );
+
+  const remote = codexMcp.mcpServers?.otakit;
+  expect(remote?.type === 'http', 'Codex plugin MCP definition must use HTTP transport');
   expect(
     remote?.url === 'https://console.otakit.app/mcp',
-    'Plugin MCP definition must use the canonical hosted endpoint',
+    'Codex plugin MCP definition must use the canonical hosted endpoint',
   );
 
   expect(

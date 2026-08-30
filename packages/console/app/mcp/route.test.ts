@@ -47,12 +47,25 @@ describe('remote MCP HTTP boundary', () => {
     vi.unstubAllEnvs();
   });
 
-  it('is dark by default and does not touch authentication', async () => {
+  it('explains when remote MCP is unavailable without touching authentication', async () => {
     vi.stubEnv('OTAKIT_REMOTE_MCP_ENABLED', 'false');
 
     const response = await POST(request({ jsonrpc: '2.0', id: 1, method: 'initialize' }));
+    const preflight = await OPTIONS(
+      new Request('https://console.example/mcp', { method: 'OPTIONS' }),
+    );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('link')).toBe('<https://otakit.app/docs/agents>; rel="help"');
+    expect(response.headers.get('retry-after')).toBe('300');
+    expect(await response.json()).toMatchObject({
+      error: {
+        message:
+          'Remote MCP is not enabled on this deployment. Use local MCP or ask the deployment operator to enable it.',
+      },
+    });
+    expect(preflight.status).toBe(503);
+    expect(preflight.headers.get('link')).toBe('<https://otakit.app/docs/agents>; rel="help"');
     expect(mocks.verifySecretAuth).not.toHaveBeenCalled();
   });
 

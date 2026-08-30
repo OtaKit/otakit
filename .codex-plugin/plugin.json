@@ -7,7 +7,7 @@
     "url": "https://otakit.app"
   },
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./.codex-mcp.json",
   "homepage": "https://otakit.app",
   "repository": "https://github.com/OtaKit/otakit",
   "license": "MIT",

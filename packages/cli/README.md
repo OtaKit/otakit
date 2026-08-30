@@ -126,8 +126,11 @@ arguments. The server reuses `OTAKIT_TOKEN` or the stored `otakit login` session
 and honors `OTAKIT_SERVER_URL` for self-hosted installations.
 
 The hosted remote server is `https://console.otakit.app/mcp`. It is a separate,
-feature-gated deployment surface for account operations and cannot read or upload
-files from your local project.
+deployment-enabled surface for account operations and cannot read or upload files
+from your local project. A deployment that has not enabled it returns a clear
+`503` response; local stdio MCP continues to work independently. See the
+[AgentKit setup guide](https://otakit.app/docs/agents) for Claude Code, Codex,
+OAuth scopes, and remote setup.
 
 ## CI
 

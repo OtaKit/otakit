@@ -1538,7 +1538,7 @@ Give your coding agent the context and tools to ship Capacitor updates without i
 - **Remote MCP**: Connects over HTTPS with scoped OAuth or an organization key for apps, releases, events, account operations, and auditable writes.
 - **Agent Skill**: A portable, vendor-neutral playbook for choosing the right tools, preserving every release option, and asking before consequential writes.
 
-Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP is deployment-gated; use local MCP if your OtaKit host has not enabled `/mcp`.
+Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP is enabled per deployment after its OAuth and release checks pass. If a client says remote MCP is not enabled, use local MCP or ask the deployment operator to enable it; that message is not an authentication failure.
 
 ### Quick start with Codex
 
@@ -1560,7 +1560,7 @@ codex mcp add otakit -- \
 Restart or refresh the agent so it discovers the new Skill and MCP tools. Then try:
 Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.
 
-### Connect the remote server
+### Remote MCP with Codex
 
 Remote MCP is useful when the client cannot run your local CLI, or when you only need account and release operations. For Codex, request only the scopes you want the connection to expose:
 
@@ -1589,22 +1589,34 @@ Use local MCP for repository work and uploads. Use remote MCP for account-only w
 
 ### Claude Code
 
-Add the local server to the current project:
+Install the official Claude plugin for the OtaKit Skill and a full-scope remote connection:
 
 ```txt
-claude mcp add --transport stdio --scope project otakit -- \
+claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit
+```
+
+Start Claude Code, run `/mcp`, select `otakit-remote`, and authenticate. The consent screen shows the organization and the read, app, bundle, and release permissions before anything is granted.
+
+For repository inspection and uploads, add the project-aware local server as well:
+
+```txt
+npx -y @otakit/cli@1.5.0 login
+
+claude mcp add --transport stdio --scope project otakit-local -- \
   npx -y @otakit/cli@1.5.0 mcp --project-root .
 ```
 
-Or connect an enabled remote deployment and complete browser authorization:
+If you prefer a project-scoped remote connection instead of the plugin default, configure its scopes explicitly so Claude exposes every OtaKit operation:
 
 ```txt
-claude mcp add --transport http --scope project \
-  otakit https://console.otakit.app/mcp
-claude mcp login otakit
+claude mcp add-json --scope project otakit-remote \
+  '{"type":"http","url":"https://console.otakit.app/mcp","oauth":{"scopes":"otakit:read otakit:app:write otakit:bundle:write otakit:release:write"}}'
+claude mcp login otakit-remote
+claude mcp get otakit-remote
 ```
 
-Commit a generated `.mcp.json` only when the whole team should discover the server. Tokens and authorization headers never belong in that file.
+Remove write scopes from that JSON when you want a deliberately read-only connection. Commit generated project MCP configuration only when the whole team should discover the server. OAuth tokens and authorization headers never belong in that file.
 
 ### VS Code and GitHub Copilot
 

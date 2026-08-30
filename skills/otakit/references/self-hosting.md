@@ -32,17 +32,21 @@ The agent features are deliberately staged:
 
 Without the release-reliability flag, established REST, dashboard, and CLI
 release behavior remains unchanged and agent release writes are not advertised.
-Without the remote MCP flag, `/mcp` returns not found. Missing optional Tinybird
-analytics must be reported as unavailable, while upload/release functionality
-continues normally.
+Without the remote MCP flag, `/mcp` returns a `503` response that directs clients
+to local MCP or the deployment operator. Missing optional Tinybird analytics must
+be reported as unavailable, while upload/release functionality continues normally.
 
 Use a custom MCP origin in client configuration:
 
 ```json
 {
   "mcpServers": {
-    "otakit": {
-      "url": "https://console.example.com/mcp"
+    "otakit-remote": {
+      "type": "http",
+      "url": "https://console.example.com/mcp",
+      "oauth": {
+        "scopes": "otakit:read otakit:app:write otakit:bundle:write otakit:release:write"
+      }
     }
   }
 }

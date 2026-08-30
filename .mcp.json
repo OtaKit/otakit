@@ -1,8 +1,11 @@
 {
   "mcpServers": {
-    "otakit": {
+    "otakit-remote": {
       "type": "http",
-      "url": "https://console.otakit.app/mcp"
+      "url": "https://console.otakit.app/mcp",
+      "oauth": {
+        "scopes": "otakit:read otakit:app:write otakit:bundle:write otakit:release:write"
+      }
     }
   }
 }

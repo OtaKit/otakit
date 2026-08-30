@@ -20,6 +20,27 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 6. On the next app launch or resume, the plugin fetches the manifest from the CDN, compares it to the current bundle, and downloads the new version if available.
 7. If `notifyAppReady()` is called within the timeout, the new bundle is confirmed. Otherwise the plugin rolls back to the previous bundle automatically.
 
+## AgentKit
+
+OtaKit AgentKit lets Codex, Claude Code, VS Code, and other MCP clients inspect projects, upload bundles, prepare and publish releases, monitor rollout events, and revert through the same OtaKit workflow.
+
+Claude Code users can install the official plugin, which includes the OtaKit Agent Skill and the full-scope remote MCP connection:
+
+```bash
+claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit
+```
+
+For repository-aware inspection and uploads, connect the local server from the Capacitor project:
+
+```bash
+npx -y @otakit/cli@1.5.0 login
+claude mcp add --transport stdio --scope project otakit-local -- \
+  npx -y @otakit/cli@1.5.0 mcp --project-root .
+```
+
+See the [AgentKit setup guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.
+
 ## Core concepts
 
 - **App** — the Capacitor app identified by its `appId`
@@ -32,6 +53,7 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 
 - `packages/capacitor-plugin` — the runtime that lives inside the mobile app
 - `packages/cli` — CLI for uploading bundles and creating releases
+- `packages/mcp-core` — shared MCP contracts, tool catalog, and server registration
 - `packages/site` — public site, docs, contact, legal pages
 - `packages/console` — dashboard, API, auth, billing, and Prisma schema
 - `packages/ingest` — Cloudflare Worker for device event ingestion
@@ -41,6 +63,7 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 packages/
   capacitor-plugin/   Capacitor OTA plugin
   cli/                Upload + release CLI
+  mcp-core/           Shared MCP contracts and tool catalog
   ingest/             Cloudflare Worker event ingest service
   site/               Next.js public site + docs
   console/            Next.js dashboard + API + auth + billing

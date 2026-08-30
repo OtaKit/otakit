@@ -1125,11 +1125,12 @@ native App Store builds.
   and one additional Tier 1 client instruction set. Add Cursor, VS Code, GitHub
   Copilot, and other client-specific guides after they are exercised; do not make
   every surface a core launch dependency.
-- Bundle the same Skill with the OpenAI/ChatGPT/Codex plugin; do not fork its
-  content per vendor. The plugin package includes the required
-  `.codex-plugin/plugin.json`, the Skill directory, and `.mcp.json` wiring for
-  the registered remote MCP connection. Public directory submission and review
-  may follow the core MCP launch.
+- Bundle the same Skill with both the Codex and Claude Code plugins; do not fork
+  its content per vendor. The packages include their native manifests, the
+  canonical Skill directory, and client-appropriate remote MCP configuration.
+  Claude Code configuration explicitly requests the full OtaKit OAuth scope set
+  because Claude otherwise follows the read-only challenge scope. Public
+  directory submission and review may follow the core MCP launch.
 - Version the Skill with OtaKit releases and test old Skill/new server plus new
   Skill/old server failure messages.
 
@@ -1680,8 +1681,8 @@ Exit: every hard release gate in section 15 passes.
 
 ### Follow-up distribution — not a core server blocker
 
-- Package `.codex-plugin/plugin.json`, the canonical Skill, and `.mcp.json`
-  wiring for the registered remote MCP for ChatGPT/Codex.
+- Package `.codex-plugin/plugin.json`, `.claude-plugin/plugin.json`, the Claude
+  marketplace catalog, the canonical Skill, and full-scope remote MCP wiring.
 - Complete public directory review requirements and add other tested client
   guides.
 - Continue product-wide telemetry provenance hardening without tying it to MCP

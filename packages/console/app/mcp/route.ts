@@ -24,6 +24,8 @@ export const dynamic = 'force-dynamic';
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const SERVER_VERSION = '0.1.0';
+const REMOTE_MCP_DISABLED_MESSAGE =
+  'Remote MCP is not enabled on this deployment. Use local MCP or ask the deployment operator to enable it.';
 
 function connectionFromAuthInfo(authInfo: AuthInfo | undefined): RemoteMcpConnection {
   const connection = authInfo?.extra?.connection;
@@ -70,6 +72,13 @@ function jsonRpcError(status: number, message: string, headers?: HeadersInit): R
     },
     { status, headers },
   );
+}
+
+function remoteMcpDisabled(): Response {
+  return jsonRpcError(503, REMOTE_MCP_DISABLED_MESSAGE, {
+    link: '<https://otakit.app/docs/agents>; rel="help"',
+    'retry-after': '300',
+  });
 }
 
 function allowedOrigins(): ReadonlySet<string> {
@@ -210,7 +219,7 @@ const oauthHandler = requireMcpAuth(auth, serveOAuthAuthorized, {
 });
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isRemoteMcpEnabled()) return jsonRpcError(404, 'Remote MCP is not enabled');
+  if (!isRemoteMcpEnabled()) return remoteMcpDisabled();
   const originFailure = validateOrigin(request);
   if (originFailure) return originFailure;
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
@@ -230,7 +239,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 export async function OPTIONS(request: Request): Promise<Response> {
-  if (!isRemoteMcpEnabled()) return new Response(null, { status: 404 });
+  if (!isRemoteMcpEnabled()) return remoteMcpDisabled();
   const originFailure = validateOrigin(request);
   if (originFailure) return originFailure;
   const origin = request.headers.get('origin');

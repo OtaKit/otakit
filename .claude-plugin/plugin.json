@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "otakit",
+  "displayName": "OtaKit AgentKit",
+  "version": "1.5.0",
+  "description": "Inspect, upload, release, monitor, and revert OtaKit Capacitor OTA updates from Claude Code.",
+  "author": {
+    "name": "OtaKit",
+    "url": "https://otakit.app"
+  },
+  "homepage": "https://otakit.app/docs/agents",
+  "repository": "https://github.com/OtaKit/otakit",
+  "license": "MIT",
+  "keywords": ["capacitor", "ota", "releases", "mcp", "agent-skills"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

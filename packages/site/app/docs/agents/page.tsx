@@ -41,7 +41,9 @@ export default function AgentsPage() {
 
       <Notice>
         Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP
-        is deployment-gated; use local MCP if your OtaKit host has not enabled <Code>/mcp</Code>.
+        is enabled per deployment after its OAuth and release checks pass. If a client says remote
+        MCP is not enabled, use local MCP or ask the deployment operator to enable it; that message
+        is not an authentication failure.
       </Notice>
 
       <Separator className="my-10" />
@@ -62,7 +64,7 @@ codex mcp add otakit -- \\
 
       <Separator className="my-10" />
 
-      <H2>Connect the remote server</H2>
+      <H2>Remote MCP with Codex</H2>
       <P>
         Remote MCP is useful when the client cannot run your local CLI, or when you only need
         account and release operations. For Codex, request only the scopes you want the connection
@@ -135,16 +137,33 @@ codex mcp login \\
       <Separator className="my-10" />
 
       <H2>Claude Code</H2>
-      <P>Add the local server to the current project:</P>
-      <Pre>{`claude mcp add --transport stdio --scope project otakit -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
-      <P>Or connect an enabled remote deployment and complete browser authorization:</P>
-      <Pre>{`claude mcp add --transport http --scope project \\
-  otakit https://console.otakit.app/mcp
-claude mcp login otakit`}</Pre>
       <P>
-        Commit a generated <Code>.mcp.json</Code> only when the whole team should discover the
-        server. Tokens and authorization headers never belong in that file.
+        Install the official Claude plugin for the OtaKit Skill and a full-scope remote connection:
+      </P>
+      <Pre>{`claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit`}</Pre>
+      <P>
+        Start Claude Code, run <Code>/mcp</Code>, select <Code>otakit-remote</Code>, and
+        authenticate. The consent screen shows the organization and the read, app, bundle, and
+        release permissions before anything is granted.
+      </P>
+      <P>For repository inspection and uploads, add the project-aware local server as well:</P>
+      <Pre>{`npx -y @otakit/cli@1.5.0 login
+
+claude mcp add --transport stdio --scope project otakit-local -- \\
+  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+      <P>
+        If you prefer a project-scoped remote connection instead of the plugin default, configure
+        its scopes explicitly so Claude exposes every OtaKit operation:
+      </P>
+      <Pre>{`claude mcp add-json --scope project otakit-remote \\
+  '{"type":"http","url":"https://console.otakit.app/mcp","oauth":{"scopes":"otakit:read otakit:app:write otakit:bundle:write otakit:release:write"}}'
+claude mcp login otakit-remote
+claude mcp get otakit-remote`}</Pre>
+      <P>
+        Remove write scopes from that JSON when you want a deliberately read-only connection. Commit
+        generated project MCP configuration only when the whole team should discover the server.
+        OAuth tokens and authorization headers never belong in that file.
       </P>
 
       <Separator className="my-10" />

@@ -68,6 +68,12 @@ npx -y @otakit/cli@1.5.0 login
 
 codex mcp add otakit -- \\
   npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+      <p>Claude Code also has a native plugin and marketplace:</p>
+      <Pre>{`claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit
+
+claude mcp add --transport stdio --scope project otakit-local -- \\
+  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
       <p>
         Restart or refresh the client so it discovers both additions. Your first request can stay
         entirely read-only:
@@ -91,10 +97,11 @@ codex mcp login \\
   --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
   otakit`}</Pre>
       <p>
-        The remote endpoint is deployment-gated, so a self-hosted operator can enable OAuth and MCP
-        separately. If your host has not enabled it, keep using local MCP. For unattended
-        automation, an existing organization key can be supplied through the MCP client&apos;s
-        environment instead of being written into project configuration.
+        The remote endpoint is enabled per deployment after its OAuth and release checks pass. If a
+        client reports that remote MCP is not enabled, keep using local MCP or ask the deployment
+        operator to enable it. For unattended automation, an existing organization key can be
+        supplied through the MCP client&apos;s environment instead of being written into project
+        configuration.
       </p>
 
       <h2>What a good agent workflow looks like</h2>
