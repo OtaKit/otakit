@@ -38,7 +38,12 @@ export const releaseCommand = new Command('release')
 
       if (bundleId) {
         const spinner = ora(`Releasing ${bundleId} to ${targetLabel}...`).start();
-        await api.release(channel, bundleId, { forceImmediate });
+        const result = await api.release(channel, bundleId, { forceImmediate });
+        if (result.publicationStatus === 'manifest_sync_pending') {
+          throw new CliError(
+            `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
+          );
+        }
         spinner.succeed(`Released ${bundleId} to ${targetLabel}${forceLabel}.`);
         return;
       }
@@ -52,7 +57,12 @@ export const releaseCommand = new Command('release')
 
       const latest = bundles[0];
       spinner.text = `Releasing ${latest.version} to ${targetLabel}...`;
-      await api.release(channel, latest.id, { forceImmediate });
+      const result = await api.release(channel, latest.id, { forceImmediate });
+      if (result.publicationStatus === 'manifest_sync_pending') {
+        throw new CliError(
+          `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
+        );
+      }
       spinner.succeed(`Released ${latest.version} to ${targetLabel}${forceLabel}.`);
     });
   });

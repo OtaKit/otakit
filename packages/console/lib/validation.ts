@@ -3,7 +3,6 @@ import { Platform } from '@prisma/client';
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const APP_SLUG_REGEX = /^[A-Za-z0-9._-]{3,120}$/;
 const RUNTIME_VERSION_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
-const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 
 export function parsePlatform(value: unknown): Platform | null {
   if (value === 'ios' || value === 'android') {
@@ -41,7 +40,7 @@ export function parseNonNegativeInteger(value: string | null, fallback: number):
 }
 
 export function isValidChannelName(channel: string): boolean {
-  return CHANNEL_NAME_REGEX.test(channel) && !RESERVED_CHANNEL_NAMES.has(channel.toLowerCase());
+  return CHANNEL_NAME_REGEX.test(channel);
 }
 
 export function normalizeOptionalChannel(channel: unknown): string | null {

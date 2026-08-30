@@ -177,6 +177,7 @@ export async function POST(
           size: totalSize,
           runtimeVersion: session.runtimeVersion,
           strategy: 'deltas',
+          nativePackages: session.nativePackages ?? undefined,
         },
         select: BUNDLE_SELECT,
       });

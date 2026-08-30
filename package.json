@@ -14,6 +14,8 @@
     "dev:ingest": "pnpm --filter @otakit/ingest dev",
     "dev:cli": "pnpm --filter @otakit/cli dev",
     "docs:llms": "node scripts/generate-llms-txt.mjs",
+    "docs:check": "node scripts/generate-llms-txt.mjs --check",
+    "agents:validate": "node scripts/validate-agent-distribution.mjs",
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

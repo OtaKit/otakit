@@ -107,6 +107,7 @@ export type DashboardInitialData = {
   organizationApiKeys: OrganizationApiKey[];
   billingEnabled: boolean;
   analyticsEnabled: boolean;
+  remoteMcpOAuthEnabled: boolean;
 };
 
 export type ApiError = { error?: string };

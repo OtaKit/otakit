@@ -1,7 +1,9 @@
 import { recordAuditLog, type AuditActor } from './audit-log';
 import { db } from './db';
 import { sendAutoRevertEmail } from './email';
+import { isReleaseReliabilityEnabled } from './release-features';
 import { revertCurrentRelease } from './releases';
+import { revertRelease } from './services/releases';
 import { getReleaseHealthWindowCounts } from './tinybird/events';
 
 export const AUTO_REVERT_WINDOW_HOURS = 24;
@@ -244,23 +246,62 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
         continue;
       }
 
-      const outcome = await revertCurrentRelease({
-        appId,
-        releaseId: candidate.id,
-        revertedBy: AUTO_REVERT_REVERTED_BY,
-        actor: AUTO_REVERT_ACTOR,
-        organizationId: candidate.app.organizationId,
-        auditAction: 'release.auto_reverted',
-        auditMetadata: healthMetadata,
-      });
-      if (!outcome.ok) {
-        // Lost a race (human revert / concurrent tick) — nothing to do.
+      if (!isReleaseReliabilityEnabled()) {
+        const legacyOutcome = await revertCurrentRelease({
+          appId,
+          releaseId: candidate.id,
+          revertedBy: AUTO_REVERT_REVERTED_BY,
+          actor: AUTO_REVERT_ACTOR,
+          organizationId: candidate.app.organizationId,
+          auditAction: 'release.auto_reverted',
+          auditMetadata: healthMetadata,
+        });
+        if (!legacyOutcome.ok) {
+          continue;
+        }
+        stats.reverted += 1;
+        await sendAlerts(candidate, counts, {
+          revertedToVersion: legacyOutcome.nextCurrentRelease?.bundle.version ?? null,
+          suppressed: false,
+        });
+        continue;
+      }
+
+      let outcome;
+      try {
+        outcome = await revertRelease({
+          appId,
+          releaseId: candidate.id,
+          revertedBy: AUTO_REVERT_REVERTED_BY,
+          actor: AUTO_REVERT_ACTOR,
+          organizationId: candidate.app.organizationId,
+          expectedCurrentReleaseId: candidate.id,
+          idempotencyKey: `auto-revert:${candidate.id}`,
+          auditAction: 'release.auto_reverted',
+          auditMetadata: healthMetadata,
+        });
+      } catch (error) {
+        // A human release/revert may win the lane lock after this sweep reads
+        // its candidates. The service rejects stale state without changing it.
+        console.info('[AutoRevert] candidate changed before revert', {
+          appId,
+          releaseId: candidate.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+      if (outcome.publicationStatus !== 'published') {
+        console.error('[AutoRevert] database reverted but manifest synchronization is pending', {
+          appId,
+          releaseId: candidate.id,
+          operationId: outcome.operationId,
+        });
         continue;
       }
 
       stats.reverted += 1;
       await sendAlerts(candidate, counts, {
-        revertedToVersion: outcome.nextCurrentRelease?.bundle.version ?? null,
+        revertedToVersion: outcome.currentRelease?.bundleVersion ?? null,
         suppressed: false,
       });
     }

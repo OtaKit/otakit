@@ -45,6 +45,7 @@ type RecentAppEventsArgs = {
   bundleVersion?: string | null;
   channel?: string | null;
   runtimeVersion?: string | null;
+  runtimeVersionIsNull?: boolean;
   releaseId?: string | null;
 };
 
@@ -52,6 +53,11 @@ type CurrentPeriodDownloadCountArgs = {
   appIds: string[];
   periodStart: Date;
   periodEndExclusive: Date;
+};
+
+export type AnalyticsResult<T> = {
+  data: T;
+  available: boolean;
 };
 
 const APP_EVENTS_RECENT_PIPE = process.env.TINYBIRD_APP_EVENTS_RECENT_PIPE ?? 'app_events_recent';
@@ -167,10 +173,12 @@ function logDashboardAnalyticsFailure(
   });
 }
 
-export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<DeviceEvent[]> {
+export async function listRecentAppEventsWithStatus(
+  args: RecentAppEventsArgs,
+): Promise<AnalyticsResult<DeviceEvent[]>> {
   if (!isTinybirdConfigured()) {
     warnTinybirdNotConfigured('listRecentAppEvents');
-    return [];
+    return { data: [], available: false };
   }
   try {
     const rows = await queryTinybirdPipe<RecentEventRow>(APP_EVENTS_RECENT_PIPE, {
@@ -182,33 +190,48 @@ export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<De
       bundle_version: args.bundleVersion ?? '',
       channel: args.channel ?? '',
       runtime_version: args.runtimeVersion ?? '',
+      runtime_version_is_null: args.runtimeVersionIsNull ?? false,
       release_id: args.releaseId ?? '',
     });
 
-    return rows.map(normalizeEventRow).filter((event): event is DeviceEvent => event !== null);
+    return {
+      data: rows.map(normalizeEventRow).filter((event): event is DeviceEvent => event !== null),
+      available: true,
+    };
   } catch (error) {
     logDashboardAnalyticsFailure(
       'app_events_recent',
       { appId: args.appId, limit: args.limit },
       error,
     );
-    return [];
+    return { data: [], available: false };
   }
+}
+
+export async function listRecentAppEvents(args: RecentAppEventsArgs): Promise<DeviceEvent[]> {
+  return (await listRecentAppEventsWithStatus(args)).data;
 }
 
 export async function getReleaseEventCounts(
   appId: string,
   releaseIds: string[],
 ): Promise<Map<string, EventCountSummary>> {
+  return (await getReleaseEventCountsWithStatus(appId, releaseIds)).data;
+}
+
+export async function getReleaseEventCountsWithStatus(
+  appId: string,
+  releaseIds: string[],
+): Promise<AnalyticsResult<Map<string, EventCountSummary>>> {
   if (!isTinybirdConfigured()) {
     warnTinybirdNotConfigured('getReleaseEventCounts');
-    return new Map();
+    return { data: new Map(), available: false };
   }
   const uniqueReleaseIds = Array.from(
     new Set(releaseIds.map((value) => value.trim()).filter(Boolean)),
   );
   if (uniqueReleaseIds.length === 0) {
-    return new Map();
+    return { data: new Map(), available: true };
   }
 
   try {
@@ -231,14 +254,14 @@ export async function getReleaseEventCounts(
       }
     }
 
-    return countsByReleaseId;
+    return { data: countsByReleaseId, available: true };
   } catch (error) {
     logDashboardAnalyticsFailure(
       'release_event_counts',
       { appId, releaseIds: uniqueReleaseIds.length },
       error,
     );
-    return new Map();
+    return { data: new Map(), available: false };
   }
 }
 

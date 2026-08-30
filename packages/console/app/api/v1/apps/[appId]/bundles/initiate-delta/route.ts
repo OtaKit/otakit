@@ -12,6 +12,7 @@ import {
 } from '@/lib/delta-files';
 import { buildFileObjectKey, createPresignedFileUpload, statStorageObject } from '@/lib/storage';
 import {
+  isValidNativePackages,
   isValidRuntimeVersion,
   isValidVersion,
   normalizeOptionalRuntimeVersion,
@@ -90,6 +91,10 @@ export async function POST(
   }
   const files: DeltaFileEntry[] = parsed.files;
 
+  if (!isValidNativePackages(body.nativePackages)) {
+    return NextResponse.json({ error: 'Invalid nativePackages' }, { status: 400 });
+  }
+
   const existing = await db.bundle.findUnique({
     where: {
       appId_version: { appId, version },
@@ -143,6 +148,10 @@ export async function POST(
       runtimeVersion,
       strategy: 'deltas',
       files: files as unknown as Prisma.InputJsonValue,
+      nativePackages:
+        body.nativePackages === undefined
+          ? undefined
+          : (body.nativePackages as Prisma.InputJsonValue),
       storageKey,
       expiresAt: sessionExpiresAt,
     },

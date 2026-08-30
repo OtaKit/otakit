@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Building2,
+  Bot,
   ChevronsUpDown,
   Copy,
   CreditCard,
@@ -863,6 +864,35 @@ User ID: ${initialData.user.id}`,
               </section>
 
               <Separator />
+
+              <section className="h-full">
+                {initialData.remoteMcpOAuthEnabled ? (
+                  <div className="mx-auto max-w-3xl bg-muted/30">
+                    <div className="flex items-center gap-3 border-b border-border bg-background px-5 pb-6 pt-8">
+                      <Bot className="size-6 shrink-0 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-[15px] font-semibold leading-tight">
+                          Agent connections
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          Review and revoke MCP OAuth access
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push('/dashboard/settings/connections')}
+                      >
+                        Manage connections
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              {initialData.remoteMcpOAuthEnabled ? <Separator /> : null}
 
               <section className="h-full">
                 <div className="mx-auto max-w-3xl h-full">

@@ -1,5 +1,7 @@
 # @otakit/cli
 
+<!-- mcp-name: io.github.otakit/otakit -->
+
 Upload and release CLI for OtaKit.
 
 ## What it does
@@ -64,7 +66,7 @@ Resolution order:
 Main rules:
 
 1. `appId`: `--app-id` -> `OTAKIT_APP_ID` -> `plugins.OtaKit.appId`
-2. `serverUrl`: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> `https://otakit.app/api/v1`
+2. `serverUrl`: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> `https://console.otakit.app`
 3. `outputDir`: upload path arg -> `OTAKIT_BUILD_DIR` / `OTAKIT_OUTPUT_DIR` -> `webDir`
 4. release channel: `--release` -> unnamed channel, `--release <channel>` -> named channel
 
@@ -90,8 +92,8 @@ Version precedence:
 - `otakit release <bundleId> --channel staging`
   promote an existing bundle later
 
-Releases are append-only. The newest release for `(appId, channel)` is what
-devices see on manifest checks.
+Releases are append-only. The newest release for
+`(appId, channel, runtimeVersion)` is what devices see on manifest checks.
 
 ## Common commands
 
@@ -108,6 +110,24 @@ devices see on manifest checks.
 - `otakit config validate`
 - `otakit config resolve --json`
 - `otakit generate-signing-key`
+- `otakit mcp [--project-root <path>] [--organization-id <id>]`
+
+## MCP server
+
+Run the local stdio server from the Capacitor project it should access:
+
+```bash
+npx -y @otakit/cli@1.5.0 mcp
+```
+
+The project root and organization are fixed when the server starts. Configure
+your MCP client to run the command above; do not put an OtaKit token in tool
+arguments. The server reuses `OTAKIT_TOKEN` or the stored `otakit login` session
+and honors `OTAKIT_SERVER_URL` for self-hosted installations.
+
+The hosted remote server is `https://console.otakit.app/mcp`. It is a separate,
+feature-gated deployment surface for account operations and cannot read or upload
+files from your local project.
 
 ## CI
 

@@ -26,7 +26,9 @@ SQL >
       AND ({{ String(channel, '') }} = ''
            OR ({{ String(channel, '') }} = 'base' AND coalesce(channel, '') = '')
            OR channel = {{ String(channel, '') }})
-      AND ({{ String(runtime_version, '') }} = '' OR runtime_version = {{ String(runtime_version, '') }})
+      AND (({{ UInt8(runtime_version_is_null, 0) }} = 1 AND coalesce(runtime_version, '') = '')
+           OR ({{ UInt8(runtime_version_is_null, 0) }} = 0
+               AND ({{ String(runtime_version, '') }} = '' OR runtime_version = {{ String(runtime_version, '') }})))
       AND ({{ String(release_id, '') }} = '' OR release_id = {{ String(release_id, '') }})
     ORDER BY received_at DESC
     LIMIT {{ UInt32(limit, 100) }}

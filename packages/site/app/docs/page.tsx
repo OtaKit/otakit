@@ -96,7 +96,7 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="Organization access & API keys"
-          description="Manage apps, members, and scoped keys inside an organization."
+          description="Manage apps, members, and organization service keys. OAuth connections use separate fine-grained scopes."
         />
         <Feature
           title="Self-hosting"
@@ -133,6 +133,11 @@ export default function DocsOverviewPage() {
           href="/docs/events"
           title="Events & Listeners"
           description="Subscribe to update lifecycle events: available, staged, applied, failed, rolled back."
+        />
+        <NavCard
+          href="/docs/agents"
+          title="AI Agents & MCP"
+          description="Inspect, release, monitor, and revert from supported agents."
         />
         <NavCard
           href="/docs/ci"

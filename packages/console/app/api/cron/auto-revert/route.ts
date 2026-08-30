@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { runAutoRevertSweep } from '@/lib/auto-revert';
+import { isReleaseReliabilityEnabled } from '@/lib/release-features';
+import { reconcilePendingReleaseMutations } from '@/lib/services/releases';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +44,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized cron call' }, { status: 401 });
   }
 
+  // Repair database-committed publish/revert operations before evaluating new
+  // auto-reverts. Reusing this existing cron avoids another scheduler surface.
+  const manifestRepairs = isReleaseReliabilityEnabled()
+    ? await reconcilePendingReleaseMutations({
+        limit: 50,
+        olderThan: new Date(Date.now() - 30_000),
+      })
+    : { checked: 0, repaired: 0, pending: 0 };
   const stats = await runAutoRevertSweep();
-  return NextResponse.json({ success: true, stats });
+  return NextResponse.json({ success: true, stats, manifestRepairs });
 }

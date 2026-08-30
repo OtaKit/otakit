@@ -15,6 +15,19 @@ export type OrganizationAccessResult =
   | { success: true; access: OrganizationAccess }
   | { success: false; error: string; status: number };
 
+export const ORGANIZATION_ID_HEADER = 'x-otakit-organization-id';
+
+function requestedOrganizationId(
+  request: NextRequest,
+): { present: false } | { present: true; id: string } | { present: true; error: string } {
+  if (!request.headers.has(ORGANIZATION_ID_HEADER)) return { present: false };
+  const raw = request.headers.get(ORGANIZATION_ID_HEADER)?.trim() ?? '';
+  if (!raw || raw.length > 128) {
+    return { present: true, error: 'Invalid organization ID header' };
+  }
+  return { present: true, id: raw };
+}
+
 async function resolveSessionAccess(
   request: NextRequest,
   appId?: string,
@@ -29,23 +42,35 @@ async function resolveSessionAccess(
     where: { id: user.id },
     select: { activeOrganizationId: true },
   });
-  if (!userRow?.activeOrganizationId) {
+  const requestedOrganization = requestedOrganizationId(request);
+  if ('error' in requestedOrganization) {
+    return { success: false, error: requestedOrganization.error, status: 400 };
+  }
+  const explicitOrganizationId = requestedOrganization.present ? requestedOrganization.id : null;
+  const organizationId = explicitOrganizationId ?? userRow?.activeOrganizationId ?? null;
+  if (!organizationId) {
     return { success: false, error: 'No active organization', status: 403 };
   }
 
   const membership = await db.organizationMember.findUnique({
     where: {
-      organizationId_userId: { organizationId: userRow.activeOrganizationId, userId: user.id },
+      organizationId_userId: { organizationId, userId: user.id },
     },
     select: { role: true },
   });
 
   if (!membership) {
-    return { success: false, error: 'Not a member of active organization', status: 403 };
+    return {
+      success: false,
+      error: explicitOrganizationId
+        ? 'Organization not found'
+        : 'Not a member of active organization',
+      status: explicitOrganizationId ? 404 : 403,
+    };
   }
 
   if (appId) {
-    const owned = await isAppOwnedByOrganization(appId, userRow.activeOrganizationId);
+    const owned = await isAppOwnedByOrganization(appId, organizationId);
     if (!owned) {
       return { success: false, error: 'App not found', status: 404 };
     }
@@ -54,7 +79,7 @@ async function resolveSessionAccess(
   return {
     success: true,
     access: {
-      organizationId: userRow.activeOrganizationId,
+      organizationId,
       actorType: 'user',
       actorId: user.id,
       role: membership.role,
@@ -76,6 +101,16 @@ export async function resolveOrganizationAccess(
   if (authHeader?.startsWith('Bearer ')) {
     const keyResult = await verifySecretAuth(authHeader);
     if (keyResult.success) {
+      const requestedOrganization = requestedOrganizationId(request);
+      if ('error' in requestedOrganization) {
+        return { success: false, error: requestedOrganization.error, status: 400 };
+      }
+      const explicitOrganizationId = requestedOrganization.present
+        ? requestedOrganization.id
+        : null;
+      if (explicitOrganizationId && explicitOrganizationId !== keyResult.organizationId) {
+        return { success: false, error: 'Organization not found', status: 404 };
+      }
       if (appId) {
         const owned = await isAppOwnedByOrganization(appId, keyResult.organizationId);
         if (!owned) {

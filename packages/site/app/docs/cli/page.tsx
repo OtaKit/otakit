@@ -291,6 +291,21 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Separator />
 
         <Command
+          name="otakit mcp"
+          description="Start the local stdio MCP server, fixed to one project and organization."
+          options={[
+            { flag: '--project-root <path>', desc: 'Project root available to local MCP tools.' },
+            {
+              flag: '--organization-id <id>',
+              desc: 'Bind the server to one organization for its lifetime.',
+            },
+          ]}
+          example="npx -y @otakit/cli@1.5.0 mcp --project-root ."
+        />
+
+        <Separator />
+
+        <Command
           name="otakit config validate"
           description="Validate the OtaKit-related values in capacitor.config.*."
           options={[{ flag: '--json', desc: 'Print machine-readable JSON output.' }]}

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join, posix, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import type { ApiClient, Bundle, DeltaFileDescriptor } from './api.js';
+import type { ApiClient, Bundle, DeltaFileDescriptor, ReleaseResult } from './api.js';
 import type { BundleEncryptionParams } from './crypto.js';
 import { encryptFile, parseEncryptionKey } from './crypto.js';
 import { CliError } from './errors.js';
@@ -98,12 +98,23 @@ export async function resolveVersion(
   };
 }
 
-async function uploadFileToPresignedUrl(filePath: string, presignedUrl: string): Promise<void> {
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error ? signal.reason : new CliError('Upload cancelled.');
+}
+
+async function uploadFileToPresignedUrl(
+  filePath: string,
+  presignedUrl: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const fileStat = await stat(filePath);
   const body = createReadStream(filePath);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 300_000);
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
 
   const requestOptions: RequestInit & { duplex?: 'half' } = {
     method: 'PUT',
@@ -127,6 +138,7 @@ async function uploadFileToPresignedUrl(filePath: string, presignedUrl: string):
     }
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -142,8 +154,13 @@ export type UploadWorkflowOptions = {
   autoRevert?: boolean;
   autoRevertRatePercent?: number;
   autoRevertMinSample?: number;
+  expectedCurrentReleaseId?: string | null;
+  idempotencyKey?: string;
+  compatibilityDecision?: 'block' | 'proceed' | 'skip';
   encrypt?: boolean;
   onStatus?: (message: string) => void;
+  signal?: AbortSignal;
+  manageProcessSignals?: boolean;
 };
 
 export const ENCRYPTION_KEY_ENV = 'OTAKIT_ENCRYPTION_KEY';
@@ -173,6 +190,7 @@ export function resolveEncryptionKey(encryptFlag: boolean | undefined): Buffer |
 export type UploadWorkflowResult = {
   bundle: Bundle;
   releaseChannel?: string | null;
+  release?: ReleaseResult;
 };
 
 export async function runUploadWorkflow(
@@ -193,10 +211,16 @@ export async function runUploadWorkflow(
     autoRevert,
     autoRevertRatePercent,
     autoRevertMinSample,
+    expectedCurrentReleaseId,
+    idempotencyKey,
+    compatibilityDecision,
     encrypt,
     onStatus,
+    signal,
+    manageProcessSignals = true,
   } = options;
 
+  throwIfAborted(signal);
   validateBundleDirectory(sourcePath);
   const encryptionKey = resolveEncryptionKey(encrypt);
 
@@ -216,11 +240,12 @@ export async function runUploadWorkflow(
     }
     process.exit(1);
   };
-  process.on('SIGINT', cleanup);
+  if (manageProcessSignals) process.on('SIGINT', cleanup);
 
   try {
     onStatus?.('Creating zip archive...');
     await createZip(sourcePath, tempZipPath);
+    throwIfAborted(signal);
 
     let uploadPath = tempZipPath;
     let encryption: BundleEncryptionParams | undefined;
@@ -228,6 +253,7 @@ export async function runUploadWorkflow(
       onStatus?.('Encrypting bundle...');
       encryption = await encryptFile(encryptionKey, tempZipPath, tempEncPath);
       uploadPath = tempEncPath;
+      throwIfAborted(signal);
       console.warn(
         '\nBundle encryption requires manifest signing to be enabled on the server ' +
           '(hosted default). Without signing, encryption parameters are unauthenticated.',
@@ -240,6 +266,7 @@ export async function runUploadWorkflow(
     onStatus?.('Calculating SHA-256 checksum...');
     const sha256 = await hashFile(uploadPath);
     const uploadStat = await stat(uploadPath);
+    throwIfAborted(signal);
 
     onStatus?.('Requesting upload URL...');
     const initiated = await api.initiateUpload({
@@ -250,6 +277,7 @@ export async function runUploadWorkflow(
       nativePackages,
       encryption,
     });
+    throwIfAborted(signal);
 
     const expiresAt = new Date(initiated.expiresAt);
     if (expiresAt.getTime() - Date.now() < 60_000) {
@@ -257,26 +285,32 @@ export async function runUploadWorkflow(
     }
 
     onStatus?.('Uploading bundle...');
-    await uploadFileToPresignedUrl(uploadPath, initiated.presignedUrl);
+    await uploadFileToPresignedUrl(uploadPath, initiated.presignedUrl, signal);
+    throwIfAborted(signal);
 
     onStatus?.('Finalizing...');
     const bundle = await api.finalizeUpload({
       uploadId: initiated.uploadId,
     });
+    throwIfAborted(signal);
 
+    let release: ReleaseResult | undefined;
     if (releaseChannel !== undefined) {
       onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-      await api.release(releaseChannel, bundle.id, {
+      release = await api.release(releaseChannel, bundle.id, {
         forceImmediate,
         autoRevert,
         autoRevertRatePercent,
         autoRevertMinSample,
+        expectedCurrentReleaseId,
+        idempotencyKey,
+        compatibilityDecision,
       });
     }
 
-    return { bundle, releaseChannel };
+    return { bundle, releaseChannel, release };
   } finally {
-    process.off('SIGINT', cleanup);
+    if (manageProcessSignals) process.off('SIGINT', cleanup);
     await removeFileIfExists(tempZipPath);
     await removeFileIfExists(tempEncPath);
   }
@@ -332,10 +366,13 @@ async function uploadDeltaFileToPresignedUrl(
   size: number,
   md5: string,
   presignedUrl: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const body = createReadStream(filePath);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 300_000);
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
 
   const requestOptions: RequestInit & { duplex?: 'half' } = {
     method: 'PUT',
@@ -361,6 +398,7 @@ async function uploadDeltaFileToPresignedUrl(
     }
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -375,11 +413,16 @@ async function runDeltaUploadWorkflow(
     version,
     runtimeVersion,
     releaseChannel,
+    nativePackages,
     forceImmediate,
     autoRevert,
     autoRevertRatePercent,
     autoRevertMinSample,
+    expectedCurrentReleaseId,
+    idempotencyKey,
+    compatibilityDecision,
     onStatus,
+    signal,
   } = options;
 
   // Encrypted deltas are deliberately unsupported in v1: per-file encryption
@@ -390,10 +433,12 @@ async function runDeltaUploadWorkflow(
     );
   }
 
+  throwIfAborted(signal);
   validateBundleDirectory(sourcePath);
 
   onStatus?.('Hashing bundle files...');
   const files = await collectDeltaFiles(sourcePath);
+  throwIfAborted(signal);
   if (files.length === 0) {
     throw new CliError(`No files found in ${sourcePath}`);
   }
@@ -409,7 +454,9 @@ async function runDeltaUploadWorkflow(
     version,
     runtimeVersion,
     files,
+    nativePackages,
   });
+  throwIfAborted(signal);
 
   const expiresAt = new Date(initiated.expiresAt);
   if (expiresAt.getTime() - Date.now() < 60_000) {
@@ -440,6 +487,7 @@ async function runDeltaUploadWorkflow(
             source.size,
             source.md5,
             upload.presignedUrl,
+            signal,
           );
           uploaded += 1;
           onStatus?.(`Uploading new files: ${uploaded}/${uploads.length}`);
@@ -451,19 +499,25 @@ async function runDeltaUploadWorkflow(
   }
 
   onStatus?.('Finalizing...');
+  throwIfAborted(signal);
   const bundle = await api.finalizeDeltaUpload({ uploadId: initiated.uploadId });
+  throwIfAborted(signal);
 
+  let release: ReleaseResult | undefined;
   if (releaseChannel !== undefined) {
     onStatus?.(`Releasing to ${releaseChannel ?? 'base channel'}...`);
-    await api.release(releaseChannel, bundle.id, {
+    release = await api.release(releaseChannel, bundle.id, {
       forceImmediate,
       autoRevert,
       autoRevertRatePercent,
       autoRevertMinSample,
+      expectedCurrentReleaseId,
+      idempotencyKey,
+      compatibilityDecision,
     });
   }
 
-  return { bundle, releaseChannel };
+  return { bundle, releaseChannel, release };
 }
 
 function validateVersion(value: string | undefined, label: string): string | null {

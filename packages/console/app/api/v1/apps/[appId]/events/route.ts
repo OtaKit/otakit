@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { listRecentAppEvents } from '@/lib/tinybird/events';
-import { isValidChannelName, parseNonNegativeInteger, parsePlatform } from '@/lib/validation';
+import { listEvents } from '@/lib/services/events';
+import {
+  isValidChannelName,
+  isValidRuntimeVersion,
+  parseNonNegativeInteger,
+  parsePlatform,
+} from '@/lib/validation';
 
 export const runtime = 'nodejs';
 
@@ -57,15 +62,27 @@ export async function GET(
   const bundleVersion =
     rawBundleVersion && rawBundleVersion !== 'all' ? rawBundleVersion.slice(0, 64) : null;
 
-  const rawChannel = searchParams.get('channel');
-  const channel = rawChannel && rawChannel !== 'all' ? rawChannel.trim() : null;
-  // 'base' is a reserved filter meaning the default (no-channel) stream.
-  if (channel && channel !== 'base' && !isValidChannelName(channel)) {
+  const hasExactChannel = searchParams.has('channelExact');
+  const rawChannel = searchParams.get(hasExactChannel ? 'channelExact' : 'channel');
+  const channel = hasExactChannel
+    ? rawChannel?.trim() || null
+    : !rawChannel || rawChannel === 'all'
+      ? undefined
+      : rawChannel.trim() === 'base'
+        ? null
+        : rawChannel.trim();
+  // Keep the existing `channel=base` alias for callers while allowing MCP to
+  // distinguish an exact named "base" channel through additive channelExact.
+  if (channel && !isValidChannelName(channel)) {
     return NextResponse.json({ error: 'Invalid channel filter' }, { status: 400 });
   }
 
   const rawRuntime = searchParams.get('runtime');
-  const runtimeVersion = rawRuntime && rawRuntime !== 'all' ? rawRuntime.trim().slice(0, 64) : null;
+  const runtimeVersion =
+    !searchParams.has('runtime') || rawRuntime === 'all' ? undefined : rawRuntime?.trim() || null;
+  if (runtimeVersion && !isValidRuntimeVersion(runtimeVersion)) {
+    return NextResponse.json({ error: 'Invalid runtime filter' }, { status: 400 });
+  }
 
   const rawReleaseId = searchParams.get('releaseId');
   const releaseId = rawReleaseId && rawReleaseId !== 'all' ? rawReleaseId.trim() : null;
@@ -73,9 +90,14 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid releaseId filter' }, { status: 400 });
   }
 
+  const rawFrom = searchParams.get('from');
+  const parsedFrom = rawFrom ? new Date(rawFrom) : null;
+  if (parsedFrom && Number.isNaN(parsedFrom.getTime())) {
+    return NextResponse.json({ error: 'Invalid from timestamp' }, { status: 400 });
+  }
   const rawTimeframe = searchParams.get('timeframe') ?? '24h';
   const timeframeMs = TIMEFRAME_TO_MS[rawTimeframe];
-  if (!timeframeMs) {
+  if (!rawFrom && !timeframeMs) {
     return NextResponse.json(
       {
         error: `Invalid timeframe filter. Must be one of: ${Object.keys(TIMEFRAME_TO_MS).join(', ')}`,
@@ -85,9 +107,10 @@ export async function GET(
   }
 
   const limit = Math.max(1, Math.min(parseNonNegativeInteger(searchParams.get('limit'), 50), 200));
-  const createdAtFrom = new Date(Date.now() - timeframeMs);
+  const createdAtFrom = parsedFrom ?? new Date(Date.now() - timeframeMs);
 
-  const events = await listRecentAppEvents({
+  const includeDetail = searchParams.get('includeDetail') !== 'false';
+  const result = await listEvents({
     appId,
     from: createdAtFrom,
     limit,
@@ -97,9 +120,8 @@ export async function GET(
     channel,
     runtimeVersion,
     releaseId,
+    includeDetail,
   });
 
-  return NextResponse.json({
-    events,
-  });
+  return NextResponse.json(result);
 }

@@ -1,11 +1,21 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { bearer, emailOTP } from 'better-auth/plugins';
+import { APIError } from 'better-auth/api';
+import { bearer, emailOTP, jwt } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
+import { cimd } from '@better-auth/cimd';
+import { fetchClientMetadataResource } from '@better-auth/cimd/node';
+import { mcp } from '@better-auth/mcp';
 
 import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
+import {
+  OTAKIT_OAUTH_SCOPES,
+  isLegacyMcpDcrEnabled,
+  isRemoteMcpOAuthEnabled,
+  remoteMcpResourceUrl,
+} from './mcp/features';
 
 const isDev = process.env.NODE_ENV === 'development';
 const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -56,8 +66,88 @@ const socialProviders = {
     : {}),
 };
 
+const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
+  ? [
+      jwt({ disableSettingJwtHeader: true }),
+      mcp({
+        loginPage: '/login',
+        consentPage: '/oauth/consent',
+        resource: remoteMcpResourceUrl(),
+        scopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
+        clientRegistrationDefaultScopes: ['otakit:read'],
+        clientRegistrationAllowedScopes: [
+          'otakit:app:write',
+          'otakit:bundle:write',
+          'otakit:release:write',
+          'offline_access',
+        ],
+        grantTypes: ['authorization_code', 'refresh_token'],
+        allowDynamicClientRegistration: isLegacyMcpDcrEnabled(),
+        allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
+        postLogin: {
+          page: '/oauth/select-organization',
+          shouldRedirect: async ({ scopes }) =>
+            scopes.some((scope) => OTAKIT_OAUTH_SCOPES.includes(scope as never)),
+          consentReferenceId: async ({ user, scopes }) => {
+            if (!scopes.some((scope) => OTAKIT_OAUTH_SCOPES.includes(scope as never))) {
+              return undefined;
+            }
+            const userRow = await db.user.findUnique({
+              where: { id: user.id },
+              select: {
+                activeOrganizationId: true,
+                memberships: {
+                  select: { organizationId: true },
+                },
+              },
+            });
+            const organizationId = userRow?.activeOrganizationId ?? undefined;
+            if (
+              !organizationId ||
+              !userRow?.memberships.some(
+                (membership) => membership.organizationId === organizationId,
+              )
+            ) {
+              throw new APIError('BAD_REQUEST', {
+                message: 'Select an organization before authorizing OtaKit MCP',
+              });
+            }
+            return organizationId;
+          },
+        },
+        customAccessTokenClaims: async ({ user, referenceId }) => {
+          if (!user?.id || !referenceId) {
+            throw new APIError('UNAUTHORIZED', {
+              message: 'OtaKit MCP access must be bound to a user and organization',
+            });
+          }
+          const membership = await db.organizationMember.findUnique({
+            where: {
+              organizationId_userId: { organizationId: referenceId, userId: user.id },
+            },
+            select: { id: true },
+          });
+          if (!membership) {
+            throw new APIError('FORBIDDEN', {
+              message: 'The user is no longer a member of this organization',
+            });
+          }
+          return {
+            otakit_organization_id: referenceId,
+            otakit_user_id: user.id,
+          };
+        },
+      }),
+      cimd({
+        fetchClientMetadataResource,
+        metadataProfile: 'mcp-2026-07-28',
+      }),
+    ]
+  : [];
+
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: 'postgresql' }),
+  ...(isRemoteMcpOAuthEnabled() ? { disabledPaths: ['/token'] } : {}),
   socialProviders,
   plugins: [
     bearer(),
@@ -78,6 +168,7 @@ export const auth = betterAuth({
       expiresIn: 300,
       disableSignUp: false,
     }),
+    ...remoteMcpOAuthPlugins,
     nextCookies(),
   ],
   trustedOrigins,

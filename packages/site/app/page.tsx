@@ -532,7 +532,7 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Users}
                 title="Team & API keys"
-                description="Invite members, assign roles, and manage scoped API keys per organization."
+                description="Invite members, assign roles, and manage organization service keys."
               />
               <FeatureCard
                 icon={Globe}

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { accessActor, recordAuditLog } from '@/lib/audit-log';
-import { db } from '@/lib/db';
-import { syncManifestFileForLane } from '@/lib/manifest-files';
+import { accessActor } from '@/lib/audit-log';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
-import { createRelease } from '@/lib/releases';
-import { createEmptyEventCounts, getReleaseEventCounts } from '@/lib/tinybird/events';
+import { isReleaseReliabilityEnabled } from '@/lib/release-features';
+import { serviceErrorResponse } from '@/lib/services/http';
+import { listReleases, publishRelease, publishReleaseLegacy } from '@/lib/services/releases';
 import {
   isValidChannelName,
   normalizeOptionalChannel,
@@ -60,46 +59,20 @@ export async function GET(
   const limit = Math.min(parseNonNegativeInteger(searchParams.get('limit'), 100), 200);
   const offset = parseNonNegativeInteger(searchParams.get('offset'), 0);
 
-  const where = channelFilter.present ? { appId, channel: channelFilter.value } : { appId };
-
-  const [releases, total] = await Promise.all([
-    db.release.findMany({
-      where,
-      orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-      skip: offset,
-      take: limit,
-      include: {
-        bundle: { select: { version: true, runtimeVersion: true } },
-        previousBundle: { select: { version: true } },
-      },
-    }),
-    db.release.count({ where }),
-  ]);
-
-  const releaseIds = releases.map((release) => release.id);
-  const countsByReleaseId = await getReleaseEventCounts(appId, releaseIds);
-
-  return NextResponse.json({
-    releases: releases.map((release) => ({
-      id: release.id,
-      channel: release.channel,
-      runtimeVersion: release.bundle.runtimeVersion,
-      bundleId: release.bundleId,
-      bundleVersion: release.bundle.version,
-      previousBundleId: release.previousBundleId,
-      previousBundleVersion: release.previousBundle?.version ?? null,
-      forceImmediate: release.forceImmediate,
-      autoRevert: release.autoRevert,
-      autoRevertRatePercent: release.autoRevertRatePercent,
-      autoRevertMinSample: release.autoRevertMinSample,
-      promotedAt: release.promotedAt.toISOString(),
-      promotedBy: release.promotedBy,
-      revertedAt: release.revertedAt?.toISOString() ?? null,
-      revertedBy: release.revertedBy,
-      eventCounts: countsByReleaseId.get(release.id) ?? createEmptyEventCounts(),
-    })),
-    total,
-  });
+  try {
+    return NextResponse.json(
+      await listReleases({
+        organizationId: access.access.organizationId,
+        appId,
+        channelPresent: channelFilter.present,
+        channel: channelFilter.value,
+        limit,
+        offset,
+      }),
+    );
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
 }
 
 export async function POST(
@@ -155,7 +128,10 @@ export async function POST(
 
   const rawAutoRevertRatePercent = body.autoRevertRatePercent;
   const rawAutoRevertMinSample = body.autoRevertMinSample;
-  if (!autoRevert && (rawAutoRevertRatePercent !== undefined || rawAutoRevertMinSample !== undefined)) {
+  if (
+    !autoRevert &&
+    (rawAutoRevertRatePercent !== undefined || rawAutoRevertMinSample !== undefined)
+  ) {
     return NextResponse.json(
       { error: 'autoRevert thresholds require autoRevert to be true' },
       { status: 400 },
@@ -190,100 +166,56 @@ export async function POST(
   const autoRevertMinSample =
     typeof rawAutoRevertMinSample === 'number' ? rawAutoRevertMinSample : undefined;
 
-  const bundle = await db.bundle.findUnique({
-    where: { id: bundleId },
-    select: { id: true, appId: true, version: true, runtimeVersion: true },
-  });
-  if (!bundle || bundle.appId !== appId) {
-    return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
-  }
-
-  const currentLatest = await db.release.findFirst({
-    where: {
-      appId,
-      channel,
-      revertedAt: null,
-      bundle: {
-        is: {
-          runtimeVersion: bundle.runtimeVersion,
-        },
-      },
-    },
-    orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    include: { bundle: { select: { version: true, runtimeVersion: true } } },
-  });
-
-  if (currentLatest?.bundleId === bundle.id) {
+  const rawExpectedCurrentReleaseId = body.expectedCurrentReleaseId;
+  if (
+    rawExpectedCurrentReleaseId !== undefined &&
+    rawExpectedCurrentReleaseId !== null &&
+    (typeof rawExpectedCurrentReleaseId !== 'string' ||
+      rawExpectedCurrentReleaseId.trim().length === 0)
+  ) {
     return NextResponse.json(
-      { error: 'Bundle is already current for this release channel' },
-      { status: 409 },
+      { error: 'expectedCurrentReleaseId must be a release ID or null' },
+      { status: 400 },
     );
+  }
+  const expectedCurrentReleaseId =
+    typeof rawExpectedCurrentReleaseId === 'string'
+      ? rawExpectedCurrentReleaseId.trim()
+      : rawExpectedCurrentReleaseId;
+
+  const rawCompatibilityDecision = body.compatibilityDecision;
+  if (
+    rawCompatibilityDecision !== undefined &&
+    rawCompatibilityDecision !== 'block' &&
+    rawCompatibilityDecision !== 'proceed' &&
+    rawCompatibilityDecision !== 'skip'
+  ) {
+    return NextResponse.json({ error: 'Invalid compatibilityDecision' }, { status: 400 });
   }
 
   const promotedBy = await resolveReleaseActor(access.access);
-  const release = await createRelease(db, {
-    appId,
-    bundleId: bundle.id,
-    previousBundleId: currentLatest?.bundleId ?? null,
-    channel,
-    forceImmediate,
-    autoRevert,
-    autoRevertRatePercent,
-    autoRevertMinSample,
-    promotedBy,
-  });
-  await syncManifestFileForLane(appId, channel, bundle.runtimeVersion);
-
-  await recordAuditLog({
-    organizationId: access.access.organizationId,
-    actor: await accessActor(access.access, promotedBy),
-    action: 'release.created',
-    targetType: 'release',
-    targetId: release.id,
-    metadata: {
+  try {
+    const publish = isReleaseReliabilityEnabled() ? publishRelease : publishReleaseLegacy;
+    const result = await publish({
+      organizationId: access.access.organizationId,
+      actor: await accessActor(access.access, promotedBy),
       appId,
-      bundleVersion: bundle.version,
-      runtimeVersion: bundle.runtimeVersion,
+      bundleId,
       channel,
       forceImmediate,
       autoRevert,
-      ...(autoRevert
-        ? {
-            autoRevertRatePercent: release.autoRevertRatePercent,
-            autoRevertMinSample: release.autoRevertMinSample,
-          }
-        : {}),
-      previousBundleVersion: currentLatest?.bundle.version ?? null,
-    },
-  });
+      autoRevertRatePercent,
+      autoRevertMinSample,
+      expectedCurrentReleaseId,
+      idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
+      compatibilityDecision: rawCompatibilityDecision,
+      enforceCompatibility: rawCompatibilityDecision !== undefined,
+    });
 
-  return NextResponse.json({
-    release: {
-      id: release.id,
-      channel: release.channel,
-      runtimeVersion: bundle.runtimeVersion,
-      bundleId: release.bundleId,
-      bundleVersion: bundle.version,
-      previousBundleId: release.previousBundleId,
-      forceImmediate: release.forceImmediate,
-      autoRevert: release.autoRevert,
-      autoRevertRatePercent: release.autoRevertRatePercent,
-      autoRevertMinSample: release.autoRevertMinSample,
-      promotedAt: release.promotedAt.toISOString(),
-      promotedBy: release.promotedBy,
-      revertedAt: null,
-      revertedBy: null,
-    },
-    previousRelease: currentLatest
-      ? {
-          id: currentLatest.id,
-          channel: currentLatest.channel,
-          runtimeVersion: currentLatest.bundle.runtimeVersion,
-          bundleId: currentLatest.bundleId,
-          bundleVersion: currentLatest.bundle.version,
-          promotedAt: currentLatest.promotedAt.toISOString(),
-          promotedBy: currentLatest.promotedBy,
-        }
-      : null,
-  });
+    return NextResponse.json(result, {
+      status: result.publicationStatus === 'published' ? 200 : 202,
+    });
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
 }

@@ -1,0 +1,32 @@
+{
+  "name": "otakit",
+  "version": "1.5.0",
+  "description": "Inspect, upload, release, monitor, and revert OtaKit Capacitor OTA updates.",
+  "author": {
+    "name": "OtaKit",
+    "url": "https://otakit.app"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "homepage": "https://otakit.app",
+  "repository": "https://github.com/OtaKit/otakit",
+  "license": "MIT",
+  "keywords": ["capacitor", "ota", "releases", "mcp"],
+  "interface": {
+    "displayName": "OtaKit",
+    "shortDescription": "Ship Capacitor OTA updates from your agent.",
+    "longDescription": "Inspect Capacitor projects, upload web bundles, preview and publish exact release lanes, read rollout events, and safely revert OtaKit releases.",
+    "developerName": "OtaKit",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://otakit.app",
+    "privacyPolicyURL": "https://otakit.app/policy",
+    "termsOfServiceURL": "https://otakit.app/terms",
+    "brandColor": "#0F172A",
+    "defaultPrompt": [
+      "Inspect my OtaKit release state.",
+      "Prepare an OtaKit update for review.",
+      "Explain recent OtaKit rollout events."
+    ]
+  }
+}

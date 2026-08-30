@@ -884,12 +884,23 @@ export function ProductDashboard({
       targetKey: getReleaseTargetKey(target.channel, target.runtimeVersion),
     });
     try {
+      const expectedCurrentReleaseId =
+        releaseHistory.find(
+          (release) =>
+            release.revertedAt === null &&
+            release.channel === target.channel &&
+            release.runtimeVersion === target.runtimeVersion,
+        )?.id ?? null;
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
         body: JSON.stringify({
           bundleId: bundle.id,
           channel: target.channel,
+          expectedCurrentReleaseId,
           forceImmediate,
           autoRevert: autoRevert !== null,
           ...(autoRevert
@@ -900,11 +911,22 @@ export function ProductDashboard({
             : {}),
         }),
       });
-      const data = await parseJson<ApiError>(res);
+      const data = await parseJson<
+        ApiError & {
+          publicationStatus?: 'published' | 'manifest_sync_pending';
+          operationId?: string;
+        }
+      >(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
-      toast.success(
-        `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
-      );
+      if (data.publicationStatus === 'manifest_sync_pending') {
+        toast.warning(
+          `Release recorded, but manifest synchronization is pending${data.operationId ? ` (operation ${data.operationId})` : ''}. OtaKit will retry automatically.`,
+        );
+      } else {
+        toast.success(
+          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+        );
+      }
       trackConversion('release_created');
       await Promise.all([
         loadBundles(selectedAppId),
@@ -961,15 +983,32 @@ export function ProductDashboard({
         `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(revertConfirm.releaseId)}/revert`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            expectedCurrentReleaseId: revertConfirm.releaseId,
+            ...(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
+          }),
         },
       );
-      const data = await parseJson<ApiError>(res);
+      const data = await parseJson<
+        ApiError & {
+          publicationStatus?: 'published' | 'manifest_sync_pending';
+          operationId?: string;
+        }
+      >(res);
       if (!res.ok) throw new Error(data.error ?? 'Revert failed');
-      toast.success(
-        `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
-      );
+      if (data.publicationStatus === 'manifest_sync_pending') {
+        toast.warning(
+          `Revert recorded, but manifest synchronization is pending${data.operationId ? ` (operation ${data.operationId})` : ''}. OtaKit will retry automatically.`,
+        );
+      } else {
+        toast.success(
+          `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
+        );
+      }
       setRevertConfirm(null);
       await Promise.all([loadBundles(selectedAppId), loadReleaseHistory(selectedAppId)]);
       router.refresh();
@@ -1463,9 +1502,10 @@ export function ProductDashboard({
                                                                 Guard
                                                               </span>
                                                               <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                                                Auto-revert at ≥{rel.autoRevertRatePercent}
-                                                                % of ≥{rel.autoRevertMinSample} devices
-                                                                / 24h
+                                                                Auto-revert at ≥
+                                                                {rel.autoRevertRatePercent}% of ≥
+                                                                {rel.autoRevertMinSample} devices /
+                                                                24h
                                                               </span>
                                                             </>
                                                           ) : null}
@@ -2110,9 +2150,7 @@ export function ProductDashboard({
                           aria-invalid={releaseAutoRevertMinSampleValue === null}
                         />
                         {releaseAutoRevertMinSampleValue === null ? (
-                          <p className="text-xs text-destructive">
-                            Integer between 10 and 100000.
-                          </p>
+                          <p className="text-xs text-destructive">Integer between 10 and 100000.</p>
                         ) : null}
                       </div>
                     </div>

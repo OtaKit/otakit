@@ -1,6 +1,7 @@
 {
   "name": "@otakit/cli",
-  "version": "1.4.0",
+  "mcpName": "io.github.otakit/otakit",
+  "version": "1.5.0",
   "description": "CLI for uploading and releasing OtaKit OTA bundles",
   "type": "module",
   "main": "dist/index.js",
@@ -28,29 +29,36 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && tsc && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --alias:@otakit/mcp-core=../mcp-core/src/index.ts --outfile=dist/index.js --sourcemap",
     "dev": "tsc --watch",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"console.log('No tests configured')\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "dotenv": "^17.2.3",
     "ora": "^9.1.0",
     "semver": "^7.8.5",
-    "yazl": "^2.5.1"
+    "yazl": "^2.5.1",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@otakit/mcp-core": "workspace:*",
     "@types/node": "^25.2.0",
     "@types/semver": "^7.7.1",
     "@types/yazl": "^2.4.5",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.32.1"
+    "typescript-eslint": "^8.32.1",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -58,6 +66,8 @@
   "keywords": [
     "capacitor",
     "ota",
+    "mcp",
+    "ai-agent",
     "cli",
     "update",
     "release"
