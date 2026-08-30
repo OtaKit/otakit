@@ -1,6 +1,11 @@
 import { recordAuditLog, type AuditActor } from './audit-log';
+import {
+  AUTO_REVERT_REVERTED_BY,
+  deliverPendingAutoRevertAlerts,
+  sendAutoRevertAlerts,
+  type AutoRevertAlertPayload,
+} from './auto-revert-alerts';
 import { db } from './db';
-import { sendAutoRevertEmail } from './email';
 import { isReleaseReliabilityEnabled } from './release-features';
 import { revertCurrentRelease } from './releases';
 import { isOtaKitServiceError } from './services/errors';
@@ -9,7 +14,6 @@ import { getReleaseHealthWindowCounts } from './tinybird/events';
 
 export const AUTO_REVERT_WINDOW_HOURS = 24;
 export const AUTO_REVERT_ACTOR_LABEL = 'auto-revert';
-export const AUTO_REVERT_REVERTED_BY = 'system:auto-revert';
 
 const AUTO_REVERT_ACTOR: AuditActor = {
   actorType: 'system',
@@ -48,19 +52,23 @@ export function shouldAutoRevert(
   return counts.rollbacks * 100 >= thresholds.ratePercent * attempts;
 }
 
-async function resolveAlertRecipients(organizationId: string): Promise<string[]> {
-  const members = await db.organizationMember.findMany({
-    where: {
-      organizationId,
-      role: { in: ['owner', 'admin'] },
-    },
-    select: {
-      user: {
-        select: { email: true },
-      },
-    },
-  });
-  return Array.from(new Set(members.map((member) => member.user.email)));
+function alertPayload(
+  candidate: CandidateRelease,
+  counts: { applied: number; rollbacks: number },
+): AutoRevertAlertPayload {
+  const attempts = counts.applied + counts.rollbacks;
+  return {
+    appId: candidate.appId,
+    channel: candidate.channel,
+    runtimeVersion: candidate.bundle.runtimeVersion,
+    bundleVersion: candidate.bundle.version,
+    rollbacks: counts.rollbacks,
+    attempts,
+    measuredRatePercent: attempts > 0 ? Math.round((counts.rollbacks / attempts) * 100) : 0,
+    ratePercent: candidate.autoRevertRatePercent,
+    minSample: candidate.autoRevertMinSample,
+    windowHours: AUTO_REVERT_WINDOW_HOURS,
+  };
 }
 
 async function sendAlerts(
@@ -68,34 +76,14 @@ async function sendAlerts(
   counts: { applied: number; rollbacks: number },
   args: { revertedToVersion: string | null; suppressed: boolean },
 ): Promise<void> {
-  const attempts = counts.applied + counts.rollbacks;
-  const measuredRatePercent = attempts > 0 ? Math.round((counts.rollbacks / attempts) * 100) : 0;
-  const recipients = await resolveAlertRecipients(candidate.app.organizationId);
-  await Promise.all(
-    recipients.map((email) =>
-      sendAutoRevertEmail({
-        to: email,
-        appSlug: candidate.app.slug,
-        channel: candidate.channel,
-        runtimeVersion: candidate.bundle.runtimeVersion,
-        bundleVersion: candidate.bundle.version,
-        rollbacks: counts.rollbacks,
-        attempts,
-        measuredRatePercent,
-        thresholdRatePercent: candidate.autoRevertRatePercent,
-        minSample: candidate.autoRevertMinSample,
-        revertedToVersion: args.revertedToVersion,
-        suppressed: args.suppressed,
-      }).catch((error) => {
-        console.error('[AutoRevert] alert email failed', {
-          appId: candidate.appId,
-          releaseId: candidate.id,
-          email,
-          error,
-        });
-      }),
-    ),
-  );
+  await sendAutoRevertAlerts({
+    releaseId: candidate.id,
+    organizationId: candidate.app.organizationId,
+    appSlug: candidate.app.slug,
+    payload: alertPayload(candidate, counts),
+    revertedToVersion: args.revertedToVersion,
+    suppressed: args.suppressed,
+  });
 }
 
 /**
@@ -189,20 +177,7 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
         continue;
       }
 
-      const attempts = counts.applied + counts.rollbacks;
-      const measuredRatePercent = Math.round((counts.rollbacks / attempts) * 100);
-      const healthMetadata = {
-        appId,
-        channel: candidate.channel,
-        runtimeVersion: candidate.bundle.runtimeVersion,
-        bundleVersion: candidate.bundle.version,
-        rollbacks: counts.rollbacks,
-        attempts,
-        measuredRatePercent,
-        ratePercent: candidate.autoRevertRatePercent,
-        minSample: candidate.autoRevertMinSample,
-        windowHours: AUTO_REVERT_WINDOW_HOURS,
-      };
+      const healthMetadata = alertPayload(candidate, counts);
 
       // Cascade guard: at most one automatic step back per lane per window.
       // A shared-cause failure (e.g. a broken backend crashing every bundle)
@@ -280,6 +255,7 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
           idempotencyKey: `auto-revert:${candidate.id}`,
           auditAction: 'release.auto_reverted',
           auditMetadata: healthMetadata,
+          autoRevertAlertPayload: healthMetadata,
         });
       } catch (error) {
         if (
@@ -305,10 +281,7 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       }
 
       stats.reverted += 1;
-      await sendAlerts(candidate, counts, {
-        revertedToVersion: outcome.currentRelease?.bundleVersion ?? null,
-        suppressed: false,
-      });
+      await deliverPendingAutoRevertAlerts({ releaseIds: [candidate.id] });
     }
   }
 

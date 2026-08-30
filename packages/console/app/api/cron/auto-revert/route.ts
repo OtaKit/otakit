@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { runAutoRevertSweep } from '@/lib/auto-revert';
+import { deliverPendingAutoRevertAlerts } from '@/lib/auto-revert-alerts';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
 import { reconcilePendingReleaseMutations } from '@/lib/services/releases';
 
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
         olderThan: new Date(Date.now() - 30_000),
       })
     : { checked: 0, repaired: 0, pending: 0 };
+  const recoveredAlerts = isReleaseReliabilityEnabled()
+    ? await deliverPendingAutoRevertAlerts()
+    : { checked: 0, sent: 0, pending: 0 };
   const stats = await runAutoRevertSweep();
-  return NextResponse.json({ success: true, stats, manifestRepairs });
+  return NextResponse.json({ success: true, stats, manifestRepairs, recoveredAlerts });
 }

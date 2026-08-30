@@ -427,25 +427,29 @@ model Bundle {
 }
 
 model Release {
-  id                    String    @id @default(uuid())
-  app                   App       @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId                 String
-  bundle                Bundle    @relation("ReleaseBundle", fields: [bundleId], references: [id], onDelete: Restrict)
-  bundleId              String
-  previousBundle        Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
-  previousBundleId      String?
-  channel               String?
-  forceImmediate        Boolean   @default(false)
-  autoRevert            Boolean   @default(false)
-  autoRevertRatePercent Int       @default(20)
-  autoRevertMinSample   Int       @default(50)
-  promotedAt            DateTime  @default(now())
-  promotedBy            String?
-  revertedAt            DateTime?
-  revertedBy            String?
+  id                       String    @id @default(uuid())
+  app                      App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId                    String
+  bundle                   Bundle    @relation("ReleaseBundle", fields: [bundleId], references: [id], onDelete: Restrict)
+  bundleId                 String
+  previousBundle           Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
+  previousBundleId         String?
+  channel                  String?
+  forceImmediate           Boolean   @default(false)
+  autoRevert               Boolean   @default(false)
+  autoRevertRatePercent    Int       @default(20)
+  autoRevertMinSample      Int       @default(50)
+  promotedAt               DateTime  @default(now())
+  promotedBy               String?
+  revertedAt               DateTime?
+  revertedBy               String?
+  autoRevertAlertPayload   Json?
+  autoRevertAlertClaimedAt DateTime?
+  autoRevertAlertedAt      DateTime?
 
   @@index([appId, channel, promotedAt(sort: Desc)])
   @@index([bundleId, promotedAt(sort: Desc)])
+  @@index([autoRevertAlertedAt, autoRevertAlertClaimedAt])
 }
 
 model ReleaseMutation {

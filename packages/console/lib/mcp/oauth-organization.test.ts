@@ -1,47 +1,75 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { activeOAuthOrganizationId, shouldSelectOAuthOrganization } from './oauth-organization';
+import { selectedOAuthOrganizationId, shouldSelectOAuthOrganization } from './oauth-organization';
+import { OTAKIT_OAUTH_ORGANIZATION_HEADER } from './oauth-organization-shared';
 
-function database(activeOrganizationId: string | null, membershipIds: string[]) {
+function database(membershipIds: string[]) {
   return {
-    user: {
-      findUnique: vi.fn().mockResolvedValue({
-        activeOrganizationId,
-        memberships: membershipIds.map((organizationId) => ({ organizationId })),
+    organizationMember: {
+      findUnique: vi.fn().mockImplementation(({ where }) => {
+        const organizationId = where.organizationId_userId.organizationId;
+        return Promise.resolve(membershipIds.includes(organizationId) ? { organizationId } : null);
       }),
     },
   };
 }
 
+function headers(organizationId?: string): Headers {
+  return new Headers(
+    organizationId ? { [OTAKIT_OAUTH_ORGANIZATION_HEADER]: organizationId } : undefined,
+  );
+}
+
 describe('OAuth organization selection', () => {
-  it('continues once the active organization is a current membership', async () => {
-    const mockDatabase = database('org-1', ['org-1', 'org-2']);
+  it('requires an explicit selection when the authorization request has none', async () => {
+    const mockDatabase = database(['org-1', 'org-2']);
 
     await expect(
-      shouldSelectOAuthOrganization('user-1', ['otakit:read'], mockDatabase as never),
-    ).resolves.toBe(false);
-    await expect(activeOAuthOrganizationId('user-1', mockDatabase as never)).resolves.toBe('org-1');
+      shouldSelectOAuthOrganization('user-1', ['otakit:read'], headers(), mockDatabase as never),
+    ).resolves.toBe(true);
+    expect(mockDatabase.organizationMember.findUnique).not.toHaveBeenCalled();
   });
 
-  it('requires selection when the active organization is missing or no longer authorized', async () => {
-    await expect(
-      shouldSelectOAuthOrganization('user-1', ['otakit:read'], database(null, ['org-1']) as never),
-    ).resolves.toBe(true);
+  it('continues with the membership selected for this authorization request', async () => {
+    const mockDatabase = database(['org-1', 'org-2']);
+    const requestHeaders = headers('org-2');
+
     await expect(
       shouldSelectOAuthOrganization(
         'user-1',
         ['otakit:read'],
-        database('org-2', ['org-1']) as never,
+        requestHeaders,
+        mockDatabase as never,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      selectedOAuthOrganizationId('user-1', requestHeaders, mockDatabase as never),
+    ).resolves.toBe('org-2');
+  });
+
+  it('rejects a selected organization that is not a current membership', async () => {
+    const mockDatabase = database(['org-1']);
+    const requestHeaders = headers('org-2');
+
+    await expect(
+      shouldSelectOAuthOrganization(
+        'user-1',
+        ['otakit:read'],
+        requestHeaders,
+        mockDatabase as never,
       ),
     ).resolves.toBe(true);
+    await expect(
+      selectedOAuthOrganizationId('user-1', requestHeaders, mockDatabase as never),
+    ).resolves.toBeUndefined();
   });
 
   it('does not involve organization selection for unrelated scopes', async () => {
-    const mockDatabase = database(null, []);
+    const mockDatabase = database([]);
 
     await expect(
-      shouldSelectOAuthOrganization('user-1', ['openid'], mockDatabase as never),
+      shouldSelectOAuthOrganization('user-1', ['openid'], headers(), mockDatabase as never),
     ).resolves.toBe(false);
-    expect(mockDatabase.user.findUnique).not.toHaveBeenCalled();
+    expect(mockDatabase.organizationMember.findUnique).not.toHaveBeenCalled();
   });
 });

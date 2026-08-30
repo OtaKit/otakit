@@ -7,9 +7,18 @@ import { serviceErrorResponse } from '@/lib/services/http';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
-  const access = await resolveOrganizationAccess(request);
+  const access = await resolveOrganizationAccess(request, undefined, {
+    requireExplicitOrganizationForMultipleMemberships: true,
+  });
   if (!access.success) {
-    return NextResponse.json({ error: access.error }, { status: access.status });
+    return NextResponse.json(
+      {
+        error: access.error,
+        ...(access.code ? { code: access.code } : {}),
+        ...(access.nextStep ? { nextStep: access.nextStep } : {}),
+      },
+      { status: access.status },
+    );
   }
 
   try {

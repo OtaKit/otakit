@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUser: vi.fn(),
   findMembership: vi.fn(),
+  findMemberships: vi.fn(),
   verifySecretAuth: vi.fn(),
   isAppOwnedByOrganization: vi.fn(),
 }));
@@ -16,7 +17,10 @@ vi.mock('./auth', () => ({
 vi.mock('./db', () => ({
   db: {
     user: { findUnique: mocks.findUser },
-    organizationMember: { findUnique: mocks.findMembership },
+    organizationMember: {
+      findUnique: mocks.findMembership,
+      findMany: mocks.findMemberships,
+    },
   },
 }));
 
@@ -38,6 +42,7 @@ describe('resolveOrganizationAccess', () => {
     mocks.getSession.mockResolvedValue({ user: { id: 'user-1' } });
     mocks.findUser.mockResolvedValue({ activeOrganizationId: 'org-active' });
     mocks.findMembership.mockResolvedValue({ role: 'member' });
+    mocks.findMemberships.mockResolvedValue([{ organizationId: 'org-active' }]);
     mocks.isAppOwnedByOrganization.mockResolvedValue(true);
   });
 
@@ -104,5 +109,66 @@ describe('resolveOrganizationAccess', () => {
 
     expect(result).toEqual({ success: false, error: 'Organization not found', status: 404 });
     expect(mocks.getSession).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit organization for a user with multiple memberships', async () => {
+    mocks.findMemberships.mockResolvedValue([
+      { organizationId: 'org-1' },
+      { organizationId: 'org-2' },
+    ]);
+
+    const result = await resolveOrganizationAccess(request(), undefined, {
+      requireExplicitOrganizationForMultipleMemberships: true,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      status: 409,
+      code: 'ORGANIZATION_SELECTION_REQUIRED',
+      error: expect.stringContaining('org-2'),
+    });
+    expect(mocks.findUser).not.toHaveBeenCalled();
+    expect(mocks.findMembership).not.toHaveBeenCalled();
+  });
+
+  it('selects the sole membership without consulting mutable dashboard state', async () => {
+    mocks.findMemberships.mockResolvedValue([{ organizationId: 'org-only' }]);
+
+    const result = await resolveOrganizationAccess(request(), undefined, {
+      requireExplicitOrganizationForMultipleMemberships: true,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      access: {
+        organizationId: 'org-only',
+        actorType: 'user',
+        actorId: 'user-1',
+        role: 'member',
+      },
+    });
+    expect(mocks.findUser).not.toHaveBeenCalled();
+    expect(mocks.findMembership).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId_userId: { organizationId: 'org-only', userId: 'user-1' },
+        },
+      }),
+    );
+  });
+
+  it('does not enumerate memberships for an organization key', async () => {
+    mocks.verifySecretAuth.mockResolvedValue({
+      success: true,
+      organizationId: 'org-key',
+      keyId: 'key-1',
+    });
+
+    await expect(
+      resolveOrganizationAccess(request({ authorization: 'Bearer otakit_sk_test' }), undefined, {
+        requireExplicitOrganizationForMultipleMemberships: true,
+      }),
+    ).resolves.toMatchObject({ success: true, access: { organizationId: 'org-key' } });
+    expect(mocks.findMemberships).not.toHaveBeenCalled();
   });
 });

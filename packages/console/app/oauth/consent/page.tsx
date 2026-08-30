@@ -5,10 +5,25 @@ import { OAuthConsent } from './consent';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { isRemoteMcpOAuthEnabled } from '@/lib/mcp/features';
+import {
+  normalizeOAuthOrganizationId,
+  OTAKIT_OAUTH_ORGANIZATION_QUERY,
+} from '@/lib/mcp/oauth-organization-shared';
 
 export const dynamic = 'force-dynamic';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+function oauthPagePath(path: string, query: Record<string, string | string[] | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (typeof value === 'string') params.set(name, value);
+    else value?.forEach((item) => params.append(name, item));
+  }
+  params.delete(OTAKIT_OAUTH_ORGANIZATION_QUERY);
+  const serialized = params.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
 
 export default async function OAuthConsentPage({ searchParams }: { searchParams: SearchParams }) {
   if (!isRemoteMcpOAuthEnabled()) notFound();
@@ -16,12 +31,7 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
   const session = await auth.api.getSession({ headers: requestHeaders });
   const query = await searchParams;
   if (!session) {
-    const serialized = new URLSearchParams();
-    for (const [key, value] of Object.entries(query)) {
-      if (typeof value === 'string') serialized.set(key, value);
-      else value?.forEach((item) => serialized.append(key, item));
-    }
-    redirect(`/login?${serialized.toString()}`);
+    redirect(oauthPagePath('/login', query));
   }
 
   const clientId = typeof query.client_id === 'string' ? query.client_id : '';
@@ -32,22 +42,25 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
   });
   if (!client) notFound();
   const scopes = (typeof query.scope === 'string' ? query.scope.split(' ') : []).filter(Boolean);
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      activeOrganization: {
-        select: { id: true, name: true },
-      },
-      activeOrganizationId: true,
-      memberships: { select: { organizationId: true } },
-    },
-  });
-  const selectedOrganization =
-    user?.activeOrganizationId &&
-    user.memberships.some((membership) => membership.organizationId === user.activeOrganizationId)
-      ? user.activeOrganization
-      : null;
-  if (!selectedOrganization) redirect('/oauth/select-organization');
+  const organizationId = normalizeOAuthOrganizationId(
+    typeof query[OTAKIT_OAUTH_ORGANIZATION_QUERY] === 'string'
+      ? query[OTAKIT_OAUTH_ORGANIZATION_QUERY]
+      : undefined,
+  );
+  const selectedMembership = organizationId
+    ? await db.organizationMember.findUnique({
+        where: {
+          organizationId_userId: { organizationId, userId: session.user.id },
+        },
+        select: {
+          organization: { select: { id: true, name: true } },
+        },
+      })
+    : null;
+  if (!selectedMembership) {
+    redirect(oauthPagePath('/oauth/select-organization', query));
+  }
+  const selectedOrganization = selectedMembership.organization;
 
   return (
     <OAuthConsent
@@ -55,6 +68,7 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
         name: client.client_name ?? 'An MCP client',
         uri: client.client_uri ?? null,
       }}
+      organizationId={selectedOrganization.id}
       organizationName={selectedOrganization.name}
       scopes={scopes}
     />

@@ -67,4 +67,26 @@ describe('auto-revert failure handling', () => {
       'database unavailable',
     );
   });
+
+  it('persists alert details when manifest synchronization remains pending', async () => {
+    mocks.revertRelease.mockResolvedValue({
+      operationId: 'operation-1',
+      publicationStatus: 'manifest_sync_pending',
+    });
+
+    await expect(runAutoRevertSweep(new Date('2026-01-02T00:00:00Z'))).resolves.toMatchObject({
+      releasesEvaluated: 1,
+      reverted: 0,
+    });
+    expect(mocks.revertRelease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        releaseId: 'release-1',
+        autoRevertAlertPayload: expect.objectContaining({
+          bundleVersion: '1.0.0',
+          rollbacks: 10,
+          attempts: 20,
+        }),
+      }),
+    );
+  });
 });

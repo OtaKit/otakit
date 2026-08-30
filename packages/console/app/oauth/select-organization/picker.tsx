@@ -5,6 +5,10 @@ import { useState } from 'react';
 import { Building2, LoaderCircle } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
+import {
+  OTAKIT_OAUTH_ORGANIZATION_HEADER,
+  OTAKIT_OAUTH_ORGANIZATION_QUERY,
+} from '@/lib/mcp/oauth-organization-shared';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,23 +40,21 @@ export function OAuthOrganizationPicker({
     setBusy(true);
     setError(null);
     try {
-      const selection = await fetch('/api/v1/me/active-organization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationId: selected }),
-      });
-      if (!selection.ok) {
-        const body = (await selection.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? 'Could not select organization');
-      }
-
-      const { data, error: continueError } = await authClient.oauth2.continue({
-        postLogin: true,
-      });
+      const { data, error: continueError } = await authClient.oauth2.continue(
+        { postLogin: true },
+        { headers: { [OTAKIT_OAUTH_ORGANIZATION_HEADER]: selected } },
+      );
       if (continueError)
         throw new Error(continueError.message ?? 'Authorization could not continue');
       if (!data?.url) throw new Error('Authorization did not return a redirect');
-      window.location.assign(data.url);
+      const consentUrl = new URL(data.url, window.location.origin);
+      if (
+        consentUrl.origin === window.location.origin &&
+        consentUrl.pathname === '/oauth/consent'
+      ) {
+        consentUrl.searchParams.set(OTAKIT_OAUTH_ORGANIZATION_QUERY, selected);
+      }
+      window.location.assign(consentUrl);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Authorization could not continue');
       setBusy(false);

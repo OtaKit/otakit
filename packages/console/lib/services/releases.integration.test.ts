@@ -324,6 +324,18 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       forceImmediate: true,
       expectedCurrentReleaseId: preview.expectedCurrentReleaseId,
       idempotencyKey,
+      autoRevertAlertPayload: {
+        appId,
+        channel: null,
+        runtimeVersion: 'ios-1',
+        bundleVersion: '1.0.1',
+        rollbacks: 12,
+        attempts: 20,
+        measuredRatePercent: 60,
+        ratePercent: 20,
+        minSample: 10,
+        windowHours: 24,
+      },
     };
 
     const pending = await revertRelease(input, { syncManifest: repairSync });
@@ -338,7 +350,11 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
     });
     await expect(
       db.release.findUniqueOrThrow({ where: { id: second.release.id } }),
-    ).resolves.toMatchObject({ revertedBy: actor.actorLabel });
+    ).resolves.toMatchObject({
+      revertedBy: actor.actorLabel,
+      autoRevertAlertPayload: expect.objectContaining({ rollbacks: 12, attempts: 20 }),
+      autoRevertAlertedAt: null,
+    });
   });
 
   it('reconciles a pending manifest without creating another release', async () => {

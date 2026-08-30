@@ -5,12 +5,16 @@ import { bearer, emailOTP, jwt } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
 import { cimd } from '@better-auth/cimd';
 import { mcp } from '@better-auth/mcp';
+import { headers } from 'next/headers';
 
 import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
-import { activeOAuthOrganizationId, shouldSelectOAuthOrganization } from './mcp/oauth-organization';
+import {
+  selectedOAuthOrganizationId,
+  shouldSelectOAuthOrganization,
+} from './mcp/oauth-organization';
 import {
   OTAKIT_OAUTH_SCOPES,
   isOtaKitOAuthScope,
@@ -94,13 +98,13 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
         postLogin: {
           page: '/oauth/select-organization',
-          shouldRedirect: async ({ user, scopes }) =>
-            shouldSelectOAuthOrganization(user.id, scopes),
+          shouldRedirect: async ({ headers: requestHeaders, user, scopes }) =>
+            shouldSelectOAuthOrganization(user.id, scopes, requestHeaders),
           consentReferenceId: async ({ user, scopes }) => {
             if (!scopes.some(isOtaKitOAuthScope)) {
               return undefined;
             }
-            const organizationId = await activeOAuthOrganizationId(user.id);
+            const organizationId = await selectedOAuthOrganizationId(user.id, await headers());
             if (!organizationId) {
               throw new APIError('BAD_REQUEST', {
                 message: 'Select an organization before authorizing OtaKit MCP',

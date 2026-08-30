@@ -13,7 +13,11 @@ export type OrganizationAccess = {
 
 export type OrganizationAccessResult =
   | { success: true; access: OrganizationAccess }
-  | { success: false; error: string; status: number };
+  | { success: false; error: string; status: number; code?: string; nextStep?: string };
+
+type ResolveOrganizationAccessOptions = {
+  requireExplicitOrganizationForMultipleMemberships?: boolean;
+};
 
 export const ORGANIZATION_ID_HEADER = 'x-otakit-organization-id';
 
@@ -31,6 +35,7 @@ function requestedOrganizationId(
 async function resolveSessionAccess(
   request: NextRequest,
   appId?: string,
+  options: ResolveOrganizationAccessOptions = {},
 ): Promise<OrganizationAccessResult> {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) {
@@ -38,16 +43,42 @@ async function resolveSessionAccess(
   }
 
   const user = session.user as { id: string };
-  const userRow = await db.user.findUnique({
-    where: { id: user.id },
-    select: { activeOrganizationId: true },
-  });
   const requestedOrganization = requestedOrganizationId(request);
   if ('error' in requestedOrganization) {
     return { success: false, error: requestedOrganization.error, status: 400 };
   }
   const explicitOrganizationId = requestedOrganization.present ? requestedOrganization.id : null;
-  const organizationId = explicitOrganizationId ?? userRow?.activeOrganizationId ?? null;
+  let organizationId = explicitOrganizationId;
+  if (!organizationId && options.requireExplicitOrganizationForMultipleMemberships) {
+    const memberships = await db.organizationMember.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'asc' },
+      take: 11,
+      select: { organizationId: true },
+    });
+    if (memberships.length > 1) {
+      const choices = memberships
+        .slice(0, 10)
+        .map((membership) => membership.organizationId)
+        .join(', ');
+      const suffix = memberships.length > 10 ? ', …' : '';
+      return {
+        success: false,
+        error: `This account belongs to multiple organizations. Restart with \`otakit mcp --organization-id <id>\`. Available organization IDs: ${choices}${suffix}`,
+        status: 409,
+        code: 'ORGANIZATION_SELECTION_REQUIRED',
+        nextStep: 'Choose the intended organization ID and pass it with --organization-id.',
+      };
+    }
+    organizationId = memberships[0]?.organizationId ?? null;
+  }
+  if (!organizationId) {
+    const userRow = await db.user.findUnique({
+      where: { id: user.id },
+      select: { activeOrganizationId: true },
+    });
+    organizationId = userRow?.activeOrganizationId ?? null;
+  }
   if (!organizationId) {
     return { success: false, error: 'No active organization', status: 403 };
   }
@@ -95,6 +126,7 @@ async function resolveSessionAccess(
 export async function resolveOrganizationAccess(
   request: NextRequest,
   appId?: string,
+  options: ResolveOrganizationAccessOptions = {},
 ): Promise<OrganizationAccessResult> {
   // 1. Try API key auth (Bearer header) first for CLI/CI automation
   const authHeader = request.headers.get('Authorization');
@@ -127,7 +159,7 @@ export async function resolveOrganizationAccess(
       };
     }
     // If it's not a organization API key, try user bearer token auth via Better Auth.
-    const sessionAccess = await resolveSessionAccess(request, appId);
+    const sessionAccess = await resolveSessionAccess(request, appId, options);
     if (sessionAccess.success) {
       return sessionAccess;
     }
@@ -135,5 +167,5 @@ export async function resolveOrganizationAccess(
   }
 
   // 2. Session auth (cookie or bearer-converted session token)
-  return resolveSessionAccess(request, appId);
+  return resolveSessionAccess(request, appId, options);
 }

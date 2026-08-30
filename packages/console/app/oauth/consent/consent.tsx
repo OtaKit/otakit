@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
+import { OTAKIT_OAUTH_ORGANIZATION_HEADER } from '@/lib/mcp/oauth-organization-shared';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -25,10 +26,12 @@ const SCOPE_LABELS: Record<string, string> = {
 
 export function OAuthConsent({
   client,
+  organizationId,
   organizationName,
   scopes,
 }: {
   client: { name: string; uri: string | null };
+  organizationId: string;
   organizationName: string | null;
   scopes: string[];
 }) {
@@ -39,7 +42,10 @@ export function OAuthConsent({
     setBusy(accept ? 'allow' : 'deny');
     setError(null);
     try {
-      const { data, error: consentError } = await authClient.oauth2.consent({ accept });
+      const { data, error: consentError } = await authClient.oauth2.consent(
+        { accept },
+        { headers: { [OTAKIT_OAUTH_ORGANIZATION_HEADER]: organizationId } },
+      );
       if (consentError) throw new Error(consentError.message ?? 'Authorization failed');
       if (!data?.url) throw new Error('Authorization did not return a redirect');
       window.location.assign(data.url);

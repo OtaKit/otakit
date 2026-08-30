@@ -3,33 +3,39 @@ import type { PrismaClient } from '@prisma/client';
 import { db } from '@/lib/db';
 
 import { isOtaKitOAuthScope } from './features';
+import {
+  normalizeOAuthOrganizationId,
+  OTAKIT_OAUTH_ORGANIZATION_HEADER,
+} from './oauth-organization-shared';
 
-type OAuthOrganizationDatabase = Pick<PrismaClient, 'user'>;
+type OAuthOrganizationDatabase = Pick<PrismaClient, 'organizationMember'>;
 
-export async function activeOAuthOrganizationId(
+export async function selectedOAuthOrganizationId(
   userId: string,
+  requestHeaders: Headers,
   database: OAuthOrganizationDatabase = db,
 ): Promise<string | undefined> {
-  const user = await database.user.findUnique({
-    where: { id: userId },
-    select: {
-      activeOrganizationId: true,
-      memberships: { select: { organizationId: true } },
+  const organizationId = normalizeOAuthOrganizationId(
+    requestHeaders.get(OTAKIT_OAUTH_ORGANIZATION_HEADER),
+  );
+  if (!organizationId) return undefined;
+
+  const membership = await database.organizationMember.findUnique({
+    where: {
+      organizationId_userId: { organizationId, userId },
     },
+    select: { organizationId: true },
   });
-  const organizationId = user?.activeOrganizationId ?? undefined;
-  return organizationId &&
-    user?.memberships.some((membership) => membership.organizationId === organizationId)
-    ? organizationId
-    : undefined;
+  return membership?.organizationId;
 }
 
 export async function shouldSelectOAuthOrganization(
   userId: string,
   scopes: readonly string[],
+  requestHeaders: Headers,
   database: OAuthOrganizationDatabase = db,
 ): Promise<boolean> {
   return scopes.some(isOtaKitOAuthScope)
-    ? (await activeOAuthOrganizationId(userId, database)) === undefined
+    ? (await selectedOAuthOrganizationId(userId, requestHeaders, database)) === undefined
     : false;
 }

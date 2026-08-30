@@ -152,6 +152,7 @@ export type RevertReleaseInput = {
   revertedBy?: string;
   auditAction?: AuditAction;
   auditMetadata?: Record<string, unknown>;
+  autoRevertAlertPayload?: Record<string, unknown>;
 };
 
 type ServiceDependencies = {
@@ -928,6 +929,7 @@ export async function revertRelease(
     forceImmediate: input.forceImmediate ?? null,
     expectedCurrentReleaseId: input.expectedCurrentReleaseId ?? null,
     revertedBy: input.revertedBy ?? input.actor.actorLabel,
+    autoRevertAlertPayload: input.autoRevertAlertPayload ?? null,
   });
 
   const transactionResult = await database.$transaction(async (tx) => {
@@ -991,7 +993,13 @@ export async function revertRelease(
     const revertedAt = new Date();
     const revertedRelease = await tx.release.update({
       where: { id: release.id },
-      data: { revertedAt, revertedBy: input.revertedBy ?? input.actor.actorLabel },
+      data: {
+        revertedAt,
+        revertedBy: input.revertedBy ?? input.actor.actorLabel,
+        ...(input.autoRevertAlertPayload
+          ? { autoRevertAlertPayload: jsonValue(input.autoRevertAlertPayload) }
+          : {}),
+      },
       include: releaseWithBundlesInclude,
     });
     let resultingRelease = await findCurrentRelease(
