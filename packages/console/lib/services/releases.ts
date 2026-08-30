@@ -53,6 +53,7 @@ type ManifestSync = (
   appId: string,
   channel: string | null,
   runtimeVersion: string | null,
+  database?: PrismaClient | Prisma.TransactionClient,
 ) => Promise<void>;
 
 export type ReleaseSummary = {
@@ -352,7 +353,7 @@ async function finishManifestSync<T extends PublishReleaseResult | RevertRelease
         tx,
         laneLockKey(mutation.appId, mutation.channel, mutation.runtimeVersion),
       );
-      await syncManifest(mutation.appId, mutation.channel, mutation.runtimeVersion);
+      await syncManifest(mutation.appId, mutation.channel, mutation.runtimeVersion, tx);
       await tx.releaseMutation.update({
         where: { id: mutation.id },
         data: {

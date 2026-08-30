@@ -14,7 +14,7 @@ export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const consents = await db.oAuthConsent.findMany({
+  const consents = await db.oauthConsent.findMany({
     where: {
       userId: session.user.id,
       resources: { has: remoteMcpResourceUrl() },

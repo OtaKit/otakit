@@ -86,7 +86,7 @@ export async function resolveOAuthConnection(
       where: { organizationId_userId: { organizationId, userId } },
       select: { role: true },
     }),
-    database.oAuthConsent.findFirst({
+    database.oauthConsent.findFirst({
       where: { clientId, userId, referenceId: organizationId },
       orderBy: { updatedAt: 'desc' },
       select: {

@@ -846,7 +846,11 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       {
         warnings: [
           ...(compatibility.status === 'skipped'
-            ? ['The native-package compatibility check was explicitly skipped.']
+            ? [
+                compatibilityDecision === 'skip'
+                  ? 'The native-package compatibility check was explicitly skipped.'
+                  : 'No native-package baseline was available for this exact release lane.',
+              ]
             : []),
           ...(compatibility.status === 'incompatible'
             ? ['Native incompatibility was explicitly overridden.']

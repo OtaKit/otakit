@@ -18,7 +18,7 @@ export async function DELETE(
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   const { consentId } = await params;
-  const consent = await db.oAuthConsent.findFirst({
+  const consent = await db.oauthConsent.findFirst({
     where: {
       id: consentId,
       userId: session.user.id,
@@ -30,7 +30,7 @@ export async function DELETE(
 
   const revokedAt = new Date();
   await db.$transaction([
-    db.oAuthAccessToken.updateMany({
+    db.oauthAccessToken.updateMany({
       where: {
         userId: session.user.id,
         clientId: consent.clientId,
@@ -39,7 +39,7 @@ export async function DELETE(
       },
       data: { revoked: revokedAt },
     }),
-    db.oAuthRefreshToken.updateMany({
+    db.oauthRefreshToken.updateMany({
       where: {
         userId: session.user.id,
         clientId: consent.clientId,
@@ -48,7 +48,7 @@ export async function DELETE(
       },
       data: { revoked: revokedAt },
     }),
-    db.oAuthConsent.delete({ where: { id: consent.id } }),
+    db.oauthConsent.delete({ where: { id: consent.id } }),
   ]);
 
   if (consent.referenceId) {

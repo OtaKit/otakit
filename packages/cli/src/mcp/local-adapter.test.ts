@@ -78,7 +78,10 @@ function connection(projectRoot: string): LocalMcpConnectionContext {
 }
 
 describe('local OtaKit MCP adapter', () => {
-  afterEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    vi.resetAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it('returns a reusable uploaded bundle state when publication loses its expected lane', async () => {
     const release = async () => {
@@ -183,5 +186,49 @@ describe('local OtaKit MCP adapter', () => {
       compatibility: { status: 'not_checked', reason: 'upload_only', findings: [] },
     });
     expect(result.data).not.toHaveProperty('progress');
+  });
+
+  it('does not claim the user skipped compatibility when the lane has no baseline', async () => {
+    const root = await fixture();
+    mocks.checkCompatibilityAgainstChannel.mockResolvedValue({ status: 'skipped', findings: [] });
+    mocks.runUploadWorkflow.mockResolvedValue({
+      bundle: {
+        id: 'f32627ca-9e8c-4358-90d8-bde732400081',
+        version: '1.0.0',
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          release: { id: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2' },
+          publicationStatus: 'published',
+        }),
+      ),
+    );
+    const adapter = new LocalOtaKitToolAdapter(connection(root));
+
+    const result = await adapter.invoke(
+      'upload_and_publish_bundle',
+      {
+        appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+        version: '1.0.0',
+        channel: 'new-lane',
+        expectedCurrentReleaseId: null,
+        idempotencyKey: 'release-attempt-1',
+        compatibilityDecision: 'block',
+      },
+      {
+        mcpReq: {
+          _meta: {},
+          notify: vi.fn(),
+          signal: new AbortController().signal,
+        },
+      } as never,
+    );
+
+    expect(result.warnings).toEqual([
+      'No native-package baseline was available for this exact release lane.',
+    ]);
   });
 });

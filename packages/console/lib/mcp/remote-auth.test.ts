@@ -23,7 +23,7 @@ function database(options?: {
           options && 'membership' in options ? options.membership : { role: 'admin' },
         ),
     },
-    oAuthConsent: {
+    oauthConsent: {
       findFirst: vi.fn().mockResolvedValue(
         options && 'consent' in options
           ? options.consent
@@ -66,7 +66,7 @@ describe('remote MCP authentication context', () => {
       clientName: 'Example Agent',
     });
     expect(connection.scopes).toEqual(new Set(['otakit:read', 'otakit:release:write']));
-    expect(mockDatabase.oAuthConsent.findFirst).toHaveBeenCalledWith(
+    expect(mockDatabase.oauthConsent.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { clientId: 'client-1', userId: 'user-1', referenceId: 'org-1' },
       }),

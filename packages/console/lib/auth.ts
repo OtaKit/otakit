@@ -4,12 +4,13 @@ import { APIError } from 'better-auth/api';
 import { bearer, emailOTP, jwt } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
 import { cimd } from '@better-auth/cimd';
-import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 
 import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
+import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
+import { activeOAuthOrganizationId, shouldSelectOAuthOrganization } from './mcp/oauth-organization';
 import {
   OTAKIT_OAUTH_SCOPES,
   isOtaKitOAuthScope,
@@ -74,6 +75,12 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         loginPage: '/login',
         consentPage: '/oauth/consent',
         resource: remoteMcpResourceUrl(),
+        resources: [
+          {
+            identifier: remoteMcpResourceUrl(),
+            allowedScopes: [...OTAKIT_OAUTH_SCOPES],
+          },
+        ],
         scopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
         clientRegistrationDefaultScopes: ['otakit:read'],
         clientRegistrationAllowedScopes: [
@@ -87,27 +94,14 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
         postLogin: {
           page: '/oauth/select-organization',
-          shouldRedirect: async ({ scopes }) => scopes.some(isOtaKitOAuthScope),
+          shouldRedirect: async ({ user, scopes }) =>
+            shouldSelectOAuthOrganization(user.id, scopes),
           consentReferenceId: async ({ user, scopes }) => {
             if (!scopes.some(isOtaKitOAuthScope)) {
               return undefined;
             }
-            const userRow = await db.user.findUnique({
-              where: { id: user.id },
-              select: {
-                activeOrganizationId: true,
-                memberships: {
-                  select: { organizationId: true },
-                },
-              },
-            });
-            const organizationId = userRow?.activeOrganizationId ?? undefined;
-            if (
-              !organizationId ||
-              !userRow?.memberships.some(
-                (membership) => membership.organizationId === organizationId,
-              )
-            ) {
+            const organizationId = await activeOAuthOrganizationId(user.id);
+            if (!organizationId) {
               throw new APIError('BAD_REQUEST', {
                 message: 'Select an organization before authorizing OtaKit MCP',
               });
@@ -139,7 +133,7 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         },
       }),
       cimd({
-        fetchClientMetadataResource,
+        fetchClientMetadataResource: fetchCimdMetadataResource,
         metadataProfile: 'mcp-2026-07-28',
       }),
     ]

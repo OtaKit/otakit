@@ -34,10 +34,10 @@ model User {
   sessions           Session[]
   accounts           Account[]
   memberships        OrganizationMember[]
-  oauthClients       OAuthClient[]
-  oauthRefreshTokens OAuthRefreshToken[]
-  oauthAccessTokens  OAuthAccessToken[]
-  oauthConsents      OAuthConsent[]
+  oauthClients       OauthClient[]
+  oauthRefreshTokens OauthRefreshToken[]
+  oauthAccessTokens  OauthAccessToken[]
+  oauthConsents      OauthConsent[]
 }
 
 model Session {
@@ -51,8 +51,8 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  oauthRefreshTokens OAuthRefreshToken[]
-  oauthAccessTokens  OAuthAccessToken[]
+  oauthRefreshTokens OauthRefreshToken[]
+  oauthAccessTokens  OauthAccessToken[]
 }
 
 model Account {
@@ -93,7 +93,7 @@ model Jwks {
   crv        String?
 }
 
-model OAuthClient {
+model OauthClient {
   id                               String                @id
   clientId                         String                @unique
   clientSecret                     String?
@@ -131,15 +131,16 @@ model OAuthClient {
   dpopBoundAccessTokens            Boolean?              @default(false)
   referenceId                      String?
   metadata                         Json?
-  refreshTokens                    OAuthRefreshToken[]
-  accessTokens                     OAuthAccessToken[]
-  consents                         OAuthConsent[]
-  resources                        OAuthClientResource[]
+  refreshTokens                    OauthRefreshToken[]
+  accessTokens                     OauthAccessToken[]
+  consents                         OauthConsent[]
+  resources                        OauthClientResource[]
 
   @@index([userId])
+  @@map("OAuthClient")
 }
 
-model OAuthResource {
+model OauthResource {
   id                            String                @id
   identifier                    String                @unique
   name                          String
@@ -155,28 +156,31 @@ model OAuthResource {
   updatedAt                     DateTime              @updatedAt
   policyVersion                 Int?                  @default(1)
   metadata                      Json?
-  clients                       OAuthClientResource[]
+  clients                       OauthClientResource[]
+
+  @@map("OAuthResource")
 }
 
-model OAuthClientResource {
+model OauthClientResource {
   id         String        @id
   clientId   String
-  client     OAuthClient   @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  client     OauthClient   @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   resourceId String
-  resource   OAuthResource @relation(fields: [resourceId], references: [identifier], onDelete: Cascade)
+  resource   OauthResource @relation(fields: [resourceId], references: [identifier], onDelete: Cascade)
   metadata   Json?
   createdAt  DateTime      @default(now())
 
   @@unique([clientId, resourceId])
   @@index([clientId])
   @@index([resourceId])
+  @@map("OAuthClientResource")
 }
 
-model OAuthRefreshToken {
+model OauthRefreshToken {
   id                      String             @id
   token                   String             @unique
   clientId                String
-  client                  OAuthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  client                  OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   sessionId               String?
   session                 Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   userId                  String
@@ -194,19 +198,20 @@ model OAuthRefreshToken {
   authTime                DateTime?
   confirmation            Json?
   scopes                  String[]
-  accessTokens            OAuthAccessToken[]
+  accessTokens            OauthAccessToken[]
 
   @@index([clientId])
   @@index([sessionId])
   @@index([userId])
   @@index([authorizationCodeId])
+  @@map("OAuthRefreshToken")
 }
 
-model OAuthAccessToken {
+model OauthAccessToken {
   id                      String             @id
   token                   String             @unique
   clientId                String
-  client                  OAuthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  client                  OauthClient        @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   sessionId               String?
   session                 Session?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   userId                  String?
@@ -216,7 +221,7 @@ model OAuthAccessToken {
   resources               String[]           @default([])
   requestedUserInfoClaims String[]           @default([])
   refreshId               String?
-  refresh                 OAuthRefreshToken? @relation(fields: [refreshId], references: [id], onDelete: SetNull)
+  refresh                 OauthRefreshToken? @relation(fields: [refreshId], references: [id], onDelete: SetNull)
   expiresAt               DateTime
   createdAt               DateTime           @default(now())
   revoked                 DateTime?
@@ -228,12 +233,13 @@ model OAuthAccessToken {
   @@index([userId])
   @@index([authorizationCodeId])
   @@index([refreshId])
+  @@map("OAuthAccessToken")
 }
 
-model OAuthConsent {
+model OauthConsent {
   id                      String      @id
   clientId                String
-  client                  OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  client                  OauthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
   userId                  String
   user                    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   referenceId             String?
@@ -246,11 +252,14 @@ model OAuthConsent {
   @@index([clientId])
   @@index([userId])
   @@index([clientId, userId, referenceId])
+  @@map("OAuthConsent")
 }
 
-model OAuthClientAssertion {
+model OauthClientAssertion {
   id        String   @id
   expiresAt DateTime
+
+  @@map("OAuthClientAssertion")
 }
 
 // ── Billing enums ───────────────────────────────────────────────────

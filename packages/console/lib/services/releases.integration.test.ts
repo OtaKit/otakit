@@ -99,7 +99,12 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       autoRevertMinSample: 77,
     });
     expect(syncManifest).toHaveBeenCalledTimes(1);
-    expect(syncManifest).toHaveBeenCalledWith(appId, 'staging', 'ios-1');
+    expect(syncManifest).toHaveBeenCalledWith(
+      appId,
+      'staging',
+      'ios-1',
+      expect.objectContaining({ app: expect.any(Object), release: expect.any(Object) }),
+    );
     await expect(db.release.count({ where: { appId } })).resolves.toBe(1);
     await expect(
       db.releaseMutation.count({ where: { organizationId, status: 'published' } }),
