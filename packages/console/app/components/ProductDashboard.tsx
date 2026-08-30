@@ -914,13 +914,12 @@ export function ProductDashboard({
       const data = await parseJson<
         ApiError & {
           publicationStatus?: 'published' | 'manifest_sync_pending';
-          operationId?: string;
         }
       >(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
       if (data.publicationStatus === 'manifest_sync_pending') {
         toast.warning(
-          `Release recorded, but manifest synchronization is pending${data.operationId ? ` (operation ${data.operationId})` : ''}. OtaKit will retry automatically.`,
+          'Release saved, but it is not live on devices yet. OtaKit will keep retrying.',
         );
       } else {
         toast.success(
@@ -996,13 +995,12 @@ export function ProductDashboard({
       const data = await parseJson<
         ApiError & {
           publicationStatus?: 'published' | 'manifest_sync_pending';
-          operationId?: string;
         }
       >(res);
       if (!res.ok) throw new Error(data.error ?? 'Revert failed');
       if (data.publicationStatus === 'manifest_sync_pending') {
         toast.warning(
-          `Revert recorded, but manifest synchronization is pending${data.operationId ? ` (operation ${data.operationId})` : ''}. OtaKit will retry automatically.`,
+          'Revert saved, but it is not live on devices yet. OtaKit will keep retrying.',
         );
       } else {
         toast.success(

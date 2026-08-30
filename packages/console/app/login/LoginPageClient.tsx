@@ -249,9 +249,6 @@ export function LoginPageClient({
         throw new Error(signInError.message ?? 'Invalid code');
       }
 
-      // The OAuth provider's post-sign-in hook returns the next signed OAuth
-      // step here. Honor it before applying the dashboard fallback used by
-      // ordinary logins.
       const oauthRedirect = (data as { url?: unknown } | null)?.url;
       if (typeof oauthRedirect === 'string' && oauthRedirect.length > 0) {
         window.location.href = oauthRedirect;

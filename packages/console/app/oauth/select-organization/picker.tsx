@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Building2, LoaderCircle } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -50,7 +51,8 @@ export function OAuthOrganizationPicker({
       });
       if (continueError)
         throw new Error(continueError.message ?? 'Authorization could not continue');
-      if (data?.url) window.location.assign(data.url);
+      if (!data?.url) throw new Error('Authorization did not return a redirect');
+      window.location.assign(data.url);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Authorization could not continue');
       setBusy(false);
@@ -67,8 +69,8 @@ export function OAuthOrganizationPicker({
           </div>
           <CardTitle>Select an organization</CardTitle>
           <CardDescription>
-            This agent connection will stay bound to the organization you choose, even if you switch
-            workspaces in the dashboard later.
+            Choose which organization this MCP connection can access. It stays connected to that
+            organization if you switch workspaces later.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -77,7 +79,10 @@ export function OAuthOrganizationPicker({
               <Label
                 key={organization.id}
                 htmlFor={`organization-${organization.id}`}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border p-4"
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50',
+                  selected === organization.id && 'border-foreground/20 bg-muted/50',
+                )}
               >
                 <RadioGroupItem id={`organization-${organization.id}`} value={organization.id} />
                 <Building2 className="size-4 text-muted-foreground" />

@@ -871,11 +871,9 @@ User ID: ${initialData.user.id}`,
                     <div className="flex items-center gap-3 border-b border-border bg-background px-5 pb-6 pt-8">
                       <Bot className="size-6 shrink-0 text-muted-foreground" />
                       <div>
-                        <h2 className="text-[15px] font-semibold leading-tight">
-                          Agent connections
-                        </h2>
+                        <h2 className="text-[15px] font-semibold leading-tight">MCP connections</h2>
                         <p className="text-xs text-muted-foreground">
-                          Review and revoke MCP OAuth access
+                          Review and revoke coding-agent access
                         </p>
                       </div>
                     </div>
