@@ -20,9 +20,9 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 6. On the next app launch or resume, the plugin fetches the manifest from the CDN, compares it to the current bundle, and downloads the new version if available.
 7. If `notifyAppReady()` is called within the timeout, the new bundle is confirmed. Otherwise the plugin rolls back to the previous bundle automatically.
 
-## AgentKit
+## MCP & Agent Skills
 
-OtaKit AgentKit lets Codex, Claude Code, VS Code, and other MCP clients inspect projects, upload bundles, prepare and publish releases, monitor rollout events, and revert through the same OtaKit workflow.
+OtaKit connects Codex, Claude Code, VS Code, and other coding agents through local and remote MCP, guided by an open Agent Skill and the same release workflow used by the CLI and dashboard.
 
 Claude Code users can install the official plugin, which includes the OtaKit Agent Skill and the full-scope remote MCP connection:
 
@@ -39,7 +39,7 @@ claude mcp add --transport stdio --scope project otakit-local -- \
   npx -y @otakit/cli@1.5.0 mcp --project-root .
 ```
 
-See the [AgentKit setup guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.
+See the [MCP and Agent Skills guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.
 
 ## Core concepts
 

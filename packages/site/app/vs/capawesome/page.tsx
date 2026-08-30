@@ -6,7 +6,7 @@ import { site } from '@/lib/site';
 export const metadata = {
   title: { absolute: 'Capawesome Alternative — OtaKit | Live Updates for Capacitor' },
   description:
-    'OtaKit is the Capawesome Live Update alternative with a fully MIT-licensed stack, CDN-direct delivery, and an MCP + Agent Skill workflow. No MAU caps or user tracking.',
+    'OtaKit is the Capawesome Live Update alternative with a fully MIT-licensed stack, CDN-direct delivery, MCP, and Agent Skills. No MAU caps or user tracking.',
   alternates: { canonical: `${site.url}/vs/capawesome` },
 };
 
@@ -116,10 +116,10 @@ const copy: ComparisonCopy = {
       a: (
         <>
           <p>
-            Yes. <GuideLink href="/docs/agents">OtaKit AgentKit</GuideLink> combines a local MCP
-            server for project inspection, compatibility checks, packaging, and uploads; a remote
-            OAuth MCP server for account and release operations; and an open Agent Skill for the
-            full release and revert workflow.
+            Yes. OtaKit&apos;s <GuideLink href="/docs/agents">MCP and Agent Skills</GuideLink>{' '}
+            combine a local server for project inspection, compatibility checks, packaging, and
+            uploads; a remote OAuth server for account and release operations; and an open Skill
+            with the full release and revert workflow.
           </p>
           <p>
             Capawesome also publishes a remote MCP server and open Agent Skills, so this is not an

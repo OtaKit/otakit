@@ -50,12 +50,12 @@ export default function ClaudeRemotePage() {
         writes it while you review is not.
       </p>
 
-      <h2>The direct AgentKit path</h2>
+      <h2>The direct MCP path</h2>
       <p>
         CI remains the cleanest unattended path from a merged branch to staging. When Claude Code is
-        running in a workspace with your repository, OtaKit AgentKit provides a shorter, interactive
-        path: local MCP can inspect the Capacitor project, check native compatibility, package the
-        configured web output, upload it, and prepare a release for your approval.
+        running in a workspace with your repository, OtaKit&apos;s local MCP provides a shorter,
+        interactive path: it can inspect the Capacitor project, check native compatibility, package
+        the configured web output, upload it, and prepare a release for your approval.
       </p>
       <Callout>
         <p>
@@ -65,7 +65,8 @@ export default function ClaudeRemotePage() {
       </Callout>
       <p>
         Use remote MCP when the agent only needs account or release history; it cannot read or
-        upload your local build. The <A href="/docs/agents">AgentKit guide</A> shows both setups.
+        upload your local build. The <A href="/docs/agents">MCP and Agent Skills guide</A> shows
+        both setups.
       </p>
 
       <h2>The loop, step by step</h2>
@@ -150,7 +151,7 @@ otakit upload --release staging`}</Pre>
         If your Capacitor app doesn&apos;t have OTA wired up yet, that&apos;s the prerequisite —{' '}
         <A href="/docs/setup">it takes about ten minutes</A>. For the CI half, see the{' '}
         <A href="/docs/ci">CI automation guide</A>. For an interactive agent-driven release, use the{' '}
-        <A href="/docs/agents">AgentKit setup</A>.
+        <A href="/docs/agents">MCP and Agent Skills guide</A>.
       </p>
     </BlogArticle>
   );

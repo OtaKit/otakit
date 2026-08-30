@@ -83,10 +83,10 @@ export default function CapgoAlternativePage() {
       <p>
         Capgo also publishes <A href="https://capgo.app/docs/cli/reference/mcp/">MCP tooling</A> and{' '}
         <A href="https://capgo.app/skills/">open Agent Skills</A>. The useful comparison is
-        therefore not whether an agent can call the platform. OtaKit AgentKit combines a
-        project-aware local server, an account-aware remote server, and one open release playbook
-        across inspection, upload, approval, event review, and revert. Judge both products on the
-        workflow and controls you will actually use.
+        therefore not whether an agent can call the platform. OtaKit combines a project-aware local
+        server, an account-aware remote server, and one open release playbook across inspection,
+        upload, approval, event review, and revert. Judge both products on the workflow and controls
+        you will actually use.
       </p>
       <p>
         Capgo&apos;s extra surface — per-device overrides, cloud channel defaults, device
@@ -126,7 +126,7 @@ otakit upload --release`}</Pre>
         your existing install base updating safely while the new store build rolls out. Or start
         clean with the <A href="/docs/setup">ten-minute setup</A> and see it work first. If your
         release work happens in a coding agent, start with the{' '}
-        <A href="/docs/agents">AgentKit guide</A>.
+        <A href="/docs/agents">MCP and Agent Skills guide</A>.
       </p>
     </BlogArticle>
   );

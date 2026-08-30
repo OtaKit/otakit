@@ -4,63 +4,57 @@ import { Pre } from '@/app/docs/CodeBlock';
 import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
-  title: 'AgentKit: MCP & Agent Skills',
+  title: 'MCP & Agent Skills',
   description:
-    'Connect OtaKit to Codex, Claude Code, VS Code, and other AI agents for project inspection, uploads, releases, monitoring, and reverts.',
+    'Connect Codex, Claude Code, VS Code, and other coding agents to OtaKit with MCP and Agent Skills.',
 };
 
 export default function AgentsPage() {
   return (
     <>
-      <H1>OtaKit AgentKit</H1>
-      <Lead>
-        Give your coding agent the context and tools to ship Capacitor updates without inventing a
-        second release process. AgentKit combines MCP servers for live product access with an open
-        Agent Skill that teaches the agent how to inspect, prepare, publish, monitor, and revert
-        safely.
-      </Lead>
-
-      <h2 className="sr-only">Three parts, one release workflow</h2>
-      <div className="-mx-6 mt-8 grid w-[calc(100%+3rem)] gap-px border-y border-border bg-border sm:grid-cols-3">
-        <SummaryCard
-          eyebrow="Project-aware"
-          title="Local MCP"
-          description="Runs through the OtaKit CLI inside your repository, so the agent can inspect native packages, package webDir, and upload the actual build."
-        />
-        <SummaryCard
-          eyebrow="Account-aware"
-          title="Remote MCP"
-          description="Connects over HTTPS with scoped OAuth or an organization key for apps, releases, events, account operations, and auditable writes."
-        />
-        <SummaryCard
-          eyebrow="Workflow-aware"
-          title="Agent Skill"
-          description="A portable, vendor-neutral playbook for choosing the right tools, preserving every release option, and asking before consequential writes."
-        />
-      </div>
-
-      <Notice>
-        Local MCP and the Agent Skill work independently of the hosted remote endpoint. Remote MCP
-        is enabled per deployment after its OAuth and release checks pass. If a client says remote
-        MCP is not enabled, use local MCP or ask the deployment operator to enable it; that message
-        is not an authentication failure.
-      </Notice>
+      <H1>MCP &amp; Agent Skills</H1>
+      <P>
+        Connect your coding agent to OtaKit without creating a separate release process. MCP gives
+        the agent access to your project and OtaKit account; the open OtaKit Skill provides the
+        release workflow.
+      </P>
 
       <Separator className="my-10" />
 
-      <H2>Quick start with Codex</H2>
-      <P>Install the open OtaKit Skill once:</P>
+      <H2>Choose how your agent connects</H2>
+      <Ul>
+        <li>
+          <strong>Local MCP</strong> runs through the OtaKit CLI in your repository. Use it to
+          inspect the Capacitor project, check native compatibility, package web assets, and upload
+          builds.
+        </li>
+        <li>
+          <strong>Remote MCP</strong> connects over HTTPS. Use it for apps, releases, events, and
+          account operations when the agent does not need local files.
+        </li>
+        <li>
+          <strong>Agent Skills</strong> provide reusable instructions. The OtaKit Skill teaches the
+          agent how to choose the right connection and follow the complete release and revert
+          workflow.
+        </li>
+      </Ul>
+      <P>
+        Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. An
+        unavailable remote server is a deployment setting, not an authentication failure.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>Codex</H2>
+      <P>Install the open OtaKit Skill:</P>
       <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit`}</Pre>
       <P>Sign in to OtaKit, then connect the current Capacitor project:</P>
       <Pre>{`npx -y @otakit/cli@1.5.0 login
 
 codex mcp add otakit -- \\
   npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
-      <P>Restart or refresh the agent so it discovers the new Skill and MCP tools. Then try:</P>
-      <Prompt>
-        Inspect this Capacitor project for OtaKit readiness. Check configuration and native
-        compatibility, but do not upload or change anything.
-      </Prompt>
+      <P>Restart or refresh Codex, then try a read-only request:</P>
+      <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
 
       <Separator className="my-10" />
 
@@ -196,48 +190,45 @@ claude mcp get otakit-remote`}</Pre>
       <Separator className="my-10" />
 
       <H2>Useful workflows</H2>
-      <div className="mt-4 space-y-4">
-        <Workflow
-          title="Review before upload"
-          prompt="Inspect the project, resolve the effective app and lane, and check native compatibility. Show me problems before packaging anything."
-        />
-        <Workflow
-          title="Upload without releasing"
-          prompt="Build and upload version 2.4.1 for the staging lane. Do not publish it. Return the bundle ID and anything I should review."
-        />
-        <Workflow
-          title="Prepare a production release"
-          prompt="Prepare this bundle for production with force-immediate off and auto-revert enabled. Show the exact current and proposed state, then wait for approval."
-        />
-        <Workflow
-          title="Investigate rollout health"
-          prompt="Summarize recent release events and failures for production. Keep client-reported counts separate from unique users or devices."
-        />
-        <Workflow
-          title="Revert deliberately"
-          prompt="Prepare a revert of production to the previous release. Show the exact target and current lane state; do not execute until I approve."
-        />
-      </div>
+      <Ul>
+        <li>
+          <strong>Review before upload:</strong> “Inspect the project, resolve the effective app and
+          lane, and check native compatibility. Show me problems before packaging anything.”
+        </li>
+        <li>
+          <strong>Upload without releasing:</strong> “Build and upload version 2.4.1 for staging. Do
+          not publish it. Return the bundle ID and anything I should review.”
+        </li>
+        <li>
+          <strong>Prepare a production release:</strong> “Prepare this bundle for production with
+          force-immediate off and auto-revert enabled. Show the current and proposed state, then
+          wait for approval.”
+        </li>
+        <li>
+          <strong>Investigate rollout health:</strong> “Summarize recent production release events
+          and failures. Keep event records separate from unique users or devices.”
+        </li>
+        <li>
+          <strong>Revert:</strong> “Prepare a revert of production to the previous release. Show the
+          exact target and do not execute it until I approve.”
+        </li>
+      </Ul>
 
       <Separator className="my-10" />
 
-      <H2>What the safety workflow preserves</H2>
-      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+      <H2>The same release workflow</H2>
+      <Ul>
         <li>Exact app, channel, runtime version, bundle, and current release state.</li>
         <li>
-          Force-immediate, auto-revert thresholds, encryption, compatibility decisions, and every
-          other existing release option.
+          Existing release options, including force-immediate behavior, auto-revert thresholds,
+          encryption, and compatibility decisions.
         </li>
-        <li>Preview-first publish and revert operations with explicit client approval.</li>
         <li>
-          Idempotent retries and stale-state rejection instead of duplicate or blind releases.
+          Upload-only, combined upload-and-release, prepared publish, and prepared revert flows.
         </li>
-        <li>Current organization membership, OAuth scopes, user role, and audit attribution.</li>
-        <li>
-          Honest analytics language: event records are client-reported diagnostics, not unique
-          users, devices, adoption, or proof of cause.
-        </li>
-      </ul>
+        <li>Organization membership, OAuth scopes, user roles, and audit attribution.</li>
+        <li>Release events with the same raw diagnostic detail available through the API.</li>
+      </Ul>
       <P>
         MCP does not replace the OtaKit CLI or API. It exposes the same product behavior through an
         agent-compatible interface, so the dashboard, CLI, REST API, and agent all agree on what a
@@ -284,67 +275,24 @@ claude mcp get otakit-remote`}</Pre>
 }
 
 function H1({ children }: { children: React.ReactNode }) {
-  return <h1 className="text-3xl font-bold tracking-tight">{children}</h1>;
+  return <h1 className="text-2xl font-bold tracking-tight">{children}</h1>;
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-xl font-semibold tracking-tight">{children}</h2>;
-}
-
-function Lead({ children }: { children: React.ReactNode }) {
-  return <p className="mt-4 max-w-3xl text-base leading-7 text-muted-foreground">{children}</p>;
+  return <h2 className="text-lg font-semibold tracking-tight">{children}</h2>;
 }
 
 function P({ children }: { children: React.ReactNode }) {
-  return <p className="mt-3 text-sm leading-6 text-muted-foreground">{children}</p>;
+  return <p className="mt-3 text-sm text-muted-foreground">{children}</p>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
   return <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{children}</code>;
 }
 
-function Notice({ children }: { children: React.ReactNode }) {
+function Ul({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-6 border-l-2 border-emerald-500 bg-emerald-500/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
-function SummaryCard({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="bg-background p-5">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">
-        {eyebrow}
-      </p>
-      <h2 className="mt-2 text-base font-semibold">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function Prompt({ children }: { children: React.ReactNode }) {
-  return (
-    <blockquote className="mt-4 border-l-2 border-border bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground">
-      “{children}”
-    </blockquote>
-  );
-}
-
-function Workflow({ title, prompt }: { title: string; prompt: string }) {
-  return (
-    <div className="border border-border p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">“{prompt}”</p>
-    </div>
+    <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{children}</ul>
   );
 }
 

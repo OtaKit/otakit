@@ -138,7 +138,8 @@ otakit upload --release`}</Pre>
         The <A href="/blog/migrate-from-capgo-and-capawesome">full migration guide</A> has the
         complete config and API translation tables plus a safe production cutover plan. Or run the{' '}
         <A href="/docs/setup">ten-minute setup</A> on a test app first and watch an update land. To
-        work through a coding agent, continue with the <A href="/docs/agents">AgentKit guide</A>.
+        work through a coding agent, continue with the{' '}
+        <A href="/docs/agents">MCP and Agent Skills guide</A>.
       </p>
     </BlogArticle>
   );

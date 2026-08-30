@@ -9,7 +9,7 @@
     {
       "name": "otakit",
       "source": "./",
-      "description": "OtaKit AgentKit for Claude Code: MCP tools and the OtaKit Agent Skill.",
+      "description": "OtaKit MCP tools and Agent Skill for Claude Code.",
       "category": "Developer Tools",
       "tags": ["capacitor", "ota", "mcp", "agent-skills"]
     }

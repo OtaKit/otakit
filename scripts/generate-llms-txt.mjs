@@ -30,7 +30,7 @@ const DOCS = [
   },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   {
-    label: 'AgentKit: MCP & Skills',
+    label: 'MCP & Agent Skills',
     route: '/docs/agents',
     file: 'packages/site/app/docs/agents/page.tsx',
   },

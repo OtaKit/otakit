@@ -1,7 +1,7 @@
 import { BlogArticle, Callout, Code, DataTable, Pre, A } from '../_components/BlogArticle';
 import { blogPostMetadata, getBlogPost } from '@/lib/blog';
 
-const post = getBlogPost('ship-capacitor-updates-with-ai-agents-otakit-agentkit')!;
+const post = getBlogPost('ship-capacitor-updates-with-ai-agents')!;
 
 export const metadata = blogPostMetadata(post.slug);
 
@@ -23,19 +23,20 @@ const pieces = [
   ],
 ];
 
-export default function AgentKitLaunchPage() {
+export default function McpLaunchPage() {
   return (
     <BlogArticle post={post}>
       <p>
         Shipping an over-the-air update involves more than running an upload command. Someone has to
         identify the right app and release lane, check whether the web bundle still matches the
         native shell, preserve rollout settings, review the proposed change, and know what to do if
-        it goes wrong. OtaKit AgentKit gives coding agents that complete workflow.
+        it goes wrong. OtaKit&apos;s MCP servers and Agent Skill give coding agents access to that
+        complete workflow.
       </p>
       <p>
-        It works with Codex, Claude Code, VS Code, and any compatible client through two MCP servers
-        and an open Agent Skill. The agent gets useful product access; your team keeps the same
-        OtaKit release model, controls, and audit trail.
+        Codex, Claude Code, VS Code, and other compatible clients can connect through local or
+        remote MCP. The agent gets useful product access; your team keeps the same OtaKit release
+        model, controls, and audit trail.
       </p>
 
       <Callout>
@@ -54,10 +55,10 @@ export default function AgentKitLaunchPage() {
         options.
       </p>
       <p>
-        The Skill is equally important. A tool can say &ldquo;publish this release&rdquo;; the Skill
-        explains that the agent should inspect the exact app, channel, runtime version, current
-        release, compatibility result, and rollout settings before doing it. It also works as a
-        documented CLI fallback when MCP is unavailable.
+        MCP supplies the actions; the Skill supplies the workflow. It tells the agent to inspect the
+        exact app, channel, runtime version, current release, compatibility result, and rollout
+        settings before publishing. It also includes a documented CLI fallback when MCP is
+        unavailable.
       </p>
 
       <h2>Start locally in a Capacitor project</h2>
@@ -149,30 +150,29 @@ codex mcp login \\
         </li>
       </ul>
 
-      <h2>AgentKit is not a separate deployment system</h2>
+      <h2>MCP is not a separate deployment system</h2>
       <p>
-        This is the design choice that matters most. AgentKit does not invent an agent-only release
-        lane or reduce OtaKit to a small set of &ldquo;safe&rdquo; demo tools. It retains
-        force-immediate releases, configurable auto-revert, compatibility overrides, bundle
-        deletion, event detail, and combined upload-and-publish when you explicitly choose it.
+        MCP uses the same release model as the dashboard, CLI, and REST API. It does not create
+        agent-only lanes or hide existing controls. Force-immediate releases, configurable
+        auto-revert, compatibility overrides, bundle deletion, event detail, and combined
+        upload-and-publish remain available.
       </p>
       <p>
-        The controls live around that functionality: scoped OAuth, organization and role checks,
-        explicit preview state, idempotent writes, audit attribution, bounded results, and honest
-        telemetry labels. Event records are client-reported diagnostics—not unique devices,
-        adoption, or instructions for the agent.
+        Scoped OAuth, organization roles, review steps, idempotent writes, and audit history sit
+        around that functionality so an agent follows the same boundaries as every other OtaKit
+        client.
       </p>
 
       <h2>Use the interface that fits the job</h2>
       <p>
         The dashboard remains best for visual review. The CLI remains best for scripts and CI. The
-        REST API remains available for custom integrations. AgentKit adds a conversational path
-        through the same product for work that benefits from project inspection, explanation, and
-        guided execution.
+        REST API remains available for custom integrations. MCP and the OtaKit Skill add a
+        conversational path through the same product for work that benefits from project inspection,
+        explanation, and guided execution.
       </p>
       <p>
-        Follow the <A href="/docs/agents">AgentKit setup guide</A> for Codex, Claude Code, VS Code,
-        remote OAuth, and self-hosted rollout. The canonical Skill is public in the{' '}
+        Follow the <A href="/docs/agents">MCP and Agent Skills guide</A> for Codex, Claude Code, VS
+        Code, remote OAuth, and self-hosted rollout. The canonical Skill is public in the{' '}
         <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">OtaKit repository</A>.
       </p>
     </BlogArticle>

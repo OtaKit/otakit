@@ -23,11 +23,11 @@ export type BlogPostMeta = {
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
-    slug: 'ship-capacitor-updates-with-ai-agents-otakit-agentkit',
-    title: 'Ship Capacitor updates with AI agents using OtaKit AgentKit',
-    seoTitle: 'Ship Capacitor OTA Updates With AI Agents: OtaKit AgentKit',
+    slug: 'ship-capacitor-updates-with-ai-agents',
+    title: 'Ship Capacitor updates with AI agents',
+    seoTitle: 'Ship Capacitor OTA Updates With AI Agents',
     description:
-      'Connect Codex, Claude Code, VS Code, and other agents to OtaKit with local and remote MCP plus an open Agent Skill—then inspect, upload, release, monitor, and revert safely.',
+      'Connect Codex, Claude Code, VS Code, and other coding agents to OtaKit through MCP and an open Agent Skill.',
     category: 'Guides',
     publishedAt: '2026-08-30',
     readingTime: '9 min read',
@@ -37,12 +37,12 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI agent OTA updates',
       'Codex Capacitor',
       'Claude Code live updates',
-      'OtaKit AgentKit',
+      'OtaKit MCP',
     ],
     order: 0,
     featured: true,
     relatedDocs: [
-      { href: '/docs/agents', label: 'AgentKit setup' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
       { href: '/docs/cli', label: 'CLI reference' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
     ],
@@ -119,7 +119,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/cli', label: 'CLI reference' },
-      { href: '/docs/agents', label: 'AgentKit' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -150,7 +150,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'The cheaper, better Capgo alternative for Capacitor live updates',
     seoTitle: 'Capgo Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
     description:
-      'Looking for a Capgo alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release safety, and MCP + Agent Skill workflow.',
+      'Looking for a Capgo alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release controls, MCP, and Agent Skills.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
@@ -167,7 +167,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
-      { href: '/docs/agents', label: 'AgentKit' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -175,7 +175,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'The cheaper, better Capawesome alternative for live updates',
     seoTitle: 'Capawesome Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
     description:
-      'Looking for a Capawesome Live Update alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release safety, and MCP + Agent Skill workflow.',
+      'Looking for a Capawesome Live Update alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release controls, MCP, and Agent Skills.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
@@ -191,7 +191,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
-      { href: '/docs/agents', label: 'AgentKit' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -199,7 +199,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'Vibe code your app from your phone with Claude Code and OtaKit',
     seoTitle: 'Vibe Code an App From Your Phone With Claude Code + OTA Updates',
     description:
-      'A real mobile-only dev loop: drive Claude Code from your phone, build in the cloud, and ship to your installed Capacitor app through CI or OtaKit AgentKit.',
+      'A real mobile-only dev loop: drive Claude Code from your phone, build in the cloud, and ship to your installed Capacitor app through CI or the OtaKit MCP server.',
     category: 'Guides',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
@@ -218,7 +218,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       { href: '/docs/react', label: 'React guide' },
       { href: '/docs/guide', label: 'Next.js guide' },
       { href: '/docs/ci', label: 'CI automation' },
-      { href: '/docs/agents', label: 'AgentKit' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {

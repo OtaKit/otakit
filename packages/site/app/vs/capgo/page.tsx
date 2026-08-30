@@ -6,7 +6,7 @@ import { site } from '@/lib/site';
 export const metadata = {
   title: { absolute: 'Capgo Alternative — OtaKit | Live Updates for Capacitor' },
   description:
-    'OtaKit is the Capgo alternative with delta updates, channels, auto-rollback, E2E encryption, and an MCP + Agent Skill workflow. No MAU, bandwidth, or storage billing.',
+    'OtaKit is the Capgo alternative with delta updates, channels, auto-rollback, E2E encryption, MCP, and Agent Skills. No MAU, bandwidth, or storage billing.',
   alternates: { canonical: `${site.url}/vs/capgo` },
 };
 
@@ -118,10 +118,10 @@ const copy: ComparisonCopy = {
       a: (
         <>
           <p>
-            Yes. <GuideLink href="/docs/agents">OtaKit AgentKit</GuideLink> combines a local MCP
-            server for project inspection, compatibility checks, packaging, and uploads; a remote
-            OAuth MCP server for account and release operations; and an open Agent Skill that gives
-            agents the exact release and revert workflow.
+            Yes. OtaKit&apos;s <GuideLink href="/docs/agents">MCP and Agent Skills</GuideLink>{' '}
+            combine a local server for project inspection, compatibility checks, packaging, and
+            uploads; a remote OAuth server for account and release operations; and an open Skill
+            with the exact release and revert workflow.
           </p>
           <p>
             Capgo also publishes MCP and Agent Skills, so the useful comparison is the workflow, not

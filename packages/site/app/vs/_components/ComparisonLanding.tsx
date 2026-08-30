@@ -366,7 +366,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
               <FeatureCard
                 icon={Bot}
                 title="MCP & Agent Skills"
-                description="Connect coding agents through local and remote MCP plus an open Agent Skill—then inspect projects, upload, release, monitor, and revert."
+                description="Let Codex, Claude Code, and other coding agents work with OtaKit through MCP, guided by an open Agent Skill."
               />
               <FeatureCard
                 icon={Globe}

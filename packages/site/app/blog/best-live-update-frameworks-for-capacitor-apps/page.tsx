@@ -173,8 +173,8 @@ export default function BestFrameworksPage() {
           with the target release lane before upload or publication.
         </li>
         <li>
-          <strong>AgentKit</strong> connects coding agents through local and remote MCP, with an
-          open Agent Skill that carries the same release workflow and approval points.
+          <strong>MCP and Agent Skills</strong> connect coding agents to OtaKit while preserving the
+          same release workflow and approval points.
         </li>
       </ul>
       <p>
@@ -252,7 +252,7 @@ export default function BestFrameworksPage() {
         config and gives you a safe cutover plan. Vendor-specific breakdowns:{' '}
         <A href="/blog/capgo-alternative">OtaKit vs Capgo</A> and{' '}
         <A href="/blog/capawesome-alternative">OtaKit vs Capawesome</A>. To connect an agent, use
-        the <A href="/docs/agents">AgentKit guide</A>.
+        the <A href="/docs/agents">MCP and Agent Skills guide</A>.
       </p>
     </BlogArticle>
   );

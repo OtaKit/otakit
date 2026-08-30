@@ -98,9 +98,11 @@ launch gates.
 
 ### Naming
 
-Use **OtaKit for AI Agents** as the category/landing-page name. Use **OtaKit MCP**
-and **OtaKit Skill** for the actual components. Retire “Agent Kit” from product
-copy: it sounds like an SDK for building agents, which OtaKit is not.
+Use **MCP & Agent Skills** as the public category and navigation label. Use
+**OtaKit MCP** and **OtaKit Skill** for the actual components. “Agent Kit” or
+“AgentKit” may remain an internal project codename only; it sounds like an SDK
+for building agents and must not appear in customer-facing copy or package
+display names.
 
 ---
 

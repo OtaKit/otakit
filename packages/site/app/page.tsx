@@ -364,8 +364,7 @@ export default function LandingPage() {
               <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
                 New
               </span>
-              <span className="font-medium">AgentKit</span>
-              <span className="text-muted-foreground">MCP + Agent Skill</span>
+              <span className="font-medium">MCP &amp; Agent Skills</span>
               <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>
             <h1 className="text-6xl font-bold">
@@ -539,7 +538,7 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Bot}
                 title="MCP & Agent Skills"
-                description="Connect coding agents through local and remote MCP plus an open Agent Skill—then inspect projects, upload, release, monitor, and revert."
+                description="Let Codex, Claude Code, and other coding agents work with OtaKit through MCP, guided by an open Agent Skill."
               />
               <FeatureCard
                 icon={Globe}
@@ -795,7 +794,7 @@ export default function LandingPage() {
             title="Docs"
             titleHref="/docs"
             links={[
-              { label: 'AgentKit', href: '/docs/agents' },
+              { label: 'MCP & Agent Skills', href: '/docs/agents' },
               { label: 'Getting started', href: '/docs/setup' },
               { label: 'Channels & versions', href: '/docs/channels' },
               { label: 'Update strategies', href: '/docs/update-strategies' },
@@ -809,7 +808,7 @@ export default function LandingPage() {
             links={[
               {
                 label: 'Ship updates with AI agents',
-                href: '/blog/ship-capacitor-updates-with-ai-agents-otakit-agentkit',
+                href: '/blog/ship-capacitor-updates-with-ai-agents',
               },
               { label: 'How OTA updates work', href: '/blog/how-ota-works-for-capacitor-apps' },
               {

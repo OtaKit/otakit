@@ -95,8 +95,8 @@ export default function DocsOverviewPage() {
           description="The CLI warns at upload time when a bundle depends on native code the installed app doesn't have."
         />
         <Feature
-          title="AgentKit: MCP & Agent Skills"
-          description="Let coding agents inspect projects, package and upload builds, prepare releases, monitor events, and revert through the same OtaKit workflow."
+          title="MCP & Agent Skills"
+          description="Let coding agents work with OtaKit through MCP, guided by an open Agent Skill and the same release workflow your team already uses."
         />
         <Feature
           title="Self-hosting"
@@ -136,8 +136,8 @@ export default function DocsOverviewPage() {
         />
         <NavCard
           href="/docs/agents"
-          title="AgentKit"
-          description="Connect MCP and the OtaKit Agent Skill to Codex, Claude Code, VS Code, and other agents."
+          title="MCP & Agent Skills"
+          description="Connect OtaKit to Codex, Claude Code, VS Code, and other coding agents."
         />
         <NavCard
           href="/docs/ci"
