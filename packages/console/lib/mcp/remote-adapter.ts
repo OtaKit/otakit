@@ -203,11 +203,20 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.prepareRevert(input);
         case 'revert_release':
           return await this.revertRelease(input);
+        // Unreachable in practice: toolDefinitionsForMode('remote') never
+        // registers these, so a caller gets a protocol-level unknown-tool
+        // error first. Kept so the switch stays exhaustive over the shared
+        // tool union — the guidance lives in the server instructions, which
+        // a client actually shows the model.
         case 'inspect_project':
         case 'check_compatibility':
         case 'upload_bundle':
         case 'upload_and_publish_bundle':
-          throw new PublicToolError('LOCAL_TOOL_ONLY', 'This tool requires local CLI access');
+          throw new PublicToolError(
+            'LOCAL_TOOL_ONLY',
+            'This tool reads the repository, so it is only available on a local connection',
+            'Start `otakit mcp` in the project, or run `otakit connect`.',
+          );
       }
     } catch (error) {
       return serviceError(error);

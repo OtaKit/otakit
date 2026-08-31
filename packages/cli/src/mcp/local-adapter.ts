@@ -293,12 +293,6 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private getContext(): ToolEnvelope {
-    const scopes = [
-      'otakit:read',
-      'otakit:app:write',
-      'otakit:bundle:write',
-      'otakit:release:write',
-    ];
     return toolEnvelope(
       `Connected locally to ${this.connection.organization.name} on ${this.connection.serverUrl}.`,
       json({
@@ -306,7 +300,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         serverOrigin: this.connection.serverUrl,
         organization: this.connection.organization,
         actor: this.connection.actor,
-        scopes,
+        // No scopes here on purpose: a local connection carries the signed-in
+        // user's full authority, bounded by their role. Reporting a fixed OAuth
+        // scope list would imply a limit that does not exist.
         capabilities: this.connection.capabilities,
         projectRoot: this.connection.projectRoot,
         defaultApp: this.connection.defaultApp,

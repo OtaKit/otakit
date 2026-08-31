@@ -62,19 +62,15 @@ export default function McpLaunchPage() {
       </p>
 
       <h2>Start locally in a Capacitor project</h2>
-      <p>Install the OtaKit Skill and connect the local MCP server:</p>
-      <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit
-
-npx -y @otakit/cli@latest login
-
-codex mcp add otakit-local -- \\
-  npx -y @otakit/cli@latest mcp --project-root .`}</Pre>
-      <p>Claude Code also has a native plugin and marketplace:</p>
+      <p>One command signs you in and configures your client:</p>
+      <Pre>{`npx -y @otakit/cli@latest connect`}</Pre>
+      <p>
+        It prints the console, organization, project, and app it resolved, plus the exact file it
+        will write, before writing anything. Claude Code also has a native plugin that ships the
+        same server together with the Skill:
+      </p>
       <Pre>{`claude plugin marketplace add OtaKit/otakit
-claude plugin install otakit@otakit
-
-claude mcp add --transport stdio --scope project otakit-local -- \\
-  npx -y @otakit/cli@latest mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
+claude plugin install otakit@otakit`}</Pre>
       <p>
         Restart or refresh the client so it discovers both additions. Your first request can stay
         entirely read-only:

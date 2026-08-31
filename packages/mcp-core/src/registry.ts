@@ -114,6 +114,9 @@ function bindingSentence(binding: ServerBinding): string {
       `Default app ${binding.appSlug ?? binding.appId} (${binding.appId}); ${lane}. Tools that take appId use it unless you pass another.`,
     );
   }
+  parts.push(
+    'This organization is fixed for the life of the connection; changing the CLI default requires restarting the server.',
+  );
   if (binding.releaseWritesEnabled === false) {
     parts.push(
       'Release writes are not enabled on this server, so publish and revert will fail — say so before uploading anything.',
