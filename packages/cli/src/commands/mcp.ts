@@ -27,6 +27,12 @@ type ConnectionResponse = Pick<
   'organization' | 'actor' | 'capabilities'
 >;
 
+export function localMcpContextPath(appId: string | null): string {
+  const normalizedAppId = appId?.trim();
+  if (!normalizedAppId) return '/api/v1/context';
+  return `/api/v1/context?${new URLSearchParams({ appId: normalizedAppId }).toString()}`;
+}
+
 export const mcpCommand = new Command('mcp')
   .description('Run the local OtaKit MCP server over stdio')
   .option(
@@ -65,7 +71,9 @@ export const mcpCommand = new Command('mcp')
         CLI_VERSION,
         { organizationId: options.organizationId },
       );
-      const fixed = await probe.request<ConnectionResponse>('/api/v1/context');
+      const fixed = await probe.request<ConnectionResponse>(
+        localMcpContextPath(snapshot.appId.value),
+      );
       const connection: LocalMcpConnectionContext = {
         serverUrl: snapshot.serverUrl.value,
         authToken: snapshot.authToken.value,

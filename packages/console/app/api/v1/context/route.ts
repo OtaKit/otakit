@@ -7,7 +7,14 @@ import { serviceErrorResponse } from '@/lib/services/http';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
-  const access = await resolveOrganizationAccess(request, undefined, {
+  const appIdValues = request.nextUrl.searchParams.getAll('appId');
+  const appId = appIdValues[0]?.trim();
+  if (appIdValues.length > 1 || (appIdValues.length === 1 && (!appId || appId.length > 128))) {
+    return NextResponse.json({ error: 'Invalid app ID' }, { status: 400 });
+  }
+
+  const access = await resolveOrganizationAccess(request, appId, {
+    inferOrganizationFromAppId: true,
     requireExplicitOrganizationForMultipleMemberships: true,
   });
   if (!access.success) {

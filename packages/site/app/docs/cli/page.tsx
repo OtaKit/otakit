@@ -297,7 +297,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             { flag: '--project-root <path>', desc: 'Project root available to local MCP tools.' },
             {
               flag: '--organization-id <id>',
-              desc: 'Bind the server to one organization for its lifetime.',
+              desc: 'Explicit organization fallback for an app-less multi-organization account.',
             },
           ]}
           example="npx -y @otakit/cli@1.5.0 mcp --project-root ."

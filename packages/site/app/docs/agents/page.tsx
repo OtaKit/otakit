@@ -42,6 +42,12 @@ export default function AgentsPage() {
         Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. An
         unavailable remote server is a deployment setting, not an authentication failure.
       </P>
+      <P>
+        Local MCP normally derives its fixed organization from the project&apos;s configured OtaKit
+        app and verifies your membership. If the project has no app ID and your account belongs to
+        multiple organizations, run <Code>otakit whoami</Code> and add{' '}
+        <Code>--organization-id &lt;id&gt;</Code> to the MCP command.
+      </P>
 
       <Separator className="my-10" />
 

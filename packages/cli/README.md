@@ -120,10 +120,16 @@ Run the local stdio server from the Capacitor project it should access:
 npx -y @otakit/cli@1.5.0 mcp
 ```
 
-The project root and organization are fixed when the server starts. Configure
-your MCP client to run the command above; do not put an OtaKit token in tool
-arguments. The server reuses `OTAKIT_TOKEN` or the stored `otakit login` session
-and honors `OTAKIT_SERVER_URL` for self-hosted installations.
+The project root and organization are fixed when the server starts. For a configured
+project, the CLI uses `plugins.OtaKit.appId` to select its owning organization and
+the server verifies current membership. An organization key is already fixed to its
+owning organization, and a user with one membership is selected automatically.
+
+Only an app-less project used by a user with multiple memberships needs an explicit
+choice. Run `otakit whoami`, then add `--organization-id <id>` to the MCP command.
+Do not put an OtaKit token in tool arguments. The server reuses `OTAKIT_TOKEN` or the
+stored `otakit login` session and honors `OTAKIT_SERVER_URL` for self-hosted
+installations.
 
 The hosted remote server is `https://console.otakit.app/mcp`. It is a separate,
 deployment-enabled surface for account operations and cannot read or upload files

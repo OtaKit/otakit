@@ -16,6 +16,7 @@ export type OrganizationAccessResult =
   | { success: false; error: string; status: number; code?: string; nextStep?: string };
 
 type ResolveOrganizationAccessOptions = {
+  inferOrganizationFromAppId?: boolean;
   requireExplicitOrganizationForMultipleMemberships?: boolean;
 };
 
@@ -49,25 +50,47 @@ async function resolveSessionAccess(
   }
   const explicitOrganizationId = requestedOrganization.present ? requestedOrganization.id : null;
   let organizationId = explicitOrganizationId;
+  let organizationInferredFromApp = false;
+  if (!organizationId && appId && options.inferOrganizationFromAppId) {
+    const app = await db.app.findFirst({
+      where: {
+        id: appId,
+        organization: { members: { some: { userId: user.id } } },
+      },
+      select: { organizationId: true },
+    });
+    if (!app) {
+      return { success: false, error: 'App not found', status: 404 };
+    }
+    organizationId = app.organizationId;
+    organizationInferredFromApp = true;
+  }
   if (!organizationId && options.requireExplicitOrganizationForMultipleMemberships) {
     const memberships = await db.organizationMember.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'asc' },
       take: 11,
-      select: { organizationId: true },
+      select: {
+        organizationId: true,
+        organization: { select: { name: true } },
+      },
     });
     if (memberships.length > 1) {
       const choices = memberships
         .slice(0, 10)
-        .map((membership) => membership.organizationId)
-        .join(', ');
-      const suffix = memberships.length > 10 ? ', …' : '';
+        .map(
+          (membership) =>
+            `- ${JSON.stringify(membership.organization.name)} (${membership.organizationId})`,
+        )
+        .join('\n');
+      const suffix = memberships.length > 10 ? '\n- …' : '';
       return {
         success: false,
-        error: `This account belongs to multiple organizations. Restart with \`otakit mcp --organization-id <id>\`. Available organization IDs: ${choices}${suffix}`,
+        error: `This account belongs to multiple organizations and the project has no configured OtaKit app.\nAvailable organizations:\n${choices}${suffix}\nRun \`otakit whoami\` if needed, then restart with \`otakit mcp --organization-id <id>\`.`,
         status: 409,
         code: 'ORGANIZATION_SELECTION_REQUIRED',
-        nextStep: 'Choose the intended organization ID and pass it with --organization-id.',
+        nextStep:
+          'Choose the intended organization shown above and pass its ID with --organization-id.',
       };
     }
     organizationId = memberships[0]?.organizationId ?? null;
@@ -91,16 +114,16 @@ async function resolveSessionAccess(
   });
 
   if (!membership) {
-    return {
-      success: false,
-      error: explicitOrganizationId
-        ? 'Organization not found'
-        : 'Not a member of active organization',
-      status: explicitOrganizationId ? 404 : 403,
-    };
+    if (explicitOrganizationId) {
+      return { success: false, error: 'Organization not found', status: 404 };
+    }
+    if (organizationInferredFromApp) {
+      return { success: false, error: 'App not found', status: 404 };
+    }
+    return { success: false, error: 'Not a member of active organization', status: 403 };
   }
 
-  if (appId) {
+  if (appId && !organizationInferredFromApp) {
     const owned = await isAppOwnedByOrganization(appId, organizationId);
     if (!owned) {
       return { success: false, error: 'App not found', status: 404 };
