@@ -2,7 +2,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import {
-  appIdSchema,
+  resolvedAppIdSchema,
   bundleIdSchema,
   channelSchema,
   cursorSchema,
@@ -144,7 +144,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'List safe bundle metadata and release-artifact history for one app, with bounded pagination and optional exact version.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       version: z.string().trim().min(1).max(64).optional(),
       ...paginationShape,
     }),
@@ -158,7 +158,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     description:
       'Get authorized safe metadata for a known bundle, including bounded native-package metadata and encryption presence but never keys or storage URLs.',
     modes: both,
-    inputSchema: z.object({ appId: appIdSchema, bundleId: bundleIdSchema }),
+    inputSchema: z.object({ appId: resolvedAppIdSchema, bundleId: bundleIdSchema }),
     annotations: readOnly,
     oauthScopes: ['otakit:read'],
     allowOrganizationKey: true,
@@ -169,7 +169,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     description:
       'Delete a bundle only when it is absent from all release history. The exact app and bundle IDs are required and the operation is audited.',
     modes: both,
-    inputSchema: z.object({ appId: appIdSchema, bundleId: bundleIdSchema }),
+    inputSchema: z.object({ appId: resolvedAppIdSchema, bundleId: bundleIdSchema }),
     annotations: destructive,
     oauthScopes: ['otakit:bundle:write'],
     allowOrganizationKey: true,
@@ -181,7 +181,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'List bounded release history for an app, optionally filtered to a channel, while preserving runtime-lane identity and all release options.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       channel: channelSchema.optional(),
       ...paginationShape,
     }),
@@ -196,7 +196,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Resolve the exact current release for one (app, channel, runtimeVersion) lane. Returns null rather than selecting another lane.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       channel: channelSchema,
       runtimeVersion: runtimeVersionSchema,
     }),
@@ -211,7 +211,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Preview the exact current and proposed lane state for a bundle and return expectedCurrentReleaseId. Makes no change.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       bundleId: bundleIdSchema,
       channel: channelSchema,
       compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
@@ -228,7 +228,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Publish a reviewed bundle to an exact lane. Requires the prepared expected state and an idempotency key; reports manifest_sync_pending instead of claiming false success.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       bundleId: bundleIdSchema,
       channel: channelSchema,
       expectedCurrentReleaseId: expectedCurrentReleaseIdSchema,
@@ -247,7 +247,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Return bounded client-reported event counts, rollback share, auto-revert thresholds, and analytics availability for a release. Never calls counts devices or adoption.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema,
       window: z.enum(['1h', '24h', '7d', '30d']).optional(),
     }),
@@ -262,7 +262,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'List a bounded filtered rollout timeline. Detail is preserved when requested and labelled as untrusted client-reported text.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema.optional(),
       bundleVersion: z.string().trim().min(1).max(64).optional(),
       action: z.enum(['downloaded', 'applied', 'download_error', 'rollback']).optional(),
@@ -296,7 +296,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     description:
       'Verify that a release is current and preview the exact release or built-in fallback that will become current. Makes no change.',
     modes: both,
-    inputSchema: z.object({ appId: appIdSchema, releaseId: releaseIdSchema }),
+    inputSchema: z.object({ appId: resolvedAppIdSchema, releaseId: releaseIdSchema }),
     annotations: readOnly,
     oauthScopes: ['otakit:read'],
     allowOrganizationKey: true,
@@ -308,7 +308,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Revert the reviewed current release for its exact lane. Requires expected state and an idempotency key and reports pending manifest synchronization truthfully.',
     modes: both,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema,
       expectedCurrentReleaseId: releaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
@@ -336,7 +336,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Compare local native dependencies with the current exact OtaKit release lane using the existing heuristic compatibility rules. Returns unknowns explicitly.',
     modes: local,
     inputSchema: z.object({
-      appId: appIdSchema,
+      appId: resolvedAppIdSchema,
       packageJsonPath: z.string().min(1).max(4096).optional(),
       nodeModulesPath: z.string().min(1).max(4096).optional(),
       channel: channelSchema,

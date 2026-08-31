@@ -47,7 +47,18 @@ function json(value: unknown): ToolEnvelope['data'] {
 
 function stringInput(input: JsonObject, name: string): string {
   const value = input[name];
-  if (typeof value !== 'string') throw new PublicToolError('INVALID_INPUT', `${name} is required`);
+  if (typeof value !== 'string') {
+    // appId is optional in the shared schema because a local connection can
+    // default it from the bound project. A remote connection has no project.
+    if (name === 'appId') {
+      throw new PublicToolError(
+        'APP_REQUIRED',
+        'appId is required on a remote connection',
+        'Call list_apps to find the app, or use a local connection started with `otakit mcp` in the project.',
+      );
+    }
+    throw new PublicToolError('INVALID_INPUT', `${name} is required`);
+  }
   return value;
 }
 

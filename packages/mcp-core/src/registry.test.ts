@@ -150,11 +150,13 @@ describe('OtaKit MCP registry transport', () => {
     expect(result.content).toHaveLength(1);
     const text = result.content[0];
     expect(text?.type).toBe('text');
-    expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
-      summary: 'Called get_context',
-      data: { tool: 'get_context' },
-      warnings: [],
-    });
+    // The summary leads; the payload follows as JSON for anything parsing it.
+    const rendered = text?.type === 'text' ? text.text : '';
+    expect(rendered.split('\n')[0]).toBe('Called get_context');
+    expect(JSON.parse(rendered.split('\n')[1])).toEqual({ tool: 'get_context' });
+
+    // No outputSchema: it was one identical, information-free schema per tool.
+    expect(listed.tools.every((tool) => tool.outputSchema === undefined)).toBe(true);
     expect(invoke).toHaveBeenCalledWith('get_context');
 
     const invalid = await client.callTool({ name: 'search_docs', arguments: { query: '' } });

@@ -40,6 +40,13 @@ export type LocalMcpConnectionContext = {
   };
   capabilities: { analytics: boolean; organizationKey: boolean; releaseReliability: boolean };
   projectRoot: string;
+  /** App configured by the bound project, used when a call omits appId. */
+  defaultApp: {
+    id: string;
+    slug: string | null;
+    channel: string | null;
+    runtimeVersion: string | null;
+  } | null;
 };
 
 export function createLocalToolAuthorization(
@@ -198,6 +205,32 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     return requested;
   }
 
+  /**
+   * A stated default, never a hidden one: callers may omit appId on a project
+   * connection, and every envelope that relied on the default says so.
+   */
+  private resolveAppId(input: JsonObject): string {
+    const explicit = optionalString(input, 'appId');
+    if (explicit) return explicit;
+    const bound = this.connection.defaultApp?.id;
+    if (bound) return bound;
+    throw new PublicToolError(
+      'APP_REQUIRED',
+      'No appId was given and this project does not configure one',
+      'Pass appId, or set plugins.OtaKit.appId in capacitor.config.* and restart the MCP server.',
+    );
+  }
+
+  private usedDefaultApp(input: JsonObject): boolean {
+    return !optionalString(input, 'appId') && Boolean(this.connection.defaultApp?.id);
+  }
+
+  private appNote(input: JsonObject): string {
+    if (!this.usedDefaultApp(input)) return '';
+    const app = this.connection.defaultApp;
+    return ` (default app ${app?.slug ?? app?.id} from this project)`;
+  }
+
   async invoke(
     name: OtaKitToolName,
     input: JsonObject,
@@ -309,6 +342,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         scopes,
         capabilities: this.connection.capabilities,
         projectRoot: this.connection.projectRoot,
+        defaultApp: this.connection.defaultApp,
       }),
     );
   }
@@ -370,7 +404,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async listBundles(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const limit = numberInput(input, 'limit') ?? 20;
     const offset = offsetFromCursor(optionalString(input, 'cursor'));
     const response = await this.api(appId).request<{
@@ -386,7 +420,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       })}`,
     );
     return toolEnvelope(
-      `Found ${response.bundles.length} bundles.`,
+      `Found ${response.bundles.length} bundles${this.appNote(input)}.`,
       json({
         ...response,
         nextCursor:
@@ -398,13 +432,13 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async getBundle(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const bundle = await this.api(appId).getBundle(stringInput(input, 'bundleId'));
     return toolEnvelope(`Read bundle ${bundle.version}.`, json({ bundle }));
   }
 
   private async deleteBundle(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const bundleId = stringInput(input, 'bundleId');
     try {
       await this.api(appId).deleteBundle(bundleId);
@@ -427,13 +461,13 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async listReleases(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const limit = numberInput(input, 'limit') ?? 100;
     const offset = offsetFromCursor(optionalString(input, 'cursor'));
     const channel = input.channel === undefined ? undefined : nullableString(input, 'channel');
     const response = await this.api(appId).listReleases(channel, { limit, offset });
     return toolEnvelope(
-      `Found ${response.releases.length} releases.`,
+      `Found ${response.releases.length} releases${this.appNote(input)}.`,
       json({
         ...response,
         nextCursor:
@@ -445,7 +479,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async getReleaseState(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const state = await this.api(appId).request<JsonObject>(
       `/api/v1/apps/${encodeURIComponent(appId)}/release-state${queryString({
         channel: nullableString(input, 'channel'),
@@ -453,9 +487,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       })}`,
     );
     return toolEnvelope(
-      state.currentRelease
-        ? 'Resolved the current release for the exact lane.'
-        : 'This exact lane has no current OTA release.',
+      (state.currentRelease
+        ? 'Resolved the current release for the exact lane'
+        : 'This exact lane has no current OTA release') + `${this.appNote(input)}.`,
       json(state),
     );
   }
@@ -480,7 +514,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async prepareRelease(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const preview = await this.api(appId).request<JsonObject>(
       `/api/v1/apps/${encodeURIComponent(appId)}/releases/prepare`,
       {
@@ -508,7 +542,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private async publishRelease(input: JsonObject): Promise<ToolEnvelope> {
     this.requireReliableReleaseWrites();
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const result = await this.api(appId).release(
       nullableString(input, 'channel'),
       stringInput(input, 'bundleId'),
@@ -549,7 +583,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async getReleaseHealth(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const health = await this.api(appId).request<JsonObject>(
       `/api/v1/apps/${encodeURIComponent(appId)}/releases/${encodeURIComponent(stringInput(input, 'releaseId'))}/health${queryString(
         {
@@ -565,7 +599,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async listEvents(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const events = await this.api(appId).request<JsonObject>(
       `/api/v1/apps/${encodeURIComponent(appId)}/events${queryString({
         releaseId: optionalString(input, 'releaseId'),
@@ -599,7 +633,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async prepareRevert(input: JsonObject): Promise<ToolEnvelope> {
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const preview = await this.api(appId).request<JsonObject>(
       `/api/v1/apps/${encodeURIComponent(appId)}/releases/${encodeURIComponent(stringInput(input, 'releaseId'))}/prepare-revert`,
     );
@@ -612,7 +646,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private async revertRelease(input: JsonObject): Promise<ToolEnvelope> {
     this.requireReliableReleaseWrites();
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const releaseId = stringInput(input, 'releaseId');
     const result = await this.api(appId).request<
       JsonObject & { publicationStatus: 'published' | 'manifest_sync_pending'; operationId: string }
@@ -687,7 +721,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private async checkCompatibility(input: JsonObject): Promise<ToolEnvelope> {
     const projectRoot = this.projectRoot();
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const nativePackages = this.nativePackages(projectRoot, input);
     const result = await checkCompatibilityAgainstChannel({
       api: this.api(appId),
@@ -726,7 +760,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   ): Promise<ToolEnvelope> {
     if (publish) this.requireReliableReleaseWrites();
     const projectRoot = this.projectRoot();
-    const appId = stringInput(input, 'appId');
+    const appId = this.resolveAppId(input);
     const projectConfig = await readProjectConfig(projectRoot);
     const snapshot = await resolveConfigSnapshot({ cwd: projectRoot, appId });
     if (!optionalString(input, 'sourcePath') && !snapshot.outputDir.value) {

@@ -6,7 +6,11 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Command } from 'commander';
 
 import { ApiClient, OtaKitApiError } from '../lib/api.js';
-import { resolveConfigSnapshot, resolveOrganizationOverride } from '../lib/config.js';
+import {
+  readProjectConfig,
+  resolveConfigSnapshot,
+  resolveOrganizationOverride,
+} from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import { CLI_VERSION } from '../lib/version.js';
 import {
@@ -25,7 +29,7 @@ type McpOptions = {
 type ConnectionResponse = Pick<
   LocalMcpConnectionContext,
   'organization' | 'actor' | 'capabilities'
->;
+> & { app?: { id: string; slug: string } | null };
 
 export function localMcpContextPath(appId: string | null): string {
   const normalizedAppId = appId?.trim();
@@ -96,6 +100,7 @@ export const mcpCommand = new Command('mcp')
         }
         throw error;
       }
+      const projectConfig = await readProjectConfig(projectRoot);
       const connection: LocalMcpConnectionContext = {
         serverUrl: snapshot.serverUrl.value,
         authToken: snapshot.authToken.value,
@@ -104,6 +109,14 @@ export const mcpCommand = new Command('mcp')
         actor: fixed.actor,
         capabilities: fixed.capabilities,
         projectRoot,
+        defaultApp: snapshot.appId.value
+          ? {
+              id: snapshot.appId.value,
+              slug: fixed.app?.slug ?? null,
+              channel: projectConfig?.channel ?? null,
+              runtimeVersion: projectConfig?.runtimeVersion ?? null,
+            }
+          : null,
       };
       const adapter = new LocalOtaKitToolAdapter(connection);
       const handle = serveStdio(
@@ -111,6 +124,16 @@ export const mcpCommand = new Command('mcp')
           createOtaKitMcpServer({
             mode: 'local',
             version: CLI_VERSION,
+            binding: {
+              serverOrigin: connection.serverUrl,
+              organizationName: connection.organization.name,
+              projectRoot: connection.projectRoot,
+              appId: connection.defaultApp?.id ?? null,
+              appSlug: connection.defaultApp?.slug ?? null,
+              channel: connection.defaultApp?.channel ?? null,
+              runtimeVersion: connection.defaultApp?.runtimeVersion ?? null,
+              releaseWritesEnabled: connection.capabilities.releaseReliability,
+            },
             adapter,
             authorization: createLocalToolAuthorization(connection),
             onError: (error, tool) => {

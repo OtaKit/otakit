@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await getConnectionContext(access.access));
+    return NextResponse.json(await getConnectionContext(access.access, appId));
   } catch (error) {
     return serviceErrorResponse(error);
   }

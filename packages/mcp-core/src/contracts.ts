@@ -70,6 +70,17 @@ export class PublicToolError extends Error {
 }
 
 export const appIdSchema = z.string().uuid().describe('OtaKit app ID');
+/**
+ * A local connection is bound to one project, and that project's
+ * capacitor.config already names its app. Requiring the ID anyway forced an
+ * extra discovery call before every read. Omitting it uses the bound app, and
+ * the result always says which app it used — a stated default, not a hidden one.
+ */
+export const resolvedAppIdSchema = appIdSchema
+  .optional()
+  .describe(
+    'OtaKit app ID. Optional on a local connection whose project configures one; required otherwise.',
+  );
 export const bundleIdSchema = z.string().uuid().describe('OtaKit bundle ID');
 export const releaseIdSchema = z.string().uuid().describe('OtaKit release ID');
 export const channelSchema = z
@@ -115,7 +126,7 @@ export const paginationShape = {
 };
 
 export const uploadShape = {
-  appId: appIdSchema,
+  appId: resolvedAppIdSchema,
   sourcePath: z.string().min(1).max(4096).optional(),
   version: z.string().trim().min(1).max(64).optional(),
   versionMode: z.enum(['strict', 'auto']).optional(),
