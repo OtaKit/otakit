@@ -122,15 +122,15 @@ function CopyButton({ value, label }: { value: string; label: string }) {
     <Button
       variant="ghost"
       size="sm"
-      className="h-7 shrink-0 text-muted-foreground hover:text-foreground"
+      className="size-7 shrink-0 p-0"
       aria-label={`Copy ${label}`}
+      title={`Copy ${label}`}
       onClick={() => {
         void navigator.clipboard.writeText(value);
         setCopied(true);
       }}
     >
-      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
     </Button>
   );
 }
@@ -142,7 +142,7 @@ function CommandBlock({ step }: { step: Step }) {
         <p className="text-xs text-muted-foreground">{step.label}</p>
         <CopyButton value={step.command} label={step.label} />
       </div>
-      <pre className="overflow-x-auto rounded-md border border-border bg-background px-3 py-2.5 text-xs leading-relaxed">
+      <pre className="overflow-x-auto rounded-lg border border-border bg-muted px-3 py-2.5 text-xs leading-relaxed">
         <code>{step.command}</code>
       </pre>
     </div>
@@ -323,7 +323,7 @@ export function McpConnectionsDashboard({ initialData }: { initialData: Dashboar
                 </p>
 
                 {!initialData.remoteMcpOAuthEnabled ? (
-                  <p className="mt-4 rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                  <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                     Remote MCP is not enabled on this deployment. The setup above works regardless.
                   </p>
                 ) : loading ? (
@@ -331,7 +331,7 @@ export function McpConnectionsDashboard({ initialData }: { initialData: Dashboar
                     <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
                   </div>
                 ) : loadFailed ? (
-                  <div className="mt-4 rounded-lg border border-dashed py-10 text-center">
+                  <div className="mt-4 rounded-lg border border-dashed border-border py-10 text-center">
                     <CircleAlert className="mx-auto size-6 text-muted-foreground/60" />
                     <p className="mt-3 text-sm font-medium">Could not load connections</p>
                     <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
@@ -357,7 +357,7 @@ export function McpConnectionsDashboard({ initialData }: { initialData: Dashboar
                     </Button>
                   </div>
                 ) : connections.length === 0 ? (
-                  <div className="mt-4 flex items-center justify-center gap-2.5 rounded-lg border border-dashed py-10 text-sm text-muted-foreground">
+                  <div className="mt-4 flex items-center justify-center gap-2.5 rounded-lg border border-dashed border-border py-10 text-sm text-muted-foreground">
                     <span className="relative flex size-2">
                       <span className="absolute inline-flex size-full animate-ping rounded-full bg-muted-foreground/40" />
                       <span className="relative inline-flex size-2 rounded-full bg-muted-foreground/60" />

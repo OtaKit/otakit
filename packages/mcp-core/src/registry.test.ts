@@ -3,6 +3,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OTAKIT_TOOL_CATALOG, toolDefinitionsForMode } from './catalog';
+import { promptsForMode } from './prompts';
 import { OTAKIT_TOOL_NAMES, PublicToolError, toolEnvelope, type OtaKitToolName } from './contracts';
 import { createOtaKitMcpServer } from './registry';
 
@@ -16,6 +17,16 @@ describe('OtaKit MCP tool catalog', () => {
     expect(toolDefinitionsForMode('remote').map((tool) => tool.name)).not.toContain(
       'inspect_project',
     );
+  });
+
+  it('exposes slash-command entry points, project ones only where a project exists', () => {
+    expect(promptsForMode('local').map((prompt) => prompt.name)).toEqual([
+      'check',
+      'release',
+      'rollout',
+      'revert',
+    ]);
+    expect(promptsForMode('remote').map((prompt) => prompt.name)).toEqual(['rollout', 'revert']);
   });
 
   it('marks destructive and reviewed release writes accurately', () => {

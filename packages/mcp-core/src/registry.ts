@@ -2,6 +2,7 @@ import { McpServer, type CallToolResult, type ServerContext } from '@modelcontex
 import type { z } from 'zod';
 
 import { OTAKIT_TOOL_CATALOG, toolDefinitionsForMode } from './catalog';
+import { promptsForMode } from './prompts';
 import {
   PublicToolError,
   toolEnvelopeSchema,
@@ -149,11 +150,43 @@ export function createOtaKitMcpServer(options: {
   const server = new McpServer(
     { name: options.mode === 'local' ? 'otakit-local' : 'otakit-remote', version: options.version },
     {
-      capabilities: { tools: { listChanged: false } },
+      capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
       instructions: serverInstructions(options.mode, options.binding),
     },
   );
   const registerTool = server.registerTool.bind(server) as RegisterTool;
+
+  // Slash-command entry points, so the common jobs do not depend on the user
+  // knowing what to type. Each returns a starting instruction; the approval
+  // boundary is unchanged.
+  for (const prompt of promptsForMode(options.mode)) {
+    server.registerPrompt(
+      prompt.name,
+      {
+        title: prompt.title,
+        description: prompt.description,
+        ...(prompt.argsSchema ? { argsSchema: prompt.argsSchema } : {}),
+      },
+      (args: Record<string, unknown>) => ({
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: prompt.render(
+                Object.fromEntries(
+                  Object.entries(args ?? {}).map(([key, value]) => [
+                    key,
+                    typeof value === 'string' ? value : undefined,
+                  ]),
+                ),
+              ),
+            },
+          },
+        ],
+      }),
+    );
+  }
 
   for (const definition of toolDefinitionsForMode(options.mode)) {
     if (options.authorization?.canRegister?.(definition.name) === false) {
