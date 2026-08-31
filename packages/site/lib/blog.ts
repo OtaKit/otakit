@@ -27,10 +27,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'Ship Capacitor updates with AI agents',
     seoTitle: 'Ship Capacitor OTA Updates With AI Agents',
     description:
-      'Connect Codex, Claude Code, VS Code, and other coding agents to OtaKit through MCP and an open Agent Skill.',
+      'Ask Claude Code or Codex to ship an OTA update. It checks compatibility, uploads, and stops for your approval before anything reaches a device.',
     category: 'Guides',
     publishedAt: '2026-08-30',
-    readingTime: '9 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capacitor MCP server',
       'Capacitor Agent Skill',

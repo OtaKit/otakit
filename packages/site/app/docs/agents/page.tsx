@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 export const metadata = {
   title: 'MCP & Agent Skills',
   description:
-    'Connect Codex, Claude Code, VS Code, and other coding agents to OtaKit with MCP and Agent Skills.',
+    'Let Claude Code, Codex, and VS Code ship your Capacitor OTA updates — with the same review and approval your team already uses.',
 };
 
 export default function AgentsPage() {
@@ -14,107 +14,150 @@ export default function AgentsPage() {
     <>
       <H1>MCP &amp; Agent Skills</H1>
       <P>
-        Connect your coding agent to OtaKit without creating a separate release process. MCP gives
-        the agent access to your project and OtaKit account; the open OtaKit Skill provides the
-        release workflow.
+        Ask your coding agent to ship an update and it will read your Capacitor project, check
+        whether the change is safe to send over the air, upload the build, and then stop and show
+        you exactly what it is about to publish. Nothing reaches a device until you approve it.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>How it fits together</H2>
-      <Ul>
-        <li>
-          <strong>The OtaKit server</strong> runs through the CLI in your repository. It is the
-          connection to set up: it inspects the Capacitor project, checks native compatibility,
-          packages and uploads builds, and does every account, release, and event operation.
-        </li>
-        <li>
-          <strong>The OtaKit Skill</strong> provides the release workflow — lanes, the approval
-          block, compatibility decisions, and recovery — so the agent follows the same process your
-          team already uses.
-        </li>
-      </Ul>
-      <P>
-        There is also a <LinkText href="#remote">remote endpoint over HTTPS</LinkText> for clients
-        that cannot run a local process, and for CI. It covers account and release work, but it
-        cannot read your repository, so it cannot inspect a project, check compatibility, or upload
-        a bundle. Set it up in addition to the local server when you need it — not instead of it.
-      </P>
-
-      <P>
-        Local MCP normally derives its fixed organization from the project&apos;s configured OtaKit
-        app and verifies your membership. During login, multi-organization users choose a named
-        default for app-less commands. Change it later with <Code>otakit organization select</Code>;
-        no organization ID is needed for interactive setup.
-      </P>
-      <P>
-        The CLI default is local to that console and user. It does not follow or change the active
-        dashboard workspace, and a configured app always selects its own organization. Automation
-        can override app-less context with <Code>OTAKIT_ORGANIZATION_ID</Code>.
-      </P>
-
-      <Separator className="my-10" />
-
-      <H2>One command</H2>
-      <P>
-        <Code>otakit connect</Code> detects your client, signs you in if needed, and writes the MCP
-        configuration for the current project. It prints the console, organization, project, and app
-        it resolved, plus the exact file and contents it will write, before writing anything:
-      </P>
+      <H2>Set it up</H2>
+      <P>One command, from your project directory:</P>
       <Pre>{`npx -y @otakit/cli@latest connect`}</Pre>
       <P>
-        Use <Code>--dry-run</Code> to see the plan and exit, <Code>--client</Code> to override
-        detection, and <Code>--yes</Code> to skip the prompt in scripts. The rest of this page is
-        the manual equivalent, per client.
+        It detects your client, signs you in if you are not already, and prints the console,
+        organization, project, and app it resolved — plus the exact file it will write — before
+        writing anything:
+      </P>
+      <Pre>{`Connecting Claude Code (detected).
+
+  console       https://console.otakit.app
+  organization  Acme Inc
+  signed in as  dev@acme.example
+  project       /Users/dev/shop
+  app           com.acme.shop (from config)
+
+Will add server "otakit" in .mcp.json:
+  ...
+
+Write it? [y/N]`}</Pre>
+      <P>
+        <Code>--dry-run</Code> prints the same plan and writes nothing. <Code>--client</Code>{' '}
+        overrides detection. <Code>--yes</Code> skips the prompt in scripts.
       </P>
 
-      <Separator className="my-10" />
-
-      <H2>Codex</H2>
-      <P>Install the open OtaKit Skill:</P>
-      <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit`}</Pre>
-      <P>Sign in to OtaKit, then connect the current Capacitor project:</P>
+      <H3>Claude Code</H3>
+      <P>
+        The official plugin ships the server and the OtaKit Skill together, so this is the whole
+        setup:
+      </P>
       <Pre>{`npx -y @otakit/cli@latest login
 
-codex mcp add otakit -- \\
-  npx -y @otakit/cli@latest mcp --project-root .`}</Pre>
-      <P>Restart or refresh Codex, then try a read-only request:</P>
-      <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
+claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit`}</Pre>
+      <P>
+        Run <Code>/mcp</Code> and you should see <Code>otakit</Code> connected to whichever project
+        you have open.
+      </P>
+
+      <H3>Codex</H3>
+      <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit
+
+npx -y @otakit/cli@latest login
+codex mcp add otakit -- npx -y @otakit/cli@latest mcp`}</Pre>
+
+      <H3>VS Code and GitHub Copilot</H3>
+      <P>
+        Create <Code>.vscode/mcp.json</Code>, then run <strong>MCP: List Servers</strong> to trust
+        and start it:
+      </P>
+      <Pre>{`{
+  "servers": {
+    "otakit": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@otakit/cli@latest", "mcp", "--project-root", "\${workspaceFolder}"]
+    }
+  }
+}`}</Pre>
 
       <Separator className="my-10" />
 
-      <H2>Remote MCP with Codex</H2>
+      <H2>What to ask for</H2>
       <P>
-        Remote MCP is useful when the client cannot run your local CLI, or when you only need
-        account and release operations. For Codex, request only the scopes you want the connection
-        to expose:
+        Clients that support MCP prompts expose these as slash commands. Plain language works just
+        as well.
       </P>
-      <Pre>{`codex mcp add otakit-remote --url https://console.otakit.app/mcp
+      <div className="mt-4 overflow-x-auto border border-border">
+        <table className="min-w-full border-collapse text-left text-sm text-muted-foreground">
+          <thead className="bg-muted/50 text-foreground">
+            <tr>
+              <th className="border-b border-border px-4 py-3 font-semibold">Command</th>
+              <th className="border-b border-border px-4 py-3 font-semibold">What it does</th>
+            </tr>
+          </thead>
+          <tbody className="[&_tr:last-child_td]:border-b-0">
+            <PromptRow
+              command="/check"
+              detail="Reads the project, resolves the lane, and checks native compatibility. Changes nothing."
+            />
+            <PromptRow
+              command="/release"
+              detail="Uploads the build and prepares the release, then stops for your approval."
+            />
+            <PromptRow
+              command="/rollout"
+              detail="Summarises recent client-reported events for the current release."
+            />
+            <PromptRow
+              command="/revert"
+              detail="Prepares a revert and shows the exact target before doing anything."
+            />
+          </tbody>
+        </table>
+      </div>
+      <P>Or just say what you want:</P>
+      <Ul>
+        <li>“Upload version 2.4.1 to staging but don’t publish it — tell me the bundle ID.”</li>
+        <li>“Prepare this for production with auto-revert on, then wait for me.”</li>
+        <li>“Why are people on 1.4.2 seeing rollbacks?”</li>
+        <li>“Roll production back to the previous release.”</li>
+      </Ul>
 
-codex mcp login \\
-  --oauth-client-registration cimd \\
-  --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
-  otakit-remote`}</Pre>
+      <Separator className="my-10" />
+
+      <H2>Before anything ships</H2>
       <P>
-        The browser flow shows the client, organization, and requested permissions before access is
-        granted. You can revoke the connection from{' '}
-        <strong>Dashboard → Settings → Connections</strong>; revocation invalidates its tokens
-        immediately.
+        Publishing and reverting always stop for approval, and always show the same block — so you
+        read it at a glance instead of parsing whatever the agent decided to write:
+      </P>
+      <Pre>{`Publish  com.acme.shop
+  lane       base · runtime 2026.04
+  from       1.4.0  ->  1.5.0
+  native     compatible (12 packages unchanged)
+  immediate  no        auto-revert  on · 10% · min 100
+Approve? This goes live for every device on that lane.`}</Pre>
+      <P>
+        Uploading is separate from publishing, so an agent can prepare a build for you to look at
+        with no risk of it reaching a device. A publish carries the release state the agent
+        reviewed, so if a teammate releases in between, yours is rejected instead of silently
+        overwriting theirs. Every write is attributed in the audit log.
       </P>
       <P>
-        For non-interactive automation, configure your MCP client to read an organization key from
-        <Code>OTAKIT_TOKEN</Code>. Keep it in the environment or secret manager—never in project
-        JSON. Organization keys retain their existing organization-wide operational authority; OAuth
-        is the fine-grained option for user connections.
+        Native compatibility is checked against what the current release actually shipped. If your
+        app gained a native dependency, that needs a store build rather than an OTA update, and the
+        agent stops and says so. If it cannot read your dependencies at all, it says that too
+        instead of guessing.
       </P>
 
       <Separator className="my-10" />
 
-      <H2 id="remote">What the remote endpoint adds</H2>
+      <H2 id="remote">Working without a checkout</H2>
       <P>
-        Everything the local server does, the remote endpoint does too — except anything that needs
-        your repository. It cannot inspect a project, check native compatibility, or upload a
-        bundle, because those read files on your machine.
+        The setup above runs OtaKit in your repository, which is what lets it inspect the project
+        and upload builds. There is also a remote endpoint over HTTPS at{' '}
+        <Code>console.otakit.app/mcp</Code> for clients that cannot run a local process, and for CI.
+        It does everything except the parts that need your files:
       </P>
       <div className="mt-4 overflow-x-auto border border-border">
         <table className="min-w-full border-collapse text-left text-sm text-muted-foreground">
@@ -133,163 +176,83 @@ codex mcp login \\
               local="Yes"
               remote="Yes"
             />
-            <CapabilityRow
-              capability="Authenticates with"
-              local="CLI login"
-              remote="OAuth or key"
-            />
+            <CapabilityRow capability="Signs in with" local="CLI login" remote="OAuth or key" />
           </tbody>
         </table>
       </div>
       <P>
-        Reach for it when the client cannot run a local process, or when you want a scoped,
-        individually revocable connection instead of your full CLI session. Setting up both means
-        the agent sees two copies of the shared tools, so only do it when you need both.
+        Add it alongside the local server, not instead of it — running both means your agent sees
+        two copies of the shared tools.
       </P>
-
-      <Separator className="my-10" />
-
-      <H2>Claude Code</H2>
-      <P>
-        Install the official Claude plugin. It ships the OtaKit Skill and the project-aware local
-        server, which is the connection that can inspect your project, check native compatibility,
-        and upload bundles:
-      </P>
-      <Pre>{`npx -y @otakit/cli@latest login
-
-claude plugin marketplace add OtaKit/otakit
-claude plugin install otakit@otakit`}</Pre>
-      <P>
-        The server binds to whichever project you have open. Start Claude Code, run{' '}
-        <Code>/mcp</Code>, and you should see <Code>otakit</Code> connected. Try a read-only request
-        first:
-      </P>
-      <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
-      <P>
-        Add a remote connection as well only when you want account and release operations without a
-        checkout. Configure its scopes explicitly:
-      </P>
-      <Pre>{`claude mcp add-json --scope project otakit-remote \\
+      <Pre>{`# Claude Code
+claude mcp add-json --scope project otakit-remote \\
   '{"type":"http","url":"https://console.otakit.app/mcp","oauth":{"scopes":"otakit:read otakit:app:write otakit:bundle:write otakit:release:write"}}'
 claude mcp login otakit-remote
-claude mcp get otakit-remote`}</Pre>
+
+# Codex
+codex mcp add otakit-remote --url https://console.otakit.app/mcp
+codex mcp login --oauth-client-registration cimd \\
+  --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
+  otakit-remote`}</Pre>
       <P>
-        Remove write scopes from that JSON when you want a deliberately read-only connection. Commit
-        generated project MCP configuration only when the whole team should discover the server.
-        OAuth tokens and authorization headers never belong in that file.
+        The browser flow shows the client, the organization, and what it is asking for before
+        anything is granted. Drop the write scopes for a deliberately read-only connection. Revoke
+        it from <strong>Settings → Agents</strong> and its tokens stop working immediately. For CI,
+        use an organization key in <Code>OTAKIT_TOKEN</Code> and keep it in your secret store, never
+        in a project file.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>VS Code and GitHub Copilot</H2>
+      <H2>Which organization it uses</H2>
       <P>
-        Create <Code>.vscode/mcp.json</Code>, then run <strong>MCP: List Servers</strong> to review,
-        trust, and start the server:
+        A connection is bound to one organization for its lifetime, and it tells the agent which one
+        as soon as it connects. A project with a configured <Code>appId</Code> uses that app’s
+        organization. Without one, it uses the default you chose at login — change it with{' '}
+        <Code>otakit organization select</Code> and restart the server. Automation can set{' '}
+        <Code>OTAKIT_ORGANIZATION_ID</Code> instead.
       </P>
-      <Pre>{`{
-  "servers": {
-    "otakit": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@otakit/cli@latest",
-        "mcp",
-        "--project-root",
-        "\${workspaceFolder}"
-      ]
-    }
-  }
-}`}</Pre>
-      <P>For remote MCP, add a separate HTTP server and use VS Code&apos;s sign-in flow:</P>
-      <Pre>{`{
-  "servers": {
-    "otakit-remote": {
-      "type": "http",
-      "url": "https://console.otakit.app/mcp"
-    }
-  }
-}`}</Pre>
-
-      <Separator className="my-10" />
-
-      <H2>Useful workflows</H2>
-      <Ul>
-        <li>
-          <strong>Review before upload:</strong> “Inspect the project, resolve the effective app and
-          lane, and check native compatibility. Show me problems before packaging anything.”
-        </li>
-        <li>
-          <strong>Upload without releasing:</strong> “Build and upload version 2.4.1 for staging. Do
-          not publish it. Return the bundle ID and anything I should review.”
-        </li>
-        <li>
-          <strong>Prepare a production release:</strong> “Prepare this bundle for production with
-          force-immediate off and auto-revert enabled. Show the current and proposed state, then
-          wait for approval.”
-        </li>
-        <li>
-          <strong>Investigate rollout health:</strong> “Summarize recent production release events
-          and failures. Keep event records separate from unique users or devices.”
-        </li>
-        <li>
-          <strong>Revert:</strong> “Prepare a revert of production to the previous release. Show the
-          exact target and do not execute it until I approve.”
-        </li>
-      </Ul>
-
-      <Separator className="my-10" />
-
-      <H2>The same release workflow</H2>
-      <Ul>
-        <li>Exact app, channel, runtime version, bundle, and current release state.</li>
-        <li>
-          Existing release options, including force-immediate behavior, auto-revert thresholds,
-          encryption, and compatibility decisions.
-        </li>
-        <li>
-          Upload-only, combined upload-and-release, prepared publish, and prepared revert flows.
-        </li>
-        <li>Organization membership, OAuth scopes, user roles, and audit attribution.</li>
-        <li>Release events with the same raw diagnostic detail available through the API.</li>
-      </Ul>
       <P>
-        MCP does not replace the OtaKit CLI or API. It exposes the same product behavior through an
-        agent-compatible interface, so the dashboard, CLI, REST API, and agent all agree on what a
-        release means.
+        This is deliberately separate from the dashboard: switching workspaces in the browser does
+        not move a running agent connection.
       </P>
 
       <Separator className="my-10" />
 
       <H2>Self-hosting</H2>
       <P>
-        Replace the hosted origin with your console origin. Remote MCP is{' '}
-        <Code>{'<console-origin>/mcp'}</Code>. Deploy the agent features disabled, apply the
-        supplied additive migrations through your normal reviewed maintenance process, and enable
-        release reliability, remote MCP, and OAuth separately. OtaKit does not migrate a live
-        database when MCP is enabled.
+        Use your own console origin everywhere — <Code>otakit connect</Code> picks it up from{' '}
+        <Code>plugins.OtaKit.serverUrl</Code> automatically. Remote MCP lives at{' '}
+        <Code>{'<console-origin>/mcp'}</Code>.
       </P>
       <P>
-        See the <LinkText href="/docs/self-host">self-hosting guide</LinkText> for the platform and{' '}
+        The agent features roll out in stages and ship disabled. Deploy the code, apply the additive
+        migrations through your normal reviewed process, then enable release reliability, remote
+        MCP, and OAuth one at a time. OtaKit never migrates a live database for you.
+      </P>
+      <P>
+        See the <LinkText href="/docs/self-host">self-hosting guide</LinkText>, and the{' '}
         <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">Agent Skill source</A>{' '}
-        for the self-hosted feature flags and rollout checklist.
+        for the flags and rollout checklist.
       </P>
 
       <Separator className="my-10" />
 
-      <H2>Client references</H2>
+      <H2>Reference</H2>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
-          <A href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli">
-            Codex MCP documentation
-          </A>
+          <LinkText href="/docs/cli">OtaKit CLI reference</LinkText> — every command the agent falls
+          back to
         </li>
         <li>
-          <A href="https://code.claude.com/docs/en/mcp">Claude Code MCP documentation</A>
+          <A href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli">Codex MCP</A>
+        </li>
+        <li>
+          <A href="https://code.claude.com/docs/en/mcp">Claude Code MCP</A>
         </li>
         <li>
           <A href="https://code.visualstudio.com/docs/agent-customization/mcp-servers">
-            VS Code MCP documentation
+            VS Code MCP
           </A>
         </li>
         <li>
@@ -312,6 +275,10 @@ function H2({ children, id }: { children: React.ReactNode; id?: string }) {
   );
 }
 
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 className="mt-8 text-sm font-semibold tracking-tight">{children}</h3>;
+}
+
 function P({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-sm text-muted-foreground">{children}</p>;
 }
@@ -323,6 +290,17 @@ function Code({ children }: { children: React.ReactNode }) {
 function Ul({ children }: { children: React.ReactNode }) {
   return (
     <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{children}</ul>
+  );
+}
+
+function PromptRow({ command, detail }: { command: string; detail: string }) {
+  return (
+    <tr className="align-top">
+      <td className="border-b border-border px-4 py-3">
+        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{command}</code>
+      </td>
+      <td className="border-b border-border px-4 py-3">{detail}</td>
+    </tr>
   );
 }
 
@@ -349,8 +327,8 @@ function CapabilityHeader() {
     <thead className="bg-muted/50 text-foreground">
       <tr>
         <th className="border-b border-border px-4 py-3 font-semibold">Capability</th>
-        <th className="border-b border-border px-4 py-3 font-semibold">Local MCP</th>
-        <th className="border-b border-border px-4 py-3 font-semibold">Remote MCP</th>
+        <th className="border-b border-border px-4 py-3 font-semibold">In your repo</th>
+        <th className="border-b border-border px-4 py-3 font-semibold">Remote</th>
       </tr>
     </thead>
   );

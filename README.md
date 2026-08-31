@@ -22,26 +22,27 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 
 ## MCP & Agent Skills
 
-OtaKit connects Codex, Claude Code, VS Code, and other coding agents through local and remote MCP, guided by an open Agent Skill and the same release workflow used by the CLI and dashboard.
+Ask Claude Code, Codex, or VS Code to ship an update and it reads your Capacitor project, checks
+whether the change is safe to send over the air, uploads the build, and stops for your approval
+before anything reaches a device.
 
-Claude Code users can install the official plugin, which includes the OtaKit Agent Skill and the full-scope remote MCP connection:
-
-```bash
-claude plugin marketplace add OtaKit/otakit
-claude plugin install otakit@otakit
-```
-
-The plugin ships the project-aware server, so it can inspect the project, check native
-compatibility, and upload bundles. Sign in once:
-
-```bash
-npx -y @otakit/cli@latest login
-```
-
-For any client, one command sets it up:
+One command from your project directory:
 
 ```bash
 npx -y @otakit/cli@latest connect
+```
+
+It detects your client, signs you in if needed, and prints the console, organization, project, and
+app it resolved — plus the exact file it will write — before writing anything. `--dry-run` shows
+the plan and writes nothing.
+
+Claude Code has a plugin that ships the server and the OtaKit Agent Skill together:
+
+```bash
+npx -y @otakit/cli@latest login
+
+claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit
 ```
 
 See the [MCP and Agent Skills guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.

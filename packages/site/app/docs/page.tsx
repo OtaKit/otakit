@@ -96,7 +96,7 @@ export default function DocsOverviewPage() {
         />
         <Feature
           title="MCP & Agent Skills"
-          description="Let coding agents work with OtaKit through MCP, guided by an open Agent Skill and the same release workflow your team already uses."
+          description="Ask your coding agent to ship an update. It checks compatibility, uploads, and stops for your approval — the same release process, same audit trail."
         />
         <Feature
           title="Self-hosting"
@@ -137,7 +137,7 @@ export default function DocsOverviewPage() {
         <NavCard
           href="/docs/agents"
           title="MCP & Agent Skills"
-          description="Connect OtaKit to Codex, Claude Code, VS Code, and other coding agents."
+          description="One command connects Claude Code, Codex, or VS Code to your project."
         />
         <NavCard
           href="/docs/ci"

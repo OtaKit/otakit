@@ -1,175 +1,129 @@
-import { BlogArticle, Callout, Code, DataTable, Pre, A } from '../_components/BlogArticle';
+import { BlogArticle, Callout, Code, Pre, A } from '../_components/BlogArticle';
 import { blogPostMetadata, getBlogPost } from '@/lib/blog';
 
 const post = getBlogPost('ship-capacitor-updates-with-ai-agents')!;
 
 export const metadata = blogPostMetadata(post.slug);
 
-const pieces = [
-  [
-    'Local MCP',
-    'Your Capacitor project',
-    'Inspect configuration, check native compatibility, package web assets, upload, and release',
-  ],
-  [
-    'Remote MCP',
-    'Your OtaKit account',
-    'Inspect apps and releases, publish, monitor events, and revert without local file access',
-  ],
-  [
-    'Agent Skill',
-    'The release workflow',
-    'Choose the right tools, preserve every release option, and pause for approval',
-  ],
-];
-
 export default function McpLaunchPage() {
   return (
     <BlogArticle post={post}>
       <p>
-        Shipping an over-the-air update involves more than running an upload command. Someone has to
-        identify the right app and release lane, check whether the web bundle still matches the
-        native shell, preserve rollout settings, review the proposed change, and know what to do if
-        it goes wrong. OtaKit&apos;s MCP servers and Agent Skill give coding agents access to that
-        complete workflow.
+        Shipping an over-the-air update is four commands and about six things you have to remember.
+        Which app. Which channel. Which runtime lane. Whether the web bundle still matches the
+        native shell you shipped to the store. Whether auto-revert is on. What the current release
+        even is, so you know what you are replacing.
       </p>
       <p>
-        Codex, Claude Code, VS Code, and other compatible clients can connect through local or
-        remote MCP. The agent gets useful product access; your team keeps the same OtaKit release
-        model, controls, and audit trail.
-      </p>
-
-      <Callout>
-        <p>
-          <strong>In one sentence:</strong> MCP connects the agent to OtaKit; the Agent Skill
-          teaches it how to use that connection well.
-        </p>
-      </Callout>
-
-      <h2>Three pieces, one release process</h2>
-      <DataTable headers={['Component', 'Context', 'Best for']} rows={pieces} />
-      <p>
-        Local and remote MCP deliberately overlap on account operations. That is useful, not
-        duplication: use the local server when the agent needs files from your repository, and the
-        remote server when it only needs your OtaKit account. Both expose the same release lanes and
-        options.
+        None of that is hard. It is just easy to get wrong at 6pm on a Friday, and the failure mode
+        is a broken app on every device that checks in.
       </p>
       <p>
-        MCP supplies the actions; the Skill supplies the workflow. It tells the agent to inspect the
-        exact app, channel, runtime version, current release, compatibility result, and rollout
-        settings before publishing. It also includes a documented CLI fallback when MCP is
-        unavailable.
+        So we taught coding agents to do the careful part. Ask Claude Code, Codex, or VS Code to
+        ship an update and it reads your project, resolves the exact lane, checks compatibility,
+        uploads the build — and then stops:
       </p>
 
-      <h2>Start locally in a Capacitor project</h2>
-      <p>One command signs you in and configures your client:</p>
+      <Pre>{`Publish  com.acme.shop
+  lane       base · runtime 2026.04
+  from       1.4.0  ->  1.5.0
+  native     compatible (12 packages unchanged)
+  immediate  no        auto-revert  on · 10% · min 100
+Approve? This goes live for every device on that lane.`}</Pre>
+
+      <p>
+        That block is the whole idea. Same shape every time, whether you asked in one sentence or
+        walked through it step by step. You read five lines and say yes.
+      </p>
+
+      <h2>Getting it running</h2>
+      <p>One command, from your project:</p>
       <Pre>{`npx -y @otakit/cli@latest connect`}</Pre>
       <p>
-        It prints the console, organization, project, and app it resolved, plus the exact file it
-        will write, before writing anything. Claude Code also has a native plugin that ships the
-        same server together with the Skill:
+        It works out which client you use, signs you in if you are not already, and shows you the
+        console, organization, project, and app it resolved — plus the exact file it is about to
+        write — before it writes anything. <Code>--dry-run</Code> shows the same plan and touches
+        nothing.
       </p>
+      <p>Claude Code has a plugin that ships the server and the release workflow together:</p>
       <Pre>{`claude plugin marketplace add OtaKit/otakit
 claude plugin install otakit@otakit`}</Pre>
-      <p>
-        Restart or refresh the client so it discovers both additions. Your first request can stay
-        entirely read-only:
-      </p>
+      <p>Then start with something read-only:</p>
       <Callout>
         <p>
-          Inspect this Capacitor project for OtaKit readiness. Check the effective configuration and
-          native compatibility, but do not upload or change anything.
+          Check whether this project is ready to ship an OtaKit update. Don&apos;t upload or change
+          anything.
         </p>
       </Callout>
 
-      <h2>Connect remotely when the repository is not needed</h2>
+      <h2>The parts we worried about</h2>
       <p>
-        Remote MCP is for account and release work from a client that cannot run the local CLI. An
-        OAuth connection is bound to the signed-in user, organization, and approved scopes:
+        Handing release access to an agent is only reasonable if the boring safeguards are real.
+        These are the ones that mattered to us.
       </p>
-      <Pre>{`codex mcp add otakit-remote --url https://console.otakit.app/mcp
-
-codex mcp login \\
-  --oauth-client-registration cimd \\
-  --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
-  otakit-remote`}</Pre>
       <p>
-        The remote endpoint is enabled per deployment after its OAuth and release checks pass. If a
-        client reports that remote MCP is not enabled, keep using local MCP or ask the deployment
-        operator to enable it. For unattended automation, an existing organization key can be
-        supplied through the MCP client&apos;s environment instead of being written into project
-        configuration.
+        <strong>Uploading is not publishing.</strong> They are separate tools. An agent can build,
+        package, and upload a bundle for you to look at, and nothing about that reaches a device.
+        &ldquo;Upload this but don&apos;t release it&rdquo; is a first-class thing to ask for.
+      </p>
+      <p>
+        <strong>A publish carries the state it reviewed.</strong> If a teammate releases between the
+        agent showing you that block and you approving it, the publish is rejected rather than
+        quietly overwriting their release. Retries are keyed, so a flaky connection cannot produce
+        two releases.
+      </p>
+      <p>
+        <strong>Native changes stop it.</strong> OtaKit compares your dependencies against what the
+        current release actually shipped. Add a native plugin and you need a store build, not an OTA
+        update — the agent blocks and explains which packages changed. You can override that, but
+        only deliberately, and the override is recorded.
+      </p>
+      <p>
+        <strong>It says when it doesn&apos;t know.</strong> If it cannot read your dependencies —
+        wrong directory, dependencies not installed — it reports that it could not determine
+        compatibility. It does not report &ldquo;compatible&rdquo; on the basis of having found
+        nothing. That distinction took us longer to get right than it should have.
+      </p>
+      <p>
+        <strong>Rollout numbers are described honestly.</strong> Device telemetry is client-reported
+        events, not users and not adoption. The agent is instructed to call them events, and to say
+        &ldquo;unavailable&rdquo; rather than &ldquo;zero&rdquo; when analytics is not configured.
       </p>
 
-      <h2>What a good agent workflow looks like</h2>
-      <ol>
-        <li>
-          <strong>Inspect.</strong> Resolve the server, organization, app, channel, and runtime
-          version. When the project is local, check its effective Capacitor configuration and native
-          packages.
-        </li>
-        <li>
-          <strong>Upload for review.</strong> Build and package the configured <Code>webDir</Code>,
-          then upload without silently publishing.
-        </li>
-        <li>
-          <strong>Prepare.</strong> Show the exact current and proposed release state, including
-          force-immediate behavior, auto-revert thresholds, and the compatibility decision.
-        </li>
-        <li>
-          <strong>Approve and publish.</strong> Use the prepared state and an idempotency key so a
-          retry cannot create a second unintended release.
-        </li>
-        <li>
-          <strong>Observe and recover.</strong> Inspect client-reported events, then prepare the
-          exact target and request approval before a revert.
-        </li>
-      </ol>
-
-      <h2>Prompts that are useful in real work</h2>
+      <h2>What it is actually good at</h2>
+      <p>
+        The obvious use is releasing, but the one that has surprised us is asking questions.
+        &ldquo;Why are people on 1.4.2 seeing rollbacks?&rdquo; is a genuinely annoying thing to
+        answer by hand — you are cross-referencing events, bundle versions, and lanes. An agent with
+        read access does it in one turn.
+      </p>
       <ul>
-        <li>
-          &ldquo;Build and upload version 2.4.1 for staging. Do not release it. Return the bundle ID
-          and anything I should review.&rdquo;
-        </li>
-        <li>
-          &ldquo;Prepare this bundle for production with force-immediate off and auto-revert
-          enabled. Show the current and proposed state, then wait for approval.&rdquo;
-        </li>
-        <li>
-          &ldquo;Summarize recent production release events and failures. Keep event records
-          separate from unique users or devices.&rdquo;
-        </li>
-        <li>
-          &ldquo;Prepare a revert of production to the previous release. Show the exact target and
-          do not execute it until I approve.&rdquo;
-        </li>
+        <li>&ldquo;Is this project set up correctly? Don&apos;t change anything.&rdquo;</li>
+        <li>&ldquo;Upload 2.4.1 to staging but don&apos;t publish it.&rdquo;</li>
+        <li>&ldquo;Prepare this for production with auto-revert on, then wait for me.&rdquo;</li>
+        <li>&ldquo;Roll production back to the previous release.&rdquo;</li>
       </ul>
-
-      <h2>MCP is not a separate deployment system</h2>
       <p>
-        MCP uses the same release model as the dashboard, CLI, and REST API. It does not create
-        agent-only lanes or hide existing controls. Force-immediate releases, configurable
-        auto-revert, compatibility overrides, bundle deletion, event detail, and combined
-        upload-and-publish remain available.
-      </p>
-      <p>
-        Scoped OAuth, organization roles, review steps, idempotent writes, and audit history sit
-        around that functionality so an agent follows the same boundaries as every other OtaKit
-        client.
+        Clients that support MCP prompts get these as <Code>/check</Code>, <Code>/release</Code>,{' '}
+        <Code>/rollout</Code>, and <Code>/revert</Code>.
       </p>
 
-      <h2>Use the interface that fits the job</h2>
+      <h2>It is the same release process</h2>
       <p>
-        The dashboard remains best for visual review. The CLI remains best for scripts and CI. The
-        REST API remains available for custom integrations. MCP and the OtaKit Skill add a
-        conversational path through the same product for work that benefits from project inspection,
-        explanation, and guided execution.
+        There is no agent-only path. An agent publishing to production produces exactly the release
+        the dashboard would have, with the same lanes, the same force-immediate and auto-revert
+        settings, and an audit entry naming who approved it. If you decide tomorrow that you would
+        rather do it by hand, nothing about your releases changes.
       </p>
       <p>
-        Follow the <A href="/docs/agents">MCP and Agent Skills guide</A> for Codex, Claude Code, VS
-        Code, remote OAuth, and self-hosted rollout. The canonical Skill is public in the{' '}
-        <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">OtaKit repository</A>.
+        The Skill that teaches all of this is a plain Markdown file. It is{' '}
+        <A href="https://github.com/OtaKit/otakit/tree/main/skills/otakit">public in the repo</A> —
+        read it, disagree with it, fork it. It is the part of this that most deserves your
+        scepticism, so we would rather you could see it.
+      </p>
+      <p>
+        The <A href="/docs/agents">setup guide</A> covers Claude Code, Codex, VS Code, connecting
+        without a checkout, and self-hosted rollout.
       </p>
     </BlogArticle>
   );

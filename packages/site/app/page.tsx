@@ -538,7 +538,7 @@ export default function LandingPage() {
               <FeatureCard
                 icon={Bot}
                 title="MCP & Agent Skills"
-                description="Let Codex, Claude Code, and other coding agents work with OtaKit through MCP, guided by an open Agent Skill."
+                description="Ask Claude Code or Codex to ship an update. It checks compatibility, uploads, and stops for your approval before anything reaches a device."
               />
               <FeatureCard
                 icon={Globe}
