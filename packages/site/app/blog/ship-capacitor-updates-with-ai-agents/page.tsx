@@ -65,16 +65,16 @@ export default function McpLaunchPage() {
       <p>Install the OtaKit Skill and connect the local MCP server:</p>
       <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit
 
-npx -y @otakit/cli@1.5.0 login
+npx -y @otakit/cli@latest login
 
 codex mcp add otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+  npx -y @otakit/cli@latest mcp --project-root .`}</Pre>
       <p>Claude Code also has a native plugin and marketplace:</p>
       <Pre>{`claude plugin marketplace add OtaKit/otakit
 claude plugin install otakit@otakit
 
 claude mcp add --transport stdio --scope project otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
+  npx -y @otakit/cli@latest mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
       <p>
         Restart or refresh the client so it discovers both additions. Your first request can stay
         entirely read-only:

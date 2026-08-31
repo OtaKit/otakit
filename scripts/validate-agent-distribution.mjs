@@ -22,8 +22,8 @@ async function validate() {
   const codexPlugin = await readJson('.codex-plugin/plugin.json');
   const claudePlugin = await readJson('.claude-plugin/plugin.json');
   const claudeMarketplace = await readJson('.claude-plugin/marketplace.json');
-  const codexMcp = await readJson('.codex-mcp.json');
-  const claudeMcp = await readJson('.mcp.json');
+  const codexMcp = await readJson('.codex-plugin/mcp.json');
+  const claudeMcp = await readJson('.claude-plugin/mcp.json');
   const skillText = await readText('skills/otakit/SKILL.md');
 
   if (
@@ -54,7 +54,7 @@ async function validate() {
   const referenceLinks = [...skillText.matchAll(/\]\((references\/[^)]+\.md)\)/g)].map(
     (match) => match[1],
   );
-  expect(referenceLinks.length === 4, 'SKILL.md must route to exactly four reference files');
+  expect(referenceLinks.length === 5, 'SKILL.md must route to exactly five reference files');
   for (const reference of referenceLinks) {
     await expectFile(path.posix.join('skills/otakit', reference));
   }
@@ -81,7 +81,7 @@ async function validate() {
     'Codex plugin must use the canonical skills directory',
   );
   expect(
-    codexPlugin.mcpServers === './.codex-mcp.json',
+    codexPlugin.mcpServers === './.codex-plugin/mcp.json',
     'Codex plugin must point to its client-specific MCP configuration',
   );
   expect(
@@ -99,19 +99,25 @@ async function validate() {
     'Claude plugin must use the canonical skills directory',
   );
   expect(
-    claudePlugin.mcpServers === './.mcp.json',
-    'Claude plugin must point to the standard Claude MCP configuration',
+    claudePlugin.mcpServers === './.claude-plugin/mcp.json',
+    'Claude plugin must point to its own MCP configuration, not a project-scoped .mcp.json',
   );
-  const claudeRemote = claudeMcp.mcpServers?.['otakit-remote'];
-  expect(claudeRemote?.type === 'http', 'Claude plugin MCP definition must use HTTP transport');
+  // The plugin ships local stdio deliberately. Remote MCP cannot inspect a
+  // project, check native compatibility, or upload a bundle, so a remote-only
+  // plugin cannot ship an update — which is the thing it advertises.
+  const claudeLocal = claudeMcp.mcpServers?.otakit;
+  expect(claudeLocal?.type === 'stdio', 'Claude plugin must ship the local stdio server');
   expect(
-    claudeRemote?.url === 'https://console.otakit.app/mcp',
-    'Claude plugin MCP definition must use the canonical hosted endpoint',
+    claudeLocal?.args?.includes('mcp'),
+    'Claude plugin MCP definition must launch the `mcp` subcommand',
   );
   expect(
-    claudeRemote?.oauth?.scopes ===
-      'otakit:read otakit:app:write otakit:bundle:write otakit:release:write',
-    'Claude plugin must request the complete OtaKit OAuth tool scope set',
+    claudeLocal?.args?.some((argument) => argument.includes('CLAUDE_PROJECT_DIR')),
+    'Claude plugin must bind the server to the open project directory',
+  );
+  expect(
+    claudeLocal?.args?.some((argument) => argument === '@otakit/cli@latest'),
+    'Claude plugin must track the published CLI rather than pinning a version in metadata',
   );
   expect(claudeMarketplace.name === 'otakit', 'Claude marketplace name must be `otakit`');
   expect(
@@ -119,11 +125,11 @@ async function validate() {
     'Claude marketplace must publish the repository-root OtaKit plugin',
   );
 
-  const remote = codexMcp.mcpServers?.['otakit-remote'];
-  expect(remote?.type === 'http', 'Codex plugin MCP definition must use HTTP transport');
+  const codexLocal = codexMcp.mcpServers?.otakit;
+  expect(codexLocal?.type === 'stdio', 'Codex plugin must ship the local stdio server');
   expect(
-    remote?.url === 'https://console.otakit.app/mcp',
-    'Codex plugin MCP definition must use the canonical hosted endpoint',
+    codexLocal?.args?.includes('mcp'),
+    'Codex plugin MCP definition must launch the `mcp` subcommand',
   );
 
   expect(

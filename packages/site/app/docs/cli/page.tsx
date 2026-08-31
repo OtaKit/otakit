@@ -321,7 +321,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               desc: 'Advanced organization override for app-less automation.',
             },
           ]}
-          example="npx -y @otakit/cli@1.5.0 mcp --project-root ."
+          example="npx -y @otakit/cli@latest mcp --project-root ."
         />
 
         <Separator />

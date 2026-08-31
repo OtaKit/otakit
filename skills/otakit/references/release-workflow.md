@@ -47,6 +47,10 @@ preview.
 
 ## CLI fallback
 
-When MCP is unavailable, use the documented CLI commands and retain the same
-human approval boundary. Never place `OTAKIT_TOKEN` or another secret directly in
-a command line or response.
+When MCP is unavailable, use the commands in [CLI](cli.md) and keep the same
+human approval boundary and the same preview block. Never place `OTAKIT_TOKEN` or
+another secret directly in a command line or response.
+
+The CLI has no prepared-publish flow, no expected-state check, and no idempotency
+key, so a lane can change between your read and your release. Read the current
+state immediately before releasing and say that the window exists.

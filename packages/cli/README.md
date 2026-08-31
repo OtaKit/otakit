@@ -125,7 +125,7 @@ Releases are append-only. The newest release for
 Run the local stdio server from the Capacitor project it should access:
 
 ```bash
-npx -y @otakit/cli@1.5.0 mcp
+npx -y @otakit/cli@latest mcp
 ```
 
 The project root and organization are fixed when the server starts. For a configured

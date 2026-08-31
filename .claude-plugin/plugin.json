@@ -13,5 +13,5 @@
   "license": "MIT",
   "keywords": ["capacitor", "ota", "releases", "mcp", "agent-skills"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.claude-plugin/mcp.json"
 }

@@ -34,9 +34,9 @@ claude plugin install otakit@otakit
 For repository-aware inspection and uploads, connect the local server from the Capacitor project:
 
 ```bash
-npx -y @otakit/cli@1.5.0 login
+npx -y @otakit/cli@latest login
 claude mcp add --transport stdio --scope project otakit-local -- \
-  npx -y @otakit/cli@1.5.0 mcp --project-root '${CLAUDE_PROJECT_DIR:-.}'
+  npx -y @otakit/cli@latest mcp --project-root '${CLAUDE_PROJECT_DIR:-.}'
 ```
 
 See the [MCP and Agent Skills guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.

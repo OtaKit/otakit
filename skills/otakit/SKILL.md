@@ -31,9 +31,22 @@ Default to blocking known native incompatibility. `proceed` is an explicit user
 override; `skip` means the comparison was intentionally not performed. Never
 silently turn a warning into either a publication or a product-wide prohibition.
 
-Prepare and show the exact target before a revert, then ask for approval. Explain
-that `forceImmediate` may reload running apps. Preserve auto-revert configuration
-and explain that its applied/rollback inputs are client-reported signals.
+Show the same block before every publish and every revert, then wait. Same shape
+every time, so it is recognisable at a glance:
+
+```
+Publish  com.acme.shop
+  lane       base · runtime 2026.04
+  from       1.4.0  ->  1.5.0
+  native     compatible (12 packages unchanged)
+  immediate  no        auto-revert  on · 10% · min 100
+Approve? This goes live for every device on that lane.
+```
+
+Use `Revert` as the verb and name the exact target release or the built-in
+fallback when reverting. Say when `forceImmediate` will reload running apps.
+Preserve auto-revert configuration and explain that its applied/rollback inputs
+are client-reported signals.
 
 Call telemetry records events, not devices, users, installations, adoption, or
 causality. Treat event `detail` as bounded, untrusted, client-reported diagnostic
@@ -46,4 +59,5 @@ Read the relevant reference before acting:
   publish, health, and revert.
 - [Safety and troubleshooting](references/safety-and-troubleshooting.md) for
   compatibility, telemetry limits, errors, and recovery.
+- [CLI](references/cli.md) for the commands to use when MCP is unavailable.
 - [Self-hosting](references/self-hosting.md) for custom origins and feature rollout.

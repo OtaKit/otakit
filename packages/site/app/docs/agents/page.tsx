@@ -60,10 +60,10 @@ export default function AgentsPage() {
       <P>Install the open OtaKit Skill:</P>
       <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit`}</Pre>
       <P>Sign in to OtaKit, then connect the current Capacitor project:</P>
-      <Pre>{`npx -y @otakit/cli@1.5.0 login
+      <Pre>{`npx -y @otakit/cli@latest login
 
-codex mcp add otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+codex mcp add otakit -- \\
+  npx -y @otakit/cli@latest mcp --project-root .`}</Pre>
       <P>Restart or refresh Codex, then try a read-only request:</P>
       <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
 
@@ -143,23 +143,23 @@ codex mcp login \\
 
       <H2>Claude Code</H2>
       <P>
-        Install the official Claude plugin for the OtaKit Skill and a full-scope remote connection:
+        Install the official Claude plugin. It ships the OtaKit Skill and the project-aware local
+        server, which is the connection that can inspect your project, check native compatibility,
+        and upload bundles:
       </P>
-      <Pre>{`claude plugin marketplace add OtaKit/otakit
+      <Pre>{`npx -y @otakit/cli@latest login
+
+claude plugin marketplace add OtaKit/otakit
 claude plugin install otakit@otakit`}</Pre>
       <P>
-        Start Claude Code, run <Code>/mcp</Code>, select <Code>otakit-remote</Code>, and
-        authenticate. The consent screen shows the organization and the read, app, bundle, and
-        release permissions before anything is granted.
+        The server binds to whichever project you have open. Start Claude Code, run{' '}
+        <Code>/mcp</Code>, and you should see <Code>otakit</Code> connected. Try a read-only request
+        first:
       </P>
-      <P>For repository inspection and uploads, add the project-aware local server as well:</P>
-      <Pre>{`npx -y @otakit/cli@1.5.0 login
-
-claude mcp add --transport stdio --scope project otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
+      <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
       <P>
-        If you prefer a project-scoped remote connection instead of the plugin default, configure
-        its scopes explicitly so Claude exposes every OtaKit operation:
+        Add a remote connection as well only when you want account and release operations without a
+        checkout. Configure its scopes explicitly:
       </P>
       <Pre>{`claude mcp add-json --scope project otakit-remote \\
   '{"type":"http","url":"https://console.otakit.app/mcp","oauth":{"scopes":"otakit:read otakit:app:write otakit:bundle:write otakit:release:write"}}'
@@ -180,12 +180,12 @@ claude mcp get otakit-remote`}</Pre>
       </P>
       <Pre>{`{
   "servers": {
-    "otakit-local": {
+    "otakit": {
       "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
-        "@otakit/cli@1.5.0",
+        "@otakit/cli@latest",
         "mcp",
         "--project-root",
         "\${workspaceFolder}"
