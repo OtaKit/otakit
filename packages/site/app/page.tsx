@@ -755,6 +755,20 @@ export default function LandingPage() {
                 Contact
               </CopyEmailLink>
             </div>
+            <a
+              href="https://www.uneed.best/tool/otakit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 inline-block transition-opacity hover:opacity-80"
+            >
+              <Image
+                src="/uneed-potd1.png"
+                alt="OtaKit — Daily winner, 1st place on Uneed"
+                width={639}
+                height={171}
+                className="h-auto w-[200px]"
+              />
+            </a>
           </div>
 
           <FooterColumn
