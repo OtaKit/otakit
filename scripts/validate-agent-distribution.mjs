@@ -25,6 +25,8 @@ async function validate() {
   const codexMcp = await readJson('.codex-plugin/mcp.json');
   const claudeMcp = await readJson('.claude-plugin/mcp.json');
   const skillText = await readText('skills/otakit/SKILL.md');
+  const mcpCorePackage = await readJson('packages/mcp-core/package.json');
+  const mcpVersionSource = await readText('packages/mcp-core/src/version.ts');
 
   if (
     !cliPackage ||
@@ -59,8 +61,11 @@ async function validate() {
     await expectFile(path.posix.join('skills/otakit', reference));
   }
 
+  const advertisedMcpVersion = mcpVersionSource?.match(/OTAKIT_MCP_VERSION = '([^']+)'/)?.[1];
   const versions = [
     cliPackage.version,
+    mcpCorePackage?.version,
+    advertisedMcpVersion,
     registry.version,
     codexPlugin.version,
     claudePlugin.version,
@@ -68,7 +73,7 @@ async function validate() {
   ];
   expect(
     versions.every((version) => version === versions[0]),
-    `CLI, registry, plugin, and Skill versions must match (found ${versions.join(', ')})`,
+    `CLI, mcp-core, advertised MCP, registry, plugin, and Skill versions must match (found ${versions.join(', ')})`,
   );
 
   expect(

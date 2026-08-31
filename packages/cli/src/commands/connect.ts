@@ -5,9 +5,14 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { Command } from 'commander';
 
 import { ApiClient, OtaKitApiError } from '../lib/api.js';
-import { resolveAuthToken, resolveConfigSnapshot, resolveServerUrl } from '../lib/config.js';
+import {
+  resolveAuthToken,
+  resolveConfigSnapshot,
+  resolveOrganizationOverride,
+} from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import { signInWithEmailOtp } from '../lib/login-flow.js';
+import { fetchAccount, initialOrganizationId, promptForOrganization } from '../lib/organization.js';
 import { confirm } from '../lib/prompt.js';
 import { storeAuthProfile } from '../lib/token-store.js';
 import { CLI_VERSION } from '../lib/version.js';
@@ -109,7 +114,14 @@ export const connectCommand = new Command('connect')
         throw new CliError(`Project root does not exist: ${projectRoot}`);
       }
       const client = parseClient(options.client, projectRoot);
-      const serverUrl = resolveServerUrl(projectRoot, options.server);
+      // Resolve the project first: a self-hosted capacitor.config sets the
+      // console this project belongs to, and signing in against the hosted
+      // default instead would configure a server the project never uses.
+      const snapshot = await resolveConfigSnapshot({
+        cwd: projectRoot,
+        serverUrl: options.server,
+      });
+      const serverUrl = snapshot.serverUrl.value;
       const isHosted = serverUrl.replace(/\/+$/, '') === 'https://console.otakit.app';
 
       // Sign in first if needed, so this really is one command.
@@ -117,7 +129,20 @@ export const connectCommand = new Command('connect')
       if (!auth) {
         console.log(`Not signed in to ${serverUrl}.`);
         const { token } = await signInWithEmailOtp(serverUrl);
-        const stored = await storeAuthProfile(serverUrl, { token });
+        // Store the same context `otakit login` does. Without the chosen
+        // organization, an app-less project would sign in and then immediately
+        // fail with ORGANIZATION_SELECTION_REQUIRED.
+        const account = await fetchAccount(serverUrl, token);
+        const selected = snapshot.appId.value
+          ? undefined
+          : await promptForOrganization(account.memberships, {
+              initialOrganizationId: initialOrganizationId(account),
+            });
+        const stored = await storeAuthProfile(serverUrl, {
+          token,
+          userId: account.user.id,
+          ...(selected ? { organizationId: selected.organizationId } : {}),
+        });
         if (!stored.ok) {
           throw new CliError(stored.reason ?? 'Could not store the access token.');
         }
@@ -126,7 +151,11 @@ export const connectCommand = new Command('connect')
       }
       if (!auth) throw new CliError('Not authenticated. Run `otakit login`, or set OTAKIT_TOKEN.');
 
-      const snapshot = await resolveConfigSnapshot({ cwd: projectRoot });
+      // OTAKIT_ORGANIZATION_ID has to win here too, or CI that works with
+      // `otakit mcp` fails with the same variables set.
+      const organizationId = snapshot.appId.value
+        ? undefined
+        : (resolveOrganizationOverride() ?? auth.organizationId ?? undefined);
       const probe = new ApiClient(
         {
           appId: snapshot.appId.value ?? '00000000-0000-0000-0000-000000000000',
@@ -135,7 +164,7 @@ export const connectCommand = new Command('connect')
           authSource: auth.source,
         },
         CLI_VERSION,
-        snapshot.appId.value ? {} : { organizationId: auth.organizationId ?? undefined },
+        { organizationId },
       );
 
       let context: ContextResponse;
@@ -155,7 +184,7 @@ export const connectCommand = new Command('connect')
       const target = configTargetFor(client, projectRoot);
       const projectRootToken =
         client === 'claude'
-          ? '${CLAUDE_PROJECT_DIR}'
+          ? '${CLAUDE_PROJECT_DIR:-.}'
           : client === 'vscode'
             ? '${workspaceFolder}'
             : '.';

@@ -3,7 +3,7 @@
     "otakit": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@otakit/cli@latest", "mcp", "--project-root", "${CLAUDE_PROJECT_DIR}"]
+      "args": ["-y", "@otakit/cli@latest", "mcp", "--project-root", "${CLAUDE_PROJECT_DIR:-.}"]
     }
   }
 }

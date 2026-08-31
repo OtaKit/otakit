@@ -126,8 +126,12 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       aria-label={`Copy ${label}`}
       title={`Copy ${label}`}
       onClick={() => {
-        void navigator.clipboard.writeText(value);
-        setCopied(true);
+        // Unavailable on a self-hosted console served over plain HTTP, so
+        // confirm from the write rather than assuming it succeeded.
+        void navigator.clipboard
+          ?.writeText(value)
+          .then(() => setCopied(true))
+          .catch(() => toast.error('Could not copy. Select the command and copy it manually.'));
       }}
     >
       {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}

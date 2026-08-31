@@ -1,7 +1,7 @@
 /**
- * Advertised in `serverInfo` by both the local stdio server and the remote
- * endpoint. A client that lists one OtaKit server at 1.5.0 and another at
- * 0.1.0 looks broken, so both read this and `agents:validate` checks it
- * against the CLI, plugin, Skill, and registry versions.
+ * The remote endpoint's advertised `serverInfo` version. It was hardcoded at
+ * 0.1.0 while everything else shipped 1.5.0, which looks broken in a client
+ * listing both. The local server reports CLI_VERSION instead, since there it
+ * genuinely is the CLI; `agents:validate` keeps the two in step.
  */
 export const OTAKIT_MCP_VERSION = '1.5.0';

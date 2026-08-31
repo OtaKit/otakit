@@ -73,6 +73,23 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
     redirect(oauthPagePath('/oauth/select-organization', query));
   }
   const selectedOrganization = selectedMembership.organization;
+  const detail = describeOrganization({
+    role: selectedMembership.role,
+    planKey: selectedOrganization.planKey,
+    memberCount: selectedOrganization._count.members,
+    appCount: selectedOrganization._count.apps,
+    sampleAppSlug: selectedOrganization.apps[0]?.slug ?? null,
+  });
+  // If another membership reads identically, the facts alone do not identify
+  // which workspace this is — the same condition the picker disambiguates on.
+  const ambiguous =
+    (await db.organizationMember.count({
+      where: {
+        userId: session.user.id,
+        organizationId: { not: selectedOrganization.id },
+        organization: { name: selectedOrganization.name },
+      },
+    })) > 0;
 
   return (
     <OAuthConsent
@@ -84,13 +101,7 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
       organizationName={selectedOrganization.name}
       // Same facts the picker showed a moment ago, so the workspace someone
       // just chose is recognisably the one they are now granting access to.
-      organizationDetail={describeOrganization({
-        role: selectedMembership.role,
-        planKey: selectedOrganization.planKey,
-        memberCount: selectedOrganization._count.members,
-        appCount: selectedOrganization._count.apps,
-        sampleAppSlug: selectedOrganization.apps[0]?.slug ?? null,
-      })}
+      organizationDetail={ambiguous ? `${detail} · ${selectedOrganization.id.slice(0, 8)}` : detail}
       scopes={scopes}
     />
   );

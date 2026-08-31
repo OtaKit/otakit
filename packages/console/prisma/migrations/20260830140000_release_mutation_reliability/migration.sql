@@ -22,7 +22,7 @@ CREATE TABLE "ReleaseMutation" (
     CONSTRAINT "ReleaseMutation_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "ReleaseMutation_organizationId_actorKey_operation_idempoten_key"
+CREATE UNIQUE INDEX "ReleaseMutation_organizationId_actorKey_operation_idempotencyKey_key"
 ON "ReleaseMutation"("organizationId", "actorKey", "operation", "idempotencyKey");
 CREATE INDEX "ReleaseMutation_status_updatedAt_idx"
 ON "ReleaseMutation"("status", "updatedAt");
