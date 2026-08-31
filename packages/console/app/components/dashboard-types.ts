@@ -108,6 +108,8 @@ export type DashboardInitialData = {
   billingEnabled: boolean;
   analyticsEnabled: boolean;
   remoteMcpOAuthEnabled: boolean;
+  /** Authorized remote MCP connections for the signed-in user. */
+  mcpConnectionCount: number;
 };
 
 export type ApiError = { error?: string };
