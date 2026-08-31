@@ -29,7 +29,7 @@ recommending or changing its thresholds.
 
 - `STALE_RELEASE_STATE`: another actor changed the lane. Read state and prepare
   again; do not reuse the old approval.
-- `IDEMPOTENCY_CONFLICT`: the key was reused with different inputs. Stop and
+- `IDEMPOTENCY_KEY_REUSED`: the key was reused with different inputs. Stop and
   inspect the request; do not hide the mismatch by retrying blindly.
 - manifest synchronization pending: the database mutation exists but serving is
   not yet confirmed. Report pending and let the reconciler repair it; do not

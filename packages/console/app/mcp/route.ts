@@ -4,7 +4,12 @@ import { requireMcpAuth } from '@better-auth/mcp';
 import { auth } from '@/lib/auth';
 import { verifySecretAuth } from '@/lib/api-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { createOtaKitMcpServer, getToolDefinition, type OtaKitToolName } from '@otakit/mcp-core';
+import {
+  createOtaKitMcpServer,
+  getToolDefinition,
+  OTAKIT_MCP_VERSION,
+  type OtaKitToolName,
+} from '@otakit/mcp-core';
 import {
   isRemoteMcpEnabled,
   isRemoteMcpOAuthEnabled,
@@ -23,7 +28,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = OTAKIT_MCP_VERSION;
 const REMOTE_MCP_DISABLED_MESSAGE =
   'Remote MCP is not enabled on this deployment. Use local MCP or ask the deployment operator to enable it.';
 

@@ -175,7 +175,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     return realpathSync(resolve(this.connection.projectRoot));
   }
 
-  private pathWithinProjectRoot(path: string, label: string): string {
+  private pathWithinProjectRoot(path: string, label: string, nextStep?: string): string {
     const root = this.projectRoot();
     let requested: string;
     try {
@@ -183,7 +183,8 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     } catch {
       throw new PublicToolError(
         'INVALID_PROJECT_PATH',
-        `${label} does not exist or cannot be read inside the selected project`,
+        `${label} does not exist or cannot be read inside the selected project: ${resolve(root, path)}`,
+        nextStep,
       );
     }
     const relativePath = relative(root, requested);
@@ -662,14 +663,21 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private nativePackages(projectRoot: string, input: JsonObject): NativePackage[] {
+    // These default to the project root, so the caller usually never named
+    // them — the error has to say what to actually do about it.
     const packageJsonPath = optionalString(input, 'packageJsonPath')
       ? this.pathWithinProjectRoot(stringInput(input, 'packageJsonPath'), 'packageJsonPath')
-      : this.pathWithinProjectRoot(join(projectRoot, 'package.json'), 'packageJsonPath');
+      : this.pathWithinProjectRoot(
+          join(projectRoot, 'package.json'),
+          'package.json',
+          'Point packageJsonPath at the package.json that declares this app’s dependencies, for example in a workspace subdirectory.',
+        );
     const nodeModulesPath = optionalString(input, 'nodeModulesPath')
       ? this.pathWithinProjectRoot(stringInput(input, 'nodeModulesPath'), 'nodeModulesPath')
       : this.pathWithinProjectRoot(
           join(dirname(packageJsonPath), 'node_modules'),
-          'nodeModulesPath',
+          'node_modules',
+          'Install dependencies (npm install / pnpm install) so native packages can be detected, or pass nodeModulesPath if they live elsewhere.',
         );
     return collectNativePackages({
       packageJsonPath,
@@ -701,7 +709,11 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
                 'Native changes normally require a new App Store or Play Store build. Override only after explicit review.',
               ]
             : result.status === 'skipped'
-              ? ['No native-package baseline was available for this exact lane.']
+              ? [
+                  result.reason === 'no_local_native_packages'
+                    ? 'No native packages were found locally, but the current release records some. This is not a compatibility result — install dependencies or pass packageJsonPath/nodeModulesPath, then check again.'
+                    : 'No native-package baseline was available for this exact release lane.',
+                ]
               : [],
       },
     );
@@ -849,7 +861,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
             ? [
                 compatibilityDecision === 'skip'
                   ? 'The native-package compatibility check was explicitly skipped.'
-                  : 'No native-package baseline was available for this exact release lane.',
+                  : 'reason' in compatibility && compatibility.reason === 'no_local_native_packages'
+                    ? 'No native packages were found locally, but the current release records some. Compatibility was not determined; install dependencies or pass packageJsonPath/nodeModulesPath.'
+                    : 'No native-package baseline was available for this exact release lane.',
               ]
             : []),
           ...(compatibility.status === 'incompatible'

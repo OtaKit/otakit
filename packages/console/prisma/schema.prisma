@@ -471,7 +471,10 @@ model ReleaseMutation {
   createdAt      DateTime                 @default(now())
   updatedAt      DateTime                 @updatedAt
 
-  @@unique([organizationId, actorKey, operation, idempotencyKey])
+  // Postgres truncates identifiers at 63 bytes and would store
+  // "…_idempotencyKe", while Prisma's own generated name truncates the middle.
+  // Naming it explicitly keeps the database and the schema in agreement.
+  @@unique([organizationId, actorKey, operation, idempotencyKey], map: "ReleaseMutation_organizationId_actorKey_operation_idempoten_key")
   @@index([status, updatedAt])
   @@index([appId, channel, runtimeVersion, createdAt(sort: Desc)])
   @@index([expiresAt])

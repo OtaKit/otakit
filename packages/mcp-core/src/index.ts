@@ -3,3 +3,4 @@ export * from './contracts';
 export * from './docs';
 export * from './generated-docs';
 export * from './registry';
+export * from './version';

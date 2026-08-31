@@ -25,7 +25,11 @@ export type CompatibilityFinding = {
 
 export type NativeCompatibilityResult = {
   status: 'compatible' | 'incompatible' | 'skipped';
-  reason?: 'target_missing_metadata' | 'current_release_missing_metadata' | 'explicitly_skipped';
+  reason?:
+    | 'target_missing_metadata'
+    | 'current_release_missing_metadata'
+    | 'no_target_native_packages'
+    | 'explicitly_skipped';
   findings: CompatibilityFinding[];
 };
 
@@ -132,6 +136,14 @@ export function compareBundleNativePackages(
   const current = nativePackages(currentValue);
   if (!current) {
     return { status: 'skipped', reason: 'current_release_missing_metadata', findings: [] };
+  }
+
+  // An empty target set makes every current package look like a safe removal.
+  // That is a real outcome only if the app genuinely dropped all native code;
+  // far more often the uploading CLI scanned the wrong directory. Refuse to
+  // call it compatible rather than clearing a release on absent evidence.
+  if (target.length === 0 && current.length > 0) {
+    return { status: 'skipped', reason: 'no_target_native_packages', findings: [] };
   }
 
   const currentByName = new Map(current.map((entry) => [entry.name, entry]));
