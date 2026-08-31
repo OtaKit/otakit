@@ -100,6 +100,8 @@ function buildDocument(sections) {
   const lines = [
     '# OtaKit Docs',
     '',
+    'Canonical documentation: https://otakit.app/docs',
+    '',
     'Generated from the public docs pages in `packages/site/app/docs`.',
     '',
     '## Pages',
