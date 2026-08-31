@@ -8,7 +8,7 @@
  * actually deployed there.
  */
 
-export const ORGANIZATION_PLAN_LABELS: Record<string, string> = {
+const ORGANIZATION_PLAN_LABELS: Record<string, string> = {
   free: 'Free',
   starter: 'Starter',
   pro: 'Pro',
@@ -57,12 +57,3 @@ export function disambiguate<T extends { id: string; name: string; detail: strin
       : entry,
   );
 }
-
-/** Prisma selection that yields everything `describeOrganization` needs. */
-export const organizationFactsSelect = {
-  id: true,
-  name: true,
-  planKey: true,
-  _count: { select: { members: true, apps: true } },
-  apps: { orderBy: { createdAt: 'asc' }, take: 1, select: { slug: true } },
-} as const;

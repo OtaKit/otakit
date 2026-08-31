@@ -151,15 +151,17 @@ function CommandBlock({ step }: { step: Step }) {
 
 export function McpConnectionsDashboard({ initialData }: { initialData: DashboardInitialData }) {
   const [client, setClient] = useState<ClientId>('claude');
-  const [origin, setOrigin] = useState(HOSTED_ORIGIN);
+  // Read from the build-time public URL, which is identical on the server and
+  // the client. window.location would either differ across hydration or, from
+  // an effect, paint hosted commands for a frame that a self-hosted user could
+  // copy in between.
+  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? HOSTED_ORIGIN).replace(/\/+$/, '');
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(initialData.remoteMcpOAuthEnabled);
   const [loadFailed, setLoadFailed] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<Connection | null>(null);
   const seenIds = useRef<Set<string> | null>(null);
-
-  useEffect(() => setOrigin(window.location.origin), []);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const response = await fetch('/api/v1/me/oauth-connections', { signal });
