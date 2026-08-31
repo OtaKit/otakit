@@ -58,31 +58,6 @@ const destructiveNonIdempotent = {
 
 export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
   {
-    name: 'search_docs',
-    title: 'Search OtaKit documentation',
-    description:
-      'Search the bundled current OtaKit documentation by customer terminology. Use before guessing setup, configuration, or CLI behavior.',
-    modes: both,
-    inputSchema: z.object({
-      query: z.string().trim().min(1).max(300),
-      limit: z.number().int().min(1).max(8).optional(),
-    }),
-    annotations: readOnly,
-    oauthScopes: ['otakit:read'],
-    allowOrganizationKey: true,
-  },
-  {
-    name: 'read_doc_page',
-    title: 'Read an OtaKit documentation page',
-    description:
-      'Read a bounded Markdown chunk from a known OtaKit documentation route returned by search_docs. Arbitrary URLs and filesystem paths are rejected.',
-    modes: both,
-    inputSchema: z.object({ path: z.string().startsWith('/').max(300), cursor: cursorSchema }),
-    annotations: readOnly,
-    oauthScopes: ['otakit:read'],
-    allowOrganizationKey: true,
-  },
-  {
     name: 'get_context',
     title: 'Show the active OtaKit context',
     description:

@@ -21,27 +21,26 @@ export default function AgentsPage() {
 
       <Separator className="my-10" />
 
-      <H2>Choose how your agent connects</H2>
+      <H2>How it fits together</H2>
       <Ul>
         <li>
-          <strong>Local MCP</strong> runs through the OtaKit CLI in your repository. Use it to
-          inspect the Capacitor project, check native compatibility, package web assets, and upload
-          builds.
+          <strong>The OtaKit server</strong> runs through the CLI in your repository. It is the
+          connection to set up: it inspects the Capacitor project, checks native compatibility,
+          packages and uploads builds, and does every account, release, and event operation.
         </li>
         <li>
-          <strong>Remote MCP</strong> connects over HTTPS. Use it for apps, releases, events, and
-          account operations when the agent does not need local files.
-        </li>
-        <li>
-          <strong>Agent Skills</strong> provide reusable instructions. The OtaKit Skill teaches the
-          agent how to choose the right connection and follow the complete release and revert
-          workflow.
+          <strong>The OtaKit Skill</strong> provides the release workflow — lanes, the approval
+          block, compatibility decisions, and recovery — so the agent follows the same process your
+          team already uses.
         </li>
       </Ul>
       <P>
-        Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. An
-        unavailable remote server is a deployment setting, not an authentication failure.
+        There is also a <LinkText href="#remote">remote endpoint over HTTPS</LinkText> for clients
+        that cannot run a local process, and for CI. It covers account and release work, but it
+        cannot read your repository, so it cannot inspect a project, check compatibility, or upload
+        a bundle. Set it up in addition to the local server when you need it — not instead of it.
       </P>
+
       <P>
         Local MCP normally derives its fixed organization from the project&apos;s configured OtaKit
         app and verifies your membership. During login, multi-organization users choose a named
@@ -111,26 +110,19 @@ codex mcp login \\
 
       <Separator className="my-10" />
 
-      <H2>Local or remote?</H2>
+      <H2 id="remote">What the remote endpoint adds</H2>
+      <P>
+        Everything the local server does, the remote endpoint does too — except anything that needs
+        your repository. It cannot inspect a project, check native compatibility, or upload a
+        bundle, because those read files on your machine.
+      </P>
       <div className="mt-4 overflow-x-auto border border-border">
         <table className="min-w-full border-collapse text-left text-sm text-muted-foreground">
           <CapabilityHeader />
           <tbody className="[&_tr:last-child_td]:border-b-0">
-            <CapabilityRow
-              capability="Inspect the local Capacitor project"
-              local="Yes"
-              remote="No"
-            />
-            <CapabilityRow
-              capability="Validate config and native compatibility"
-              local="Yes"
-              remote="No"
-            />
-            <CapabilityRow
-              capability="Build, package, and upload web assets"
-              local="Yes"
-              remote="No"
-            />
+            <CapabilityRow capability="Inspect the Capacitor project" local="Yes" remote="No" />
+            <CapabilityRow capability="Check native compatibility" local="Yes" remote="No" />
+            <CapabilityRow capability="Package and upload web assets" local="Yes" remote="No" />
             <CapabilityRow
               capability="Read apps, bundles, releases, and events"
               local="Yes"
@@ -142,16 +134,17 @@ codex mcp login \\
               remote="Yes"
             />
             <CapabilityRow
-              capability="Read account status and audit history"
-              local="User login"
-              remote="OAuth user"
+              capability="Authenticates with"
+              local="CLI login"
+              remote="OAuth or key"
             />
           </tbody>
         </table>
       </div>
       <P>
-        Use local MCP for repository work and uploads. Use remote MCP for account-only work. You can
-        configure both under different names when one agent needs both contexts.
+        Reach for it when the client cannot run a local process, or when you want a scoped,
+        individually revocable connection instead of your full CLI session. Setting up both means
+        the agent sees two copies of the shared tools, so only do it when you need both.
       </P>
 
       <Separator className="my-10" />
@@ -311,8 +304,12 @@ function H1({ children }: { children: React.ReactNode }) {
   return <h1 className="text-2xl font-bold tracking-tight">{children}</h1>;
 }
 
-function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-lg font-semibold tracking-tight">{children}</h2>;
+function H2({ children, id }: { children: React.ReactNode; id?: string }) {
+  return (
+    <h2 id={id} className="text-lg font-semibold tracking-tight">
+      {children}
+    </h2>
+  );
 }
 
 function P({ children }: { children: React.ReactNode }) {

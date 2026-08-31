@@ -128,6 +128,7 @@ export const mcpCommand = new Command('mcp')
               serverOrigin: connection.serverUrl,
               organizationName: connection.organization.name,
               projectRoot: connection.projectRoot,
+              isProject: projectConfig !== null || Boolean(snapshot.appId.value),
               appId: connection.defaultApp?.id ?? null,
               appSlug: connection.defaultApp?.slug ?? null,
               channel: connection.defaultApp?.channel ?? null,

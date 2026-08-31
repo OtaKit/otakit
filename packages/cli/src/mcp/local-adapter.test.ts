@@ -134,12 +134,9 @@ describe('local OtaKit MCP adapter', () => {
     expect(JSON.stringify(result)).not.toContain('void OtaKit.notifyAppReady');
   });
 
-  it('searches bundled docs and refuses paths outside the selected project root', async () => {
+  it('refuses paths outside the selected project root', async () => {
     const root = await fixture();
     const adapter = new LocalOtaKitToolAdapter(connection(root));
-
-    const docs = await adapter.invoke('search_docs', { query: 'auto revert' }, {} as never);
-    expect(docs.data).toMatchObject({ results: expect.any(Array) });
 
     await expect(
       adapter.invoke(

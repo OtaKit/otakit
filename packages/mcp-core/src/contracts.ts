@@ -1,8 +1,6 @@
 import { z } from 'zod';
 
 export const OTAKIT_TOOL_NAMES = [
-  'search_docs',
-  'read_doc_page',
   'get_context',
   'get_account_status',
   'list_apps',

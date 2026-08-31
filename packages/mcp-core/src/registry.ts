@@ -85,6 +85,8 @@ export type ServerBinding = {
   serverOrigin: string;
   organizationName: string;
   projectRoot?: string;
+  /** Whether the bound directory actually holds a Capacitor project. */
+  isProject?: boolean;
   appSlug?: string | null;
   appId?: string | null;
   channel?: string | null;
@@ -95,6 +97,14 @@ export type ServerBinding = {
 function bindingSentence(binding: ServerBinding): string {
   const parts = [`Connected to ${binding.organizationName} at ${binding.serverOrigin}.`];
   if (binding.projectRoot) parts.push(`Project ${binding.projectRoot}.`);
+  // A connection started outside a Capacitor project still does every account
+  // and release operation; say so rather than letting the project tools look
+  // broken when they report nothing to work on.
+  if (binding.projectRoot && !binding.isProject) {
+    parts.push(
+      'That directory is not a Capacitor project, so inspection, compatibility, and upload have nothing to read. Account, bundle, release, and event tools work normally; restart in the project directory to enable the rest.',
+    );
+  }
   if (binding.appId) {
     const lane = [
       binding.channel ? `channel ${binding.channel}` : 'base channel',

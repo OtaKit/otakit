@@ -1,9 +1,6 @@
 import {
-  GENERATED_DOCUMENTATION,
   PublicToolError,
   getToolDefinition,
-  readDocumentationPage,
-  searchDocumentation,
   toolEnvelope,
   type OtaKitToolAdapter,
   type OtaKitToolAuthorization,
@@ -174,10 +171,6 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
   async invoke(name: OtaKitToolName, input: JsonObject): Promise<ToolEnvelope> {
     try {
       switch (name) {
-        case 'search_docs':
-          return this.searchDocs(input);
-        case 'read_doc_page':
-          return this.readDocPage(input);
         case 'get_context':
           return await this.getContext();
         case 'get_account_status':
@@ -218,41 +211,6 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       }
     } catch (error) {
       return serviceError(error);
-    }
-  }
-
-  private searchDocs(input: JsonObject): ToolEnvelope {
-    const results = searchDocumentation(
-      GENERATED_DOCUMENTATION,
-      stringInput(input, 'query'),
-      numberInput(input, 'limit') ?? 5,
-    );
-    return toolEnvelope(
-      `Found ${results.length} matching OtaKit documentation pages.`,
-      json({ results }),
-      {
-        nextActions: results[0] ? [`Read ${results[0].path} with read_doc_page.`] : [],
-      },
-    );
-  }
-
-  private readDocPage(input: JsonObject): ToolEnvelope {
-    try {
-      const result = readDocumentationPage(
-        GENERATED_DOCUMENTATION,
-        stringInput(input, 'path'),
-        optionalString(input, 'cursor'),
-      );
-      return toolEnvelope(`Read ${result.page.title}.`, json(result), {
-        links: [{ label: result.page.title, url: `https://otakit.app${result.page.path}` }],
-        nextActions: result.nextCursor ? [`Continue with cursor ${result.nextCursor}.`] : [],
-      });
-    } catch (error) {
-      throw new PublicToolError(
-        'DOC_NOT_FOUND',
-        error instanceof Error ? error.message : 'Documentation page not found',
-        'Call search_docs and use a returned path.',
-      );
     }
   }
 

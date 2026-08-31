@@ -1,7 +1,7 @@
 # OtaKit CLI reference
 
-Use this when OtaKit MCP is unavailable. `search_docs` is itself an MCP tool, so
-it cannot be the fallback — these are the commands.
+Use this when OtaKit MCP is unavailable. These are the commands; the other
+references in this Skill cover the workflow they belong to.
 
 Every command accepts `--server <url>` for a self-hosted console. Never put a
 token on the command line: it lands in shell history and in `ps` output. Export

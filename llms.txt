@@ -1567,15 +1567,13 @@ Connect Codex, Claude Code, VS Code, and other coding agents to OtaKit with MCP 
 
 Connect your coding agent to OtaKit without creating a separate release process. MCP gives the agent access to your project and OtaKit account; the open OtaKit Skill provides the release workflow.
 
-### Choose how your agent connects
-Local MCP
-runs through the OtaKit CLI in your repository. Use it to inspect the Capacitor project, check native compatibility, package web assets, and upload builds.
-Remote MCP
-connects over HTTPS. Use it for apps, releases, events, and account operations when the agent does not need local files.
-Agent Skills
-provide reusable instructions. The OtaKit Skill teaches the agent how to choose the right connection and follow the complete release and revert workflow.
+### How it fits together
+The OtaKit server
+runs through the CLI in your repository. It is the connection to set up: it inspects the Capacitor project, checks native compatibility, packages and uploads builds, and does every account, release, and event operation.
+The OtaKit Skill
+provides the release workflow — lanes, the approval block, compatibility decisions, and recovery — so the agent follows the same process your team already uses.
 
-Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. An unavailable remote server is a deployment setting, not an authentication failure.
+There is also a remote endpoint over HTTPS for clients that cannot run a local process, and for CI. It covers account and release work, but it cannot read your repository, so it cannot inspect a project, check compatibility, or upload a bundle. Set it up in addition to the local server when you need it — not instead of it.
 
 Local MCP normally derives its fixed organization from the project's configured OtaKit app and verifies your membership. During login, multi-organization users choose a named default for app-less commands. Change it later with `otakit organization select`; no organization ID is needed for interactive setup.
 
@@ -1631,15 +1629,17 @@ The browser flow shows the client, organization, and requested permissions befor
 
 For non-interactive automation, configure your MCP client to read an organization key from `OTAKIT_TOKEN`. Keep it in the environment or secret manager—never in project JSON. Organization keys retain their existing organization-wide operational authority; OAuth is the fine-grained option for user connections.
 
-### Local or remote?
-- **Inspect the local Capacitor project**: Local MCP — Yes; Remote MCP — No
-- **Validate config and native compatibility**: Local MCP — Yes; Remote MCP — No
-- **Build, package, and upload web assets**: Local MCP — Yes; Remote MCP — No
+### What the remote endpoint adds
+
+Everything the local server does, the remote endpoint does too — except anything that needs your repository. It cannot inspect a project, check native compatibility, or upload a bundle, because those read files on your machine.
+- **Inspect the Capacitor project**: Local MCP — Yes; Remote MCP — No
+- **Check native compatibility**: Local MCP — Yes; Remote MCP — No
+- **Package and upload web assets**: Local MCP — Yes; Remote MCP — No
 - **Read apps, bundles, releases, and events**: Local MCP — Yes; Remote MCP — Yes
 - **Prepare, publish, and revert releases**: Local MCP — Yes; Remote MCP — Yes
-- **Read account status and audit history**: Local MCP — User login; Remote MCP — OAuth user
+- **Authenticates with**: Local MCP — CLI login; Remote MCP — OAuth or key
 
-Use local MCP for repository work and uploads. Use remote MCP for account-only work. You can configure both under different names when one agent needs both contexts.
+Reach for it when the client cannot run a local process, or when you want a scoped, individually revocable connection instead of your full CLI session. Setting up both means the agent sees two copies of the shared tools, so only do it when you need both.
 
 ### Claude Code
 

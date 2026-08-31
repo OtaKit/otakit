@@ -12,6 +12,12 @@ metadata:
 Use OtaKit MCP tools when available. Fall back to the documented `otakit` CLI
 without blocking the user when MCP is unavailable.
 
+The server states what it is bound to when it connects: origin, organization,
+project, default app and lane, and whether release writes are enabled. Read that
+before asking the user for any of it. A connection started outside a Capacitor
+project still does account, release, and event work; only inspection,
+compatibility, and upload need the repository.
+
 Before any write, resolve and show the OtaKit origin, organization, app, channel,
 and runtime version. A channel by itself is not a complete release lane. Never
 send credentials as tool arguments or print them in commands, logs, or results.

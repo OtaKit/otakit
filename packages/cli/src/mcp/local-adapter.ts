@@ -2,11 +2,8 @@ import { realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import {
-  GENERATED_DOCUMENTATION,
   PublicToolError,
   getToolDefinition,
-  readDocumentationPage,
-  searchDocumentation,
   toolEnvelope,
   type OtaKitToolAdapter,
   type OtaKitToolAuthorization,
@@ -249,10 +246,6 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   ): Promise<ToolEnvelope> {
     try {
       switch (name) {
-        case 'search_docs':
-          return this.searchDocs(input);
-        case 'read_doc_page':
-          return this.readDocPage(input);
         case 'get_context':
           return this.getContext();
         case 'get_account_status':
@@ -296,43 +289,6 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       }
     } catch (error) {
       return apiError(error);
-    }
-  }
-
-  private searchDocs(input: JsonObject): ToolEnvelope {
-    const results = searchDocumentation(
-      GENERATED_DOCUMENTATION,
-      stringInput(input, 'query'),
-      numberInput(input, 'limit') ?? 5,
-    );
-    return toolEnvelope(
-      `Found ${plural(results.length, 'matching documentation page')}.`,
-      json({ results }),
-      {
-        nextActions: results[0] ? [`Read ${results[0].path} with read_doc_page.`] : [],
-      },
-    );
-  }
-
-  private readDocPage(input: JsonObject): ToolEnvelope {
-    try {
-      const result = readDocumentationPage(
-        GENERATED_DOCUMENTATION,
-        stringInput(input, 'path'),
-        optionalString(input, 'cursor'),
-      );
-      return toolEnvelope(`Read ${result.page.title}.`, json(result), {
-        links: [{ label: result.page.title, url: `https://otakit.app${result.page.path}` }],
-        nextActions: result.nextCursor
-          ? [`Continue this page with cursor ${result.nextCursor}.`]
-          : [],
-      });
-    } catch (error) {
-      throw new PublicToolError(
-        'DOC_NOT_FOUND',
-        error instanceof Error ? error.message : 'Documentation page not found',
-        'Call search_docs and use a returned path.',
-      );
     }
   }
 
