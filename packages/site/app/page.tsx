@@ -32,6 +32,9 @@ export const metadata = {
   title: { absolute: 'OtaKit — Live updates for Capacitor apps' },
   description:
     'Ship instant over-the-air updates to your Capacitor apps. No app store delays. Open source and self-hostable.',
+  other: {
+    'scrolllaunch-verify': 'ff8cefdd08904be04dcd7dfddc0dbdc8',
+  },
 };
 
 type HeroIconCloudItem = {
