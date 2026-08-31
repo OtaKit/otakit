@@ -5,8 +5,8 @@ import { createOtaKitMcpServer } from '@otakit/mcp-core';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Command } from 'commander';
 
-import { ApiClient } from '../lib/api.js';
-import { resolveConfigSnapshot } from '../lib/config.js';
+import { ApiClient, OtaKitApiError } from '../lib/api.js';
+import { resolveConfigSnapshot, resolveOrganizationOverride } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import { CLI_VERSION } from '../lib/version.js';
 import {
@@ -41,7 +41,7 @@ export const mcpCommand = new Command('mcp')
   )
   .option('--server <url>', 'OtaKit console URL override')
   .option('--app-id <id>', 'Default app ID override for project configuration')
-  .option('--organization-id <id>', 'Bind this connection to a specific organization membership')
+  .option('--organization-id <id>', 'Organization override for app-less automation')
   .action(async (options: McpOptions) => {
     await runCommand(async () => {
       const selectedRoot = resolve(options.projectRoot ?? process.cwd());
@@ -61,6 +61,17 @@ export const mcpCommand = new Command('mcp')
         throw new CliError('Not authenticated. Run `otakit login`, or set OTAKIT_TOKEN.');
       }
 
+      const explicitOrganizationId = options.organizationId?.trim();
+      if (snapshot.appId.value && explicitOrganizationId) {
+        throw new CliError(
+          '`--organization-id` is only valid for app-less projects. Remove it; the configured app selects its owning organization.',
+        );
+      }
+      const organizationId = snapshot.appId.value
+        ? undefined
+        : (resolveOrganizationOverride(explicitOrganizationId) ??
+          snapshot.authOrganizationId ??
+          undefined);
       const probe = new ApiClient(
         {
           appId: snapshot.appId.value ?? '00000000-0000-0000-0000-000000000000',
@@ -69,11 +80,22 @@ export const mcpCommand = new Command('mcp')
           authSource: snapshot.authSource,
         },
         CLI_VERSION,
-        { organizationId: options.organizationId },
+        { organizationId },
       );
-      const fixed = await probe.request<ConnectionResponse>(
-        localMcpContextPath(snapshot.appId.value),
-      );
+      let fixed: ConnectionResponse;
+      try {
+        fixed = await probe.request<ConnectionResponse>(localMcpContextPath(snapshot.appId.value));
+      } catch (error) {
+        if (error instanceof OtaKitApiError) {
+          if (!snapshot.appId.value && organizationId && error.status === 404) {
+            throw new CliError(
+              'The selected organization is unavailable. Run `otakit organization select`, then restart this MCP server.',
+            );
+          }
+          if (error.nextStep) throw new CliError(`${error.message}\n${error.nextStep}`);
+        }
+        throw error;
+      }
       const connection: LocalMcpConnectionContext = {
         serverUrl: snapshot.serverUrl.value,
         authToken: snapshot.authToken.value,

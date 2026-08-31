@@ -36,7 +36,7 @@ For repository-aware inspection and uploads, connect the local server from the C
 ```bash
 npx -y @otakit/cli@1.5.0 login
 claude mcp add --transport stdio --scope project otakit-local -- \
-  npx -y @otakit/cli@1.5.0 mcp --project-root .
+  npx -y @otakit/cli@1.5.0 mcp --project-root '${CLAUDE_PROJECT_DIR:-.}'
 ```
 
 See the [MCP and Agent Skills guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.

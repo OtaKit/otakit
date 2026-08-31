@@ -133,6 +133,8 @@ describe('OtaKit MCP registry transport', () => {
   it('negotiates, lists the remote catalog, validates input, and returns structured content', async () => {
     const { client, invoke } = await connect();
     const listed = await client.listTools();
+    expect(client.getInstructions()).toContain('Uploading a bundle does not publish it.');
+    expect(client.getInstructions()).toContain('remote connection');
     expect(listed.tools).toHaveLength(18);
     expect(listed.tools.find((tool) => tool.name === 'get_context')).toMatchObject({
       annotations: { readOnlyHint: true },

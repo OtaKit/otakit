@@ -9,6 +9,7 @@ import {
   normalizeOAuthOrganizationId,
   OTAKIT_OAUTH_ORGANIZATION_QUERY,
 } from '@/lib/mcp/oauth-organization-shared';
+import { selectedOAuthOrganizationId } from '@/lib/mcp/oauth-organization';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,11 +43,12 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
   });
   if (!client) notFound();
   const scopes = (typeof query.scope === 'string' ? query.scope.split(' ') : []).filter(Boolean);
-  const organizationId = normalizeOAuthOrganizationId(
-    typeof query[OTAKIT_OAUTH_ORGANIZATION_QUERY] === 'string'
-      ? query[OTAKIT_OAUTH_ORGANIZATION_QUERY]
-      : undefined,
-  );
+  const organizationId =
+    normalizeOAuthOrganizationId(
+      typeof query[OTAKIT_OAUTH_ORGANIZATION_QUERY] === 'string'
+        ? query[OTAKIT_OAUTH_ORGANIZATION_QUERY]
+        : undefined,
+    ) ?? (await selectedOAuthOrganizationId(session.user.id, requestHeaders));
   const selectedMembership = organizationId
     ? await db.organizationMember.findUnique({
         where: {
@@ -61,6 +63,16 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
     redirect(oauthPagePath('/oauth/select-organization', query));
   }
   const selectedOrganization = selectedMembership.organization;
+  const duplicateNameCount = await db.organizationMember.count({
+    where: {
+      userId: session.user.id,
+      organization: { name: selectedOrganization.name },
+    },
+  });
+  const organizationDisplayName =
+    duplicateNameCount > 1
+      ? `${selectedOrganization.name} · ${selectedOrganization.id.slice(0, 8)}`
+      : selectedOrganization.name;
 
   return (
     <OAuthConsent
@@ -69,7 +81,7 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
         uri: client.client_uri ?? null,
       }}
       organizationId={selectedOrganization.id}
-      organizationName={selectedOrganization.name}
+      organizationName={organizationDisplayName}
       scopes={scopes}
     />
   );

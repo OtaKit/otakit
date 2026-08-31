@@ -119,7 +119,7 @@ async function validate() {
     'Claude marketplace must publish the repository-root OtaKit plugin',
   );
 
-  const remote = codexMcp.mcpServers?.otakit;
+  const remote = codexMcp.mcpServers?.['otakit-remote'];
   expect(remote?.type === 'http', 'Codex plugin MCP definition must use HTTP transport');
   expect(
     remote?.url === 'https://console.otakit.app/mcp',

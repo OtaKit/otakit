@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { listAuditLog } from '@/lib/services/audit';
-import { serviceErrorResponse } from '@/lib/services/http';
+import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const access = await resolveOrganizationAccess(request);
   if (!access.success) {
-    return NextResponse.json({ error: access.error }, { status: access.status });
+    return organizationAccessErrorResponse(access);
   }
 
   const searchParams = request.nextUrl.searchParams;

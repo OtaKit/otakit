@@ -35,6 +35,14 @@ export function OAuthOrganizationPicker({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const duplicateNames = new Set(
+    organizations
+      .filter(
+        (organization, index) =>
+          organizations.findIndex((candidate) => candidate.name === organization.name) !== index,
+      )
+      .map((organization) => organization.name),
+  );
 
   async function continueAuthorization() {
     setBusy(true);
@@ -89,7 +97,12 @@ export function OAuthOrganizationPicker({
                 <RadioGroupItem id={`organization-${organization.id}`} value={organization.id} />
                 <Building2 className="size-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{organization.name}</span>
+                  <span className="block truncate text-sm font-medium">
+                    {organization.name}
+                    {duplicateNames.has(organization.name)
+                      ? ` · ${organization.id.slice(0, 8)}`
+                      : ''}
+                  </span>
                   <span className="block text-xs capitalize text-muted-foreground">
                     {organization.role}
                   </span>

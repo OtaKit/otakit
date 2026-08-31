@@ -44,9 +44,14 @@ export default function AgentsPage() {
       </P>
       <P>
         Local MCP normally derives its fixed organization from the project&apos;s configured OtaKit
-        app and verifies your membership. If the project has no app ID and your account belongs to
-        multiple organizations, run <Code>otakit whoami</Code> and add{' '}
-        <Code>--organization-id &lt;id&gt;</Code> to the MCP command.
+        app and verifies your membership. During login, multi-organization users choose a named
+        default for app-less commands. Change it later with <Code>otakit organization select</Code>;
+        no organization ID is needed for interactive setup.
+      </P>
+      <P>
+        The CLI default is local to that console and user. It does not follow or change the active
+        dashboard workspace, and a configured app always selects its own organization. Automation
+        can override app-less context with <Code>OTAKIT_ORGANIZATION_ID</Code>.
       </P>
 
       <Separator className="my-10" />
@@ -57,7 +62,7 @@ export default function AgentsPage() {
       <P>Sign in to OtaKit, then connect the current Capacitor project:</P>
       <Pre>{`npx -y @otakit/cli@1.5.0 login
 
-codex mcp add otakit -- \\
+codex mcp add otakit-local -- \\
   npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
       <P>Restart or refresh Codex, then try a read-only request:</P>
       <Pre>{`Inspect this Capacitor project for OtaKit readiness. Check configuration and native compatibility, but do not upload or change anything.`}</Pre>
@@ -70,12 +75,12 @@ codex mcp add otakit -- \\
         account and release operations. For Codex, request only the scopes you want the connection
         to expose:
       </P>
-      <Pre>{`codex mcp add otakit --url https://console.otakit.app/mcp
+      <Pre>{`codex mcp add otakit-remote --url https://console.otakit.app/mcp
 
 codex mcp login \\
   --oauth-client-registration cimd \\
   --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
-  otakit`}</Pre>
+  otakit-remote`}</Pre>
       <P>
         The browser flow shows the client, organization, and requested permissions before access is
         granted. You can revoke the connection from{' '}
@@ -151,7 +156,7 @@ claude plugin install otakit@otakit`}</Pre>
       <Pre>{`npx -y @otakit/cli@1.5.0 login
 
 claude mcp add --transport stdio --scope project otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+  npx -y @otakit/cli@1.5.0 mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
       <P>
         If you prefer a project-scoped remote connection instead of the plugin default, configure
         its scopes explicitly so Claude exposes every OtaKit operation:
@@ -175,7 +180,7 @@ claude mcp get otakit-remote`}</Pre>
       </P>
       <Pre>{`{
   "servers": {
-    "otakit": {
+    "otakit-local": {
       "type": "stdio",
       "command": "npx",
       "args": [
@@ -188,10 +193,15 @@ claude mcp get otakit-remote`}</Pre>
     }
   }
 }`}</Pre>
-      <P>
-        For remote MCP, configure <Code>https://console.otakit.app/mcp</Code> as an HTTP server and
-        use VS Code&apos;s sign-in flow instead of hardcoding a bearer token.
-      </P>
+      <P>For remote MCP, add a separate HTTP server and use VS Code&apos;s sign-in flow:</P>
+      <Pre>{`{
+  "servers": {
+    "otakit-remote": {
+      "type": "http",
+      "url": "https://console.otakit.app/mcp"
+    }
+  }
+}`}</Pre>
 
       <Separator className="my-10" />
 
@@ -262,7 +272,9 @@ claude mcp get otakit-remote`}</Pre>
       <H2>Client references</H2>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
-          <A href="https://developers.openai.com/codex/mcp/">Codex MCP documentation</A>
+          <A href="https://learn.chatgpt.com/docs/extend/mcp?surface=cli">
+            Codex MCP documentation
+          </A>
         </li>
         <li>
           <A href="https://code.claude.com/docs/en/mcp">Claude Code MCP documentation</A>

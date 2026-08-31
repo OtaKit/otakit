@@ -16,6 +16,7 @@ import { loginCommand } from './commands/login.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { logoutCommand } from './commands/logout.js';
 import { mcpCommand } from './commands/mcp.js';
+import { organizationCommand } from './commands/organization.js';
 import { CLI_VERSION } from './lib/version.js';
 
 const program = new Command();
@@ -39,5 +40,6 @@ program.addCommand(loginCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(logoutCommand);
 program.addCommand(mcpCommand);
+program.addCommand(organizationCommand);
 
 program.parse();

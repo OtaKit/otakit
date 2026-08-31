@@ -10,6 +10,9 @@ function database(membershipIds: string[]) {
         const organizationId = where.organizationId_userId.organizationId;
         return Promise.resolve(membershipIds.includes(organizationId) ? { organizationId } : null);
       }),
+      findMany: vi
+        .fn()
+        .mockResolvedValue(membershipIds.slice(0, 2).map((organizationId) => ({ organizationId }))),
     },
   };
 }
@@ -21,13 +24,25 @@ function headers(organizationId?: string): Headers {
 }
 
 describe('OAuth organization selection', () => {
-  it('requires an explicit selection when the authorization request has none', async () => {
+  it('requires an explicit selection when multiple organizations are available', async () => {
     const mockDatabase = database(['org-1', 'org-2']);
 
     await expect(
       shouldSelectOAuthOrganization('user-1', ['otakit:read'], headers(), mockDatabase as never),
     ).resolves.toBe(true);
     expect(mockDatabase.organizationMember.findUnique).not.toHaveBeenCalled();
+    expect(mockDatabase.organizationMember.findMany).toHaveBeenCalledOnce();
+  });
+
+  it('selects the sole membership without showing a redundant picker', async () => {
+    const mockDatabase = database(['org-1']);
+
+    await expect(
+      shouldSelectOAuthOrganization('user-1', ['otakit:read'], headers(), mockDatabase as never),
+    ).resolves.toBe(false);
+    await expect(
+      selectedOAuthOrganizationId('user-1', headers(), mockDatabase as never),
+    ).resolves.toBe('org-1');
   });
 
   it('continues with the membership selected for this authorization request', async () => {

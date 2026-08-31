@@ -18,7 +18,15 @@ export async function selectedOAuthOrganizationId(
   const organizationId = normalizeOAuthOrganizationId(
     requestHeaders.get(OTAKIT_OAUTH_ORGANIZATION_HEADER),
   );
-  if (!organizationId) return undefined;
+  if (!organizationId) {
+    const memberships = await database.organizationMember.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+      select: { organizationId: true },
+    });
+    return memberships.length === 1 ? memberships[0].organizationId : undefined;
+  }
 
   const membership = await database.organizationMember.findUnique({
     where: {

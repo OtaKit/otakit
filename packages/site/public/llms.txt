@@ -197,6 +197,8 @@ export default config;
 
 For local development, sign in once and the CLI stores a token locally. For CI or non-interactive environments, use an organization secret key instead.
 
+If your account has multiple organizations, login asks you to choose a default by name for commands that are not tied to an app. Change it with `otakit organization select` . Configured apps still use their owning organization, and organization keys are already bound to one.
+
 ```txt
 # Local development
 otakit login
@@ -218,6 +220,7 @@ The CLI resolves values in a deterministic order.
 - App ID: `--app-id` -> `OTAKIT_APP_ID` -> `capacitor.config.*`
 - Server URL: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> hosted default
 - Auth token: `OTAKIT_TOKEN` -> stored login token
+- App-less organization: `OTAKIT_ORGANIZATION_ID` -> stored login default
 - Upload path: CLI path argument -> `OTAKIT_BUILD_DIR` -> `capacitor.config.* webDir`
 - Release channel: `--release` -> base channel, `--release <channel>` -> named channel
 - Runtime version: `plugins.OtaKit.runtimeVersion` -> bundle metadata during upload
@@ -355,11 +358,25 @@ Show current authenticated user and organization context.
 
 Options
 - `--server <url>`: Server URL override.
+- `--json`: Print machine-readable account and organization details.
 
 Example
 
 ```txt
 otakit whoami
+```
+
+### otakit organization select
+
+Choose the default organization for commands not tied to an app. Configured apps always use their owning organization.
+
+Options
+- `--server <url>`: Server URL override.
+
+Example
+
+```txt
+otakit organization select
 ```
 
 ### otakit logout
@@ -398,7 +415,7 @@ Start the local MCP server, bound to one project and organization for its lifeti
 
 Options
 - `--project-root <path>`: Project root available to local MCP tools.
-- `--organization-id <id>`: Explicit organization fallback for an app-less multi-organization account.
+- `--organization-id <id>`: Advanced organization override for app-less automation.
 
 Example
 
@@ -1543,7 +1560,9 @@ provide reusable instructions. The OtaKit Skill teaches the agent how to choose 
 
 Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. An unavailable remote server is a deployment setting, not an authentication failure.
 
-Local MCP normally derives its fixed organization from the project's configured OtaKit app and verifies your membership. If the project has no app ID and your account belongs to multiple organizations, run `otakit whoami` and add `--organization-id <id>` to the MCP command.
+Local MCP normally derives its fixed organization from the project's configured OtaKit app and verifies your membership. During login, multi-organization users choose a named default for app-less commands. Change it later with `otakit organization select`; no organization ID is needed for interactive setup.
+
+The CLI default is local to that console and user. It does not follow or change the active dashboard workspace, and a configured app always selects its own organization. Automation can override app-less context with `OTAKIT_ORGANIZATION_ID`.
 
 ### Codex
 
@@ -1558,7 +1577,7 @@ Sign in to OtaKit, then connect the current Capacitor project:
 ```txt
 npx -y @otakit/cli@1.5.0 login
 
-codex mcp add otakit -- \
+codex mcp add otakit-local -- \
   npx -y @otakit/cli@1.5.0 mcp --project-root .
 ```
 
@@ -1573,12 +1592,12 @@ Inspect this Capacitor project for OtaKit readiness. Check configuration and nat
 Remote MCP is useful when the client cannot run your local CLI, or when you only need account and release operations. For Codex, request only the scopes you want the connection to expose:
 
 ```txt
-codex mcp add otakit --url https://console.otakit.app/mcp
+codex mcp add otakit-remote --url https://console.otakit.app/mcp
 
 codex mcp login \
   --oauth-client-registration cimd \
   --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \
-  otakit
+  otakit-remote
 ```
 
 The browser flow shows the client, organization, and requested permissions before access is granted. You can revoke the connection from Dashboard → Settings → Connections; revocation invalidates its tokens immediately.
@@ -1612,7 +1631,7 @@ For repository inspection and uploads, add the project-aware local server as wel
 npx -y @otakit/cli@1.5.0 login
 
 claude mcp add --transport stdio --scope project otakit-local -- \
-  npx -y @otakit/cli@1.5.0 mcp --project-root .
+  npx -y @otakit/cli@1.5.0 mcp --project-root '${CLAUDE_PROJECT_DIR:-.}'
 ```
 
 If you prefer a project-scoped remote connection instead of the plugin default, configure its scopes explicitly so Claude exposes every OtaKit operation:
@@ -1633,7 +1652,7 @@ Create `.vscode/mcp.json`, then run MCP: List Servers to review, trust, and star
 ```txt
 {
   "servers": {
-    "otakit": {
+    "otakit-local": {
       "type": "stdio",
       "command": "npx",
       "args": [
@@ -1648,7 +1667,18 @@ Create `.vscode/mcp.json`, then run MCP: List Servers to review, trust, and star
 }
 ```
 
-For remote MCP, configure `https://console.otakit.app/mcp` as an HTTP server and use VS Code's sign-in flow instead of hardcoding a bearer token.
+For remote MCP, add a separate HTTP server and use VS Code's sign-in flow:
+
+```txt
+{
+  "servers": {
+    "otakit-remote": {
+      "type": "http",
+      "url": "https://console.otakit.app/mcp"
+    }
+  }
+}
+```
 
 ### Useful workflows
 Review before upload:

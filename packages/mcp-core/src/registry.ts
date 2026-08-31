@@ -67,6 +67,16 @@ function toolErrorResult(error: unknown): CallToolResult {
   };
 }
 
+export function serverInstructions(mode: OtaKitMcpMode): string {
+  const shared =
+    'Use OtaKit to inspect and manage Capacitor OTA updates. Start with read-only context and compatibility checks. Before publish, revert, or delete, resolve the exact organization, app, channel, runtime version, bundle, and current state; show the proposed change and obtain explicit user approval. Uploading a bundle does not publish it. Do not treat raw event counts as unique devices.';
+  const modeGuidance =
+    mode === 'local'
+      ? 'This local connection is fixed to one project and organization for its lifetime. Local file operations must stay inside the bound project root.'
+      : 'This remote connection is fixed to the authorized organization and cannot read local project files.';
+  return `${shared}\n\n${modeGuidance}`;
+}
+
 export function createOtaKitMcpServer(options: {
   mode: OtaKitMcpMode;
   version: string;
@@ -76,7 +86,10 @@ export function createOtaKitMcpServer(options: {
 }): McpServer {
   const server = new McpServer(
     { name: options.mode === 'local' ? 'otakit-local' : 'otakit-remote', version: options.version },
-    { capabilities: { tools: { listChanged: false } } },
+    {
+      capabilities: { tools: { listChanged: false } },
+      instructions: serverInstructions(options.mode),
+    },
   );
   const registerTool = server.registerTool.bind(server) as RegisterTool;
 

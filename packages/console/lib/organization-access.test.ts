@@ -55,10 +55,6 @@ describe('resolveOrganizationAccess', () => {
     const result = await resolveOrganizationAccess(
       request({ [ORGANIZATION_ID_HEADER]: 'org-selected' }),
       'app-1',
-      {
-        inferOrganizationFromAppId: true,
-        requireExplicitOrganizationForMultipleMemberships: true,
-      },
     );
 
     expect(result).toEqual({
@@ -124,32 +120,32 @@ describe('resolveOrganizationAccess', () => {
 
   it('requires an explicit organization for a user with multiple memberships', async () => {
     mocks.findMemberships.mockResolvedValue([
-      { organizationId: 'org-1', organization: { name: 'Acme' } },
-      { organizationId: 'org-2', organization: { name: 'Personal account' } },
+      { organizationId: 'org-1' },
+      { organizationId: 'org-2' },
     ]);
 
-    const result = await resolveOrganizationAccess(request(), undefined, {
-      requireExplicitOrganizationForMultipleMemberships: true,
-    });
+    const result = await resolveOrganizationAccess(
+      request({ authorization: 'Bearer user-session-token' }),
+    );
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       success: false,
       status: 409,
       code: 'ORGANIZATION_SELECTION_REQUIRED',
-      error: expect.stringContaining('"Personal account" (org-2)'),
+      error: 'Choose an organization for this command.',
+      nextStep:
+        'Run `otakit organization select` and retry, or set OTAKIT_ORGANIZATION_ID for automation.',
     });
     expect(mocks.findUser).not.toHaveBeenCalled();
     expect(mocks.findMembership).not.toHaveBeenCalled();
   });
 
   it('selects the sole membership without consulting mutable dashboard state', async () => {
-    mocks.findMemberships.mockResolvedValue([
-      { organizationId: 'org-only', organization: { name: 'Only organization' } },
-    ]);
+    mocks.findMemberships.mockResolvedValue([{ organizationId: 'org-only' }]);
 
-    const result = await resolveOrganizationAccess(request(), undefined, {
-      requireExplicitOrganizationForMultipleMemberships: true,
-    });
+    const result = await resolveOrganizationAccess(
+      request({ authorization: 'Bearer user-session-token' }),
+    );
 
     expect(result).toEqual({
       success: true,
@@ -172,14 +168,14 @@ describe('resolveOrganizationAccess', () => {
 
   it('infers the organization from the configured project app', async () => {
     mocks.findMemberships.mockResolvedValue([
-      { organizationId: 'org-1', organization: { name: 'First' } },
-      { organizationId: 'org-project', organization: { name: 'Project organization' } },
+      { organizationId: 'org-1' },
+      { organizationId: 'org-project' },
     ]);
 
-    const result = await resolveOrganizationAccess(request(), 'app-project', {
-      inferOrganizationFromAppId: true,
-      requireExplicitOrganizationForMultipleMemberships: true,
-    });
+    const result = await resolveOrganizationAccess(
+      request({ authorization: 'Bearer user-session-token' }),
+      'app-project',
+    );
 
     expect(result).toEqual({
       success: true,
@@ -206,10 +202,10 @@ describe('resolveOrganizationAccess', () => {
     mocks.findApp.mockResolvedValue(null);
 
     await expect(
-      resolveOrganizationAccess(request(), 'app-missing', {
-        inferOrganizationFromAppId: true,
-        requireExplicitOrganizationForMultipleMemberships: true,
-      }),
+      resolveOrganizationAccess(
+        request({ authorization: 'Bearer user-session-token' }),
+        'app-missing',
+      ),
     ).resolves.toEqual({ success: false, error: 'App not found', status: 404 });
 
     expect(mocks.findMemberships).not.toHaveBeenCalled();
@@ -224,9 +220,7 @@ describe('resolveOrganizationAccess', () => {
     });
 
     await expect(
-      resolveOrganizationAccess(request({ authorization: 'Bearer otakit_sk_test' }), undefined, {
-        requireExplicitOrganizationForMultipleMemberships: true,
-      }),
+      resolveOrganizationAccess(request({ authorization: 'Bearer otakit_sk_test' })),
     ).resolves.toMatchObject({ success: true, access: { organizationId: 'org-key' } });
     expect(mocks.findApp).not.toHaveBeenCalled();
     expect(mocks.findMemberships).not.toHaveBeenCalled();
@@ -244,10 +238,6 @@ describe('resolveOrganizationAccess', () => {
       resolveOrganizationAccess(
         request({ authorization: 'Bearer otakit_sk_test' }),
         'app-other-organization',
-        {
-          inferOrganizationFromAppId: true,
-          requireExplicitOrganizationForMultipleMemberships: true,
-        },
       ),
     ).resolves.toEqual({ success: false, error: 'App not found', status: 404 });
 
@@ -257,5 +247,17 @@ describe('resolveOrganizationAccess', () => {
     );
     expect(mocks.findApp).not.toHaveBeenCalled();
     expect(mocks.getSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps browser requests in the active dashboard workspace', async () => {
+    const result = await resolveOrganizationAccess(request(), 'app-1');
+
+    expect(result).toMatchObject({
+      success: true,
+      access: { organizationId: 'org-active', actorType: 'user' },
+    });
+    expect(mocks.findApp).not.toHaveBeenCalled();
+    expect(mocks.findUser).toHaveBeenCalledOnce();
+    expect(mocks.isAppOwnedByOrganization).toHaveBeenCalledWith('app-1', 'org-active');
   });
 });

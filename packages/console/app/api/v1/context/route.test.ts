@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   resolveOrganizationAccess: vi.fn(),
   getConnectionContext: vi.fn(),
+  organizationAccessErrorResponse: vi.fn(),
   serviceErrorResponse: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock('@/lib/services/context', () => ({
   getConnectionContext: mocks.getConnectionContext,
 }));
 vi.mock('@/lib/services/http', () => ({
+  organizationAccessErrorResponse: mocks.organizationAccessErrorResponse,
   serviceErrorResponse: mocks.serviceErrorResponse,
 }));
 
@@ -38,10 +40,7 @@ describe('local MCP context route', () => {
     const request = new NextRequest('https://console.otakit.app/api/v1/context?appId=app-project');
 
     await expect(GET(request)).resolves.toMatchObject({ status: 200 });
-    expect(mocks.resolveOrganizationAccess).toHaveBeenCalledWith(request, 'app-project', {
-      inferOrganizationFromAppId: true,
-      requireExplicitOrganizationForMultipleMemberships: true,
-    });
+    expect(mocks.resolveOrganizationAccess).toHaveBeenCalledWith(request, 'app-project');
   });
 
   it('preserves app-less startup for unconfigured projects', async () => {
@@ -49,10 +48,7 @@ describe('local MCP context route', () => {
 
     await GET(request);
 
-    expect(mocks.resolveOrganizationAccess).toHaveBeenCalledWith(request, undefined, {
-      inferOrganizationFromAppId: true,
-      requireExplicitOrganizationForMultipleMemberships: true,
-    });
+    expect(mocks.resolveOrganizationAccess).toHaveBeenCalledWith(request, undefined);
   });
 
   it('rejects ambiguous app identifiers', async () => {

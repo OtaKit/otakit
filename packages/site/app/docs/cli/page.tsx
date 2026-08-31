@@ -49,6 +49,12 @@ export default config;`}</Pre>
         For local development, sign in once and the CLI stores a token locally. For CI or
         non-interactive environments, use an organization secret key instead.
       </P>
+      <P>
+        If your account has multiple organizations, login asks you to choose a default by name for
+        commands that are not tied to an app. Change it with <Code>otakit organization select</Code>
+        . Configured apps still use their owning organization, and organization keys are already
+        bound to one.
+      </P>
       <Pre>{`# Local development
 otakit login
 
@@ -90,6 +96,9 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         </li>
         <li>
           Auth token: <Code>OTAKIT_TOKEN</Code> {'->'} stored login token
+        </li>
+        <li>
+          App-less organization: <Code>OTAKIT_ORGANIZATION_ID</Code> {'->'} stored login default
         </li>
         <li>
           Upload path: CLI path argument {'->'} <Code>OTAKIT_BUILD_DIR</Code> {'->'}{' '}
@@ -260,8 +269,20 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit whoami"
           description="Show current authenticated user and organization context."
-          options={[{ flag: '--server <url>', desc: 'Server URL override.' }]}
+          options={[
+            { flag: '--server <url>', desc: 'Server URL override.' },
+            { flag: '--json', desc: 'Print machine-readable account and organization details.' },
+          ]}
           example="otakit whoami"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit organization select"
+          description="Choose the default organization for commands not tied to an app. Configured apps always use their owning organization."
+          options={[{ flag: '--server <url>', desc: 'Server URL override.' }]}
+          example="otakit organization select"
         />
 
         <Separator />
@@ -297,7 +318,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             { flag: '--project-root <path>', desc: 'Project root available to local MCP tools.' },
             {
               flag: '--organization-id <id>',
-              desc: 'Explicit organization fallback for an app-less multi-organization account.',
+              desc: 'Advanced organization override for app-less automation.',
             },
           ]}
           example="npx -y @otakit/cli@1.5.0 mcp --project-root ."

@@ -75,6 +75,13 @@ Auth precedence:
 1. `OTAKIT_TOKEN`
 2. stored token from `otakit login`
 
+Organization rules:
+
+1. organization API keys stay bound to their organization
+2. app-scoped commands use the organization that owns the app
+3. app-less commands use the default chosen during login; automation can set `OTAKIT_ORGANIZATION_ID`
+4. `otakit organization select` changes the local default without changing the dashboard workspace
+
 Version precedence:
 
 1. `--version`
@@ -100,6 +107,7 @@ Releases are append-only. The newest release for
 - `otakit login`
 - `otakit logout`
 - `otakit whoami`
+- `otakit organization select`
 - `otakit register --slug <slug>`
 - `otakit upload [path] [--release [channel]]`
 - `otakit upload --release --auto-revert [--auto-revert-rate <1-95>] [--auto-revert-min-sample <10-100000>]` — server reverts the release if too many devices roll back within 24h (defaults: 20% of ≥50)
@@ -110,7 +118,7 @@ Releases are append-only. The newest release for
 - `otakit config validate`
 - `otakit config resolve --json`
 - `otakit generate-signing-key`
-- `otakit mcp [--project-root <path>] [--organization-id <id>]`
+- `otakit mcp [--project-root <path>]`
 
 ## MCP server
 
@@ -123,13 +131,14 @@ npx -y @otakit/cli@1.5.0 mcp
 The project root and organization are fixed when the server starts. For a configured
 project, the CLI uses `plugins.OtaKit.appId` to select its owning organization and
 the server verifies current membership. An organization key is already fixed to its
-owning organization, and a user with one membership is selected automatically.
+owning organization. For app-less projects, `otakit login` stores a named default;
+change it with `otakit organization select` and restart the MCP connection. Users do
+not need an organization ID for interactive setup.
 
-Only an app-less project used by a user with multiple memberships needs an explicit
-choice. Run `otakit whoami`, then add `--organization-id <id>` to the MCP command.
 Do not put an OtaKit token in tool arguments. The server reuses `OTAKIT_TOKEN` or the
 stored `otakit login` session and honors `OTAKIT_SERVER_URL` for self-hosted
-installations.
+installations. App-less automation may set `OTAKIT_ORGANIZATION_ID`; the
+`--organization-id` flag remains an advanced per-process override.
 
 The hosted remote server is `https://console.otakit.app/mcp`. It is a separate,
 deployment-enabled surface for account operations and cannot read or upload files

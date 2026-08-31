@@ -67,14 +67,14 @@ export default function McpLaunchPage() {
 
 npx -y @otakit/cli@1.5.0 login
 
-codex mcp add otakit -- \\
+codex mcp add otakit-local -- \\
   npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
       <p>Claude Code also has a native plugin and marketplace:</p>
       <Pre>{`claude plugin marketplace add OtaKit/otakit
 claude plugin install otakit@otakit
 
 claude mcp add --transport stdio --scope project otakit-local -- \\
-  npx -y @otakit/cli@1.5.0 mcp --project-root .`}</Pre>
+  npx -y @otakit/cli@1.5.0 mcp --project-root '\${CLAUDE_PROJECT_DIR:-.}'`}</Pre>
       <p>
         Restart or refresh the client so it discovers both additions. Your first request can stay
         entirely read-only:
@@ -91,12 +91,12 @@ claude mcp add --transport stdio --scope project otakit-local -- \\
         Remote MCP is for account and release work from a client that cannot run the local CLI. An
         OAuth connection is bound to the signed-in user, organization, and approved scopes:
       </p>
-      <Pre>{`codex mcp add otakit --url https://console.otakit.app/mcp
+      <Pre>{`codex mcp add otakit-remote --url https://console.otakit.app/mcp
 
 codex mcp login \\
   --oauth-client-registration cimd \\
   --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
-  otakit`}</Pre>
+  otakit-remote`}</Pre>
       <p>
         The remote endpoint is enabled per deployment after its OAuth and release checks pass. If a
         client reports that remote MCP is not enabled, keep using local MCP or ask the deployment
