@@ -230,17 +230,14 @@ export function LoginPageClient({
     }
   }
 
-  const requestCode = useCallback(
-    async (address: string) => {
-      const { error: sendError } = await authClient.emailOtp.sendVerificationOtp({
-        email: address,
-        type: 'sign-in',
-      });
-      if (sendError) throw new Error(sendError.message ?? 'Failed to send code');
-      setResendIn(RESEND_COOLDOWN_SECONDS);
-    },
-    [],
-  );
+  const requestCode = useCallback(async (address: string) => {
+    const { error: sendError } = await authClient.emailOtp.sendVerificationOtp({
+      email: address,
+      type: 'sign-in',
+    });
+    if (sendError) throw new Error(sendError.message ?? 'Failed to send code');
+    setResendIn(RESEND_COOLDOWN_SECONDS);
+  }, []);
 
   async function sendOtp(event: FormEvent) {
     event.preventDefault();

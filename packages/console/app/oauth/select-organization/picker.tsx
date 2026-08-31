@@ -61,7 +61,10 @@ export function OAuthOrganizationPicker({
         throw new Error(continueError.message ?? 'Authorization could not continue');
       if (!data?.url) throw new Error('Authorization did not return a redirect');
       const consentUrl = new URL(data.url, window.location.origin);
-      if (consentUrl.origin === window.location.origin && consentUrl.pathname === '/oauth/consent') {
+      if (
+        consentUrl.origin === window.location.origin &&
+        consentUrl.pathname === '/oauth/consent'
+      ) {
         consentUrl.searchParams.set(OTAKIT_OAUTH_ORGANIZATION_QUERY, selected);
       }
       window.location.assign(consentUrl);
