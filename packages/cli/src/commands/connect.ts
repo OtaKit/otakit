@@ -83,7 +83,11 @@ function readExisting(path: string): Record<string, unknown> {
       ? (parsed as Record<string, unknown>)
       : {};
   } catch {
-    throw new CliError(`${path} exists but is not valid JSON. Fix or move it, then run again.`);
+    // VS Code allows comments in mcp.json. Rewriting the file would drop them
+    // anyway, so stop rather than silently discarding someone's notes.
+    throw new CliError(
+      `${path} could not be parsed as JSON (comments are not supported here). Add the server by hand, or move the file and run again.`,
+    );
   }
 }
 

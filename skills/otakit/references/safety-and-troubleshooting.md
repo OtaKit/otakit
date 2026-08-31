@@ -41,6 +41,12 @@ recommending or changing its thresholds.
   approves `proceed` after seeing the evidence.
 - invalid project path: use a path inside the project root selected when local MCP
   started. Do not work around symlink or root-containment checks.
+- `APP_REQUIRED`: no app was given and the connection has no default. On a
+  remote connection call `list_apps`; locally, configure `plugins.OtaKit.appId`
+  and restart the server.
+- `RELEASE_RELIABILITY_NOT_ENABLED`: the server has not enabled agent release
+  writes. The connection announces this when it opens — say so before uploading
+  anything, rather than discovering it after a bundle is already stored.
 
 ## Secrets and destructive operations
 

@@ -5,7 +5,24 @@ import { fetchCli, parseApiError } from './http.js';
 import { ask } from './prompt.js';
 
 const OTP_REGEX = /^\d{6}$/;
+
+/**
+ * Better Auth 1.7 rejects a request that looks browser-originated but carries
+ * no Origin, and Node's fetch always sends Sec-Fetch-* headers — so without
+ * this the CLI gets MISSING_OR_NULL_ORIGIN on every sign-in. The CLI is a
+ * first-party client of the console it was pointed at, so it declares that
+ * origin rather than pretending to be something else.
+ */
+function authHeaders(serverUrl: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    Origin: new URL(serverUrl).origin,
+  };
+}
 const MAX_CODE_ATTEMPTS = 3;
+// Malformed entries and resends do not burn an attempt, so bound the loop
+// itself rather than trusting the user to stop.
+const MAX_PROMPTS = 12;
 
 type SignInResponse = {
   token?: string;
@@ -21,7 +38,7 @@ async function sendCode(serverUrl: string, email: string): Promise<void> {
   const spinner = ora('Sending verification code...').start();
   const response = await fetchCli(`${serverUrl}/api/auth/email-otp/send-verification-otp`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(serverUrl),
     body: JSON.stringify({ email, type: 'sign-in' }),
   });
   if (!response.ok) {
@@ -48,7 +65,9 @@ export async function signInWithEmailOtp(
   await sendCode(serverUrl, email);
 
   let attemptsLeft = MAX_CODE_ATTEMPTS;
-  while (attemptsLeft > 0) {
+  let prompts = 0;
+  while (attemptsLeft > 0 && prompts < MAX_PROMPTS) {
+    prompts += 1;
     const answer = (await ask('Verification code (or "r" to resend): ')).trim();
 
     if (answer.toLowerCase() === 'r') {
@@ -63,7 +82,7 @@ export async function signInWithEmailOtp(
     const spinner = ora('Verifying code...').start();
     const response = await fetchCli(`${serverUrl}/api/auth/sign-in/email-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(serverUrl),
       body: JSON.stringify({ email, otp: answer }),
     });
 
