@@ -409,6 +409,23 @@ Example
 otakit config resolve --json
 ```
 
+### otakit connect
+
+Connect this project to your coding agent. Signs in if needed, then writes the client's MCP configuration after showing exactly what it resolved and what it will write.
+
+Options
+- `--client <client>`: claude, codex, or vscode. Defaults to detected.
+- `--project-root <path>`: Project to connect. Defaults to the current directory.
+- `--server <url>`: OtaKit console URL override.
+- `--dry-run`: Show the plan and exit without writing.
+- `--yes`: Skip the confirmation prompt.
+
+Example
+
+```txt
+npx -y @otakit/cli@latest connect
+```
+
 ### otakit mcp
 
 Start the local MCP server, bound to one project and organization for its lifetime.
@@ -1563,6 +1580,16 @@ Local MCP and the OtaKit Skill work even when hosted remote MCP is not enabled. 
 Local MCP normally derives its fixed organization from the project's configured OtaKit app and verifies your membership. During login, multi-organization users choose a named default for app-less commands. Change it later with `otakit organization select`; no organization ID is needed for interactive setup.
 
 The CLI default is local to that console and user. It does not follow or change the active dashboard workspace, and a configured app always selects its own organization. Automation can override app-less context with `OTAKIT_ORGANIZATION_ID`.
+
+### One command
+
+`otakit connect` detects your client, signs you in if needed, and writes the MCP configuration for the current project. It prints the console, organization, project, and app it resolved, plus the exact file and contents it will write, before writing anything:
+
+```txt
+npx -y @otakit/cli@latest connect
+```
+
+Use `--dry-run` to see the plan and exit, `--client` to override detection, and `--yes` to skip the prompt in scripts. The rest of this page is the manual equivalent, per client.
 
 ### Codex
 

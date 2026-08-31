@@ -56,6 +56,21 @@ export default function AgentsPage() {
 
       <Separator className="my-10" />
 
+      <H2>One command</H2>
+      <P>
+        <Code>otakit connect</Code> detects your client, signs you in if needed, and writes the MCP
+        configuration for the current project. It prints the console, organization, project, and app
+        it resolved, plus the exact file and contents it will write, before writing anything:
+      </P>
+      <Pre>{`npx -y @otakit/cli@latest connect`}</Pre>
+      <P>
+        Use <Code>--dry-run</Code> to see the plan and exit, <Code>--client</Code> to override
+        detection, and <Code>--yes</Code> to skip the prompt in scripts. The rest of this page is
+        the manual equivalent, per client.
+      </P>
+
+      <Separator className="my-10" />
+
       <H2>Codex</H2>
       <P>Install the open OtaKit Skill:</P>
       <Pre>{`npx skills add https://github.com/OtaKit/otakit --skill otakit`}</Pre>

@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { compatibilityCommand } from './commands/compatibility.js';
+import { connectCommand } from './commands/connect.js';
 import { configCommand } from './commands/config.js';
 import { registerCommand } from './commands/register.js';
 import { uploadCommand } from './commands/upload.js';
@@ -26,6 +27,7 @@ program
   .description('CLI for managing OTA updates')
   .version(CLI_VERSION, '--cli-version', 'Show CLI version');
 
+program.addCommand(connectCommand);
 program.addCommand(configCommand);
 program.addCommand(registerCommand);
 program.addCommand(uploadCommand);

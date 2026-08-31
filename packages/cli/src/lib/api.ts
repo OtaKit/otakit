@@ -137,9 +137,15 @@ export class ApiClient {
           typeof parsed.nextStep === 'string' ? parsed.nextStep : undefined,
         );
       } else {
-        const text = await response.text();
-        if (text.trim().length > 0) {
-          errorMessage = text;
+        // A proxy, a captive portal, or a wrong origin answers with HTML. Dumping
+        // a whole page at the user helps nobody, so keep the status and say where
+        // it came from instead.
+        const text = (await response.text()).trim();
+        const looksLikeMarkup = text.startsWith('<');
+        if (text.length > 0 && !looksLikeMarkup) {
+          errorMessage = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+        } else if (looksLikeMarkup) {
+          errorMessage = `${url} returned HTML with status ${response.status}, not the OtaKit API. Check the server URL.`;
         }
       }
 

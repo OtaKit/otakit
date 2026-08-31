@@ -424,9 +424,12 @@ export function ProductDashboard({
     }
   }, [initialData.activeOrganization.id]);
 
-  // App — persist selection in localStorage
+  // App — ?app= wins so a link to one app is shareable, then the last local
+  // selection, then the first app.
   const [selectedAppId, setSelectedAppId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return initialData.apps[0]?.id ?? null;
+    const requested = new URLSearchParams(window.location.search).get('app');
+    if (requested && initialData.apps.some((a) => a.id === requested)) return requested;
     const saved = localStorage.getItem(selectionStorageKey);
     if (saved && initialData.apps.some((a) => a.id === saved)) return saved;
     return initialData.apps[0]?.id ?? null;
@@ -434,6 +437,14 @@ export function ProductDashboard({
   useEffect(() => {
     if (selectedAppId) localStorage.setItem(selectionStorageKey, selectedAppId);
     else localStorage.removeItem(selectionStorageKey);
+
+    // Keep the address bar in step without adding history entries.
+    const url = new URL(window.location.href);
+    if (selectedAppId) url.searchParams.set('app', selectedAppId);
+    else url.searchParams.delete('app');
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(null, '', url);
+    }
   }, [selectedAppId, selectionStorageKey]);
 
   useEffect(() => {

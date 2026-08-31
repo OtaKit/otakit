@@ -312,6 +312,24 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Separator />
 
         <Command
+          name="otakit connect"
+          description="Connect this project to your coding agent. Signs in if needed, then writes the client's MCP configuration after showing exactly what it resolved and what it will write."
+          options={[
+            { flag: '--client <client>', desc: 'claude, codex, or vscode. Defaults to detected.' },
+            {
+              flag: '--project-root <path>',
+              desc: 'Project to connect. Defaults to the current directory.',
+            },
+            { flag: '--server <url>', desc: 'OtaKit console URL override.' },
+            { flag: '--dry-run', desc: 'Show the plan and exit without writing.' },
+            { flag: '--yes', desc: 'Skip the confirmation prompt.' },
+          ]}
+          example="npx -y @otakit/cli@latest connect"
+        />
+
+        <Separator />
+
+        <Command
           name="otakit mcp"
           description="Start the local MCP server, bound to one project and organization for its lifetime."
           options={[

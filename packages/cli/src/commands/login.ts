@@ -1,10 +1,7 @@
 import { Command } from 'commander';
 
-import ora from 'ora';
-
 import { resolveServerUrl } from '../lib/config.js';
-import { CliError, runCommand } from '../lib/errors.js';
-import { fetchCli, parseApiError } from '../lib/http.js';
+import { runCommand } from '../lib/errors.js';
 import {
   fetchAccount,
   initialOrganizationId,
@@ -14,7 +11,7 @@ import {
   shellLiteral,
   type AccountResponse,
 } from '../lib/organization.js';
-import { ask } from '../lib/prompt.js';
+import { signInWithEmailOtp } from '../lib/login-flow.js';
 import { readStoredAuthProfile, storeAuthProfile } from '../lib/token-store.js';
 
 type LoginOptions = {
@@ -22,15 +19,6 @@ type LoginOptions = {
   server?: string;
   tokenOnly?: boolean;
 };
-
-type SignInResponse = {
-  token?: string;
-  user?: {
-    email?: string;
-  };
-};
-
-const OTP_REGEX = /^\d{6}$/;
 
 export const loginCommand = new Command('login')
   .description('Sign in with email OTP and store access token')
@@ -40,60 +28,7 @@ export const loginCommand = new Command('login')
   .action(async (options: LoginOptions) => {
     await runCommand(async () => {
       const serverUrl = resolveServerUrl(process.cwd(), options.server);
-      const emailInput =
-        options.email?.trim().toLowerCase() || (await ask('Email: ')).trim().toLowerCase();
-
-      if (!emailInput) {
-        throw new CliError('Email is required.');
-      }
-
-      const sendSpinner = ora('Sending verification code...').start();
-
-      const sendOtpResponse = await fetchCli(
-        `${serverUrl}/api/auth/email-otp/send-verification-otp`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email: emailInput, type: 'sign-in' }),
-        },
-      );
-
-      if (!sendOtpResponse.ok) {
-        sendSpinner.fail('Could not send verification code');
-        throw new CliError(await parseApiError(sendOtpResponse));
-      }
-
-      sendSpinner.succeed('Verification code sent');
-
-      const otp = (await ask('Verification code: ')).trim();
-      if (!OTP_REGEX.test(otp)) {
-        throw new CliError('Invalid verification code. Enter the 6-digit code.');
-      }
-
-      const verifySpinner = ora('Verifying code...').start();
-      const signInResponse = await fetchCli(`${serverUrl}/api/auth/sign-in/email-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: emailInput, otp }),
-      });
-
-      if (!signInResponse.ok) {
-        verifySpinner.fail('Sign-in failed');
-        throw new CliError(await parseApiError(signInResponse));
-      }
-
-      const payload = (await signInResponse.json()) as SignInResponse;
-      const token = typeof payload.token === 'string' ? payload.token.trim() : '';
-      if (!token) {
-        verifySpinner.fail('Sign-in failed');
-        throw new CliError('Server returned an invalid auth response.');
-      }
-
-      verifySpinner.succeed('Signed in');
+      const { token, email: signedInEmail } = await signInWithEmailOtp(serverUrl, options.email);
 
       const previousProfile = await readStoredAuthProfile(serverUrl);
       let account: AccountResponse;
@@ -146,7 +81,7 @@ export const loginCommand = new Command('login')
       }
 
       if (storeResult.ok) {
-        const signedInAs = ` as ${account.user.email || payload.user?.email || emailInput}`;
+        const signedInAs = ` as ${account.user.email || signedInEmail}`;
         console.log(`Logged in${signedInAs}.`);
         if (selectedOrganization) {
           console.log(
