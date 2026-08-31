@@ -6,6 +6,7 @@ import { LoaderCircle } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
 import { OTAKIT_OAUTH_ORGANIZATION_HEADER } from '@/lib/mcp/oauth-organization-shared';
+import { scopeLabel } from '@/lib/mcp/scope-labels';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -16,23 +17,17 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-const SCOPE_LABELS: Record<string, string> = {
-  'otakit:read': 'Read apps, bundles, releases, rollout events, and account status',
-  'otakit:app:write': 'Create apps',
-  'otakit:bundle:write': 'Delete unused bundles',
-  'otakit:release:write': 'Publish and revert releases',
-  offline_access: 'Stay connected until you revoke access',
-};
-
 export function OAuthConsent({
   client,
   organizationId,
   organizationName,
+  organizationDetail,
   scopes,
 }: {
   client: { name: string; uri: string | null };
   organizationId: string;
   organizationName: string | null;
+  organizationDetail?: string;
   scopes: string[];
 }) {
   const [busy, setBusy] = useState<'allow' | 'deny' | null>(null);
@@ -71,6 +66,9 @@ export function OAuthConsent({
                 ? `Access is limited to ${organizationName}.`
                 : 'Access is limited to the organization you selected.'}
             </span>
+            {organizationDetail ? (
+              <span className="mt-0.5 block text-xs">{organizationDetail}</span>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -78,7 +76,7 @@ export function OAuthConsent({
             <p className="mb-3 text-sm font-medium">Requested access</p>
             <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
               {scopes.map((scope) => (
-                <li key={scope}>{SCOPE_LABELS[scope] ?? scope}</li>
+                <li key={scope}>{scopeLabel(scope).description}</li>
               ))}
             </ul>
           </div>

@@ -1,10 +1,11 @@
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
-import { OAuthOrganizationPicker } from './picker';
+import { OAuthOrganizationPicker, type OrganizationChoice } from './picker';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { isRemoteMcpOAuthEnabled } from '@/lib/mcp/features';
+import { describeOrganization, disambiguate } from '@/lib/organization-identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,23 +22,38 @@ export default async function OAuthSelectOrganizationPage() {
         orderBy: { createdAt: 'asc' },
         select: {
           role: true,
-          organization: { select: { id: true, name: true } },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              planKey: true,
+              _count: { select: { members: true, apps: true } },
+              apps: { orderBy: { createdAt: 'asc' }, take: 1, select: { slug: true } },
+            },
+          },
         },
       },
     },
   });
-  if (!user || user.memberships.length === 0) {
-    throw new Error('No OtaKit organization is available for this account');
-  }
+
+  const organizations: OrganizationChoice[] = disambiguate(
+    (user?.memberships ?? []).map((membership) => ({
+      id: membership.organization.id,
+      name: membership.organization.name,
+      detail: describeOrganization({
+        role: membership.role,
+        planKey: membership.organization.planKey,
+        memberCount: membership.organization._count.members,
+        appCount: membership.organization._count.apps,
+        sampleAppSlug: membership.organization.apps[0]?.slug ?? null,
+      }),
+    })),
+  );
 
   return (
     <OAuthOrganizationPicker
-      initialOrganizationId={user.activeOrganizationId}
-      organizations={user.memberships.map((membership) => ({
-        id: membership.organization.id,
-        name: membership.organization.name,
-        role: membership.role,
-      }))}
+      initialOrganizationId={user?.activeOrganizationId ?? null}
+      organizations={organizations}
     />
   );
 }

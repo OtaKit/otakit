@@ -5,6 +5,7 @@ import { OAuthConsent } from './consent';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { isRemoteMcpOAuthEnabled } from '@/lib/mcp/features';
+import { describeOrganization } from '@/lib/organization-identity';
 import {
   normalizeOAuthOrganizationId,
   OTAKIT_OAUTH_ORGANIZATION_QUERY,
@@ -55,7 +56,16 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
           organizationId_userId: { organizationId, userId: session.user.id },
         },
         select: {
-          organization: { select: { id: true, name: true } },
+          role: true,
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              planKey: true,
+              _count: { select: { members: true, apps: true } },
+              apps: { orderBy: { createdAt: 'asc' }, take: 1, select: { slug: true } },
+            },
+          },
         },
       })
     : null;
@@ -63,16 +73,6 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
     redirect(oauthPagePath('/oauth/select-organization', query));
   }
   const selectedOrganization = selectedMembership.organization;
-  const duplicateNameCount = await db.organizationMember.count({
-    where: {
-      userId: session.user.id,
-      organization: { name: selectedOrganization.name },
-    },
-  });
-  const organizationDisplayName =
-    duplicateNameCount > 1
-      ? `${selectedOrganization.name} · ${selectedOrganization.id.slice(0, 8)}`
-      : selectedOrganization.name;
 
   return (
     <OAuthConsent
@@ -81,7 +81,16 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
         uri: client.client_uri ?? null,
       }}
       organizationId={selectedOrganization.id}
-      organizationName={organizationDisplayName}
+      organizationName={selectedOrganization.name}
+      // Same facts the picker showed a moment ago, so the workspace someone
+      // just chose is recognisably the one they are now granting access to.
+      organizationDetail={describeOrganization({
+        role: selectedMembership.role,
+        planKey: selectedOrganization.planKey,
+        memberCount: selectedOrganization._count.members,
+        appCount: selectedOrganization._count.apps,
+        sampleAppSlug: selectedOrganization.apps[0]?.slug ?? null,
+      })}
       scopes={scopes}
     />
   );
