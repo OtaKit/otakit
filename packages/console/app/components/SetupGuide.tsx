@@ -316,7 +316,9 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [storedClient, chooseClient] = useStoredPreference(CLIENT_STORAGE_KEY);
   const client: ClientId = isClientId(storedClient) ? storedClient : 'claude';
-  const [expanded, setExpanded] = useState<StepCopy['id'] | null>(null);
+  // 'none' is an explicit collapse: without it, closing the auto-expanded step
+  // falls back to the current step and immediately reopens it.
+  const [expanded, setExpanded] = useState<StepCopy['id'] | 'none' | null>(null);
   const [showCli, setShowCli] = useState(false);
 
   // The first unfinished step is the one to act on, unless the reader opened
@@ -326,13 +328,16 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
     () => STEPS.find((step) => snapshot.steps[step.id].status !== 'done')?.id ?? null,
     [snapshot],
   );
-  const openStep = expanded ?? currentStep;
+  const openStep = expanded === 'none' ? null : (expanded ?? currentStep);
 
   const waitingOnDevice =
     snapshot.steps.device.status === 'active' || snapshot.steps.device.status === 'blocked';
 
+  const appId = snapshot.app?.id ?? null;
+  const complete = snapshot.complete;
+
   useEffect(() => {
-    if (snapshot.complete) return;
+    if (complete) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
@@ -341,8 +346,8 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
       if (stopped) return;
       if (document.visibilityState === 'visible') {
         try {
-          const url = snapshot.app
-            ? `/api/v1/organization/onboarding?appId=${encodeURIComponent(snapshot.app.id)}`
+          const url = appId
+            ? `/api/v1/organization/onboarding?appId=${encodeURIComponent(appId)}`
             : '/api/v1/organization/onboarding';
           const response = await fetch(url, { signal: controller.signal });
           if (response.ok && !stopped) {
@@ -363,7 +368,7 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [snapshot.complete, snapshot.app, waitingOnDevice]);
+  }, [complete, appId, waitingOnDevice]);
 
   const clientLabel = CLIENT_TABS.find((tab) => tab.id === client)?.label ?? 'your agent';
 
@@ -404,7 +409,7 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
             {STEPS.map((step) => {
               const state = snapshot.steps[step.id];
               const evidence = evidenceFor(snapshot, step.id);
-              const isOpen = openStep === step.id && state.status !== 'done';
+              const isOpen = openStep === step.id;
               const busy =
                 step.id === 'device' && state.status === 'active' && snapshot.analyticsAvailable;
 
@@ -412,7 +417,7 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
                 <div key={step.id} className="bg-background">
                   <button
                     type="button"
-                    onClick={() => setExpanded(expanded === step.id ? null : step.id)}
+                    onClick={() => setExpanded(openStep === step.id ? 'none' : step.id)}
                     className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent/40"
                   >
                     <StatusIcon status={state.status} busy={busy} />
