@@ -32,9 +32,10 @@ export async function getAccountStatus(access: OrganizationAccess) {
     throw new OtaKitServiceError('ORGANIZATION_NOT_FOUND', 'Organization not found', 404);
   }
 
+  // An empty configured value must fall through, so test truthiness, not null.
   const baseUrl = (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.BETTER_AUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.BETTER_AUTH_URL?.trim() ||
     'http://localhost:3000'
   ).replace(/\/+$/, '');
 

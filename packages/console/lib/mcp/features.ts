@@ -27,14 +27,26 @@ export function remoteMcpResourceUrl(): string {
   const explicit = process.env.OTAKIT_REMOTE_MCP_RESOURCE_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, '');
 
+  // A host that stores a variable with no value hands us an empty string, which
+  // `??` would keep. Fall back on any blank value, not only an unset one.
   const baseUrl = (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.BETTER_AUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.BETTER_AUTH_URL?.trim() ||
     'http://localhost:3000'
   ).replace(/\/+$/, '');
   return `${baseUrl}/mcp`;
 }
 
 export function remoteMcpServerOrigin(): string {
-  return new URL(remoteMcpResourceUrl()).origin;
+  const resource = remoteMcpResourceUrl();
+  try {
+    return new URL(resource).origin;
+  } catch {
+    // Every request into /mcp reads this origin, so a relative or malformed
+    // value fails the whole endpoint. Say which variable to fix.
+    throw new Error(
+      `Remote MCP resource URL is not absolute: ${JSON.stringify(resource)}. ` +
+        'Set NEXT_PUBLIC_APP_URL or OTAKIT_REMOTE_MCP_RESOURCE_URL to the console origin.',
+    );
+  }
 }

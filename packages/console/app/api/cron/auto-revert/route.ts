@@ -40,6 +40,23 @@ function isAuthorized(request: NextRequest): boolean {
   return safeEquals(token, cronSecret);
 }
 
+/**
+ * The sweep below is the safety net for a bad rollout, so neither reliability
+ * repair may prevent it from running. A repair that throws — a poisoned
+ * mutation row, a transient database error — is reported and stepped over
+ * rather than turning the whole cron into a 500 that silently skips the sweep.
+ */
+async function repair<T>(name: string, run: () => Promise<T>, fallback: T, failures: string[]) {
+  try {
+    return await run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(JSON.stringify({ autoRevertCronRepairFailed: name, error: message }));
+    failures.push(name);
+    return fallback;
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized cron call' }, { status: 401 });
@@ -47,15 +64,33 @@ export async function POST(request: NextRequest) {
 
   // Repair database-committed publish/revert operations before evaluating new
   // auto-reverts. Reusing this existing cron avoids another scheduler surface.
+  const failures: string[] = [];
   const manifestRepairs = isReleaseReliabilityEnabled()
-    ? await reconcilePendingReleaseMutations({
-        limit: 50,
-        olderThan: new Date(Date.now() - 30_000),
-      })
+    ? await repair(
+        'manifestRepairs',
+        () =>
+          reconcilePendingReleaseMutations({
+            limit: 50,
+            olderThan: new Date(Date.now() - 30_000),
+          }),
+        { checked: 0, repaired: 0, pending: 0 },
+        failures,
+      )
     : { checked: 0, repaired: 0, pending: 0 };
   const recoveredAlerts = isReleaseReliabilityEnabled()
-    ? await deliverPendingAutoRevertAlerts()
+    ? await repair(
+        'recoveredAlerts',
+        () => deliverPendingAutoRevertAlerts(),
+        { checked: 0, sent: 0, pending: 0 },
+        failures,
+      )
     : { checked: 0, sent: 0, pending: 0 };
   const stats = await runAutoRevertSweep();
-  return NextResponse.json({ success: true, stats, manifestRepairs, recoveredAlerts });
+  return NextResponse.json({
+    success: true,
+    stats,
+    manifestRepairs,
+    recoveredAlerts,
+    ...(failures.length ? { failures } : {}),
+  });
 }

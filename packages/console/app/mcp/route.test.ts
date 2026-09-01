@@ -152,6 +152,38 @@ describe('remote MCP HTTP boundary', () => {
     expect(response.headers.get('www-authenticate')).toContain('resource_metadata=');
   });
 
+  it('charges the rate limiter for every call a batch carries', async () => {
+    // One HTTP request can carry many tool calls, so a per-request token would
+    // let a single batch ask for unbounded work.
+    await POST(
+      request([
+        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'publish_release' } },
+        { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'publish_release' } },
+        { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'list_apps' } },
+      ]),
+    );
+
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(
+      'remote-mcp-write',
+      expect.any(String),
+      20,
+      60,
+      3,
+    );
+  });
+
+  it('still spends a single token on a request that calls no tool', async () => {
+    await POST(request({ jsonrpc: '2.0', id: 1, method: 'initialize' }));
+
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(
+      'remote-mcp-read',
+      expect.any(String),
+      120,
+      60,
+      1,
+    );
+  });
+
   it('answers CORS preflight only for an explicitly trusted origin', async () => {
     const response = await OPTIONS(
       new Request('https://console.example/mcp', {

@@ -159,7 +159,7 @@ export function McpConnectionsDashboard({ initialData }: { initialData: Dashboar
   // the client. window.location would either differ across hydration or, from
   // an effect, paint hosted commands for a frame that a self-hosted user could
   // copy in between.
-  const origin = (process.env.NEXT_PUBLIC_APP_URL ?? HOSTED_ORIGIN).replace(/\/+$/, '');
+  const origin = (process.env.NEXT_PUBLIC_APP_URL?.trim() || HOSTED_ORIGIN).replace(/\/+$/, '');
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(initialData.remoteMcpOAuthEnabled);
   const [loadFailed, setLoadFailed] = useState(false);

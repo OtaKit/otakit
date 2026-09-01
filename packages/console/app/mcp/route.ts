@@ -194,11 +194,14 @@ async function serveAuthorized(
 
   const tools = calledToolNames(parsedBody);
   const hasWrite = tools.some((name) => getToolDefinition(name).annotations.readOnlyHint !== true);
+  // A JSON-RPC batch carries many calls in one request, so charge the limiter
+  // per tool call. Otherwise one request could ask for unbounded work.
   const rateLimit = await checkRateLimit(
     hasWrite ? 'remote-mcp-write' : 'remote-mcp-read',
     `${connection.access.organizationId}:${connection.credentialType}:${connection.clientId ?? connection.access.actorId}`,
     hasWrite ? 20 : 120,
     60,
+    Math.max(1, tools.length),
   );
   if (!rateLimit.allowed) return jsonRpcError(429, 'Too many MCP requests; retry shortly');
 
