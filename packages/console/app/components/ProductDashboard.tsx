@@ -424,9 +424,12 @@ export function ProductDashboard({
     }
   }, [initialData.activeOrganization.id]);
 
-  // App — persist selection in localStorage
+  // App — ?app= wins so a link to one app is shareable, then the last local
+  // selection, then the first app.
   const [selectedAppId, setSelectedAppId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return initialData.apps[0]?.id ?? null;
+    const requested = new URLSearchParams(window.location.search).get('app');
+    if (requested && initialData.apps.some((a) => a.id === requested)) return requested;
     const saved = localStorage.getItem(selectionStorageKey);
     if (saved && initialData.apps.some((a) => a.id === saved)) return saved;
     return initialData.apps[0]?.id ?? null;
@@ -434,6 +437,14 @@ export function ProductDashboard({
   useEffect(() => {
     if (selectedAppId) localStorage.setItem(selectionStorageKey, selectedAppId);
     else localStorage.removeItem(selectionStorageKey);
+
+    // Keep the address bar in step without adding history entries.
+    const url = new URL(window.location.href);
+    if (selectedAppId) url.searchParams.set('app', selectedAppId);
+    else url.searchParams.delete('app');
+    if (url.toString() !== window.location.href) {
+      window.history.replaceState(null, '', url);
+    }
   }, [selectedAppId, selectionStorageKey]);
 
   useEffect(() => {
@@ -884,12 +895,23 @@ export function ProductDashboard({
       targetKey: getReleaseTargetKey(target.channel, target.runtimeVersion),
     });
     try {
+      const expectedCurrentReleaseId =
+        releaseHistory.find(
+          (release) =>
+            release.revertedAt === null &&
+            release.channel === target.channel &&
+            release.runtimeVersion === target.runtimeVersion,
+        )?.id ?? null;
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
         body: JSON.stringify({
           bundleId: bundle.id,
           channel: target.channel,
+          expectedCurrentReleaseId,
           forceImmediate,
           autoRevert: autoRevert !== null,
           ...(autoRevert
@@ -900,11 +922,21 @@ export function ProductDashboard({
             : {}),
         }),
       });
-      const data = await parseJson<ApiError>(res);
+      const data = await parseJson<
+        ApiError & {
+          publicationStatus?: 'published' | 'manifest_sync_pending';
+        }
+      >(res);
       if (!res.ok) throw new Error(data.error ?? 'Release failed');
-      toast.success(
-        `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
-      );
+      if (data.publicationStatus === 'manifest_sync_pending') {
+        toast.warning(
+          'Release saved, but it is not live on devices yet. OtaKit will keep retrying.',
+        );
+      } else {
+        toast.success(
+          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+        );
+      }
       trackConversion('release_created');
       await Promise.all([
         loadBundles(selectedAppId),
@@ -961,15 +993,31 @@ export function ProductDashboard({
         `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(revertConfirm.releaseId)}/revert`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            expectedCurrentReleaseId: revertConfirm.releaseId,
+            ...(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
+          }),
         },
       );
-      const data = await parseJson<ApiError>(res);
+      const data = await parseJson<
+        ApiError & {
+          publicationStatus?: 'published' | 'manifest_sync_pending';
+        }
+      >(res);
       if (!res.ok) throw new Error(data.error ?? 'Revert failed');
-      toast.success(
-        `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
-      );
+      if (data.publicationStatus === 'manifest_sync_pending') {
+        toast.warning(
+          'Revert saved, but it is not live on devices yet. OtaKit will keep retrying.',
+        );
+      } else {
+        toast.success(
+          `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
+        );
+      }
       setRevertConfirm(null);
       await Promise.all([loadBundles(selectedAppId), loadReleaseHistory(selectedAppId)]);
       router.refresh();
@@ -1463,9 +1511,10 @@ export function ProductDashboard({
                                                                 Guard
                                                               </span>
                                                               <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                                                                Auto-revert at ≥{rel.autoRevertRatePercent}
-                                                                % of ≥{rel.autoRevertMinSample} devices
-                                                                / 24h
+                                                                Auto-revert at ≥
+                                                                {rel.autoRevertRatePercent}% of ≥
+                                                                {rel.autoRevertMinSample} devices /
+                                                                24h
                                                               </span>
                                                             </>
                                                           ) : null}
@@ -2110,9 +2159,7 @@ export function ProductDashboard({
                           aria-invalid={releaseAutoRevertMinSampleValue === null}
                         />
                         {releaseAutoRevertMinSampleValue === null ? (
-                          <p className="text-xs text-destructive">
-                            Integer between 10 and 100000.
-                          </p>
+                          <p className="text-xs text-destructive">Integer between 10 and 100000.</p>
                         ) : null}
                       </div>
                     </div>

@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { accessActor } from '@/lib/audit-log';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
-import { revertCurrentRelease } from '@/lib/releases';
+import { isReleaseReliabilityEnabled } from '@/lib/release-features';
+import { serviceErrorResponse } from '@/lib/services/http';
+import { revertRelease, revertReleaseLegacy } from '@/lib/services/releases';
 
 export const runtime = 'nodejs';
 
@@ -33,60 +35,40 @@ export async function POST(
     return NextResponse.json({ error: 'forceImmediate must be a boolean' }, { status: 400 });
   }
 
-  const revertedBy = await resolveReleaseActor(access.access);
-  const outcome = await revertCurrentRelease({
-    appId,
-    releaseId,
-    revertedBy,
-    actor: await accessActor(access.access, revertedBy),
-    organizationId: access.access.organizationId,
-    forceImmediate: rawForceImmediate,
-  });
-
-  if (!outcome.ok) {
-    if (outcome.reason === 'not_found') {
-      return NextResponse.json({ error: 'Release not found' }, { status: 404 });
-    }
-    if (outcome.reason === 'already_reverted') {
-      return NextResponse.json({ error: 'Release is already reverted' }, { status: 409 });
-    }
+  const rawExpectedCurrentReleaseId = body.expectedCurrentReleaseId;
+  if (
+    rawExpectedCurrentReleaseId !== undefined &&
+    rawExpectedCurrentReleaseId !== null &&
+    (typeof rawExpectedCurrentReleaseId !== 'string' ||
+      rawExpectedCurrentReleaseId.trim().length === 0)
+  ) {
     return NextResponse.json(
-      { error: 'Release is no longer current on this channel' },
-      { status: 409 },
+      { error: 'expectedCurrentReleaseId must be a release ID or null' },
+      { status: 400 },
     );
   }
+  const expectedCurrentReleaseId =
+    typeof rawExpectedCurrentReleaseId === 'string'
+      ? rawExpectedCurrentReleaseId.trim()
+      : rawExpectedCurrentReleaseId;
 
-  const { targetRelease, nextCurrentRelease, revertedAt } = outcome;
+  const revertedBy = await resolveReleaseActor(access.access);
+  try {
+    const revert = isReleaseReliabilityEnabled() ? revertRelease : revertReleaseLegacy;
+    const result = await revert({
+      appId,
+      releaseId,
+      actor: await accessActor(access.access, revertedBy),
+      organizationId: access.access.organizationId,
+      forceImmediate: rawForceImmediate,
+      expectedCurrentReleaseId,
+      idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
+    });
 
-  return NextResponse.json({
-    release: {
-      id: targetRelease.id,
-      channel: targetRelease.channel,
-      runtimeVersion: targetRelease.bundle.runtimeVersion,
-      bundleId: targetRelease.bundleId,
-      bundleVersion: targetRelease.bundle.version,
-      previousBundleId: targetRelease.previousBundleId,
-      previousBundleVersion: targetRelease.previousBundle?.version ?? null,
-      promotedAt: targetRelease.promotedAt.toISOString(),
-      promotedBy: targetRelease.promotedBy,
-      revertedAt: revertedAt.toISOString(),
-      revertedBy: outcome.revertedBy,
-    },
-    currentRelease: nextCurrentRelease
-      ? {
-          id: nextCurrentRelease.id,
-          channel: nextCurrentRelease.channel,
-          runtimeVersion: nextCurrentRelease.bundle.runtimeVersion,
-          bundleId: nextCurrentRelease.bundleId,
-          bundleVersion: nextCurrentRelease.bundle.version,
-          previousBundleId: nextCurrentRelease.previousBundleId,
-          previousBundleVersion: nextCurrentRelease.previousBundle?.version ?? null,
-          forceImmediate: nextCurrentRelease.forceImmediate,
-          promotedAt: nextCurrentRelease.promotedAt.toISOString(),
-          promotedBy: nextCurrentRelease.promotedBy,
-          revertedAt: nextCurrentRelease.revertedAt?.toISOString() ?? null,
-          revertedBy: nextCurrentRelease.revertedBy,
-        }
-      : null,
-  });
+    return NextResponse.json(result, {
+      status: result.publicationStatus === 'published' ? 200 : 202,
+    });
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
 }

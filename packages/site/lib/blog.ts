@@ -23,6 +23,31 @@ export type BlogPostMeta = {
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
+    slug: 'ship-capacitor-updates-with-ai-agents',
+    title: 'Ship Capacitor updates with AI agents',
+    seoTitle: 'Ship Capacitor OTA Updates With AI Agents',
+    description:
+      'Ask Claude Code or Codex to ship an OTA update. It checks compatibility, uploads, and stops for your approval before anything reaches a device.',
+    category: 'Guides',
+    publishedAt: '2026-08-30',
+    readingTime: '4 min read',
+    keywords: [
+      'Capacitor MCP server',
+      'Capacitor Agent Skill',
+      'AI agent OTA updates',
+      'Codex Capacitor',
+      'Claude Code live updates',
+      'OtaKit MCP',
+    ],
+    order: 0,
+    featured: true,
+    relatedDocs: [
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
+      { href: '/docs/cli', label: 'CLI reference' },
+      { href: '/docs/channels', label: 'Channels & runtime version' },
+    ],
+  },
+  {
     slug: 'how-ota-works-for-capacitor-apps',
     title: 'How OTA updates work in Capacitor apps',
     seoTitle: 'How OTA Updates Work in Capacitor Apps',
@@ -76,9 +101,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'The best live update tools for Capacitor apps in 2026',
     seoTitle: 'Best Live Update Tools for Capacitor Apps in 2026 (Compared)',
     description:
-      'OtaKit vs Capgo vs Capawesome, compared honestly: pricing models, delta updates, encryption, rollback safety, and which one fits your Capacitor release process.',
+      'OtaKit vs Capgo vs Capawesome, compared honestly: pricing, delivery architecture, security, agent workflows, and which one fits your Capacitor release process.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
+    updatedAt: '2026-08-30',
     readingTime: '10 min read',
     keywords: [
       'best Capacitor live update',
@@ -87,12 +113,13 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OtaKit vs Capawesome',
       'Capgo vs Capawesome',
       'CodePush alternative Capacitor',
+      'Capacitor MCP',
     ],
     order: 5,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/cli', label: 'CLI reference' },
-      { href: '/docs/plugin', label: 'Plugin API' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -123,9 +150,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'The cheaper, better Capgo alternative for Capacitor live updates',
     seoTitle: 'Capgo Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
     description:
-      'Looking for a Capgo alternative? OtaKit ships the same live updates with no MAU or bandwidth metering — most apps pay $0–25/mo where Capgo charges $33–208+. Real price math inside.',
+      'Looking for a Capgo alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release controls, MCP, and Agent Skills.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
+    updatedAt: '2026-08-30',
     readingTime: '6 min read',
     keywords: [
       'Capgo alternative',
@@ -139,7 +167,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
-      { href: '/docs/security', label: 'Security' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -147,9 +175,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'The cheaper, better Capawesome alternative for live updates',
     seoTitle: 'Capawesome Alternative: Cheaper, Better Live Updates for Capacitor (2026)',
     description:
-      'Looking for a Capawesome Live Update alternative? OtaKit has no MAU caps, a fully open-source stack, and CDN-direct delivery — most apps pay $0–25/mo where Capawesome charges $29–249.',
+      'Looking for a Capawesome Live Update alternative? Compare OtaKit pricing, CDN-direct delivery, open-source architecture, release controls, MCP, and Agent Skills.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
+    updatedAt: '2026-08-30',
     readingTime: '6 min read',
     keywords: [
       'Capawesome alternative',
@@ -162,7 +191,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
-      { href: '/docs/security', label: 'Security' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {
@@ -170,9 +199,10 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     title: 'Vibe code your app from your phone with Claude Code and OtaKit',
     seoTitle: 'Vibe Code an App From Your Phone With Claude Code + OTA Updates',
     description:
-      'A real mobile-only dev loop: drive Claude Code from your phone, build in the cloud, and ship the result straight into your installed Capacitor app with an OTA update.',
+      'A real mobile-only dev loop: drive Claude Code from your phone, build in the cloud, and ship to your installed Capacitor app through CI or the OtaKit MCP server.',
     category: 'Guides',
     publishedAt: '2026-07-02',
+    updatedAt: '2026-08-30',
     readingTime: '7 min read',
     keywords: [
       'Claude Code mobile',
@@ -188,6 +218,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       { href: '/docs/react', label: 'React guide' },
       { href: '/docs/guide', label: 'Next.js guide' },
       { href: '/docs/ci', label: 'CI automation' },
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
     ],
   },
   {

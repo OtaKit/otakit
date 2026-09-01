@@ -20,6 +20,33 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 6. On the next app launch or resume, the plugin fetches the manifest from the CDN, compares it to the current bundle, and downloads the new version if available.
 7. If `notifyAppReady()` is called within the timeout, the new bundle is confirmed. Otherwise the plugin rolls back to the previous bundle automatically.
 
+## MCP & Agent Skills
+
+Ask Claude Code, Codex, or VS Code to ship an update and it reads your Capacitor project, checks
+whether the change is safe to send over the air, uploads the build, and stops for your approval
+before anything reaches a device.
+
+One command from your project directory:
+
+```bash
+npx -y @otakit/cli@latest connect
+```
+
+It detects your client, signs you in if needed, and prints the console, organization, project, and
+app it resolved — plus the exact file it will write — before writing anything. `--dry-run` shows
+the plan and writes nothing.
+
+Claude Code has a plugin that ships the server and the OtaKit Agent Skill together:
+
+```bash
+npx -y @otakit/cli@latest login
+
+claude plugin marketplace add OtaKit/otakit
+claude plugin install otakit@otakit
+```
+
+See the [MCP and Agent Skills guide](https://otakit.app/docs/agents) for Codex, Claude Code, remote OAuth, permissions, workflows, and self-hosting.
+
 ## Core concepts
 
 - **App** — the Capacitor app identified by its `appId`
@@ -32,6 +59,7 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 
 - `packages/capacitor-plugin` — the runtime that lives inside the mobile app
 - `packages/cli` — CLI for uploading bundles and creating releases
+- `packages/mcp-core` — shared MCP contracts, tool catalog, and server registration
 - `packages/site` — public site, docs, contact, legal pages
 - `packages/console` — dashboard, API, auth, billing, and Prisma schema
 - `packages/ingest` — Cloudflare Worker for device event ingestion
@@ -41,6 +69,7 @@ Full step-by-step guide: [otakit.app/docs/self-host](https://www.otakit.app/docs
 packages/
   capacitor-plugin/   Capacitor OTA plugin
   cli/                Upload + release CLI
+  mcp-core/           Shared MCP contracts and tool catalog
   ingest/             Cloudflare Worker event ingest service
   site/               Next.js public site + docs
   console/            Next.js dashboard + API + auth + billing

@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { isPolarConfigured } from '@/lib/polar';
 import { isTinybirdConfigured } from '@/lib/tinybird/client';
+import { isRemoteMcpOAuthEnabled, remoteMcpResourceUrl } from '@/lib/mcp/features';
 import type { DashboardInitialData } from '@/app/components/dashboard-types';
 
 async function getUserContext() {
@@ -124,5 +125,11 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
       })) ?? [],
     billingEnabled: isPolarConfigured(),
     analyticsEnabled: isTinybirdConfigured(),
+    remoteMcpOAuthEnabled: isRemoteMcpOAuthEnabled(),
+    mcpConnectionCount: isRemoteMcpOAuthEnabled()
+      ? await db.oauthConsent.count({
+          where: { userId: session.user.id, resources: { has: remoteMcpResourceUrl() } },
+        })
+      : 0,
   };
 }

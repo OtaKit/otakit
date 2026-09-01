@@ -49,6 +49,12 @@ export default config;`}</Pre>
         For local development, sign in once and the CLI stores a token locally. For CI or
         non-interactive environments, use an organization secret key instead.
       </P>
+      <P>
+        If your account has multiple organizations, login asks you to choose a default by name for
+        commands that are not tied to an app. Change it with <Code>otakit organization select</Code>
+        . Configured apps still use their owning organization, and organization keys are already
+        bound to one.
+      </P>
       <Pre>{`# Local development
 otakit login
 
@@ -90,6 +96,9 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         </li>
         <li>
           Auth token: <Code>OTAKIT_TOKEN</Code> {'->'} stored login token
+        </li>
+        <li>
+          App-less organization: <Code>OTAKIT_ORGANIZATION_ID</Code> {'->'} stored login default
         </li>
         <li>
           Upload path: CLI path argument {'->'} <Code>OTAKIT_BUILD_DIR</Code> {'->'}{' '}
@@ -260,8 +269,20 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit whoami"
           description="Show current authenticated user and organization context."
-          options={[{ flag: '--server <url>', desc: 'Server URL override.' }]}
+          options={[
+            { flag: '--server <url>', desc: 'Server URL override.' },
+            { flag: '--json', desc: 'Print machine-readable account and organization details.' },
+          ]}
           example="otakit whoami"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit organization select"
+          description="Choose the default organization for commands not tied to an app. Configured apps always use their owning organization."
+          options={[{ flag: '--server <url>', desc: 'Server URL override.' }]}
+          example="otakit organization select"
         />
 
         <Separator />
@@ -286,6 +307,39 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             { flag: '--json', desc: 'Print machine-readable JSON output.' },
           ]}
           example="otakit config resolve --json"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit connect"
+          description="Connect this project to your coding agent. Signs in if needed, then writes the client's MCP configuration after showing exactly what it resolved and what it will write."
+          options={[
+            { flag: '--client <client>', desc: 'claude, codex, or vscode. Defaults to detected.' },
+            {
+              flag: '--project-root <path>',
+              desc: 'Project to connect. Defaults to the current directory.',
+            },
+            { flag: '--server <url>', desc: 'OtaKit console URL override.' },
+            { flag: '--dry-run', desc: 'Show the plan and exit without writing.' },
+            { flag: '--yes', desc: 'Skip the confirmation prompt.' },
+          ]}
+          example="npx -y @otakit/cli@latest connect"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit mcp"
+          description="Start the local MCP server, bound to one project and organization for its lifetime."
+          options={[
+            { flag: '--project-root <path>', desc: 'Project root available to local MCP tools.' },
+            {
+              flag: '--organization-id <id>',
+              desc: 'Advanced organization override for app-less automation.',
+            },
+          ]}
+          example="npx -y @otakit/cli@latest mcp --project-root ."
         />
 
         <Separator />

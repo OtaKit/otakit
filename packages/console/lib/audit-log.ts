@@ -19,7 +19,8 @@ export type AuditAction =
   | 'member.removed'
   | 'member.joined'
   | 'invite.created'
-  | 'invite.revoked';
+  | 'invite.revoked'
+  | 'oauth.connection_revoked';
 
 export type AuditActor = {
   actorType: 'user' | 'key' | 'system';

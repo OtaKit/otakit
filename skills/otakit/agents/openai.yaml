@@ -1,0 +1,7 @@
+interface:
+  display_name: 'OtaKit'
+  short_description: 'Ship Capacitor OTA updates safely'
+  brand_color: '#0F172A'
+  default_prompt: 'Use $otakit to inspect my project and prepare the exact OTA release for review.'
+policy:
+  allow_implicit_invocation: true

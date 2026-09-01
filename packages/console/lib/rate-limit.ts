@@ -20,17 +20,23 @@ function getLimiter(name: string, maxRequests: number, windowSeconds: number): R
   return limiter;
 }
 
+/**
+ * `cost` charges a single call for more than one request. A batched protocol
+ * lets one HTTP request carry many operations, which would otherwise spend a
+ * single token no matter how much work it asks for.
+ */
 export async function checkRateLimit(
   name: string,
   identifier: string,
   maxRequests: number,
   windowSeconds: number,
+  cost = 1,
 ): Promise<{ allowed: boolean }> {
   const limiter = getLimiter(name, maxRequests, windowSeconds);
   if (!limiter) return { allowed: true };
 
   try {
-    const result = await limiter.limit(identifier);
+    const result = await limiter.limit(identifier, { rate: Math.max(1, Math.trunc(cost)) });
     if (!result.success) {
       console.warn(
         JSON.stringify({

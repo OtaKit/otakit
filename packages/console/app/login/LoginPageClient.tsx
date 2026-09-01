@@ -1,7 +1,15 @@
 'use client';
 
 import Image from 'next/image';
-import { type CSSProperties, FormEvent, useMemo, useState } from 'react';
+import {
+  type CSSProperties,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ArrowLeft, LoaderCircle, Mail } from 'lucide-react';
 
 import { authClient } from '@/lib/auth-client';
@@ -15,10 +23,16 @@ type LoginPageClientProps = {
   appleEnabled: boolean;
   githubEnabled: boolean;
   siteUrl: string;
+  /** Pending MCP authorization to return to after sign-in, if any. */
+  authorizationPath: string | null;
 };
 
 type Step = 'email' | 'otp';
 type SocialProvider = 'google' | 'apple' | 'github';
+
+/** Codes are valid for five minutes; resending sooner rarely helps. */
+const RESEND_COOLDOWN_SECONDS = 30;
+const OTP_LENGTH = 6;
 
 type LoginIcon = {
   src: string;
@@ -149,6 +163,7 @@ export function LoginPageClient({
   appleEnabled,
   githubEnabled,
   siteUrl,
+  authorizationPath,
 }: LoginPageClientProps) {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -157,6 +172,15 @@ export function LoginPageClient({
   const [busyAction, setBusyAction] = useState<'otp-send' | 'otp-verify' | SocialProvider | null>(
     null,
   );
+  const [resendIn, setResendIn] = useState(0);
+  // A complete code submits itself; this stops the click handler from racing it.
+  const submittedCode = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   const socialProviders = useMemo(
     () =>
@@ -185,8 +209,10 @@ export function LoginPageClient({
     try {
       const { data, error: signInError } = await authClient.signIn.social({
         provider,
-        callbackURL: '/dashboard',
-        newUserCallbackURL: '/dashboard?pricing=1',
+        // A pending MCP authorization outranks the dashboard for both new and
+        // returning users; otherwise this is unchanged.
+        callbackURL: authorizationPath ?? '/dashboard',
+        newUserCallbackURL: authorizationPath ?? '/dashboard?pricing=1',
         errorCallbackURL: '/login',
         disableRedirect: true,
       });
@@ -197,12 +223,21 @@ export function LoginPageClient({
         window.location.href = data.url;
         return;
       }
-      window.location.href = '/dashboard';
+      window.location.href = authorizationPath ?? '/dashboard';
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Failed to sign in with ${provider}`);
       setBusyAction(null);
     }
   }
+
+  const requestCode = useCallback(async (address: string) => {
+    const { error: sendError } = await authClient.emailOtp.sendVerificationOtp({
+      email: address,
+      type: 'sign-in',
+    });
+    if (sendError) throw new Error(sendError.message ?? 'Failed to send code');
+    setResendIn(RESEND_COOLDOWN_SECONDS);
+  }, []);
 
   async function sendOtp(event: FormEvent) {
     event.preventDefault();
@@ -215,13 +250,7 @@ export function LoginPageClient({
 
     setBusyAction('otp-send');
     try {
-      const { error: sendError } = await authClient.emailOtp.sendVerificationOtp({
-        email: trimmed,
-        type: 'sign-in',
-      });
-      if (sendError) {
-        throw new Error(sendError.message ?? 'Failed to send code');
-      }
+      await requestCode(trimmed);
       setStep('otp');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Failed to send code');
@@ -230,36 +259,89 @@ export function LoginPageClient({
     }
   }
 
-  async function verifyOtp(event: FormEvent) {
-    event.preventDefault();
+  async function resendOtp() {
+    if (resendIn > 0 || busy) return;
     setError(null);
-    const trimmed = otp.trim();
-    if (trimmed.length !== 6) {
-      setError('Enter the 6-digit code');
-      return;
-    }
-
-    setBusyAction('otp-verify');
+    setOtp('');
+    submittedCode.current = null;
+    setBusyAction('otp-send');
     try {
-      const { data, error: signInError } = await authClient.signIn.emailOtp({
-        email: email.trim().toLowerCase(),
-        otp: trimmed,
-      });
-      if (signInError) {
-        throw new Error(signInError.message ?? 'Invalid code');
-      }
-
-      const createdAt = data?.user?.createdAt
-        ? new Date(data.user.createdAt).getTime()
-        : Number.NaN;
-      const isLikelyNewUser =
-        Number.isFinite(createdAt) && Math.abs(Date.now() - createdAt) <= 5 * 60 * 1000;
-
-      window.location.href = isLikelyNewUser ? '/dashboard?pricing=1' : '/dashboard';
+      await requestCode(email.trim().toLowerCase());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Invalid code');
+      setError(cause instanceof Error ? cause.message : 'Failed to send code');
+    } finally {
       setBusyAction(null);
     }
+  }
+
+  const verifyCode = useCallback(
+    async (code: string) => {
+      setError(null);
+      setBusyAction('otp-verify');
+      try {
+        const { data, error: signInError } = await authClient.signIn.emailOtp({
+          email: email.trim().toLowerCase(),
+          otp: code,
+        });
+        if (signInError) {
+          throw new Error(signInError.message ?? 'Invalid code');
+        }
+
+        const oauthRedirect = (data as { url?: unknown } | null)?.url;
+        if (typeof oauthRedirect === 'string' && oauthRedirect.length > 0) {
+          window.location.href = oauthRedirect;
+          return;
+        }
+        if (authorizationPath) {
+          window.location.href = authorizationPath;
+          return;
+        }
+
+        // Both timestamps come from the server, so this never depends on the
+        // browser clock: a freshly inserted user still has updatedAt === createdAt.
+        const isNewUser =
+          typeof data?.user?.createdAt !== 'undefined' &&
+          String(data.user.createdAt) === String(data.user.updatedAt);
+
+        window.location.href = isNewUser ? '/dashboard?pricing=1' : '/dashboard';
+      } catch (cause) {
+        submittedCode.current = null;
+        setError(cause instanceof Error ? cause.message : 'Invalid code');
+        setBusyAction(null);
+      }
+    },
+    [authorizationPath, email],
+  );
+
+  function onOtpChange(value: string) {
+    const digits = value.replace(/\D/g, '').slice(0, OTP_LENGTH);
+    setOtp(digits);
+    if (error) setError(null);
+    // Submit as soon as the code is complete, the way every other OTP field does.
+    if (digits.length === OTP_LENGTH && submittedCode.current !== digits && !busy) {
+      submittedCode.current = digits;
+      void verifyCode(digits);
+    }
+  }
+
+  async function verifyOtp(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = otp.trim();
+    if (trimmed.length !== OTP_LENGTH) {
+      setError(`Enter the ${OTP_LENGTH}-digit code`);
+      return;
+    }
+    if (submittedCode.current === trimmed && busy) return;
+    submittedCode.current = trimmed;
+    await verifyCode(trimmed);
+  }
+
+  function backToEmail() {
+    setStep('email');
+    setOtp('');
+    setError(null);
+    setResendIn(0);
+    submittedCode.current = null;
   }
 
   return (
@@ -302,13 +384,25 @@ export function LoginPageClient({
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      <a
-        href={siteUrl}
-        className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:left-6 sm:top-6"
-      >
-        <ArrowLeft className="size-4" />
-        Back
-      </a>
+      {/* On the code step this goes back one step, not out to the marketing site. */}
+      {step === 'otp' ? (
+        <button
+          type="button"
+          onClick={backToEmail}
+          className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:left-6 sm:top-6"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </button>
+      ) : (
+        <a
+          href={siteUrl}
+          className="absolute left-4 top-4 z-20 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:left-6 sm:top-6"
+        >
+          <ArrowLeft className="size-4" />
+          Back
+        </a>
+      )}
 
       <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
         <div className="relative w-full max-w-md bg-card">
@@ -413,14 +507,20 @@ export function LoginPageClient({
               ) : (
                 <form onSubmit={verifyOtp} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-otp">Verification code</Label>
+                    <div className="flex items-baseline justify-between">
+                      <Label htmlFor="login-otp">Verification code</Label>
+                      <span className="text-xs text-muted-foreground">Expires in 5 minutes</span>
+                    </div>
                     <Input
                       id="login-otp"
+                      name="otp"
                       type="text"
                       inputMode="numeric"
-                      maxLength={6}
+                      // Lets iOS and Chrome offer the emailed code as a one-tap suggestion.
+                      autoComplete="one-time-code"
+                      maxLength={OTP_LENGTH}
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) => onOtpChange(e.target.value)}
                       placeholder="000000"
                       autoFocus
                       className="h-12 text-center font-mono text-lg tracking-[0.45em]"
@@ -436,17 +536,30 @@ export function LoginPageClient({
                       'Sign in'
                     )}
                   </Button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStep('email');
-                      setOtp('');
-                      setError(null);
-                    }}
-                    className="w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    Use a different email
-                  </button>
+                  <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => void resendOtp()}
+                      disabled={busy || resendIn > 0}
+                      className="transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-muted-foreground"
+                    >
+                      {busyAction === 'otp-send'
+                        ? 'Sending...'
+                        : resendIn > 0
+                          ? `Resend in ${resendIn}s`
+                          : 'Resend code'}
+                    </button>
+                    <span aria-hidden className="text-border">
+                      |
+                    </span>
+                    <button
+                      type="button"
+                      onClick={backToEmail}
+                      className="transition-colors hover:text-foreground"
+                    >
+                      Use a different email
+                    </button>
+                  </div>
                 </form>
               )}
 

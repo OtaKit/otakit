@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 
 import { CAPACITOR_CONFIG_FILE_NAMES, readCapacitorProjectConfig } from './capacitor-config.js';
-import { readStoredAccessToken } from './token-store.js';
+import { readStoredAuthProfile } from './token-store.js';
 
 const API_PATH_SUFFIX = '/api/v1';
 const DEFAULT_SERVER_URL = 'https://console.otakit.app';
@@ -22,12 +22,16 @@ export interface ResolvedValue<T> {
 export interface ResolvedAuthToken {
   token: string;
   source: AuthSource;
+  userId?: string;
+  organizationId?: string;
 }
 
 export interface ServerAuthConfig {
   serverUrl: string;
   authToken: string;
   authSource: AuthSource;
+  authUserId?: string;
+  authOrganizationId?: string;
 }
 
 export interface ProjectConfig {
@@ -69,6 +73,8 @@ export interface ConfigResolveSnapshot {
   updateStrategy: ResolvedValue<'zip' | 'deltas' | null>;
   authToken: ResolvedValue<string | null>;
   authSource: AuthSource | null;
+  authUserId: string | null;
+  authOrganizationId: string | null;
 }
 
 export function normalizeServerUrl(url: string): string {
@@ -128,12 +134,23 @@ export async function resolveAuthToken(serverUrl: string): Promise<ResolvedAuthT
     return { token, source: 'env_token' };
   }
 
-  const storedToken = await readStoredAccessToken(serverUrl);
-  if (storedToken) {
-    return { token: storedToken, source: 'file' };
+  const storedProfile = await readStoredAuthProfile(serverUrl);
+  if (storedProfile) {
+    return {
+      token: storedProfile.token,
+      source: 'file',
+      ...(storedProfile.userId ? { userId: storedProfile.userId } : {}),
+      ...(storedProfile.organizationId ? { organizationId: storedProfile.organizationId } : {}),
+    };
   }
 
   return null;
+}
+
+export function resolveOrganizationOverride(explicitOrganizationId?: string): string | undefined {
+  return (
+    toNonEmptyString(explicitOrganizationId) ?? toNonEmptyString(process.env.OTAKIT_ORGANIZATION_ID)
+  );
 }
 
 export async function requireServerAndAuth(options?: {
@@ -157,6 +174,8 @@ export async function requireServerAndAuth(options?: {
     serverUrl,
     authToken: auth.token,
     authSource: auth.source,
+    ...(auth.userId ? { authUserId: auth.userId } : {}),
+    ...(auth.organizationId ? { authOrganizationId: auth.organizationId } : {}),
   };
 }
 
@@ -322,6 +341,8 @@ export async function resolveConfigSnapshot(
       source: authTokenSource,
     },
     authSource: auth?.source ?? null,
+    authUserId: auth?.userId ?? null,
+    authOrganizationId: auth?.organizationId ?? null,
   };
 }
 
@@ -356,6 +377,8 @@ export async function requireConfig(options?: ConfigResolveOptions): Promise<Cli
     serverUrl: snapshot.serverUrl.value,
     authToken: snapshot.authToken.value,
     authSource: snapshot.authSource,
+    ...(snapshot.authUserId ? { authUserId: snapshot.authUserId } : {}),
+    ...(snapshot.authOrganizationId ? { authOrganizationId: snapshot.authOrganizationId } : {}),
   };
 }
 

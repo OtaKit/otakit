@@ -1,83 +1,50 @@
-import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { db } from '@/lib/db';
-import { isValidAppSlug } from '@/lib/validation';
-import { accessActor, recordAuditLog } from '@/lib/audit-log';
+import { createApp, listOrganizationApps } from '@/lib/services/apps';
+import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
 
 export const runtime = 'nodejs';
+
+export async function GET(request: NextRequest) {
+  const access = await resolveOrganizationAccess(request);
+  if (!access.success) {
+    return organizationAccessErrorResponse(access);
+  }
+
+  const searchParams = request.nextUrl.searchParams;
+  const rawLimit = Number.parseInt(searchParams.get('limit') ?? '', 10);
+
+  try {
+    return NextResponse.json(
+      await listOrganizationApps({
+        organizationId: access.access.organizationId,
+        slug: searchParams.get('slug') ?? undefined,
+        cursor: searchParams.get('cursor') ?? undefined,
+        limit: Number.isInteger(rawLimit) ? rawLimit : undefined,
+      }),
+    );
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
+}
 
 export async function POST(request: NextRequest) {
   const access = await resolveOrganizationAccess(request);
   if (!access.success) {
-    return NextResponse.json({ error: access.error }, { status: access.status });
+    return organizationAccessErrorResponse(access);
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-
-  const rawSlug = body.slug;
-  if (typeof rawSlug !== 'string') {
-    return NextResponse.json({ error: 'Missing slug' }, { status: 400 });
-  }
-
-  const slug = rawSlug.trim();
-  if (!isValidAppSlug(slug)) {
-    return NextResponse.json(
-      {
-        error: 'Invalid slug. Use 3-120 chars: letters, numbers, dot, underscore, hyphen',
-      },
-      { status: 400 },
-    );
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body.slug !== 'string') {
+    return NextResponse.json({ error: 'Missing slug', code: 'INVALID_INPUT' }, { status: 400 });
   }
 
   try {
-    const app = await db.app.create({
-      data: {
-        organizationId: access.access.organizationId,
-        slug,
-      },
-      select: {
-        id: true,
-        slug: true,
-        createdAt: true,
-      },
+    return NextResponse.json(await createApp({ access: access.access, slug: body.slug }), {
+      status: 201,
     });
-
-    await recordAuditLog({
-      organizationId: access.access.organizationId,
-      actor: await accessActor(access.access),
-      action: 'app.created',
-      targetType: 'app',
-      targetId: app.id,
-      metadata: { slug: app.slug },
-    });
-
-    return NextResponse.json(
-      {
-        id: app.id,
-        slug: app.slug,
-        createdAt: app.createdAt.toISOString(),
-      },
-      { status: 201 },
-    );
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const target = String((error.meta as { target?: unknown })?.target ?? '');
-      if (target.includes('organizationId') || target.includes('slug')) {
-        return NextResponse.json(
-          { error: 'Slug already exists for this organization' },
-          { status: 409 },
-        );
-      }
-    }
-
-    const message = error instanceof Error ? error.message : 'Create app failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return serviceErrorResponse(error);
   }
 }

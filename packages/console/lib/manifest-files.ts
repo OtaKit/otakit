@@ -1,3 +1,5 @@
+import type { Prisma, PrismaClient } from '@prisma/client';
+
 import { db } from '@/lib/db';
 import { signManifest } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
@@ -154,8 +156,9 @@ export async function syncManifestFileForLane(
   appId: string,
   channel: string | null,
   runtimeVersion: string | null,
+  database: PrismaClient | Prisma.TransactionClient = db,
 ): Promise<void> {
-  const app = await db.app.findUnique({
+  const app = await database.app.findUnique({
     where: { id: appId },
     select: {
       organization: {
@@ -171,7 +174,7 @@ export async function syncManifestFileForLane(
     return;
   }
 
-  const release = await db.release.findFirst({
+  const release = await database.release.findFirst({
     where: {
       appId,
       channel,

@@ -1,31 +1,24 @@
 import { Command } from 'commander';
 
-import ora from 'ora';
-
 import { resolveServerUrl } from '../lib/config.js';
-import { CliError, runCommand } from '../lib/errors.js';
-import { fetchCli, parseApiError } from '../lib/http.js';
-import { ask } from '../lib/prompt.js';
-import { storeAccessToken } from '../lib/token-store.js';
+import { runCommand } from '../lib/errors.js';
+import {
+  fetchAccount,
+  initialOrganizationId,
+  organizationById,
+  organizationDisplayLabel,
+  promptForOrganization,
+  shellLiteral,
+  type AccountResponse,
+} from '../lib/organization.js';
+import { signInWithEmailOtp } from '../lib/login-flow.js';
+import { readStoredAuthProfile, storeAuthProfile } from '../lib/token-store.js';
 
 type LoginOptions = {
   email?: string;
   server?: string;
   tokenOnly?: boolean;
 };
-
-type SignInResponse = {
-  token?: string;
-  user?: {
-    email?: string;
-  };
-};
-
-const OTP_REGEX = /^\d{6}$/;
-
-function toShellLiteral(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
 
 export const loginCommand = new Command('login')
   .description('Sign in with email OTP and store access token')
@@ -35,61 +28,47 @@ export const loginCommand = new Command('login')
   .action(async (options: LoginOptions) => {
     await runCommand(async () => {
       const serverUrl = resolveServerUrl(process.cwd(), options.server);
-      const emailInput =
-        options.email?.trim().toLowerCase() || (await ask('Email: ')).trim().toLowerCase();
+      const { token, email: signedInEmail } = await signInWithEmailOtp(serverUrl, options.email);
 
-      if (!emailInput) {
-        throw new CliError('Email is required.');
+      const previousProfile = await readStoredAuthProfile(serverUrl);
+      let account: AccountResponse;
+      try {
+        account = await fetchAccount(serverUrl, token);
+      } catch (error) {
+        if (!options.tokenOnly) throw error;
+        const storeResult = await storeAuthProfile(serverUrl, { token });
+        process.stdout.write(`${token}\n`);
+        if (!storeResult.ok) {
+          console.error(
+            `Warning: could not store token locally (${storeResult.reason ?? 'unknown reason'}).`,
+          );
+        }
+        return;
       }
 
-      const sendSpinner = ora('Sending verification code...').start();
-
-      const sendOtpResponse = await fetchCli(
-        `${serverUrl}/api/auth/email-otp/send-verification-otp`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email: emailInput, type: 'sign-in' }),
-        },
-      );
-
-      if (!sendOtpResponse.ok) {
-        sendSpinner.fail('Could not send verification code');
-        throw new CliError(await parseApiError(sendOtpResponse));
+      let selectedOrganization =
+        account.memberships.length === 1 ? account.memberships[0] : undefined;
+      if (
+        !selectedOrganization &&
+        options.tokenOnly &&
+        previousProfile?.userId === account.user.id
+      ) {
+        selectedOrganization = organizationById(
+          account.memberships,
+          previousProfile.organizationId,
+        );
+      }
+      if (!selectedOrganization && !options.tokenOnly) {
+        selectedOrganization = await promptForOrganization(account.memberships, {
+          initialOrganizationId: initialOrganizationId(account, previousProfile),
+        });
       }
 
-      sendSpinner.succeed('Verification code sent');
-
-      const otp = (await ask('Verification code: ')).trim();
-      if (!OTP_REGEX.test(otp)) {
-        throw new CliError('Invalid verification code. Enter the 6-digit code.');
-      }
-
-      const verifySpinner = ora('Verifying code...').start();
-      const signInResponse = await fetchCli(`${serverUrl}/api/auth/sign-in/email-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: emailInput, otp }),
+      const storeResult = await storeAuthProfile(serverUrl, {
+        token,
+        userId: account.user.id,
+        ...(selectedOrganization ? { organizationId: selectedOrganization.organizationId } : {}),
       });
-
-      if (!signInResponse.ok) {
-        verifySpinner.fail('Sign-in failed');
-        throw new CliError(await parseApiError(signInResponse));
-      }
-
-      const payload = (await signInResponse.json()) as SignInResponse;
-      const token = typeof payload.token === 'string' ? payload.token.trim() : '';
-      if (!token) {
-        verifySpinner.fail('Sign-in failed');
-        throw new CliError('Server returned an invalid auth response.');
-      }
-
-      const storeResult = await storeAccessToken(serverUrl, token);
-      verifySpinner.succeed('Signed in');
 
       if (options.tokenOnly) {
         process.stdout.write(`${token}\n`);
@@ -102,15 +81,24 @@ export const loginCommand = new Command('login')
       }
 
       if (storeResult.ok) {
-        const signedInAs =
-          typeof payload.user?.email === 'string' ? ` as ${payload.user.email}` : '';
+        const signedInAs = ` as ${account.user.email || signedInEmail}`;
         console.log(`Logged in${signedInAs}.`);
+        if (selectedOrganization) {
+          console.log(
+            `Default organization: ${organizationDisplayLabel(selectedOrganization, account.memberships)}.`,
+          );
+        }
         console.log(`Token stored locally for ${serverUrl}.`);
         return;
       }
 
       console.warn(`Could not store token locally: ${storeResult.reason ?? 'unknown reason'}.`);
       console.log('Use env fallback in this shell:');
-      console.log(`export OTAKIT_TOKEN=${toShellLiteral(token)}`);
+      console.log(`export OTAKIT_TOKEN=${shellLiteral(token)}`);
+      if (selectedOrganization) {
+        console.log(
+          `export OTAKIT_ORGANIZATION_ID=${shellLiteral(selectedOrganization.organizationId)}`,
+        );
+      }
     });
   });

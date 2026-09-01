@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CHECK = process.argv.includes('--check');
 
 const DOCS = [
   { label: 'Overview', route: '/docs', file: 'packages/site/app/docs/page.tsx' },
@@ -27,6 +28,11 @@ const DOCS = [
     file: 'packages/site/app/docs/events/page.tsx',
   },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
+  {
+    label: 'MCP & Agent Skills',
+    route: '/docs/agents',
+    file: 'packages/site/app/docs/agents/page.tsx',
+  },
   { label: 'Security', route: '/docs/security', file: 'packages/site/app/docs/security/page.tsx' },
   {
     label: 'Self-hosting',
@@ -63,10 +69,20 @@ async function main() {
 
   const output = buildDocument(sections);
 
-  for (const target of OUTPUTS) {
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, output, 'utf8');
+  for (const target of OUTPUTS) await emit(target, output);
+}
+
+async function emit(target, content) {
+  if (CHECK) {
+    const current = await readFile(target, 'utf8').catch(() => null);
+    if (current !== content) {
+      throw new Error(`${path.relative(ROOT, target)} is stale; run pnpm docs:llms`);
+    }
+    return;
   }
+
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, content, 'utf8');
 }
 
 async function renderPage(page) {
@@ -271,6 +287,11 @@ function renderElement(tagName, children, attributes, lines, state) {
     return;
   }
 
+  if (tagName === 'Notice') {
+    pushParagraph(lines, extractInline(children));
+    return;
+  }
+
   if (tagName === 'Step') {
     const number = getAttributeValue(attributes, 'number');
     const title = getAttributeValue(attributes, 'title');
@@ -318,6 +339,29 @@ function renderSelfClosing(tagName, attributes, lines) {
     const title = getAttributeValue(attributes, 'title');
     const description = getAttributeValue(attributes, 'description');
     pushBullet(lines, formatLabel(title, description));
+    return;
+  }
+
+  if (tagName === 'SummaryCard') {
+    const title = getAttributeValue(attributes, 'title');
+    const description = getAttributeValue(attributes, 'description');
+    pushBullet(lines, formatLabel(title, description));
+    return;
+  }
+
+  if (tagName === 'CapabilityRow') {
+    const capability = getAttributeValue(attributes, 'capability');
+    const local = getAttributeValue(attributes, 'local');
+    const remote = getAttributeValue(attributes, 'remote');
+    pushBullet(lines, `**${capability}**: Local MCP — ${local}; Remote MCP — ${remote}`);
+    return;
+  }
+
+  if (tagName === 'Workflow') {
+    const title = getAttributeValue(attributes, 'title');
+    const prompt = getAttributeValue(attributes, 'prompt');
+    pushHeading(lines, 4, title);
+    pushParagraph(lines, `Prompt: “${prompt}”`);
     return;
   }
 

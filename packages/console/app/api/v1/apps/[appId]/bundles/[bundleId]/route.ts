@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { accessActor, recordAuditLog } from '@/lib/audit-log';
-import { purgeCdnUrls } from '@/lib/cdn-purge';
-import { db } from '@/lib/db';
-import { buildPublicObjectUrl, deleteBundleObject } from '@/lib/storage';
+import { deleteBundle, getBundle } from '@/lib/services/bundles';
+import { serviceErrorResponse } from '@/lib/services/http';
 
 export const runtime = 'nodejs';
 
@@ -12,102 +10,32 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ appId: string; bundleId: string }> },
 ) {
-  const routeParams = await params;
-  const appId = routeParams.appId;
-
+  const { appId, bundleId } = await params;
   const access = await resolveOrganizationAccess(request, appId);
   if (!access.success) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  const bundle = await db.bundle.findUnique({
-    where: { id: routeParams.bundleId },
-    select: {
-      id: true,
-      appId: true,
-      version: true,
-      sha256: true,
-      size: true,
-      runtimeVersion: true,
-      nativePackages: true,
-      createdAt: true,
-    },
-  });
-  if (!bundle || bundle.appId !== appId) {
-    return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
+  try {
+    return NextResponse.json(await getBundle(appId, bundleId));
+  } catch (error) {
+    return serviceErrorResponse(error);
   }
-
-  return NextResponse.json({
-    id: bundle.id,
-    version: bundle.version,
-    sha256: bundle.sha256,
-    size: bundle.size,
-    runtimeVersion: bundle.runtimeVersion,
-    nativePackages: bundle.nativePackages,
-    createdAt: bundle.createdAt.toISOString(),
-  });
 }
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ appId: string; bundleId: string }> },
 ) {
-  const routeParams = await params;
-  const appId = routeParams.appId;
-
+  const { appId, bundleId } = await params;
   const access = await resolveOrganizationAccess(request, appId);
   if (!access.success) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  const bundle = await db.bundle.findUnique({
-    where: { id: routeParams.bundleId },
-    select: {
-      id: true,
-      appId: true,
-      version: true,
-      storageKey: true,
-    },
-  });
-  if (!bundle || bundle.appId !== appId) {
-    return NextResponse.json({ error: 'Bundle not found' }, { status: 404 });
-  }
-
-  const releaseReference = await db.release.findFirst({
-    where: {
-      bundleId: bundle.id,
-      appId,
-    },
-    select: { id: true },
-  });
-  if (releaseReference) {
-    return NextResponse.json(
-      {
-        error: 'Cannot delete a bundle that is present in release history',
-      },
-      { status: 409 },
-    );
-  }
-
-  await db.bundle.delete({
-    where: { id: bundle.id },
-  });
-
-  await recordAuditLog({
-    organizationId: access.access.organizationId,
-    actor: await accessActor(access.access),
-    action: 'bundle.deleted',
-    targetType: 'bundle',
-    targetId: bundle.id,
-    metadata: { appId, version: bundle.version },
-  });
-
   try {
-    await deleteBundleObject(bundle.storageKey);
-    await purgeCdnUrls([buildPublicObjectUrl(bundle.storageKey)]);
+    return NextResponse.json(await deleteBundle({ access: access.access, appId, bundleId }));
   } catch (error) {
-    console.error('Failed to delete storage object for bundle', bundle.id, error);
+    return serviceErrorResponse(error);
   }
-
-  return NextResponse.json({ deleted: true, id: bundle.id });
 }

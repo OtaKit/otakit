@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowRight,
+  Bot,
   BookOpen,
   Check,
   FileDiff,
@@ -10,7 +11,6 @@ import {
   Shield,
   ShieldAlert,
   SlidersHorizontal,
-  Users,
   Zap,
   Globe,
 } from 'lucide-react';
@@ -31,7 +31,7 @@ import { site } from '@/lib/site';
 export const metadata = {
   title: { absolute: 'OtaKit — Live updates for Capacitor apps' },
   description:
-    'Ship instant over-the-air updates to your Capacitor apps. No app store delays. Open source and self-hostable.',
+    'Ship instant over-the-air updates to Capacitor apps from the CLI, dashboard, or AI agents. Open source and self-hostable.',
   other: {
     'scrolllaunch-verify': 'ff8cefdd08904be04dcd7dfddc0dbdc8',
   },
@@ -357,10 +357,16 @@ export default function LandingPage() {
 
         <div className="relative mx-auto max-w-screen-xl p-10">
           <div className="max-w-3xl">
-            {/* <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-4 py-1.5 text-[13px] text-muted-foreground ring-1 ring-inset ring-emerald-500/10">
-              <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-              Open source &amp; self-hostable
-            </div> */}
+            <Link
+              href="/docs/agents"
+              className="group mb-8 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/[0.12] sm:gap-2 sm:text-sm"
+            >
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
+                New
+              </span>
+              <span className="font-medium">MCP &amp; Agent Skills</span>
+              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </Link>
             <h1 className="text-6xl font-bold">
               Ship app updates instantly
               {/* <br />
@@ -530,9 +536,9 @@ export default function LandingPage() {
                 description="OTA updates for web layers only — fully compliant with Apple and Google guidelines for Capacitor apps."
               />
               <FeatureCard
-                icon={Users}
-                title="Team & API keys"
-                description="Invite members, assign roles, and manage scoped API keys per organization."
+                icon={Bot}
+                title="MCP & Agent Skills"
+                description="Ask Claude Code or Codex to ship an update. It checks compatibility, uploads, and stops for your approval before anything reaches a device."
               />
               <FeatureCard
                 icon={Globe}
@@ -788,6 +794,7 @@ export default function LandingPage() {
             title="Docs"
             titleHref="/docs"
             links={[
+              { label: 'MCP & Agent Skills', href: '/docs/agents' },
               { label: 'Getting started', href: '/docs/setup' },
               { label: 'Channels & versions', href: '/docs/channels' },
               { label: 'Update strategies', href: '/docs/update-strategies' },
@@ -799,6 +806,10 @@ export default function LandingPage() {
             title="Blog"
             titleHref="/blog"
             links={[
+              {
+                label: 'Ship updates with AI agents',
+                href: '/blog/ship-capacitor-updates-with-ai-agents',
+              },
               { label: 'How OTA updates work', href: '/blog/how-ota-works-for-capacitor-apps' },
               {
                 label: 'App Store & Play rules',

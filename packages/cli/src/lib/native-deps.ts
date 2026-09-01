@@ -171,6 +171,8 @@ export interface CompatibilityFinding {
 export interface CompatibilityResult {
   status: CompatibilityStatus;
   findings: CompatibilityFinding[];
+  /** Why a `skipped` result could not be determined. */
+  reason?: 'no_remote_baseline' | 'no_local_native_packages';
 }
 
 /**
@@ -185,7 +187,16 @@ export function compareNative(
   remote: NativePackage[] | null | undefined,
 ): CompatibilityResult {
   if (remote === null || remote === undefined) {
-    return { status: 'skipped', findings: [] };
+    return { status: 'skipped', reason: 'no_remote_baseline', findings: [] };
+  }
+
+  // Every remote-only package reads as a safe removal, which is right for one
+  // plugin but wrong as a verdict when the local scan found nothing at all.
+  // A pruned install, a workspace subdirectory, or a plugin declared only in
+  // devDependencies all produce an empty set, and reporting that as
+  // "compatible" is a confident green light built on no evidence.
+  if (local.length === 0 && remote.length > 0) {
+    return { status: 'skipped', reason: 'no_local_native_packages', findings: [] };
   }
 
   const remoteByName = new Map(remote.map((entry) => [entry.name, entry]));
@@ -299,7 +310,9 @@ function versionsIntersect(local: NativePackage, remote: NativePackage): boolean
 
 export function formatCompatibilityReport(result: CompatibilityResult): string {
   if (result.status === 'skipped') {
-    return 'Compatibility check skipped: the current release has no native package baseline yet.';
+    return result.reason === 'no_local_native_packages'
+      ? 'Compatibility check skipped: no native packages were found locally, but the current release records some. Install dependencies, or point --package-json/--node-modules at the right directory.'
+      : 'Compatibility check skipped: the current release has no native package baseline yet.';
   }
 
   const lines: string[] = [];

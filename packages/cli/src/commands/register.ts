@@ -2,9 +2,23 @@ import { Command } from 'commander';
 
 import ora from 'ora';
 
-import { resolveAuthToken, resolveServerUrl } from '../lib/config.js';
+import {
+  resolveAuthToken,
+  resolveOrganizationOverride,
+  resolveServerUrl,
+  type ResolvedAuthToken,
+} from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import { fetchCli } from '../lib/http.js';
+import {
+  fetchAccount,
+  initialOrganizationId,
+  organizationById,
+  promptForOrganization,
+  shellLiteral,
+  type AccountResponse,
+} from '../lib/organization.js';
+import { readStoredAuthProfile, storeSelectedOrganization } from '../lib/token-store.js';
 
 const APP_SLUG_REGEX = /^[A-Za-z0-9._-]{3,120}$/;
 
@@ -12,6 +26,7 @@ type RegisterOptions = {
   slug: string;
   server?: string;
   token?: string;
+  secretKey?: string;
 };
 
 type RegisterResponse = {
@@ -20,11 +35,37 @@ type RegisterResponse = {
   createdAt: string;
 };
 
+type RegisterPayload = { error?: string; code?: string } & Partial<RegisterResponse>;
+
+async function createApp(
+  serverUrl: string,
+  token: string,
+  slug: string,
+  organizationId?: string,
+): Promise<{ response: Response; payload: RegisterPayload | null }> {
+  const headers = new Headers({
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  });
+  if (organizationId) headers.set('X-OtaKit-Organization-Id', organizationId);
+  const response = await fetchCli(`${serverUrl}/api/v1/apps`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ slug }),
+  });
+  const contentType = response.headers.get('content-type') ?? '';
+  const payload = contentType.includes('application/json')
+    ? ((await response.json()) as RegisterPayload)
+    : null;
+  return { response, payload };
+}
+
 export const registerCommand = new Command('register')
   .description('Create a new app')
   .requiredOption('--slug <slug>', 'App slug (for example: com.example.app)')
   .option('--server <url>', 'Server URL')
   .option('--token <token>', 'Auth token (or set OTAKIT_TOKEN env var)')
+  .option('--secret-key <key>', 'Alias for --token')
   .action(async (options: RegisterOptions) => {
     await runCommand(async () => {
       const slug = options.slug.trim();
@@ -35,9 +76,12 @@ export const registerCommand = new Command('register')
       }
 
       const serverUrl = resolveServerUrl(process.cwd(), options.server);
-      const explicitToken = options.token?.trim();
-      const resolvedAuth = explicitToken
-        ? { token: explicitToken }
+      if (options.token && options.secretKey) {
+        throw new CliError('Use either `--token` or `--secret-key`, not both.');
+      }
+      const explicitToken = options.token?.trim() || options.secretKey?.trim();
+      const resolvedAuth: ResolvedAuthToken | null = explicitToken
+        ? { token: explicitToken, source: 'env_token' }
         : await resolveAuthToken(serverUrl);
 
       if (!resolvedAuth?.token) {
@@ -51,22 +95,67 @@ export const registerCommand = new Command('register')
         );
       }
 
+      const organizationOverride = resolveOrganizationOverride();
+      let organizationId = organizationOverride ?? resolvedAuth.organizationId;
+      let account: AccountResponse | undefined;
+
+      if (!organizationOverride && resolvedAuth.source === 'file') {
+        account = await fetchAccount(serverUrl, resolvedAuth.token);
+        const current = organizationById(account.memberships, organizationId);
+        if (!current) {
+          const storedProfile = await readStoredAuthProfile(serverUrl);
+          const selected = await promptForOrganization(account.memberships, {
+            initialOrganizationId: initialOrganizationId(account, storedProfile),
+          });
+          organizationId = selected.organizationId;
+          const stored = await storeSelectedOrganization(
+            serverUrl,
+            account.user.id,
+            selected.organizationId,
+          );
+          if (!stored.ok) {
+            throw new CliError(stored.reason ?? 'Could not store the selected organization.');
+          }
+        }
+      }
+
       const spinner = ora(`Creating app "${slug}"...`).start();
+      let { response, payload } = await createApp(
+        serverUrl,
+        resolvedAuth.token,
+        slug,
+        organizationId,
+      );
 
-      const response = await fetchCli(`${serverUrl}/api/v1/apps`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resolvedAuth.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ slug }),
-      });
-
-      const contentType = response.headers.get('content-type') ?? '';
-      const isJson = contentType.includes('application/json');
-      const payload = isJson
-        ? ((await response.json()) as { error?: string } & RegisterResponse)
-        : null;
+      if (
+        response.status === 409 &&
+        payload?.code === 'ORGANIZATION_SELECTION_REQUIRED' &&
+        !organizationId
+      ) {
+        spinner.stop();
+        account ??= await fetchAccount(serverUrl, resolvedAuth.token);
+        const selected = await promptForOrganization(account.memberships, {
+          initialOrganizationId: initialOrganizationId(account),
+        });
+        organizationId = selected.organizationId;
+        if (resolvedAuth.source === 'file') {
+          const stored = await storeSelectedOrganization(
+            serverUrl,
+            account.user.id,
+            selected.organizationId,
+          );
+          if (!stored.ok) {
+            throw new CliError(stored.reason ?? 'Could not store the selected organization.');
+          }
+        }
+        spinner.start();
+        ({ response, payload } = await createApp(
+          serverUrl,
+          resolvedAuth.token,
+          slug,
+          organizationId,
+        ));
+      }
 
       if (!response.ok) {
         spinner.fail('Failed to create app');
@@ -103,5 +192,14 @@ export const registerCommand = new Command('register')
       console.log('Next steps:');
       console.log('1. Build your web app');
       console.log('2. Run `otakit upload --release`');
+      if (
+        organizationId &&
+        resolvedAuth.source !== 'file' &&
+        !resolvedAuth.token.startsWith('otakit_sk_')
+      ) {
+        console.log('');
+        console.log('For later app-less commands in this environment:');
+        console.log(`export OTAKIT_ORGANIZATION_ID=${shellLiteral(organizationId)}`);
+      }
     });
   });

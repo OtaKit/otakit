@@ -199,7 +199,7 @@ export const uploadCommand = new Command('upload')
         strategy === 'deltas' ? 'Hashing bundle files...' : 'Creating zip archive...',
       ).start();
 
-      const bundle = await (async () => {
+      const uploadResult = await (async () => {
         try {
           const result = await runUploadWorkflow({
             api,
@@ -218,7 +218,7 @@ export const uploadCommand = new Command('upload')
               spinner.text = message;
             },
           });
-          return result.bundle;
+          return result;
         } catch (error) {
           if (spinner.isSpinning) {
             spinner.fail('Upload failed.');
@@ -226,6 +226,13 @@ export const uploadCommand = new Command('upload')
           throw error;
         }
       })();
+      const bundle = uploadResult.bundle;
+
+      if (uploadResult.release?.publicationStatus === 'manifest_sync_pending') {
+        throw new CliError(
+          `Bundle uploaded and release ${uploadResult.release.release.id} was recorded, but manifest synchronization is pending (operation ${uploadResult.release.operationId}). OtaKit will retry automatically; do not upload or publish it again.`,
+        );
+      }
 
       if (releaseChannel !== undefined) {
         spinner.succeed(

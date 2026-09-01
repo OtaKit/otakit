@@ -136,10 +136,13 @@ export default function SecurityPage() {
 
       <H2>API authentication</H2>
       <P>
-        All dashboard and CLI operations require authentication via scoped API keys or session
-        tokens. API keys are hashed before storage — the raw key is shown once at creation and never
-        stored. Organization-level role-based access controls restrict who can upload bundles,
-        create releases, or manage team members.
+        All dashboard and CLI operations require authentication via organization service keys or
+        session tokens. Service keys currently carry the organization&apos;s full operational API
+        authority; they are not fine-grained scopes. Keys are hashed before storage — the raw key is
+        shown once at creation and never stored. Current organization membership permits normal app,
+        upload, and release operations, while owner/admin checks protect team, key, billing,
+        organization settings, and audit administration. Remote OAuth connections additionally
+        intersect their granted scopes with current membership on every call.
       </P>
 
       <Separator className="my-10" />

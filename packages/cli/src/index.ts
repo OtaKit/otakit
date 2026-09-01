@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 
 import { compatibilityCommand } from './commands/compatibility.js';
+import { connectCommand } from './commands/connect.js';
 import { configCommand } from './commands/config.js';
 import { registerCommand } from './commands/register.js';
 import { uploadCommand } from './commands/upload.js';
@@ -15,6 +16,8 @@ import { generateEncryptionKeyCommand } from './commands/generate-encryption-key
 import { loginCommand } from './commands/login.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { logoutCommand } from './commands/logout.js';
+import { mcpCommand } from './commands/mcp.js';
+import { organizationCommand } from './commands/organization.js';
 import { CLI_VERSION } from './lib/version.js';
 
 const program = new Command();
@@ -24,6 +27,7 @@ program
   .description('CLI for managing OTA updates')
   .version(CLI_VERSION, '--cli-version', 'Show CLI version');
 
+program.addCommand(connectCommand);
 program.addCommand(configCommand);
 program.addCommand(registerCommand);
 program.addCommand(uploadCommand);
@@ -37,5 +41,7 @@ program.addCommand(generateEncryptionKeyCommand);
 program.addCommand(loginCommand);
 program.addCommand(whoamiCommand);
 program.addCommand(logoutCommand);
+program.addCommand(mcpCommand);
+program.addCommand(organizationCommand);
 
 program.parse();

@@ -1,5 +1,7 @@
 # @otakit/cli
 
+<!-- mcp-name: io.github.otakit/otakit -->
+
 Upload and release CLI for OtaKit.
 
 ## What it does
@@ -64,7 +66,7 @@ Resolution order:
 Main rules:
 
 1. `appId`: `--app-id` -> `OTAKIT_APP_ID` -> `plugins.OtaKit.appId`
-2. `serverUrl`: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> `https://otakit.app/api/v1`
+2. `serverUrl`: `--server` -> `OTAKIT_SERVER_URL` -> `plugins.OtaKit.serverUrl` -> `https://console.otakit.app`
 3. `outputDir`: upload path arg -> `OTAKIT_BUILD_DIR` / `OTAKIT_OUTPUT_DIR` -> `webDir`
 4. release channel: `--release` -> unnamed channel, `--release <channel>` -> named channel
 
@@ -72,6 +74,13 @@ Auth precedence:
 
 1. `OTAKIT_TOKEN`
 2. stored token from `otakit login`
+
+Organization rules:
+
+1. organization API keys stay bound to their organization
+2. app-scoped commands use the organization that owns the app
+3. app-less commands use the default chosen during login; automation can set `OTAKIT_ORGANIZATION_ID`
+4. `otakit organization select` changes the local default without changing the dashboard workspace
 
 Version precedence:
 
@@ -90,14 +99,15 @@ Version precedence:
 - `otakit release <bundleId> --channel staging`
   promote an existing bundle later
 
-Releases are append-only. The newest release for `(appId, channel)` is what
-devices see on manifest checks.
+Releases are append-only. The newest release for
+`(appId, channel, runtimeVersion)` is what devices see on manifest checks.
 
 ## Common commands
 
 - `otakit login`
 - `otakit logout`
 - `otakit whoami`
+- `otakit organization select`
 - `otakit register --slug <slug>`
 - `otakit upload [path] [--release [channel]]`
 - `otakit upload --release --auto-revert [--auto-revert-rate <1-95>] [--auto-revert-min-sample <10-100000>]` — server reverts the release if too many devices roll back within 24h (defaults: 20% of ≥50)
@@ -108,6 +118,34 @@ devices see on manifest checks.
 - `otakit config validate`
 - `otakit config resolve --json`
 - `otakit generate-signing-key`
+- `otakit mcp [--project-root <path>]`
+
+## MCP server
+
+Run the local stdio server from the Capacitor project it should access:
+
+```bash
+npx -y @otakit/cli@latest mcp
+```
+
+The project root and organization are fixed when the server starts. For a configured
+project, the CLI uses `plugins.OtaKit.appId` to select its owning organization and
+the server verifies current membership. An organization key is already fixed to its
+owning organization. For app-less projects, `otakit login` stores a named default;
+change it with `otakit organization select` and restart the MCP connection. Users do
+not need an organization ID for interactive setup.
+
+Do not put an OtaKit token in tool arguments. The server reuses `OTAKIT_TOKEN` or the
+stored `otakit login` session and honors `OTAKIT_SERVER_URL` for self-hosted
+installations. App-less automation may set `OTAKIT_ORGANIZATION_ID`; the
+`--organization-id` flag remains an advanced per-process override.
+
+The hosted remote server is `https://console.otakit.app/mcp`. It is a separate,
+deployment-enabled surface for account operations and cannot read or upload files
+from your local project. A deployment that has not enabled it returns a clear
+`503` response; local stdio MCP continues to work independently. See the
+[MCP and Agent Skills guide](https://otakit.app/docs/agents) for Claude Code, Codex,
+OAuth scopes, and remote setup.
 
 ## CI
 

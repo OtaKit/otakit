@@ -1,0 +1,17 @@
+{
+  "name": "otakit",
+  "owner": {
+    "name": "OtaKit",
+    "url": "https://otakit.app"
+  },
+  "description": "Official OtaKit plugins for AI-assisted Capacitor OTA releases.",
+  "plugins": [
+    {
+      "name": "otakit",
+      "source": "./",
+      "description": "OtaKit MCP tools and Agent Skill for Claude Code.",
+      "category": "Developer Tools",
+      "tags": ["capacitor", "ota", "mcp", "agent-skills"]
+    }
+  ]
+}

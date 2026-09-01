@@ -46,7 +46,7 @@ export default function DocsOverviewPage() {
         </li>
         <li>
           On device, the plugin checks for updates, verifies the downloaded bundle, and by default
-          activates it on the next cold launch by default.
+          activates it on the next cold launch.
         </li>
       </ol>
 
@@ -95,8 +95,8 @@ export default function DocsOverviewPage() {
           description="The CLI warns at upload time when a bundle depends on native code the installed app doesn't have."
         />
         <Feature
-          title="Organization access & API keys"
-          description="Manage apps, members, and scoped keys inside an organization."
+          title="MCP & Agent Skills"
+          description="Ask your coding agent to ship an update. It checks compatibility, uploads, and stops for your approval — the same release process, same audit trail."
         />
         <Feature
           title="Self-hosting"
@@ -133,6 +133,11 @@ export default function DocsOverviewPage() {
           href="/docs/events"
           title="Events & Listeners"
           description="Subscribe to update lifecycle events: available, staged, applied, failed, rolled back."
+        />
+        <NavCard
+          href="/docs/agents"
+          title="MCP & Agent Skills"
+          description="One command connects Claude Code, Codex, or VS Code to your project."
         />
         <NavCard
           href="/docs/ci"

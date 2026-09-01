@@ -7,12 +7,12 @@ import { site } from '@/lib/site';
 export const metadata: Metadata = {
   title: 'Blog — OTA updates, live update comparisons & store policy',
   description:
-    'Practical guides on Capacitor OTA updates: how live updates work, App Store and Google Play policy, tool comparisons, and migration guides from Capgo and Capawesome.',
+    'Practical guides on Capacitor OTA updates: AI agent workflows, release safety, store policy, tool comparisons, and production migration guides.',
   alternates: { canonical: `${site.url}/blog` },
   openGraph: {
     title: 'OtaKit Blog — Capacitor OTA updates, explained',
     description:
-      'Practical guides on Capacitor OTA updates: how live updates work, store policy, tool comparisons, and migration guides.',
+      'Practical guides on Capacitor OTA updates: AI agent workflows, release safety, store policy, comparisons, and migrations.',
     url: `${site.url}/blog`,
     siteName: site.name,
     type: 'website',
@@ -39,8 +39,8 @@ export default function BlogIndexPage() {
             Capacitor OTA updates, explained properly
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-            How live updates work, what Apple and Google actually allow, honest tool comparisons,
-            and battle-tested migration guides.
+            Agent-driven release workflows, how live updates work, what Apple and Google actually
+            allow, honest comparisons, and battle-tested migration guides.
           </p>
         </div>
       </section>

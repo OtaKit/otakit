@@ -12,10 +12,29 @@ concurrency:
 
 jobs:
   check:
-    name: Lint, typecheck & format
+    name: Test, lint, typecheck & format
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/otakit_test?schema=public
+      RUN_DATABASE_TESTS: '1'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: otakit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d otakit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -27,11 +46,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format check
-        run: pnpm format:check
+      - name: Generate Prisma client
+        run: pnpm --filter @otakit/console db:generate
 
-      - name: Lint
-        run: pnpm lint
+      - name: Apply test database migrations
+        run: pnpm --filter @otakit/console db:migrate
+
+      - name: Validate agent distribution metadata
+        run: pnpm agents:validate
+
+      - name: Check generated agent documentation
+        run: pnpm docs:check
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Format changed files
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm format:check:changed
+
+      - name: Lint changed files
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm lint:changed

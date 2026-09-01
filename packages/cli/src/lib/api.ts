@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { CliConfig } from './config.js';
 import { fetchCli } from './http.js';
 import type { NativePackage } from './native-deps.js';
@@ -54,25 +56,56 @@ export interface Release {
   revertedAt?: string | null;
 }
 
+export interface ReleaseResult {
+  operationId: string;
+  idempotencyKey: string;
+  publicationStatus: 'published' | 'manifest_sync_pending';
+  release: Release;
+  previousRelease: Release | null;
+}
+
+export class OtaKitApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly nextStep?: string;
+
+  constructor(status: number, message: string, code?: string, nextStep?: string) {
+    super(message);
+    this.name = 'OtaKitApiError';
+    this.status = status;
+    this.code = code;
+    this.nextStep = nextStep;
+  }
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly authToken: string;
   private readonly appId: string;
   private readonly version: string;
+  private readonly organizationId?: string;
 
-  constructor(config: CliConfig, version: string = CLI_VERSION) {
+  constructor(
+    config: CliConfig,
+    version: string = CLI_VERSION,
+    options: { organizationId?: string } = {},
+  ) {
     this.baseUrl = config.serverUrl.replace(/\/$/, '');
     this.authToken = config.authToken;
     this.appId = config.appId;
     this.version = version;
+    this.organizationId = options.organizationId;
   }
 
-  private async fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const hasBody = options.body !== undefined;
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${this.authToken}`);
     headers.set('User-Agent', getCliUserAgent(this.version));
+    if (this.organizationId) {
+      headers.set('X-OtaKit-Organization-Id', this.organizationId);
+    }
     if (hasBody && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
@@ -89,18 +122,34 @@ export class ApiClient {
       let errorMessage = `API error (${response.status})`;
 
       if (isJson) {
-        const parsed = (await response.json()) as { error?: unknown };
+        const parsed = (await response.json()) as {
+          error?: unknown;
+          code?: unknown;
+          nextStep?: unknown;
+        };
         if (typeof parsed.error === 'string') {
           errorMessage = parsed.error;
         }
+        throw new OtaKitApiError(
+          response.status,
+          errorMessage,
+          typeof parsed.code === 'string' ? parsed.code : undefined,
+          typeof parsed.nextStep === 'string' ? parsed.nextStep : undefined,
+        );
       } else {
-        const text = await response.text();
-        if (text.trim().length > 0) {
-          errorMessage = text;
+        // A proxy, a captive portal, or a wrong origin answers with HTML. Dumping
+        // a whole page at the user helps nobody, so keep the status and say where
+        // it came from instead.
+        const text = (await response.text()).trim();
+        const looksLikeMarkup = text.startsWith('<');
+        if (text.length > 0 && !looksLikeMarkup) {
+          errorMessage = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+        } else if (looksLikeMarkup) {
+          errorMessage = `${url} returned HTML with status ${response.status}, not the OtaKit API. Check the server URL.`;
         }
       }
 
-      throw new Error(errorMessage);
+      throw new OtaKitApiError(response.status, errorMessage);
     }
 
     if (response.status === 204) {
@@ -132,18 +181,18 @@ export class ApiClient {
       nonce: string;
     };
   }): Promise<UploadInitResponse> {
-    return this.fetch(this.appPath('/bundles/initiate'), {
+    return this.request(this.appPath('/bundles/initiate'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
   }
 
   async getBundle(bundleId: string): Promise<BundleDetail> {
-    return this.fetch(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`));
+    return this.request(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`));
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {
-    return this.fetch(this.appPath('/bundles/finalize'), {
+    return this.request(this.appPath('/bundles/finalize'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
@@ -153,15 +202,16 @@ export class ApiClient {
     version: string;
     runtimeVersion?: string;
     files: DeltaFileDescriptor[];
+    nativePackages?: NativePackage[];
   }): Promise<DeltaUploadInitResponse> {
-    return this.fetch(this.appPath('/bundles/initiate-delta'), {
+    return this.request(this.appPath('/bundles/initiate-delta'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
   }
 
   async finalizeDeltaUpload(options: { uploadId: string }): Promise<Bundle> {
-    return this.fetch(this.appPath('/bundles/finalize-delta'), {
+    return this.request(this.appPath('/bundles/finalize-delta'), {
       method: 'POST',
       body: JSON.stringify(options),
     });
@@ -176,11 +226,11 @@ export class ApiClient {
     if (options?.offset) params.set('offset', String(options.offset));
 
     const query = params.toString();
-    return this.fetch(this.appPath(`/bundles${query ? `?${query}` : ''}`));
+    return this.request(this.appPath(`/bundles${query ? `?${query}` : ''}`));
   }
 
   async deleteBundle(bundleId: string): Promise<void> {
-    await this.fetch(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`), {
+    await this.request(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`), {
       method: 'DELETE',
     });
   }
@@ -193,16 +243,24 @@ export class ApiClient {
       autoRevert?: boolean;
       autoRevertRatePercent?: number;
       autoRevertMinSample?: number;
+      expectedCurrentReleaseId?: string | null;
+      idempotencyKey?: string;
+      compatibilityDecision?: 'block' | 'proceed' | 'skip';
     },
-  ): Promise<{ release: Release; previousRelease: Release | null }> {
+  ): Promise<ReleaseResult> {
     const autoRevert = options?.autoRevert === true;
-    return this.fetch(this.appPath('/releases'), {
+    return this.request(this.appPath('/releases'), {
       method: 'POST',
+      headers: { 'Idempotency-Key': options?.idempotencyKey ?? randomUUID() },
       body: JSON.stringify({
         bundleId,
         channel,
+        ...(options && 'expectedCurrentReleaseId' in options
+          ? { expectedCurrentReleaseId: options.expectedCurrentReleaseId }
+          : {}),
         forceImmediate: options?.forceImmediate ?? false,
         autoRevert,
+        compatibilityDecision: options?.compatibilityDecision,
         // The server rejects threshold fields unless autoRevert is true.
         ...(autoRevert
           ? {
@@ -228,6 +286,6 @@ export class ApiClient {
     if (options?.offset) params.set('offset', String(options.offset));
 
     const query = params.toString();
-    return this.fetch(this.appPath(`/releases${query ? `?${query}` : ''}`));
+    return this.request(this.appPath(`/releases${query ? `?${query}` : ''}`));
   }
 }
