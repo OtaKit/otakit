@@ -1698,7 +1698,7 @@ This is deliberately separate from the dashboard: switching workspaces in the br
 
 Use your own console origin everywhere — `otakit connect` picks it up from `plugins.OtaKit.serverUrl` automatically. Remote MCP lives at `<console-origin>/mcp`.
 
-The agent features roll out in stages and ship disabled. Deploy the code, apply the additive migrations through your normal reviewed process, then enable release reliability, remote MCP, and OAuth one at a time. OtaKit never migrates a live database for you.
+The agent features roll out in stages and ship disabled. Back up and test the database, apply the additive migrations through your normal reviewed process, then deploy the code with every new flag off. Enable release reliability, remote MCP, and OAuth one at a time. OtaKit never migrates a live database for you.
 
 See the self-hosting guide, and the Agent Skill source for the flags and rollout checklist.
 

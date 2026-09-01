@@ -226,9 +226,10 @@ codex mcp login --oauth-client-registration cimd \\
         <Code>{'<console-origin>/mcp'}</Code>.
       </P>
       <P>
-        The agent features roll out in stages and ship disabled. Deploy the code, apply the additive
-        migrations through your normal reviewed process, then enable release reliability, remote
-        MCP, and OAuth one at a time. OtaKit never migrates a live database for you.
+        The agent features roll out in stages and ship disabled. Back up and test the database,
+        apply the additive migrations through your normal reviewed process, then deploy the code
+        with every new flag off. Enable release reliability, remote MCP, and OAuth one at a time.
+        OtaKit never migrates a live database for you.
       </P>
       <P>
         See the <LinkText href="/docs/self-host">self-hosting guide</LinkText>, and the{' '}
