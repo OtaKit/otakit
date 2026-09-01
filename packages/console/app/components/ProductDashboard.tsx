@@ -1190,7 +1190,11 @@ export function ProductDashboard({
                               Start setup
                             </Link>
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setCreateDialogOpen(true)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setCreateDialogOpen(true)}
+                          >
                             <Plus className="size-3.5" />
                             Create app
                           </Button>
