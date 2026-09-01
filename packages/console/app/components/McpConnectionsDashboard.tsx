@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bot, Check, CircleAlert, Copy, LoaderCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Bot, CircleAlert, LoaderCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { CopyButton } from '@/app/components/CopyButton';
 import type { DashboardInitialData } from '@/app/components/dashboard-types';
 import { scopeLabel } from '@/lib/mcp/scope-labels';
 import { Badge } from '@/components/ui/badge';
@@ -109,34 +110,6 @@ function formatDate(value: string): string {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value));
-}
-
-function CopyButton({ value, label }: { value: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1600);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="size-7 shrink-0 p-0"
-      aria-label={`Copy ${label}`}
-      title={`Copy ${label}`}
-      onClick={() => {
-        // Unavailable on a self-hosted console served over plain HTTP, so
-        // confirm from the write rather than assuming it succeeded.
-        void navigator.clipboard
-          ?.writeText(value)
-          .then(() => setCopied(true))
-          .catch(() => toast.error('Could not copy. Select the command and copy it manually.'));
-      }}
-    >
-      {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-    </Button>
-  );
 }
 
 function CommandBlock({ step }: { step: Step }) {
