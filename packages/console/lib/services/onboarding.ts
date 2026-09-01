@@ -1,5 +1,4 @@
 import { db } from '@/lib/db';
-import { buildManifestUrl } from '@/lib/manifest-files';
 import { isRemoteMcpOAuthEnabled, remoteMcpResourceUrl } from '@/lib/mcp/features';
 import { listRecentAppEventsWithStatus } from '@/lib/tinybird/events';
 import { isTinybirdConfigured } from '@/lib/tinybird/client';
@@ -11,9 +10,6 @@ import type { DeviceEvent } from '@/app/components/dashboard-types';
  * release this long to be picked up before calling the silence a problem.
  */
 const DEVICE_CONTACT_GRACE_MS = 3 * 60 * 1000;
-
-/** Best-effort only. A slow CDN must never hold up the whole snapshot. */
-const MANIFEST_PROBE_TIMEOUT_MS = 2_500;
 
 const AGENT_ATTRIBUTED_ACTIONS = ['app.created', 'bundle.uploaded', 'release.created'] as const;
 
@@ -61,8 +57,6 @@ export type OnboardingSnapshot = {
       channel: string | null;
       runtimeVersion: string | null;
       publishedAt: string | null;
-      /** null when the probe could not run — never reported as a failure. */
-      manifestReachable: boolean | null;
     };
     device: {
       status: SetupStepStatus;
@@ -99,21 +93,6 @@ function readAgentEvidence(entries: { actorType: string; metadata: unknown }[]):
     return { evidence: 'assumed', clientName: null };
   }
   return { evidence: null, clientName: null };
-}
-
-async function probeManifest(url: string): Promise<boolean | null> {
-  try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      cache: 'no-store',
-      signal: AbortSignal.timeout(MANIFEST_PROBE_TIMEOUT_MS),
-    });
-    return response.ok;
-  } catch {
-    // A blocked HEAD, a timeout, or an unconfigured CDN is not evidence that
-    // the release is broken. Report unknown so the guide stays quiet.
-    return null;
-  }
 }
 
 function diagnose(args: {
@@ -283,9 +262,9 @@ export async function getOnboardingSnapshot(input: {
     : [null, null];
 
   const analyticsConfigured = isTinybirdConfigured();
-  const [events, manifestReachable] = await Promise.all([
+  const events =
     app && release && analyticsConfigured
-      ? listRecentAppEventsWithStatus({
+      ? await listRecentAppEventsWithStatus({
           appId: app.id,
           releaseId: release.id,
           // Only this release matters, so start at the moment it was published.
@@ -293,15 +272,12 @@ export async function getOnboardingSnapshot(input: {
           from: new Date((release.promotedAt ?? app.createdAt).getTime() - 60_000),
           limit: 50,
         })
-      : Promise.resolve({ data: [] as DeviceEvent[], available: false }),
-    app && release
-      ? probeManifest(buildManifestUrl(app.id, release.channel, release.bundle.runtimeVersion))
-      : Promise.resolve(null),
-  ]);
+      : { data: [] as DeviceEvent[], available: false };
 
   const analyticsAvailable = analyticsConfigured && (events.available || !release);
   const applied = events.data.find((event) => event.action === 'applied') ?? null;
   const firstContact = events.data.length > 0 ? events.data[events.data.length - 1] : null;
+
   const diagnosis = diagnose({
     analyticsAvailable,
     publishedAt: release?.promotedAt ?? null,
@@ -341,7 +317,6 @@ export async function getOnboardingSnapshot(input: {
       channel: release?.channel ?? null,
       runtimeVersion: release?.bundle.runtimeVersion ?? null,
       publishedAt: release?.promotedAt?.toISOString() ?? null,
-      manifestReachable,
     },
     device: {
       status: deviceStatus,

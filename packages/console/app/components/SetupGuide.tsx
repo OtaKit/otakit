@@ -32,6 +32,7 @@ const POLL_WAITING_MS = 5_000;
 const POLL_IDLE_MS = 15_000;
 
 const CLIENT_STORAGE_KEY = 'otakit.setup.client';
+const CLI_STORAGE_KEY = 'otakit.setup.cli';
 
 type ClientId = 'claude' | 'codex' | 'other';
 
@@ -235,7 +236,13 @@ function CommandLine({ label, command }: { label: string; command: string }) {
   );
 }
 
-function DiagnosisPanel({ diagnosis }: { diagnosis: SetupDiagnosis }) {
+function DiagnosisPanel({
+  diagnosis,
+  clientLabel,
+}: {
+  diagnosis: SetupDiagnosis;
+  clientLabel: string;
+}) {
   const isProblem = diagnosis.tone === 'error' || diagnosis.tone === 'warning';
   return (
     <div
@@ -278,7 +285,7 @@ function DiagnosisPanel({ diagnosis }: { diagnosis: SetupDiagnosis }) {
 
           {diagnosis.fixPrompt ? (
             <div className="pt-0.5">
-              <PromptCard prompt={diagnosis.fixPrompt} clientLabel="your agent" />
+              <PromptCard prompt={diagnosis.fixPrompt} clientLabel={clientLabel} />
             </div>
           ) : null}
         </div>
@@ -319,7 +326,8 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
   // 'none' is an explicit collapse: without it, closing the auto-expanded step
   // falls back to the current step and immediately reopens it.
   const [expanded, setExpanded] = useState<StepCopy['id'] | 'none' | null>(null);
-  const [showCli, setShowCli] = useState(false);
+  const [cliPreference, setCliPreference] = useStoredPreference(CLI_STORAGE_KEY);
+  const showCli = cliPreference === '1';
 
   // The first unfinished step is the one to act on, unless the reader opened
   // another. Recomputed from the snapshot so a checkpoint landing elsewhere
@@ -418,24 +426,27 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
                   <button
                     type="button"
                     onClick={() => setExpanded(openStep === step.id ? 'none' : step.id)}
+                    aria-expanded={isOpen}
                     className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent/40"
                   >
                     <StatusIcon status={state.status} busy={busy} />
                     <span
                       className={cn(
-                        'flex-1 text-[13px] font-medium',
+                        'min-w-0 flex-1 truncate text-[13px] font-medium',
                         state.status === 'done' && 'text-muted-foreground',
                       )}
                     >
                       {step.title}
                     </span>
                     {evidence ? (
-                      <span className="truncate text-xs text-muted-foreground">{evidence}</span>
+                      <span className="max-w-[45%] shrink-0 truncate text-xs text-muted-foreground">
+                        {evidence}
+                      </span>
                     ) : null}
                   </button>
 
                   {isOpen ? (
-                    <div className="space-y-4 px-5 pb-5 pl-[3.25rem]">
+                    <div className="space-y-4 px-5 pb-5 sm:pl-[3.25rem]">
                       <p className="text-[13px] leading-relaxed text-muted-foreground">
                         {step.blurb}
                       </p>
@@ -474,14 +485,17 @@ export function SetupGuide({ initialSnapshot }: { initialSnapshot: OnboardingSna
                       ) : null}
 
                       {step.id === 'device' && snapshot.steps.device.diagnosis ? (
-                        <DiagnosisPanel diagnosis={snapshot.steps.device.diagnosis} />
+                        <DiagnosisPanel
+                          diagnosis={snapshot.steps.device.diagnosis}
+                          clientLabel={clientLabel}
+                        />
                       ) : null}
 
                       {step.cli ? (
                         <div>
                           <button
                             type="button"
-                            onClick={() => setShowCli((value) => !value)}
+                            onClick={() => setCliPreference(showCli ? '0' : '1')}
                             className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                           >
                             <Terminal className="size-3" />

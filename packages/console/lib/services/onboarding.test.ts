@@ -23,9 +23,6 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/tinybird/events', () => ({
   listRecentAppEventsWithStatus: mocks.listEvents,
 }));
-vi.mock('@/lib/manifest-files', () => ({
-  buildManifestUrl: () => 'https://cdn.example/manifests/app-1/base/default/manifest.json',
-}));
 
 import { getOnboardingSnapshot } from './onboarding';
 
@@ -71,12 +68,10 @@ describe('onboarding snapshot', () => {
     mocks.findBundle.mockResolvedValue(null);
     mocks.findRelease.mockResolvedValue(null);
     mocks.listEvents.mockResolvedValue({ data: [], available: true });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as unknown as Response));
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
   });
 
   it('starts a brand-new organization with nothing claimed as done', async () => {
@@ -202,17 +197,5 @@ describe('onboarding snapshot', () => {
 
     expect(result.steps.agent.evidence).toBe('assumed');
     expect(result.steps.agent.status).toBe('done');
-  });
-
-  it('never reports an unreachable manifest as a broken release', async () => {
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
-    mocks.findRelease.mockResolvedValue(publishedRelease());
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unreachable')));
-
-    const result = await snapshot();
-
-    expect(result.steps.release.manifestReachable).toBeNull();
-    expect(result.steps.release.status).toBe('done');
   });
 });
