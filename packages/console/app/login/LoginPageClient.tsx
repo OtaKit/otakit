@@ -186,7 +186,7 @@ export function LoginPageClient({
       const { data, error: signInError } = await authClient.signIn.social({
         provider,
         callbackURL: '/dashboard',
-        newUserCallbackURL: '/dashboard/settings?pricing=1',
+        newUserCallbackURL: '/dashboard?pricing=1',
         errorCallbackURL: '/login',
         disableRedirect: true,
       });
@@ -255,7 +255,7 @@ export function LoginPageClient({
       const isLikelyNewUser =
         Number.isFinite(createdAt) && Math.abs(Date.now() - createdAt) <= 5 * 60 * 1000;
 
-      window.location.href = isLikelyNewUser ? '/dashboard/settings?pricing=1' : '/dashboard';
+      window.location.href = isLikelyNewUser ? '/dashboard?pricing=1' : '/dashboard';
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Invalid code');
       setBusyAction(null);

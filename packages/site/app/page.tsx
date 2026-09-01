@@ -368,7 +368,7 @@ export default function LandingPage() {
                 not app store reviews
               </span> */}
             </h1>
-            <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
               Push over-the-air (OTA) updates directly to your Capacitor app without app store
               reviews.
             </p>

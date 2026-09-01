@@ -32,6 +32,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import type {
   ApiError,
@@ -412,6 +413,16 @@ export function ProductDashboard({
   const docsUrl = docsHref ?? `${siteUrl}/docs`;
   const selectionStorageKey = 'selectedAppId';
   const [apps, setApps] = useState<AppSummary[]>(initialData.apps);
+  const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+  const [pricingDialogBillingData, setPricingDialogBillingData] =
+    useState<PricingDialogBillingData | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pricing') === '1' || params.get('checkout') === 'success') {
+      setPricingDialogOpen(true);
+    }
+  }, [initialData.activeOrganization.id]);
 
   // App — persist selection in localStorage
   const [selectedAppId, setSelectedAppId] = useState<string | null>(() => {
@@ -493,6 +504,9 @@ export function ProductDashboard({
   const selectedApp = useMemo(
     () => apps.find((a) => a.id === selectedAppId) ?? null,
     [apps, selectedAppId],
+  );
+  const showEmptyEvents = Boolean(
+    selectedApp && bundles.length > 0 && appEvents.length === 0 && !loadingEvents,
   );
 
   useEffect(() => {
@@ -1601,8 +1615,13 @@ export function ProductDashboard({
 
               {/* Events */}
               {selectedApp ? (
-                <section className="">
-                  <div className="mx-auto max-w-screen-xl bg-muted/30">
+                <section className={cn(showEmptyEvents && 'flex flex-1')}>
+                  <div
+                    className={cn(
+                      'mx-auto max-w-screen-xl bg-muted/30',
+                      showEmptyEvents && 'flex w-full flex-1 flex-col',
+                    )}
+                  >
                     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 pb-5 pt-8">
                       <div className="mr-5 flex items-center gap-3">
                         <Activity className="size-6 shrink-0 text-muted-foreground" />
@@ -1773,8 +1792,14 @@ export function ProductDashboard({
                     </div>
 
                     {appEvents.length === 0 && !loadingEvents ? (
-                      <div className="p-5">
-                        <div className="rounded-lg border border-dashed py-12 text-center">
+                      <div className={cn('p-5', showEmptyEvents && 'flex flex-1')}>
+                        <div
+                          className={cn(
+                            'rounded-lg border border-dashed py-12 text-center',
+                            showEmptyEvents &&
+                              'flex min-h-64 w-full flex-col items-center justify-center',
+                          )}
+                        >
                           <Clock className="mx-auto size-6 text-muted-foreground/40" />
                           <p className="mt-3 text-sm font-medium">No activity yet</p>
                           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
@@ -1867,13 +1892,26 @@ export function ProductDashboard({
                 </section>
               ) : null}
 
-              <section className="flex-1">
-                <div className="mx-auto h-full max-w-screen-xl" />
-              </section>
+              {showEmptyEvents ? null : (
+                <section className="flex-1">
+                  <div className="mx-auto h-full max-w-screen-xl" />
+                </section>
+              )}
             </>
           )}
         </div>
       </main>
+
+      <PricingDialog
+        open={pricingDialogOpen}
+        onOpenChange={setPricingDialogOpen}
+        canManageBilling={
+          initialData.activeOrganization.role === 'owner' ||
+          initialData.activeOrganization.role === 'admin'
+        }
+        initialBillingData={pricingDialogBillingData}
+        onBillingDataChange={setPricingDialogBillingData}
+      />
 
       <ColumnSelectionDialog
         open={bundleColumnsDialogOpen}
