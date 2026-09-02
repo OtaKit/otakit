@@ -16,7 +16,6 @@ export async function GET(request: NextRequest) {
     const appId = request.nextUrl.searchParams.get('appId')?.trim();
     const snapshot = await getOnboardingSnapshot({
       organizationId: ctx.organizationId,
-      userId: ctx.userId,
       appId: appId || undefined,
     });
     return NextResponse.json(snapshot);

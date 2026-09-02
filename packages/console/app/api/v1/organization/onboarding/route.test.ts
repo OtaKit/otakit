@@ -48,7 +48,6 @@ describe('onboarding route', () => {
 
     expect(mocks.getOnboardingSnapshot).toHaveBeenCalledWith({
       organizationId: 'org-1',
-      userId: 'user-1',
       appId: 'app-1',
     });
   });
