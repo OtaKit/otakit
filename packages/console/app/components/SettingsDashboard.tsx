@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Building2,
-  Bot,
   ChevronsUpDown,
   Copy,
   CreditCard,
@@ -28,6 +27,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { AgentsSection } from '@/app/components/agents/AgentsSection';
 import {
   PricingDialog,
   type PlanKey,
@@ -867,31 +867,9 @@ User ID: ${initialData.user.id}`,
 
               {/* Always available: connecting an agent runs through the CLI and
                   does not depend on remote MCP being enabled. */}
-              <section className="h-full">
+              <section>
                 <div className="mx-auto max-w-3xl bg-muted/30">
-                  <div className="flex items-center justify-between border-b border-border bg-background px-5 pb-6 pt-8">
-                    <div className="flex items-center gap-3">
-                      <Bot className="size-6 shrink-0 text-muted-foreground" />
-                      <div className="flex flex-col gap-0.5">
-                        <h2 className="text-[15px] font-semibold leading-tight">Agents</h2>
-                        <p className="text-xs leading-tight text-muted-foreground">
-                          {initialData.mcpConnectionCount > 0
-                            ? `${initialData.mcpConnectionCount} authorized remote ${
-                                initialData.mcpConnectionCount === 1 ? 'connection' : 'connections'
-                              }`
-                            : 'Connect Claude Code, Codex, or VS Code'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8"
-                      onClick={() => router.push('/dashboard/settings/connections')}
-                    >
-                      {initialData.mcpConnectionCount > 0 ? 'Manage' : 'Set up'}
-                    </Button>
-                  </div>
+                  <AgentsSection remoteMcpOAuthEnabled={initialData.remoteMcpOAuthEnabled} />
                 </div>
               </section>
 
