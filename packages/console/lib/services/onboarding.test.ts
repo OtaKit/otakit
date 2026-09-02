@@ -4,8 +4,6 @@ import type { DeviceEvent, DeviceEventAction } from '@/app/components/dashboard-
 
 const mocks = vi.hoisted(() => ({
   findApp: vi.fn(),
-  countConsents: vi.fn(),
-  findAuditEntries: vi.fn(),
   findBundle: vi.fn(),
   findRelease: vi.fn(),
   listEvents: vi.fn(),
@@ -14,8 +12,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({
   db: {
     app: { findFirst: mocks.findApp },
-    oauthConsent: { count: mocks.countConsents },
-    auditLog: { findMany: mocks.findAuditEntries },
     bundle: { findFirst: mocks.findBundle },
     release: { findFirst: mocks.findRelease },
   },
@@ -45,16 +41,18 @@ function event(action: DeviceEventAction, detail: string | null = null): DeviceE
 
 /** A release published far enough back that the device grace window has passed. */
 function publishedRelease(promotedAt = new Date('2026-09-02T11:00:00.000Z')) {
-  return {
-    id: 'release-1',
-    channel: null,
-    promotedAt,
-    bundle: { runtimeVersion: '2026.04' },
-  };
+  return { id: 'release-1', channel: null, promotedAt, bundle: { runtimeVersion: '2026.04' } };
+}
+
+/** Everything up to the device step already done. */
+function throughRelease() {
+  mocks.findApp.mockResolvedValue(APP);
+  mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
+  mocks.findRelease.mockResolvedValue(publishedRelease());
 }
 
 async function snapshot() {
-  return getOnboardingSnapshot({ organizationId: 'org-1', userId: 'user-1', now: NOW });
+  return getOnboardingSnapshot({ organizationId: 'org-1', now: NOW });
 }
 
 describe('onboarding snapshot', () => {
@@ -63,33 +61,29 @@ describe('onboarding snapshot', () => {
     vi.stubEnv('TINYBIRD_READ_TOKEN', 'read-token');
     vi.stubEnv('TINYBIRD_API_HOST', 'https://api.tinybird.test');
     mocks.findApp.mockResolvedValue(null);
-    mocks.countConsents.mockResolvedValue(0);
-    mocks.findAuditEntries.mockResolvedValue([]);
     mocks.findBundle.mockResolvedValue(null);
     mocks.findRelease.mockResolvedValue(null);
     mocks.listEvents.mockResolvedValue({ data: [], available: true });
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => vi.unstubAllEnvs());
 
-  it('starts a brand-new organization with nothing claimed as done', async () => {
+  it('tracks only checkpoints the server can prove', async () => {
     const result = await snapshot();
 
-    expect(result.complete).toBe(false);
+    // Connecting a CLI or an agent is not among them: `otakit login` stores a
+    // user session token, so its writes are indistinguishable from console
+    // clicks. Four steps, every one of them verifiable.
+    expect(result.totalCount).toBe(4);
+    expect(Object.keys(result.steps)).toEqual(['app', 'bundle', 'release', 'device']);
     expect(result.completedCount).toBe(0);
-    expect(result.app).toBeNull();
-    expect(result.steps.agent.status).toBe('todo');
-    expect(result.steps.device.status).toBe('todo');
-    // Nothing is published, so there is nothing to diagnose yet.
+    expect(result.complete).toBe(false);
+    expect(result.steps.app.status).toBe('active');
     expect(result.steps.device.diagnosis).toBeNull();
   });
 
   it('names the missing notifyAppReady() call when a device reports notify_timeout', async () => {
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
-    mocks.findRelease.mockResolvedValue(publishedRelease());
+    throughRelease();
     mocks.listEvents.mockResolvedValue({
       data: [event('rollback', 'notify_timeout'), event('downloaded')],
       available: true,
@@ -109,9 +103,7 @@ describe('onboarding snapshot', () => {
   });
 
   it('distinguishes a failed download from a rollback', async () => {
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
-    mocks.findRelease.mockResolvedValue(publishedRelease());
+    throughRelease();
     mocks.listEvents.mockResolvedValue({
       data: [event('download_error', 'http_403')],
       available: true,
@@ -125,8 +117,7 @@ describe('onboarding snapshot', () => {
   });
 
   it('blames the silence on configuration only once the grace window has passed', async () => {
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
+    throughRelease();
 
     mocks.findRelease.mockResolvedValue(publishedRelease(new Date(NOW.getTime() - 30_000)));
     expect((await snapshot()).steps.device.diagnosis?.code).toBe('waiting_for_device');
@@ -141,12 +132,7 @@ describe('onboarding snapshot', () => {
   });
 
   it('completes on an applied event and reports what landed', async () => {
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findAuditEntries.mockResolvedValue([
-      { actorType: 'user', metadata: { mcp: { clientName: 'Claude Code' } } },
-    ]);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
-    mocks.findRelease.mockResolvedValue(publishedRelease());
+    throughRelease();
     mocks.listEvents.mockResolvedValue({
       data: [event('applied'), event('downloaded')],
       available: true,
@@ -155,47 +141,25 @@ describe('onboarding snapshot', () => {
     const result = await snapshot();
 
     expect(result.complete).toBe(true);
-    expect(result.completedCount).toBe(5);
+    expect(result.completedCount).toBe(4);
     expect(result.steps.device.status).toBe('done');
     expect(result.steps.device.diagnosis).toBeNull();
     expect(result.steps.device.bundleVersion).toBe('1.0.1');
     expect(result.steps.device.platform).toBe('ios');
-    expect(result.steps.agent.clientName).toBe('Claude Code');
   });
 
   it('lets setup finish on a deployment with no analytics backend', async () => {
     vi.stubEnv('TINYBIRD_READ_TOKEN', '');
-    mocks.findApp.mockResolvedValue(APP);
-    mocks.findAuditEntries.mockResolvedValue([{ actorType: 'key', metadata: null }]);
-    mocks.findBundle.mockResolvedValue({ version: '1.0.1', createdAt: NOW });
-    mocks.findRelease.mockResolvedValue(publishedRelease());
+    throughRelease();
 
     const result = await snapshot();
 
-    // Unverifiable is not the same as failed: the guide must not strand a
+    // Unverifiable is not the same as failed: the checklist must not strand a
     // self-hosted user on a step it can never observe.
     expect(result.analyticsAvailable).toBe(false);
     expect(result.steps.device.status).toBe('unknown');
     expect(result.steps.device.diagnosis?.code).toBe('analytics_unavailable');
     expect(result.complete).toBe(true);
     expect(mocks.listEvents).not.toHaveBeenCalled();
-  });
-
-  it('prefers a real MCP connection over an inferred one', async () => {
-    vi.stubEnv('OTAKIT_REMOTE_MCP_ENABLED', 'true');
-    vi.stubEnv('OTAKIT_REMOTE_MCP_OAUTH_ENABLED', 'true');
-    mocks.countConsents.mockResolvedValue(1);
-    mocks.findAuditEntries.mockResolvedValue([{ actorType: 'key', metadata: null }]);
-
-    expect((await snapshot()).steps.agent.evidence).toBe('oauth');
-  });
-
-  it('falls back to an organization key as the weakest agent evidence', async () => {
-    mocks.findAuditEntries.mockResolvedValue([{ actorType: 'key', metadata: null }]);
-
-    const result = await snapshot();
-
-    expect(result.steps.agent.evidence).toBe('assumed');
-    expect(result.steps.agent.status).toBe('done');
   });
 });

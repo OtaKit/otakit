@@ -1,5 +1,4 @@
 import { db } from '@/lib/db';
-import { isRemoteMcpOAuthEnabled, remoteMcpResourceUrl } from '@/lib/mcp/features';
 import { listRecentAppEventsWithStatus } from '@/lib/tinybird/events';
 import { isTinybirdConfigured } from '@/lib/tinybird/client';
 import type { DeviceEvent } from '@/app/components/dashboard-types';
@@ -10,8 +9,6 @@ import type { DeviceEvent } from '@/app/components/dashboard-types';
  * release this long to be picked up before calling the silence a problem.
  */
 const DEVICE_CONTACT_GRACE_MS = 3 * 60 * 1000;
-
-const AGENT_ATTRIBUTED_ACTIONS = ['app.created', 'bundle.uploaded', 'release.created'] as const;
 
 export type SetupStepStatus = 'todo' | 'active' | 'done' | 'blocked' | 'unknown';
 
@@ -38,9 +35,15 @@ export type SetupDiagnosis = {
   detail?: string | null;
 };
 
-/** How the agent checkpoint was satisfied. Local stdio MCP cannot be seen directly. */
-export type AgentEvidence = 'oauth' | 'audit' | 'assumed' | null;
-
+/**
+ * Only checkpoints this server can actually prove.
+ *
+ * Connecting the CLI or an agent is deliberately not one of them. `otakit
+ * login` stores a user session token, so its requests arrive as actorType
+ * 'user' — identical to somebody clicking in the console. Claiming to verify
+ * that would either mark the step for people who never installed anything, or
+ * leave it unmarked forever for people who did.
+ */
 export type OnboardingSnapshot = {
   complete: boolean;
   completedCount: number;
@@ -48,7 +51,6 @@ export type OnboardingSnapshot = {
   app: { id: string; slug: string } | null;
   analyticsAvailable: boolean;
   steps: {
-    agent: { status: SetupStepStatus; evidence: AgentEvidence; clientName: string | null };
     app: { status: SetupStepStatus; slug: string | null; createdAt: string | null };
     bundle: { status: SetupStepStatus; version: string | null; uploadedAt: string | null };
     release: {
@@ -68,32 +70,6 @@ export type OnboardingSnapshot = {
     };
   };
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * Remote MCP stamps `{ mcp: { clientName, ... } }` onto the audit entry it
- * writes. Local stdio MCP authenticates with an organization key and leaves no
- * marker, so a key-actored write is the weakest evidence we accept.
- */
-function readAgentEvidence(entries: { actorType: string; metadata: unknown }[]): {
-  evidence: AgentEvidence;
-  clientName: string | null;
-} {
-  for (const entry of entries) {
-    if (!isRecord(entry.metadata)) continue;
-    const mcp = entry.metadata.mcp;
-    if (!isRecord(mcp)) continue;
-    const clientName = typeof mcp.clientName === 'string' ? mcp.clientName : null;
-    return { evidence: 'audit', clientName };
-  }
-  if (entries.some((entry) => entry.actorType === 'key')) {
-    return { evidence: 'assumed', clientName: null };
-  }
-  return { evidence: null, clientName: null };
-}
 
 function diagnose(args: {
   analyticsAvailable: boolean;
@@ -122,7 +98,7 @@ function diagnose(args: {
         tone: 'error',
         detail: rollback.detail,
         title: 'Your app never called notifyAppReady()',
-        body: 'The update downloaded and launched, but the app did not report itself healthy in time, so OtaKit restored the previous bundle. Call notifyAppReady() once your app has finished booting.',
+        body: 'The update launched but never reported itself healthy, so OtaKit restored the previous bundle. Call notifyAppReady() once your app has finished booting.',
         fixPrompt:
           'My OtaKit update rolled back with notify_timeout. Find where my app finishes booting and add the OtaKit notifyAppReady() call there.',
       };
@@ -133,7 +109,7 @@ function diagnose(args: {
         tone: 'error',
         detail: rollback.detail,
         title: 'The bundle arrived incomplete',
-        body: 'The device could not unpack the update and restored the previous bundle. Re-upload the bundle and publish again.',
+        body: 'The device could not unpack the update and restored the previous bundle. Re-upload and publish again.',
         fixPrompt: 'My OtaKit bundle failed to extract on device. Rebuild and re-upload it.',
       };
     }
@@ -153,7 +129,7 @@ function diagnose(args: {
       code: 'download_error',
       tone: 'error',
       detail: downloadError.detail,
-      title: 'A device found the release but could not download it',
+      title: 'A device could not download the update',
       body: 'Your plugin is configured correctly — it reached OtaKit and read the manifest. The download itself failed.',
       causes: [
         'The CDN is unreachable from the device network',
@@ -185,8 +161,8 @@ function diagnose(args: {
   return {
     code: 'no_device_contact',
     tone: 'warning',
-    title: 'No device has contacted OtaKit yet',
-    body: 'The release is live, but nothing has reported in. That almost always means the app on the device is not the one you just configured.',
+    title: 'No device has reported in',
+    body: 'The release is live, but nothing has contacted OtaKit. That almost always means the app on the device is not the one you configured.',
     causes: [
       'plugins.OtaKit.appId does not match this app',
       'The native app has not been rebuilt since the plugin was installed',
@@ -199,7 +175,6 @@ function diagnose(args: {
 
 export async function getOnboardingSnapshot(input: {
   organizationId: string;
-  userId: string;
   appId?: string;
   now?: Date;
 }): Promise<OnboardingSnapshot> {
@@ -217,29 +192,6 @@ export async function getOnboardingSnapshot(input: {
         orderBy: { createdAt: 'desc' },
         select: { id: true, slug: true, createdAt: true },
       });
-
-  const [oauthConnections, auditEntries] = await Promise.all([
-    isRemoteMcpOAuthEnabled()
-      ? db.oauthConsent.count({
-          where: { userId: input.userId, resources: { has: remoteMcpResourceUrl() } },
-        })
-      : Promise.resolve(0),
-    db.auditLog.findMany({
-      where: {
-        organizationId: input.organizationId,
-        action: { in: [...AGENT_ATTRIBUTED_ACTIONS] },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 25,
-      select: { actorType: true, metadata: true },
-    }),
-  ]);
-
-  const agentFromAudit = readAgentEvidence(auditEntries);
-  const agent =
-    oauthConnections > 0
-      ? { evidence: 'oauth' as const, clientName: agentFromAudit.clientName }
-      : agentFromAudit;
 
   const [bundle, release] = app
     ? await Promise.all([
@@ -277,7 +229,6 @@ export async function getOnboardingSnapshot(input: {
   const analyticsAvailable = analyticsConfigured && (events.available || !release);
   const applied = events.data.find((event) => event.action === 'applied') ?? null;
   const firstContact = events.data.length > 0 ? events.data[events.data.length - 1] : null;
-
   const diagnosis = diagnose({
     analyticsAvailable,
     publishedAt: release?.promotedAt ?? null,
@@ -296,13 +247,8 @@ export async function getOnboardingSnapshot(input: {
           : 'active';
 
   const steps: OnboardingSnapshot['steps'] = {
-    agent: {
-      status: agent.evidence ? 'done' : 'todo',
-      evidence: agent.evidence,
-      clientName: agent.clientName,
-    },
     app: {
-      status: app ? 'done' : 'todo',
+      status: app ? 'done' : 'active',
       slug: app?.slug ?? null,
       createdAt: app?.createdAt.toISOString() ?? null,
     },
@@ -335,9 +281,9 @@ export async function getOnboardingSnapshot(input: {
   ).length;
 
   return {
-    complete: completedCount === 5,
+    complete: completedCount === 4,
     completedCount,
-    totalCount: 5,
+    totalCount: 4,
     app: app ? { id: app.id, slug: app.slug } : null,
     analyticsAvailable,
     steps,

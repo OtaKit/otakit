@@ -4,7 +4,15 @@ export type SetupMode = 'agent' | 'cli';
 export type AgentClient = 'claude' | 'codex' | 'other';
 export type StepId = keyof OnboardingSnapshot['steps'];
 
-export const STEP_ORDER: StepId[] = ['agent', 'app', 'bundle', 'release', 'device'];
+export const STEP_ORDER: StepId[] = ['app', 'bundle', 'release', 'device'];
+
+/** One or two words. This is what the header indicator shows. */
+export const SHORT_LABEL: Record<StepId, string> = {
+  app: 'Create app',
+  bundle: 'Upload bundle',
+  release: 'Publish',
+  device: 'Awaiting device',
+};
 
 /**
  * One copyable thing per step. Never more: a panel that shows three commands
@@ -23,7 +31,7 @@ export type StepContent = {
 };
 
 export const MODE_LABELS: Record<SetupMode, string> = {
-  agent: 'Agent',
+  agent: 'Coding agent',
   cli: 'Terminal',
 };
 
@@ -36,8 +44,10 @@ export const CLIENT_LABELS: Record<AgentClient, string> = {
 export const AGENT_CLIENTS: AgentClient[] = ['claude', 'codex', 'other'];
 
 /**
- * `connect` signs in and writes the MCP server into the project in one step.
- * Claude installs the plugin instead, because that also brings the Skill.
+ * The one-time connect step. It is deliberately not a checkpoint: `otakit
+ * login` stores a user session token, so the server cannot tell a connected
+ * CLI from somebody clicking in the console. Showing it as permanently
+ * unchecked would be worse than not pretending to know.
  */
 const CONNECT_COMMAND: Record<AgentClient, string> = {
   claude: 'claude plugin marketplace add OtaKit/otakit && claude plugin install otakit@otakit',
@@ -45,14 +55,13 @@ const CONNECT_COMMAND: Record<AgentClient, string> = {
   other: 'npx -y @otakit/cli@latest connect',
 };
 
+export function connectCommand(mode: SetupMode, client: AgentClient): string {
+  return mode === 'cli' ? 'npm i -g @otakit/cli && otakit login' : CONNECT_COMMAND[client];
+}
+
 const AGENT_STEPS: Record<StepId, StepContent> = {
-  agent: {
-    title: 'Connect your agent',
-    hint: 'Adds the OtaKit tools and Skill to your coding agent.',
-    action: { kind: 'command', text: CONNECT_COMMAND.claude },
-  },
   app: {
-    title: 'Create the app',
+    title: 'Create your app',
     hint: 'Registers it, wires the Capacitor plugin, sets the app ID.',
     action: {
       kind: 'prompt',
@@ -83,13 +92,8 @@ const AGENT_STEPS: Record<StepId, StepContent> = {
 };
 
 const CLI_STEPS: Record<StepId, StepContent> = {
-  agent: {
-    title: 'Install the CLI',
-    hint: 'Installs OtaKit and signs you in.',
-    action: { kind: 'command', text: 'npm i -g @otakit/cli && otakit login' },
-  },
   app: {
-    title: 'Create the app',
+    title: 'Create your app',
     hint: 'Then put the app ID in plugins.OtaKit.appId.',
     action: { kind: 'command', text: 'otakit register --slug com.example.app' },
   },
@@ -110,20 +114,14 @@ const CLI_STEPS: Record<StepId, StepContent> = {
   },
 };
 
-export function stepContent(mode: SetupMode, id: StepId, client: AgentClient): StepContent {
-  const step = mode === 'agent' ? AGENT_STEPS[id] : CLI_STEPS[id];
-  if (mode === 'agent' && id === 'agent') {
-    return { ...step, action: { kind: 'command', text: CONNECT_COMMAND[client] } };
-  }
-  return step;
+export function stepContent(mode: SetupMode, id: StepId): StepContent {
+  return mode === 'agent' ? AGENT_STEPS[id] : CLI_STEPS[id];
 }
 
 /** The short right-hand fact that proves a step really happened. */
 export function stepEvidence(snapshot: OnboardingSnapshot, id: StepId): string | null {
   const steps = snapshot.steps;
   switch (id) {
-    case 'agent':
-      return steps.agent.status === 'done' ? (steps.agent.clientName ?? 'Connected') : null;
     case 'app':
       return steps.app.slug;
     case 'bundle':
@@ -133,4 +131,11 @@ export function stepEvidence(snapshot: OnboardingSnapshot, id: StepId): string |
     case 'device':
       return steps.device.status === 'done' ? (steps.device.platform ?? 'Applied') : null;
   }
+}
+
+/** What the header indicator says right now. */
+export function currentStepLabel(snapshot: OnboardingSnapshot): string {
+  if (snapshot.steps.device.status === 'blocked') return 'Needs you';
+  const next = STEP_ORDER.find((id) => snapshot.steps[id].status !== 'done');
+  return next ? SHORT_LABEL[next] : 'Finish setup';
 }

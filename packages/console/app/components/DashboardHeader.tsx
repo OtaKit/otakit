@@ -3,8 +3,6 @@ import Link from 'next/link';
 
 import { BookOpen, LayoutDashboard, Settings } from 'lucide-react';
 
-import { SetupBadge } from '@/app/components/setup/SetupBadge';
-
 type DashboardSection = 'dashboard' | 'settings';
 
 export function DashboardHeader({
@@ -44,8 +42,6 @@ export function DashboardHeader({
           />
           <span className="text-sm font-semibold tracking-tight">OtaKit</span>
         </Link>
-
-        <SetupBadge />
 
         {/* Nav */}
         <nav className="ml-auto flex items-center gap-1">

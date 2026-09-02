@@ -32,7 +32,6 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
-import { SetupInline } from '@/app/components/setup/SetupInline';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import type {
@@ -1174,23 +1173,31 @@ export function ProductDashboard({
                 <section>
                   <div className="mx-auto max-w-screen-xl border-b border-border">
                     <div className="p-5">
-                      <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center">
-                        <p className="text-sm font-medium">Ship your first update</p>
+                      <div className="rounded-lg border border-dashed border-border py-12 text-center">
+                        <Cpu className="mx-auto size-6 text-muted-foreground/40" />
+                        <p className="mt-3 text-sm font-medium">No apps yet</p>
                         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                          Five steps, checked off as they actually happen.
+                          Create an app here or register one with the CLI using{' '}
+                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                            otakit register --slug com.example.app
+                          </code>
                         </p>
                         <div className="mt-5">
-                          <SetupInline />
+                          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+                            <Plus className="size-3.5" />
+                            Create app
+                          </Button>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="mt-4 text-muted-foreground"
-                          onClick={() => setCreateDialogOpen(true)}
-                        >
-                          <Plus className="size-3.5" />
-                          Or create an app here
-                        </Button>
+                        <p className="mt-4">
+                          <Link
+                            href={`${docsUrl}/setup`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                          >
+                            Read the setup guide
+                          </Link>
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1229,11 +1236,26 @@ export function ProductDashboard({
                           <Download className="mx-auto size-6 text-muted-foreground/40" />
                           <p className="mt-3 text-sm font-medium">No bundles yet</p>
                           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                            Ask your coding agent to build and upload your web assets, or run{' '}
-                            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                              otakit upload
-                            </code>
+                            Build your web assets and upload them with the{' '}
+                            <Link
+                              href={`${docsUrl}/cli`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline underline-offset-4 hover:text-foreground"
+                            >
+                              CLI
+                            </Link>
                             .
+                          </p>
+                          <p className="mt-4">
+                            <Link
+                              href={`${docsUrl}/setup`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                            >
+                              Read the setup guide
+                            </Link>
                           </p>
                         </div>
                       </div>
