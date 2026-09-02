@@ -48,6 +48,78 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     ],
   },
   {
+    slug: 'google-play-api-36-deadline',
+    title: 'Google Play now requires API 36',
+    seoTitle: 'Google Play API 36 Deadline: What Capacitor Apps Must Do',
+    description:
+      'Since 31 August 2026, Google Play rejects new apps and updates that target below Android 16 (API 36). What changed, what it means for a Capacitor app, and the extension to 1 November.',
+    category: 'Compliance',
+    publishedAt: '2026-09-02',
+    readingTime: '6 min read',
+    keywords: [
+      'Google Play API 36',
+      'target API level 36',
+      'Android 16 target SDK',
+      'Play Store deadline 2026',
+      'Capacitor targetSdkVersion',
+      'Google Play compliance',
+    ],
+    order: 1,
+    relatedDocs: [
+      { href: '/docs/setup', label: 'Setup' },
+      { href: '/docs/channels', label: 'Channels & runtime version' },
+      { href: '/docs/ci', label: 'CI automation' },
+    ],
+  },
+  {
+    slug: 'ios-27-uiscene-capacitor',
+    title: 'iOS 27 makes UIScene mandatory',
+    seoTitle: 'iOS 27 UIScene Migration for Capacitor Apps',
+    description:
+      'Apps built with the iOS 27 SDK must adopt the scene-based lifecycle or they do not launch at all. What Capacitor 8.5 changed, the two-command migration, and where it goes wrong.',
+    category: 'Guides',
+    publishedAt: '2026-09-02',
+    readingTime: '7 min read',
+    keywords: [
+      'iOS 27 UIScene',
+      'UIScene life cycle required',
+      'Capacitor 8.5 migration',
+      'Xcode 27 Capacitor',
+      'UIApplicationSceneManifest',
+      'cap migrate',
+    ],
+    order: 2,
+    relatedDocs: [
+      { href: '/docs/setup', label: 'Setup' },
+      { href: '/docs/update-strategies', label: 'Update strategies' },
+      { href: '/docs/ci', label: 'CI automation' },
+    ],
+  },
+  {
+    slug: 'capacitor-9-what-changes',
+    title: 'Capacitor 9: what changes, and what to do first',
+    seoTitle: 'Capacitor 9: What Changes and How to Prepare',
+    description:
+      'Capacitor 9 is forecast for the end of November 2026: Cordova becomes optional, the iOS runtime is Swift, XCFramework distribution ends. Plus the CocoaPods deadline hiding inside it.',
+    category: 'Guides',
+    publishedAt: '2026-09-02',
+    readingTime: '8 min read',
+    keywords: [
+      'Capacitor 9',
+      'Capacitor 9 release date',
+      'Capacitor 9 breaking changes',
+      'CocoaPods read-only',
+      'Capacitor SPM migration',
+      'Capacitor upgrade guide',
+    ],
+    order: 3,
+    relatedDocs: [
+      { href: '/docs/setup', label: 'Setup' },
+      { href: '/docs/channels', label: 'Channels & runtime version' },
+      { href: '/docs/plugin', label: 'Plugin reference' },
+    ],
+  },
+  {
     slug: 'how-ota-works-for-capacitor-apps',
     title: 'How OTA updates work in Capacitor apps',
     seoTitle: 'How OTA Updates Work in Capacitor Apps',
@@ -64,7 +136,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'app update rollback',
       'update channels',
     ],
-    order: 3,
+    order: 6,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -89,7 +161,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor app store compliance',
       'CodePush legal',
     ],
-    order: 4,
+    order: 7,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -115,7 +187,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'CodePush alternative Capacitor',
       'Capacitor MCP',
     ],
-    order: 5,
+    order: 8,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -138,7 +210,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'open source OTA updates',
       'self-hosted live updates',
     ],
-    order: 6,
+    order: 9,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
@@ -163,7 +235,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'capacitor-updater alternative',
       'Capgo migration',
     ],
-    order: 7,
+    order: 10,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -187,7 +259,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor live updates',
       'capacitor-live-update alternative',
     ],
-    order: 8,
+    order: 11,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -212,7 +284,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Claude Code Capacitor',
       'ship app updates from phone',
     ],
-    order: 1,
+    order: 4,
     featured: true,
     relatedDocs: [
       { href: '/docs/react', label: 'React guide' },
@@ -237,7 +309,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor updater migration',
       'switch OTA provider',
     ],
-    order: 2,
+    order: 5,
     featured: true,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
@@ -262,7 +334,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor 8 Next.js',
       'Next.js live updates',
     ],
-    order: 9,
+    order: 12,
     featured: true,
     relatedDocs: [
       { href: '/docs/guide', label: 'Next.js guide' },
@@ -287,7 +359,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'React iOS Android',
       'React live updates',
     ],
-    order: 10,
+    order: 13,
     relatedDocs: [
       { href: '/docs/react', label: 'React guide' },
       { href: '/docs/setup', label: 'Setup' },
@@ -311,7 +383,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Vue iOS Android',
       'Vue live updates',
     ],
-    order: 11,
+    order: 14,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -335,7 +407,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OTA update integrity',
       'live update security',
     ],
-    order: 12,
+    order: 15,
     relatedDocs: [
       { href: '/docs/security', label: 'Security' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -359,7 +431,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'progressive delivery mobile',
       'live update channels',
     ],
-    order: 13,
+    order: 16,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -383,7 +455,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor app store approval',
       'live updates policy',
     ],
-    order: 14,
+    order: 17,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
@@ -407,7 +479,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OtaKit CI',
       'continuous delivery mobile app',
     ],
-    order: 15,
+    order: 18,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -431,7 +503,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'web to mobile app',
       'React Native alternative',
     ],
-    order: 16,
+    order: 19,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/react', label: 'React guide' },
@@ -455,7 +527,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor OTA updates',
       'live update service',
     ],
-    order: 17,
+    order: 20,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -479,7 +551,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'update rollback',
       'Capacitor update troubleshooting',
     ],
-    order: 18,
+    order: 21,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -503,7 +575,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Angular iOS Android',
       'Angular live updates',
     ],
-    order: 19,
+    order: 22,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -527,7 +599,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Nuxt iOS Android',
       'Nuxt live updates',
     ],
-    order: 20,
+    order: 23,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -551,7 +623,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'SvelteKit iOS Android',
       'SvelteKit live updates',
     ],
-    order: 21,
+    order: 24,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -575,7 +647,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Quasar iOS Android',
       'Vue Quasar native app',
     ],
-    order: 22,
+    order: 25,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -599,7 +671,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'vanilla JS mobile app',
       'Vite live updates',
     ],
-    order: 23,
+    order: 26,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -623,7 +695,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'PWA native wrapper',
       'PWA live updates',
     ],
-    order: 24,
+    order: 27,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -647,7 +719,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI generated app store',
       'vibe coded app native',
     ],
-    order: 25,
+    order: 28,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/react', label: 'React guide' },
@@ -671,7 +743,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ionic app store bypass',
       'Ionic deploy alternative',
     ],
-    order: 26,
+    order: 29,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -695,7 +767,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'verify OTA rollback',
       'preview live update',
     ],
-    order: 27,
+    order: 30,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -719,7 +791,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor update policy',
       'critical hotfix mobile',
     ],
-    order: 28,
+    order: 31,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -743,7 +815,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'native compatibility updates',
       'versioning live updates',
     ],
-    order: 29,
+    order: 32,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -767,7 +839,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor update recovery',
       'notifyAppReady rollback',
     ],
-    order: 30,
+    order: 33,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -791,7 +863,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor launch policy',
       'foreground update',
     ],
-    order: 31,
+    order: 34,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/events', label: 'Events' },
@@ -815,7 +887,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor delta update',
       'incremental OTA',
     ],
-    order: 32,
+    order: 35,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -839,7 +911,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'sign iOS app CI',
       'fastlane match GitHub Actions',
     ],
-    order: 33,
+    order: 36,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -863,7 +935,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Android build automation',
       'Capacitor GitHub Actions',
     ],
-    order: 34,
+    order: 37,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -887,7 +959,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OtaKit GitLab',
       'CI CD OTA GitLab',
     ],
-    order: 35,
+    order: 38,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -911,7 +983,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Fastlane live updates',
       'Capacitor release lane',
     ],
-    order: 36,
+    order: 39,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -935,7 +1007,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor channel automation',
       'progressive delivery CI',
     ],
-    order: 37,
+    order: 40,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -959,7 +1031,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'App Store OTA compliance',
       'WebKit JavaScriptCore exception',
     ],
-    order: 38,
+    order: 41,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
@@ -983,7 +1055,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Google Play executable code',
       'Capacitor Google Play compliance',
     ],
-    order: 39,
+    order: 42,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
@@ -1007,7 +1079,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apple privacy requirements',
       'app privacy report',
     ],
-    order: 40,
+    order: 43,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1031,7 +1103,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Google Play review guide',
       'Capacitor app submission',
     ],
-    order: 41,
+    order: 44,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1055,7 +1127,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Appflow vs OtaKit',
       'Appflow deploy alternative',
     ],
-    order: 42,
+    order: 45,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1079,7 +1151,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'cheaper than Appflow',
       'Capacitor OTA service',
     ],
-    order: 43,
+    order: 46,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1103,7 +1175,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'mobile app update tools',
       'Capacitor live update options',
     ],
-    order: 44,
+    order: 47,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1127,7 +1199,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'live update ecosystems',
       'Capacitor OTA vs Expo',
     ],
-    order: 45,
+    order: 48,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1151,7 +1223,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capawesome pricing',
       'OtaKit comparison',
     ],
-    order: 46,
+    order: 49,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1175,7 +1247,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'smaller OTA updates',
       'app performance bundle',
     ],
-    order: 47,
+    order: 50,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1199,7 +1271,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'controlled rollout flags',
       'OTA feature toggle',
     ],
-    order: 48,
+    order: 51,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1223,7 +1295,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ionic deploy shutdown',
       'Capacitor live updates',
     ],
-    order: 49,
+    order: 52,
     featured: true,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
@@ -1248,7 +1320,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'migrate from App Center',
       'live update service',
     ],
-    order: 50,
+    order: 53,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1272,7 +1344,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor OTA updates',
       'web to native build',
     ],
-    order: 51,
+    order: 54,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -1296,7 +1368,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'self-host Capgo alternative',
       'MIT licensed OTA',
     ],
-    order: 52,
+    order: 55,
     relatedDocs: [
       { href: '/docs/self-host', label: 'Self-hosting' },
       { href: '/docs/setup', label: 'Setup' },
@@ -1320,7 +1392,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'MIT licensed live updates',
       'self-hostable OTA',
     ],
-    order: 53,
+    order: 56,
     relatedDocs: [
       { href: '/docs/self-host', label: 'Self-hosting' },
       { href: '/docs/security', label: 'Security' },
@@ -1344,7 +1416,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Cordova end of life',
       'Cordova live updates',
     ],
-    order: 54,
+    order: 57,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -1368,7 +1440,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'CDN live updates',
       'update hosting comparison',
     ],
-    order: 55,
+    order: 58,
     relatedDocs: [
       { href: '/docs/self-host', label: 'Self-hosting' },
       { href: '/docs/setup', label: 'Setup' },
@@ -1392,7 +1464,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'update failure rate',
       'live update observability',
     ],
-    order: 56,
+    order: 59,
     relatedDocs: [
       { href: '/docs/events', label: 'Events' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1416,7 +1488,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'channel promotion schedule',
       'CI cron mobile release',
     ],
-    order: 57,
+    order: 60,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -1440,7 +1512,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OTA update failed',
       'update debugging checklist',
     ],
-    order: 58,
+    order: 61,
     relatedDocs: [
       { href: '/docs/plugin', label: 'Plugin API' },
       { href: '/docs/events', label: 'Events' },
@@ -1464,7 +1536,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'cohort live updates',
       'Capacitor channel targeting',
     ],
-    order: 59,
+    order: 62,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1488,7 +1560,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'feature flag A/B test',
       'channel A/B testing',
     ],
-    order: 60,
+    order: 63,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1512,7 +1584,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'critical bug fix mobile',
       'hotfix without store review',
     ],
-    order: 61,
+    order: 64,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1536,7 +1608,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor update errors',
       'update rollback UX',
     ],
-    order: 62,
+    order: 65,
     relatedDocs: [
       { href: '/docs/events', label: 'Events' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1560,7 +1632,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OtaKit CLI scripts',
       'npm run release mobile',
     ],
-    order: 63,
+    order: 66,
     relatedDocs: [
       { href: '/docs/cli', label: 'CLI reference' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -1584,7 +1656,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'promote staging to production',
       'update channels staging',
     ],
-    order: 64,
+    order: 67,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1608,7 +1680,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'per platform live update',
       'Capacitor platform channel',
     ],
-    order: 65,
+    order: 68,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1632,7 +1704,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor release planning',
       'OTA update playbook',
     ],
-    order: 66,
+    order: 69,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
@@ -1656,7 +1728,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor OTA explained',
       'live updates how it works',
     ],
-    order: 67,
+    order: 70,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -1680,7 +1752,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'iOS Android push Capacitor',
       'Capacitor notifications guide',
     ],
-    order: 68,
+    order: 71,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1704,7 +1776,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'deep linking mobile app',
       'Capacitor URL scheme',
     ],
-    order: 69,
+    order: 72,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1728,7 +1800,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'biometric auth Ionic',
       'fingerprint login Capacitor',
     ],
-    order: 70,
+    order: 73,
     relatedDocs: [
       { href: '/docs/security', label: 'Security' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1752,7 +1824,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Supabase auth Capacitor',
       'OAuth mobile app',
     ],
-    order: 71,
+    order: 74,
     relatedDocs: [
       { href: '/docs/security', label: 'Security' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1776,7 +1848,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'store auth token mobile',
       'token storage best practices',
     ],
-    order: 72,
+    order: 75,
     relatedDocs: [
       { href: '/docs/security', label: 'Security' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1800,7 +1872,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'native splash Ionic',
       'app startup update check',
     ],
-    order: 73,
+    order: 76,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1824,7 +1896,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'env safe area inset',
       'Capacitor full screen',
     ],
-    order: 74,
+    order: 77,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1848,7 +1920,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Android background work',
       'Capacitor background runner',
     ],
-    order: 75,
+    order: 78,
     relatedDocs: [
       { href: '/docs/plugin', label: 'Plugin API' },
       { href: '/docs/events', label: 'Events' },
@@ -1872,7 +1944,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'mobile app revenue',
       'paywall Capacitor',
     ],
-    order: 76,
+    order: 79,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1896,7 +1968,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'QR code Capacitor',
       'barcode scanning Ionic',
     ],
-    order: 77,
+    order: 80,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/plugin', label: 'Plugin API' },
@@ -1920,7 +1992,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor connectivity',
       'offline first Capacitor',
     ],
-    order: 78,
+    order: 81,
     relatedDocs: [
       { href: '/docs/plugin', label: 'Plugin API' },
       { href: '/docs/events', label: 'Events' },
@@ -1944,7 +2016,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor Android build fail',
       'compileSdk error Capacitor',
     ],
-    order: 79,
+    order: 82,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -1968,7 +2040,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor plugin 16KB',
       'page size Android 15',
     ],
-    order: 80,
+    order: 83,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -1992,7 +2064,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor iOS build update',
       'Xcode CI upgrade',
     ],
-    order: 81,
+    order: 84,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/setup', label: 'Setup' },
@@ -2016,7 +2088,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor CLI version error',
       'Capacitor dependency conflict',
     ],
-    order: 82,
+    order: 85,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
@@ -2040,7 +2112,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor build troubleshooting',
       'Android SDK error Capacitor',
     ],
-    order: 83,
+    order: 86,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -2064,7 +2136,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor iOS SPM',
       'CocoaPods to SPM',
     ],
-    order: 84,
+    order: 87,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -2088,7 +2160,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor CLI guide',
       'cap doctor',
     ],
-    order: 85,
+    order: 88,
     relatedDocs: [
       { href: '/docs/cli', label: 'CLI reference' },
       { href: '/docs/setup', label: 'Setup' },
@@ -2112,7 +2184,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'update Capacitor version',
       'Capacitor 8 upgrade guide',
     ],
-    order: 86,
+    order: 89,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
@@ -2136,7 +2208,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apple OTA policy',
       'live updates App Store legal',
     ],
-    order: 87,
+    order: 90,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
@@ -2160,7 +2232,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Android OTA policy',
       'Google Play update rules',
     ],
-    order: 88,
+    order: 91,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/security', label: 'Security' },
@@ -2184,7 +2256,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'bypass Play Store review',
       'Capacitor update without review',
     ],
-    order: 89,
+    order: 92,
     featured: true,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
@@ -2209,7 +2281,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'over the air update uses',
       'mobile app hotfix use case',
     ],
-    order: 90,
+    order: 93,
     relatedDocs: [
       { href: '/docs/update-strategies', label: 'Update strategies' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
@@ -2233,7 +2305,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Windows iOS Capacitor',
       'iOS app no Mac',
     ],
-    order: 91,
+    order: 94,
     relatedDocs: [
       { href: '/docs/ci', label: 'CI automation' },
       { href: '/docs/setup', label: 'Setup' },
@@ -2257,7 +2329,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'review app on device',
       'Capacitor preview build',
     ],
-    order: 92,
+    order: 95,
     relatedDocs: [
       { href: '/docs/channels', label: 'Channels & runtime version' },
       { href: '/docs/ci', label: 'CI automation' },
@@ -2281,7 +2353,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI app to app store',
       'Bolt.new live updates',
     ],
-    order: 93,
+    order: 96,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/react', label: 'React guide' },
@@ -2305,7 +2377,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI builder to app store',
       'Base44 live updates',
     ],
-    order: 94,
+    order: 97,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/react', label: 'React guide' },
@@ -2329,7 +2401,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Astro static app',
       'Astro live updates',
     ],
-    order: 95,
+    order: 98,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -2353,7 +2425,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Remix SPA mode',
       'Remix live updates',
     ],
-    order: 96,
+    order: 99,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/cli', label: 'CLI reference' },
@@ -2377,7 +2449,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI app live updates',
       'LLM mobile app',
     ],
-    order: 97,
+    order: 100,
     relatedDocs: [
       { href: '/docs/setup', label: 'Setup' },
       { href: '/docs/react', label: 'React guide' },
@@ -2401,7 +2473,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'in-app whats new',
       'update notes live update',
     ],
-    order: 98,
+    order: 101,
     relatedDocs: [
       { href: '/docs/events', label: 'Events' },
       { href: '/docs/channels', label: 'Channels & runtime version' },
