@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { ArrowUpRight, Bot, Braces, ServerCog, Terminal, type LucideIcon } from 'lucide-react';
 
-import { CopyButton } from '@/app/components/CopyButton';
+import { CommandBlock } from '@/app/components/CommandBlock';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -10,18 +12,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const HOSTED_ORIGIN = 'https://console.otakit.app';
+const DOCS_URL = 'https://otakit.app/docs/agents';
 
 type ClientId = 'claude' | 'codex' | 'vscode' | 'ci';
 type Step = { label: string; command: string };
 
-const CLIENT_TABS: { id: ClientId; label: string }[] = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'vscode', label: 'VS Code' },
-  { id: 'ci', label: 'CI' },
+const LOCAL_NOTE =
+  'A local agent signs in as you, so it does not appear under Remote connections — that list is only for browser-authorized remote access.';
+
+const CLIENT_TABS: {
+  id: ClientId;
+  label: string;
+  name: string;
+  icon: LucideIcon;
+  note: string;
+}[] = [
+  { id: 'claude', label: 'Claude', name: 'Claude Code', icon: Bot, note: LOCAL_NOTE },
+  { id: 'codex', label: 'Codex', name: 'Codex', icon: Terminal, note: LOCAL_NOTE },
+  { id: 'vscode', label: 'VS Code', name: 'VS Code', icon: Braces, note: LOCAL_NOTE },
+  {
+    id: 'ci',
+    label: 'CI',
+    name: 'CI',
+    icon: ServerCog,
+    note: 'Keep the key in your CI secret store, never in project files.',
+  },
 ];
 
 /**
@@ -56,12 +74,21 @@ function stepsFor(client: ClientId, origin: string): Step[] {
         login,
         {
           label: 'Create .vscode/mcp.json',
+          // Broken over several lines because the one-line form is wider than
+          // the dialog, and a config you have to scroll sideways to read is a
+          // config you cannot check before pasting.
           command: `{
   "servers": {
     "otakit": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@otakit/cli@latest", "mcp", "--project-root", "\${workspaceFolder}"]
+      "args": [
+        "-y",
+        "@otakit/cli@latest",
+        "mcp",
+        "--project-root",
+        "\${workspaceFolder}"
+      ]
     }
   }
 }`,
@@ -83,18 +110,16 @@ function stepsFor(client: ClientId, origin: string): Step[] {
 
 function NumberedStep({ index, step }: { index: number; step: Step }) {
   return (
-    <li className="flex gap-3">
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-medium tabular-nums text-muted-foreground">
+    // minmax(0,1fr) rather than 1fr: a grid track sizes to its content by
+    // default, so a wide command would push the column — and the dialog — out
+    // instead of scrolling inside its own block.
+    <li className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3">
+      <span className="mt-0.5 flex size-6 items-center justify-center rounded-full border border-border bg-muted/50 text-[11px] font-medium tabular-nums text-muted-foreground">
         {index}
       </span>
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[13px] font-medium">{step.label}</p>
-          <CopyButton value={step.command} label={step.label} />
-        </div>
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-[11px] leading-relaxed">
-          <code>{step.command}</code>
-        </pre>
+      <div className="min-w-0 space-y-2">
+        <p className="text-[13px] font-medium leading-6">{step.label}</p>
+        <CommandBlock value={step.command} label={step.label} />
       </div>
     </li>
   );
@@ -113,62 +138,76 @@ export function ConnectAgentDialog({
   // an effect, paint hosted commands for a frame that a self-hosted user could
   // copy in between.
   const origin = (process.env.NEXT_PUBLIC_APP_URL?.trim() || HOSTED_ORIGIN).replace(/\/+$/, '');
-  const steps = stepsFor(client, origin);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Connect an agent</DialogTitle>
-          <DialogDescription>
-            Run these in your project. The agent signs in with your CLI login, so it can inspect the
-            repository, check native compatibility, and upload bundles.
+      {/* One size for every tab. The four clients need different amounts of
+          room — a two-line JSON file against a one-line command — and a dialog
+          that resizes around its content jumps under the pointer every time
+          the reader switches. The frame holds; the step list scrolls. */}
+      <DialogContent className="flex h-[min(34rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 gap-1.5 border-b border-border px-6 pb-4 pt-6 text-left">
+          <DialogTitle className="pr-8 text-base">Connect an agent</DialogTitle>
+          <DialogDescription className="text-[13px] leading-relaxed">
+            Two commands, once per project. The agent signs in with your CLI login, so it can
+            inspect the repository, check native compatibility, and upload bundles.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap gap-1">
+        <Tabs
+          value={client}
+          onValueChange={(value) => setClient(value as ClientId)}
+          className="min-h-0 flex-1 gap-0"
+        >
+          <div className="shrink-0 px-6 pt-4">
+            <TabsList className="grid w-full grid-cols-4">
+              {CLIENT_TABS.map((tab) => (
+                <TabsTrigger key={tab.id} value={tab.id} title={tab.name} className="gap-1.5">
+                  {/* The label is the part that has to survive a narrow
+                      window; the icon is the first thing to go. */}
+                  <tab.icon className="hidden size-3.5 sm:block" />
+                  <span className="truncate text-xs">{tab.label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
           {CLIENT_TABS.map((tab) => (
-            <button
+            <TabsContent
               key={tab.id}
-              type="button"
-              onClick={() => setClient(tab.id)}
-              aria-pressed={client === tab.id}
-              className={cn(
-                'rounded-md px-2.5 py-1.5 text-xs transition-colors',
-                client === tab.id
-                  ? 'bg-accent font-medium text-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-              )}
+              value={tab.id}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-5 pt-5"
             >
-              {tab.label}
-            </button>
+              <ol className="space-y-5">
+                {stepsFor(tab.id, origin).map((step, index) => (
+                  <NumberedStep key={step.label} index={index + 1} step={step} />
+                ))}
+              </ol>
+              <p className="mt-5 border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground">
+                {tab.note}
+              </p>
+            </TabsContent>
           ))}
-        </div>
+        </Tabs>
 
-        <ol className="space-y-4">
-          {steps.map((step, index) => (
-            <NumberedStep key={step.label} index={index + 1} step={step} />
-          ))}
-        </ol>
-
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {client === 'ci' ? (
-            <>Keep the key in your CI secret store, never in project files.</>
-          ) : (
-            <>
-              A local agent signs in as you, so it does not appear in the connections list — that
-              list is only for browser-authorized remote access.
-            </>
-          )}{' '}
-          <a
-            href="https://otakit.app/docs/agents"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground"
+        <div className="flex shrink-0 items-center justify-between gap-4 border-t border-border bg-muted/20 px-6 py-3">
+          {/* Dropped rather than truncated on a phone: half a sentence is
+              worse than no sentence, and the link is what matters here. */}
+          <p className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">
+            The server runs from your project directory.
+          </p>
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="ml-auto shrink-0 text-xs text-muted-foreground hover:text-foreground"
           >
-            Setup guide
-          </a>
-        </p>
+            <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+              Setup guide
+              <ArrowUpRight className="size-3.5" />
+            </a>
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

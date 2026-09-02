@@ -30,18 +30,44 @@ export type StepContent = {
   action: StepAction;
 };
 
-export const MODE_LABELS: Record<SetupMode, string> = {
-  agent: 'Coding agent',
+/**
+ * How the reader works, as one question. Mode and client used to be two
+ * stacked controls where the second only ever applied to one answer of the
+ * first, which cost the panel two rows of chrome to ask what is really a
+ * single thing: what are you driving this from?
+ */
+export type SetupChoice = AgentClient | 'cli';
+
+export const SETUP_CHOICES: SetupChoice[] = ['claude', 'codex', 'other', 'cli'];
+
+export const CHOICE_LABELS: Record<SetupChoice, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  other: 'Another agent',
   cli: 'Terminal',
 };
 
-export const CLIENT_LABELS: Record<AgentClient, string> = {
-  claude: 'Claude Code',
+/** What fits a four-up control at panel width. */
+export const CHOICE_SHORT_LABELS: Record<SetupChoice, string> = {
+  claude: 'Claude',
   codex: 'Codex',
   other: 'Other',
+  cli: 'Terminal',
 };
 
-export const AGENT_CLIENTS: AgentClient[] = ['claude', 'codex', 'other'];
+export function choiceMode(choice: SetupChoice): SetupMode {
+  return choice === 'cli' ? 'cli' : 'agent';
+}
+
+/**
+ * Mode and client stay two stored values even though the panel asks once:
+ * somebody who tries the terminal and comes back should land on the agent they
+ * had picked, not on the default.
+ */
+export function readChoice(mode: string | null, client: string | null): SetupChoice {
+  if (mode === 'cli') return 'cli';
+  return client === 'codex' || client === 'other' ? client : 'claude';
+}
 
 /**
  * The one-time connect step. It is deliberately not a checkpoint: `otakit
@@ -49,14 +75,27 @@ export const AGENT_CLIENTS: AgentClient[] = ['claude', 'codex', 'other'];
  * CLI from somebody clicking in the console. Showing it as permanently
  * unchecked would be worse than not pretending to know.
  */
-const CONNECT_COMMAND: Record<AgentClient, string> = {
+const CONNECT_COMMAND: Record<SetupChoice, string> = {
   claude: 'claude plugin marketplace add OtaKit/otakit && claude plugin install otakit@otakit',
   codex: 'npx -y @otakit/cli@latest connect --client codex',
   other: 'npx -y @otakit/cli@latest connect',
+  cli: 'npm i -g @otakit/cli && otakit login',
 };
 
-export function connectCommand(mode: SetupMode, client: AgentClient): string {
-  return mode === 'cli' ? 'npm i -g @otakit/cli && otakit login' : CONNECT_COMMAND[client];
+export function connectCommand(choice: SetupChoice): string {
+  return CONNECT_COMMAND[choice];
+}
+
+/** The line above that command. One sentence, no second line. */
+const CONNECT_SUMMARY: Record<SetupChoice, string> = {
+  claude: 'One-time: connect OtaKit to Claude Code',
+  codex: 'One-time: connect OtaKit to Codex',
+  other: 'One-time: connect OtaKit to your agent',
+  cli: 'One-time: install the CLI and sign in',
+};
+
+export function connectSummary(choice: SetupChoice): string {
+  return CONNECT_SUMMARY[choice];
 }
 
 const AGENT_STEPS: Record<StepId, StepContent> = {
