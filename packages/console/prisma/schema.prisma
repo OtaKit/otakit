@@ -61,6 +61,9 @@ model Account {
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId             String
   providerId            String
+  /// Better Auth keys accounts by (issuer, accountId) since 1.5. It writes
+  /// "local:oauth:<providerId>" unless a provider declares its own issuer.
+  issuer                String
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
@@ -70,6 +73,8 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId])
 }
 
 model Verification {
