@@ -1,19 +1,9 @@
-import { redirect } from 'next/navigation';
+'use client';
 
-import { DashboardClient } from '@/app/dashboard/DashboardClient';
-import { db } from '@/lib/db';
-import { getSessionContext } from '@/lib/session';
+import { ProductDashboard } from '@/app/components/ProductDashboard';
+import { useDashboardData } from '@/app/dashboard/DashboardDataProvider';
 
-export const dynamic = 'force-dynamic';
-
-export default async function DashboardPage() {
-  // An organization with no app has nothing to show here, so send it to the
-  // guide rather than to three stacked empty states.
-  const ctx = await getSessionContext();
-  if (ctx) {
-    const apps = await db.app.count({ where: { organizationId: ctx.organizationId } });
-    if (apps === 0) redirect('/dashboard/setup');
-  }
-
-  return <DashboardClient />;
+export default function DashboardPage() {
+  const initialData = useDashboardData();
+  return <ProductDashboard initialData={initialData} />;
 }
