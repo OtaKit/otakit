@@ -170,6 +170,17 @@ export const auth = betterAuth({
     nextCookies(),
   ],
   trustedOrigins,
+  /**
+   * A failed social callback used to end up at Better Auth's own /error, which
+   * redirects to the site root, which redirects to /login — dropping the error
+   * code on the way. Clicking "Continue with Google" and landing back on the
+   * sign-in page with nothing said is indistinguishable from the button being
+   * dead. Send those failures to /login instead, which now reads the code.
+   *
+   * The client's errorCallbackURL only covers failures where the state still
+   * parses; this covers the ones where it does not, which is most of them.
+   */
+  onAPIError: { errorURL: '/login' },
   account: {
     encryptOAuthTokens: true,
     updateAccountOnSignIn: true,

@@ -27,9 +27,34 @@ function pendingAuthorizationPath(
   return serialized ? `/oauth/consent?${serialized}` : '/oauth/consent';
 }
 
+/**
+ * What a failed sign-in comes back as. Better Auth reports its own codes here,
+ * and the providers add theirs, so anything unrecognised is still shown rather
+ * than swallowed: an unexplained code beats a blank page.
+ */
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  state_mismatch:
+    'That sign-in attempt expired before it came back. Start it again and finish within a few minutes.',
+  please_restart_the_process:
+    'That sign-in attempt expired before it came back. Start it again and finish within a few minutes.',
+  access_denied: 'The provider cancelled that sign-in. Try again, or use an email code.',
+  account_not_linked:
+    'An account with this email already exists with a different sign-in method. Use that one, or an email code.',
+  invalid_origin: 'This console rejected the sign-in origin. Check BETTER_AUTH_URL on the server.',
+  internal_server_error: 'The server could not finish that sign-in. Try again in a moment.',
+};
+
+function describeAuthError(query: Record<string, string | string[] | undefined>): string | null {
+  const code = typeof query.error === 'string' ? query.error : null;
+  if (!code) return null;
+  const description = typeof query.error_description === 'string' ? query.error_description : null;
+  return AUTH_ERROR_MESSAGES[code] ?? description ?? `Sign-in failed (${code}). Please try again.`;
+}
+
 export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
   const query = await searchParams;
   const authorizationPath = pendingAuthorizationPath(query);
+  const initialError = describeAuthError(query);
   const session = await auth.api.getSession({ headers: await headers() });
   if (session) {
     redirect(authorizationPath ?? '/dashboard');
@@ -47,6 +72,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
       githubEnabled={githubEnabled}
       siteUrl={siteUrl}
       authorizationPath={authorizationPath}
+      initialError={initialError}
     />
   );
 }

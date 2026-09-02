@@ -25,6 +25,8 @@ type LoginPageClientProps = {
   siteUrl: string;
   /** Pending MCP authorization to return to after sign-in, if any. */
   authorizationPath: string | null;
+  /** Why the last attempt came back here, when it came back here at all. */
+  initialError: string | null;
 };
 
 type Step = 'email' | 'otp';
@@ -164,11 +166,12 @@ export function LoginPageClient({
   githubEnabled,
   siteUrl,
   authorizationPath,
+  initialError,
 }: LoginPageClientProps) {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<Step>('email');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [busyAction, setBusyAction] = useState<'otp-send' | 'otp-verify' | SocialProvider | null>(
     null,
   );
@@ -223,7 +226,10 @@ export function LoginPageClient({
         window.location.href = data.url;
         return;
       }
-      window.location.href = authorizationPath ?? '/dashboard';
+      // Social sign-in with disableRedirect always answers with a provider URL.
+      // Navigating to the dashboard on the strength of a reply that has none
+      // just bounces off the session check and looks like a dead button.
+      throw new Error(`${provider} did not return a sign-in URL. Please try again.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Failed to sign in with ${provider}`);
       setBusyAction(null);
