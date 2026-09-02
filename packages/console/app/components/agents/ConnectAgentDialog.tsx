@@ -92,7 +92,7 @@ function NumberedStep({ index, step }: { index: number; step: Step }) {
           <p className="text-[13px] font-medium">{step.label}</p>
           <CopyButton value={step.command} label={step.label} />
         </div>
-        <pre className="overflow-x-auto rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-[11px] leading-relaxed">
+        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-[11px] leading-relaxed">
           <code>{step.command}</code>
         </pre>
       </div>
@@ -117,7 +117,7 @@ export function ConnectAgentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Connect an agent</DialogTitle>
           <DialogDescription>
