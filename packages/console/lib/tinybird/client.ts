@@ -56,6 +56,16 @@ function resolveTinybirdReadConfig(): { apiHost: string; readToken: string } {
   };
 }
 
+function serializeTinybirdQueryParam(value: string | number | boolean): string {
+  // Tinybird's typed templates represent booleans as UInt8 values. Sending
+  // JavaScript's "true"/"false" strings makes UInt8(...) reject the request
+  // before the pipe reads any rows.
+  if (typeof value === 'boolean') {
+    return value ? '1' : '0';
+  }
+  return String(value);
+}
+
 export async function queryTinybirdPipe<T>(
   pipeName: string,
   params: TinybirdQueryParams,
@@ -67,7 +77,7 @@ export async function queryTinybirdPipe<T>(
     if (value === undefined || value === null) {
       continue;
     }
-    url.searchParams.set(key, String(value));
+    url.searchParams.set(key, serializeTinybirdQueryParam(value));
   }
 
   const response = await fetch(url, {
