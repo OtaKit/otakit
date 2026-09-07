@@ -37,20 +37,50 @@ export function useSetupStatus(): SetupStatus {
 export function SetupStatusProvider({
   userId,
   organizationId,
+  hasExistingApps,
   children,
 }: {
   userId: string;
   organizationId: string;
+  hasExistingApps: boolean;
   children: ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
-  // Legacy browser-wide flags cannot identify which account or workspace was
-  // finished or dismissed. Ignore them so a fresh workspace can show its help.
   const scope = `${userId}:${organizationId}`;
-  const [doneValue, setDone] = useStoredPreference(`otakit.setup.done:${scope}`);
-  const [dismissedValue, setDismissed] = useStoredPreference(`otakit.setup.dismissed:${scope}`);
+  const doneKey = `otakit.setup.done:${scope}`;
+  const dismissedKey = `otakit.setup.dismissed:${scope}`;
+  const [doneValue, setDone] = useStoredPreference(doneKey);
+  const [dismissedValue, setDismissed] = useStoredPreference(dismissedKey);
+  const [legacyDone] = useStoredPreference('otakit.setup.done');
+  const [legacyDismissed] = useStoredPreference('otakit.setup.dismissed');
 
-  const silent = doneValue === '1' || dismissedValue === '1';
+  // Keep existing customers' choices when migrating the browser-wide flags.
+  // Empty workspaces get explicit fresh values, so connecting their first app
+  // later cannot make an unrelated legacy flag hide the remaining setup steps.
+  const silent =
+    (doneValue ?? (hasExistingApps ? legacyDone : null)) === '1' ||
+    (dismissedValue ?? (hasExistingApps ? legacyDismissed : null)) === '1';
+
+  useEffect(() => {
+    try {
+      // Read storage directly here: the hydration snapshot can still be null
+      // even when a scoped preference already exists and must be preserved.
+      if (window.localStorage.getItem(doneKey) === null) {
+        setDone(
+          hasExistingApps && window.localStorage.getItem('otakit.setup.done') === '1' ? '1' : '0',
+        );
+      }
+      if (window.localStorage.getItem(dismissedKey) === null) {
+        setDismissed(
+          hasExistingApps && window.localStorage.getItem('otakit.setup.dismissed') === '1'
+            ? '1'
+            : '0',
+        );
+      }
+    } catch {
+      // Blocked browser storage leaves server-verified setup progress available.
+    }
+  }, [doneKey, dismissedKey, hasExistingApps, setDone, setDismissed]);
 
   useEffect(() => {
     if (silent) return;

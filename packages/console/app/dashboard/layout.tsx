@@ -16,6 +16,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         key={`${initialData.user.id}:${initialData.activeOrganization.id}`}
         userId={initialData.user.id}
         organizationId={initialData.activeOrganization.id}
+        hasExistingApps={initialData.apps.length > 0}
       >
         {children}
       </SetupStatusProvider>
