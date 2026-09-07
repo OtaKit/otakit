@@ -8,7 +8,7 @@ export const STEP_ORDER: StepId[] = ['app', 'bundle', 'release', 'device'];
 
 /** One or two words. This is what the header indicator shows. */
 export const SHORT_LABEL: Record<StepId, string> = {
-  app: 'Create app',
+  app: 'Connect app',
   bundle: 'Upload bundle',
   release: 'Publish',
   device: 'Awaiting device',
@@ -100,7 +100,7 @@ export function connectSummary(choice: SetupChoice): string {
 
 const AGENT_STEPS: Record<StepId, StepContent> = {
   app: {
-    title: 'Create your app',
+    title: 'Connect your app',
     hint: 'Registers it, wires the Capacitor plugin, sets the app ID.',
     action: {
       kind: 'prompt',
@@ -132,7 +132,7 @@ const AGENT_STEPS: Record<StepId, StepContent> = {
 
 const CLI_STEPS: Record<StepId, StepContent> = {
   app: {
-    title: 'Create your app',
+    title: 'Connect your app',
     hint: 'Then put the app ID in plugins.OtaKit.appId.',
     action: { kind: 'command', text: 'otakit register --slug com.example.app' },
   },

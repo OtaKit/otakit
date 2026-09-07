@@ -22,7 +22,7 @@ export default function SetupPage() {
 
       <Separator className="my-10" />
 
-      <H2>1. Create your app in the dashboard</H2>
+      <H2>1. Connect your app in the dashboard</H2>
       <P>
         Sign in to the{' '}
         <Link
@@ -31,7 +31,9 @@ export default function SetupPage() {
         >
           OtaKit dashboard
         </Link>
-        , create an app, and copy its OtaKit <Code>appId</Code>.
+        , choose “Connect your app”, and copy its OtaKit <Code>appId</Code>. If you already
+        registered your app during onboarding, use the ID shown there. Your app identifier can be a
+        simple label such as <Code>my-app</Code>; it does not need to match your native app ID.
       </P>
 
       <Separator className="my-10" />
@@ -64,8 +66,10 @@ const config: CapacitorConfig = {
 export default config;`}</Pre>
 
       <P>
-        Note: Your app must be published to the app store at least once with the OtaKit plugin
-        configured before it can receive updates!
+        Build and install the native app with the OtaKit plugin configured before testing OTA. A
+        local test build is enough to get started. To reach existing users, publish an App Store or
+        Google Play build containing the plugin; those users can receive OtaKit updates after
+        installing that build.
       </P>
 
       <P>

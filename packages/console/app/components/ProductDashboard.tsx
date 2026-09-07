@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { DashboardHeader } from '@/app/components/DashboardHeader';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
+import { appIdentifierError } from '@/lib/onboarding-profile';
 import type {
   ApiError,
   AppSummary,
@@ -508,6 +509,7 @@ export function ProductDashboard({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newAppSlug, setNewAppSlug] = useState('');
   const [creatingApp, setCreatingApp] = useState(false);
+  const [createAppError, setCreateAppError] = useState<string | null>(null);
 
   // Messages (via toast)
 
@@ -1029,8 +1031,14 @@ export function ProductDashboard({
   }
 
   async function createApp() {
+    if (creatingApp) return;
     const slug = newAppSlug.trim();
-    if (!slug) return toast.error('App slug is required');
+    const validation = appIdentifierError(slug);
+    if (validation) {
+      setCreateAppError(validation);
+      return;
+    }
+    setCreateAppError(null);
     setCreatingApp(true);
     toast.dismiss();
     try {
@@ -1040,15 +1048,17 @@ export function ProductDashboard({
         body: JSON.stringify({ slug }),
       });
       const data = await parseJson<ApiError & { id?: string }>(res);
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create app');
+      if (!res.ok) throw new Error(data.error ?? 'Couldn’t register your app. Please try again.');
       setCreateDialogOpen(false);
       setNewAppSlug('');
       if (data.id) setSelectedAppId(data.id);
-      toast.success('App created');
+      toast.success('App registered. Install the updater to finish connecting it.');
       trackConversion('app_created');
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create app');
+      setCreateAppError(
+        err instanceof Error ? err.message : 'Couldn’t register your app. Please try again.',
+      );
     } finally {
       setCreatingApp(false);
     }
@@ -1110,7 +1120,7 @@ export function ProductDashboard({
                         <SelectItem value="__new_app__" className="text-muted-foreground">
                           <span className="flex items-center gap-1.5">
                             <Plus className="size-3.5" />
-                            New app
+                            Connect app
                           </span>
                         </SelectItem>
                       </SelectContent>
@@ -1152,7 +1162,7 @@ export function ProductDashboard({
                     onClick={() => setCreateDialogOpen(true)}
                   >
                     <Plus className="size-3.5" />
-                    New app
+                    Connect app
                   </Button>
                 )}
               </div>
@@ -1175,17 +1185,15 @@ export function ProductDashboard({
                     <div className="p-5">
                       <div className="rounded-lg border border-dashed border-border py-12 text-center">
                         <Cpu className="mx-auto size-6 text-muted-foreground/40" />
-                        <p className="mt-3 text-sm font-medium">No apps yet</p>
+                        <p className="mt-3 text-sm font-medium">Connect your first app</p>
                         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                          Create an app here or register one with the CLI using{' '}
-                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                            otakit register --slug com.example.app
-                          </code>
+                          Register your Capacitor app, install the updater, and send your first
+                          update to a test device. You can start before your app is in the stores.
                         </p>
                         <div className="mt-5">
                           <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
                             <Plus className="size-3.5" />
-                            Create app
+                            Connect your app
                           </Button>
                         </div>
                         <p className="mt-4">
@@ -2300,45 +2308,88 @@ export function ProductDashboard({
         </DialogContent>
       </Dialog>
 
-      {/* Create App Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      {/* Connect App Dialog */}
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          if (!creatingApp) {
+            setCreateDialogOpen(open);
+            setCreateAppError(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Cpu className="size-4" />
-              Create app
-            </DialogTitle>
-            <DialogDescription>
-              Choose a stable identifier, e.g. <code className="text-xs">com.example.mobile</code>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="new-app-slug">App slug</Label>
-            <Input
-              id="new-app-slug"
-              placeholder="com.example.mobile"
-              value={newAppSlug}
-              onChange={(e) => setNewAppSlug(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={createApp} disabled={creatingApp}>
-              {creatingApp ? (
-                <>
-                  <LoaderCircle className="size-3.5 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="size-3.5" />
-                  Create
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createApp();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Cpu className="size-4" />
+                Connect your app
+              </DialogTitle>
+              <DialogDescription>
+                Register your Capacitor app in OtaKit. Then install the updater in your project to
+                start receiving updates.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="new-app-slug">App identifier</Label>
+              <Input
+                id="new-app-slug"
+                placeholder="my-app"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={120}
+                disabled={creatingApp}
+                aria-describedby="new-app-help new-app-error"
+                aria-invalid={Boolean(createAppError)}
+                value={newAppSlug}
+                onChange={(e) => {
+                  setNewAppSlug(e.target.value);
+                  setCreateAppError(null);
+                }}
+              />
+              <p id="new-app-help" className="text-sm leading-6 text-muted-foreground">
+                Any unique label in this workspace works, such as <code>my-app</code>. It does not
+                need to match your native app ID. Use 3–120 letters, numbers, dots, underscores, or
+                hyphens.
+              </p>
+              <p id="new-app-error" role="alert" className="text-sm text-destructive">
+                {createAppError}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={creatingApp}
+                onClick={() => {
+                  setCreateDialogOpen(false);
+                  setCreateAppError(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creatingApp}>
+                {creatingApp ? (
+                  <>
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-3.5" />
+                    Connect your app
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

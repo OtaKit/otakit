@@ -34,6 +34,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
+  const expectedOrganization = request.headers.get('x-otakit-organization-id');
+  if (expectedOrganization && expectedOrganization !== ctx.organizationId) {
+    return NextResponse.json(
+      { error: 'Your active workspace changed. Reload to continue.' },
+      { status: 409 },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   if (!body || !VALID_PLAN_KEYS.has(body.planKey)) {
     return NextResponse.json(
@@ -85,7 +93,11 @@ export async function POST(request: NextRequest) {
       products: [productId],
       externalCustomerId: getExternalCustomerId(ctx.organizationId),
       customerEmail: ctx.email,
-      successUrl: `${appUrl}/dashboard/settings?pricing=1&checkout=success`,
+      successUrl:
+        body.returnTo === 'onboarding'
+          ? `${appUrl}/onboarding?checkout=success`
+          : `${appUrl}/dashboard/settings?pricing=1&checkout=success`,
+      ...(body.returnTo === 'onboarding' ? { returnUrl: `${appUrl}/onboarding` } : {}),
       metadata: {
         organizationId: ctx.organizationId,
         initiatedByUserId: ctx.userId,

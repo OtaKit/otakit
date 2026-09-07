@@ -88,7 +88,7 @@ export async function createApp(input: {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new OtaKitServiceError(
         'APP_SLUG_CONFLICT',
-        'Slug already exists for this organization',
+        'This app identifier is already used in your workspace. Choose another, or open the existing app.',
         409,
       );
     }

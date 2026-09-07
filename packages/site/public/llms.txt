@@ -72,9 +72,9 @@ Set up the default hosted OtaKit flow in a Capacitor project.
 
 This is the most simple, default hosted setup path.
 
-### 1. Create your app in the dashboard
+### 1. Connect your app in the dashboard
 
-Sign in to the OtaKit dashboard , create an app, and copy its OtaKit `appId`.
+Sign in to the OtaKit dashboard , choose “Connect your app”, and copy its OtaKit `appId`. If you already registered your app during onboarding, use the ID shown there. Your app identifier can be a simple label such as `my-app`; it does not need to match your native app ID.
 
 ### 2. Install the Capacitor plugin
 
@@ -105,7 +105,7 @@ const config: CapacitorConfig = {
 export default config;
 ```
 
-Note: Your app must be published to the app store at least once with the OtaKit plugin configured before it can receive updates!
+Build and install the native app with the OtaKit plugin configured before testing OTA. A local test build is enough to get started. To reach existing users, publish an App Store or Google Play build containing the plugin; those users can receive OtaKit updates after installing that build.
 
 Optional: if you want something other than the hosted defaults, you can also set `launchPolicy`, `resumePolicy`, `runtimePolicy`, and `checkInterval`. See the Plugin API page for the full configuration surface.
 
