@@ -35,6 +35,7 @@ import { DashboardHeader } from '@/app/components/DashboardHeader';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
+import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import type {
   ApiError,
   AppSummary,
@@ -1082,6 +1083,10 @@ export function ProductDashboard({
         </div>
         <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
           {/* Messages handled by sonner toast */}
+          <CheckoutStatus
+            key={initialData.activeOrganization.id}
+            organizationId={initialData.activeOrganization.id}
+          />
 
           {/* App selector bar */}
           <section className="border-b border-border">

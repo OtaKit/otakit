@@ -17,6 +17,7 @@ import {
   isUnsupportedTechnology,
   onboardingAnswersSchema,
   onboardingStepError,
+  onboardingUsageError,
   type OnboardingAnswers,
   type OnboardingProfile,
   type OnboardingRequest,
@@ -64,6 +65,8 @@ export function OnboardingFlow({
   const [step, setStep] = useState<OnboardingStep>(initialProfile?.step ?? 'app');
   const [completed, setCompleted] = useState(Boolean(initialProfile?.completedAt));
   const [busy, setBusy] = useState(false);
+  const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
+  const [invalidField, setInvalidField] = useState<'activeUsers' | 'updatesPerMonth' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const busyRef = useRef(false);
@@ -86,6 +89,7 @@ export function OnboardingFlow({
   function update(patch: Partial<OnboardingAnswers>) {
     setAnswers((current) => ({ ...current, ...patch }));
     setError(null);
+    setInvalidField(null);
   }
   async function save(input: OnboardingRequest) {
     const response = await fetch('/api/v1/organization/onboarding/profile', {
@@ -123,26 +127,32 @@ export function OnboardingFlow({
     }
   }
   async function checkout(plan: 'starter' | 'pro', interval: 'month' | 'year') {
-    const response = await fetch('/api/v1/organization/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-otakit-organization-id': organizationId },
-      body: JSON.stringify({ planKey: plan, interval, returnTo: 'dashboard' }),
-    });
-    const data = (await response.json().catch(() => null)) as {
-      checkoutUrl?: string;
-      error?: string;
-    } | null;
-    if (response.status === 401) setSessionExpired(true);
-    if (!response.ok || !data?.checkoutUrl)
-      throw new Error(
-        `${data?.error ?? 'Checkout couldn’t start.'} Your answers are saved. Try again or continue to the dashboard on your current plan.`,
-      );
-    window.location.assign(data.checkoutUrl);
+    setCheckingOut(plan);
+    try {
+      const response = await fetch('/api/v1/organization/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-otakit-organization-id': organizationId },
+        body: JSON.stringify({ planKey: plan, interval, returnTo: 'dashboard' }),
+      });
+      const data = (await response.json().catch(() => null)) as {
+        checkoutUrl?: string;
+        error?: string;
+      } | null;
+      if (response.status === 401) setSessionExpired(true);
+      if (!response.ok || !data?.checkoutUrl)
+        throw new Error(
+          `${data?.error ?? 'Checkout couldn’t start.'} Your answers are saved. Try again or continue to the dashboard on your current plan.`,
+        );
+      window.location.assign(data.checkoutUrl);
+    } finally {
+      setCheckingOut(null);
+    }
   }
   function next() {
     if (step === 'plans') return;
     const validation = onboardingStepError(answers, step);
     if (validation) {
+      setInvalidField(step === 'audience' ? (onboardingUsageError(answers)?.field ?? null) : null);
       setError(validation);
       return;
     }
@@ -231,6 +241,7 @@ export function OnboardingFlow({
         </p>
         {error && (
           <p
+            id="onboarding-error"
             ref={errorRef}
             tabIndex={-1}
             role="alert"
@@ -245,6 +256,7 @@ export function OnboardingFlow({
           </p>
         )}
         <form
+          noValidate
           className="mt-8"
           onSubmit={(event) => {
             event.preventDefault();
@@ -388,6 +400,16 @@ export function OnboardingFlow({
                     </p>
                   </Notice>
                 )}
+                {answers.otaProvider === 'none' && (
+                  <Notice>
+                    <strong>Start with a native test build.</strong>
+                    <p className="mt-2">
+                      A device receives OtaKit updates once its native build includes the plugin.
+                      Test locally first. To reach existing users, ship one store build with the
+                      plugin.
+                    </p>
+                  </Notice>
+                )}
               </>
             )}
 
@@ -396,19 +418,21 @@ export function OnboardingFlow({
                 <UsageInput
                   id="active-users"
                   label="Monthly active users"
-                  hint="People who open your app in a typical month. Enter 0 if you haven’t launched."
+                  hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave blank if you’re not sure."
                   placeholder="e.g. 1000"
                   value={answers.activeUsers}
                   max={1_000_000_000}
+                  invalid={invalidField === 'activeUsers'}
                   onChange={(value) => update({ activeUsers: value })}
                 />
                 <UsageInput
                   id="updates-month"
                   label="OTA updates you expect to ship each month"
-                  hint="A rough estimate helps translate your audience into downloaded updates."
+                  hint="A rough estimate helps compare plans. Leave blank if you’re not sure."
                   placeholder="e.g. 4"
                   value={answers.updatesPerMonth}
                   max={1_000}
+                  invalid={invalidField === 'updatesPerMonth'}
                   onChange={(value) => update({ updatesPerMonth: value })}
                 />
                 <div className="space-y-2">
@@ -489,11 +513,14 @@ export function OnboardingFlow({
                       <div className="rounded-xl border p-6">
                         <h2 className="text-lg font-medium">
                           Your workspace already has{' '}
-                          {currentPlan === 'pro'
-                            ? 'Pro'
-                            : currentPlan === 'starter'
-                              ? 'Starter'
-                              : 'Enterprise'}
+                          {
+                            {
+                              free: 'Free',
+                              starter: 'Starter',
+                              pro: 'Pro',
+                              enterprise: 'Enterprise',
+                            }[currentPlan]
+                          }
                           .
                         </h2>
                         <p className="mt-2 text-sm text-muted-foreground">
@@ -524,6 +551,11 @@ export function OnboardingFlow({
                             actionIcon={Leaf}
                             disabled={busy}
                             onAction={goToDashboard}
+                            tag={
+                              estimatedDownloads !== null && estimatedDownloads <= freeDownloads
+                                ? 'Fits your estimate'
+                                : undefined
+                            }
                             highlighted={
                               estimatedDownloads !== null && estimatedDownloads <= freeDownloads
                             }
@@ -545,6 +577,14 @@ export function OnboardingFlow({
                             }
                             actionIcon={Rocket}
                             disabled={busy || !billingEnabled || freeDownloads >= 100_000}
+                            loading={checkingOut === 'starter'}
+                            tag={
+                              estimatedDownloads !== null &&
+                              estimatedDownloads > freeDownloads &&
+                              estimatedDownloads <= 100_000
+                                ? 'Fits your estimate'
+                                : undefined
+                            }
                             onAction={() => void run(() => checkout('starter', 'month'))}
                             highlighted={
                               estimatedDownloads !== null &&
@@ -567,6 +607,14 @@ export function OnboardingFlow({
                             actionLabel="Choose Pro"
                             actionIcon={Star}
                             disabled={busy || !billingEnabled}
+                            loading={checkingOut === 'pro'}
+                            tag={
+                              estimatedDownloads !== null &&
+                              estimatedDownloads > 100_000 &&
+                              estimatedDownloads <= 1_000_000
+                                ? 'Fits your estimate'
+                                : undefined
+                            }
                             actionItems={[
                               {
                                 label: 'Yearly',
@@ -580,7 +628,9 @@ export function OnboardingFlow({
                               },
                             ]}
                             highlighted={
-                              estimatedDownloads !== null && estimatedDownloads > 100_000
+                              estimatedDownloads !== null &&
+                              estimatedDownloads > 100_000 &&
+                              estimatedDownloads <= 1_000_000
                             }
                           />
                           <PlanCard
@@ -597,6 +647,14 @@ export function OnboardingFlow({
                             current={false}
                             actionLabel="Contact sales"
                             actionIcon={Building2}
+                            highlighted={
+                              estimatedDownloads !== null && estimatedDownloads > 1_000_000
+                            }
+                            tag={
+                              estimatedDownloads !== null && estimatedDownloads > 1_000_000
+                                ? 'Discuss your volume'
+                                : undefined
+                            }
                             disabled={busy || !billingEnabled}
                             onAction={() => {
                               window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
@@ -607,6 +665,13 @@ export function OnboardingFlow({
                           Free and Starter stop serving updates at their included limits. Pro
                           overage is optional. Choosing a paid plan opens checkout. You can also
                           continue with Free and upgrade later.
+                          {estimatedDownloads !== null && estimatedDownloads > 1_000_000 && (
+                            <>
+                              {' '}
+                              Your estimate exceeds Pro’s included volume. You can enable paid
+                              overage on Pro or contact us about Enterprise.
+                            </>
+                          )}
                         </p>
                       </>
                     )}
@@ -624,6 +689,7 @@ export function OnboardingFlow({
                   disabled={busy}
                   onClick={() => {
                     setError(null);
+                    setInvalidField(null);
                     setStep(ONBOARDING_STEPS[index - 1]);
                   }}
                 >
@@ -631,9 +697,21 @@ export function OnboardingFlow({
                   Back
                 </Button>
               ) : (
-                <span className="text-xs text-muted-foreground">
+                <span className="hidden text-xs text-muted-foreground sm:inline">
                   Progress saves when you continue.
                 </span>
+              )}
+              {!unsupported && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto sm:hidden"
+                  disabled={busy}
+                  onClick={skip}
+                >
+                  Skip for now
+                </Button>
               )}
               <Button
                 type="submit"
@@ -725,6 +803,7 @@ function UsageInput({
   placeholder,
   value,
   max,
+  invalid,
   onChange,
 }: {
   id: string;
@@ -733,11 +812,14 @@ function UsageInput({
   placeholder: string;
   value: number | null | undefined;
   max: number;
+  invalid: boolean;
   onChange: (value: number | null | undefined) => void;
 }) {
   return (
     <div className="space-y-3">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label} <span className="text-muted-foreground">(optional)</span>
+      </Label>
       <p id={`${id}-hint`} className="text-sm text-muted-foreground">
         {hint}
       </p>
@@ -752,20 +834,12 @@ function UsageInput({
           step={1}
           placeholder={placeholder}
           value={value ?? ''}
-          aria-describedby={`${id}-hint`}
+          aria-invalid={invalid || undefined}
+          aria-describedby={`${id}-hint${invalid ? ' onboarding-error' : ''}`}
           onChange={(event) =>
             onChange(event.target.value === '' ? undefined : Number(event.target.value))
           }
         />
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-foreground"
-            checked={value === null}
-            onChange={(event) => onChange(event.target.checked ? null : undefined)}
-          />
-          Not sure yet
-        </label>
       </div>
     </div>
   );

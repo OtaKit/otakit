@@ -42,14 +42,14 @@ describe('billing checkout return paths', () => {
     mocks.planKeyToProductId.mockReturnValue('product-pro-yearly');
     mocks.createCheckout.mockResolvedValue({ url: 'https://checkout.example/session' });
   });
-  it('returns successful and cancelled welcome checkout to the dashboard', async () => {
+  it('returns successful welcome checkout to a workspace-scoped status check and the back button to the dashboard', async () => {
     const response = await POST(
       request({ planKey: 'pro', interval: 'year', returnTo: 'dashboard' }),
     );
     expect(response.status).toBe(201);
     expect(mocks.createCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
-        successUrl: 'https://console.example/dashboard',
+        successUrl: 'https://console.example/dashboard?checkout=onboarding&checkout_org=org-1',
         returnUrl: 'https://console.example/dashboard',
         externalCustomerId: 'organization:org-1',
         metadata: expect.objectContaining({ billingInterval: 'year' }),

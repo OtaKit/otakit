@@ -57,6 +57,20 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     ).toBe(0);
   });
 
+  it('completes without requiring an audience or update-frequency estimate', async () => {
+    const unknownUsage = { ...answers };
+    delete unknownUsage.activeUsers;
+    delete unknownUsage.updatesPerMonth;
+    const profile = await updateOnboardingProfile(ctx, {
+      action: 'complete',
+      answers: unknownUsage,
+    });
+    expect(profile.completedAt).toEqual(expect.any(String));
+    expect(profile.answers.activeUsers).toBeUndefined();
+    expect(profile.answers.updatesPerMonth).toBeUndefined();
+    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
+  });
+
   it('resumes an unfinished questionnaire and preserves skip across later draft saves', async () => {
     expect(await getOnboardingProfile(ctx.organizationId)).toBeNull();
     await updateOnboardingProfile(ctx, { action: 'save', answers, step: 'audience' });
@@ -156,7 +170,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     await expect(
       updateOnboardingProfile(ctx, {
         action: 'complete',
-        answers: { ...answers, activeUsers: undefined },
+        answers: { ...answers, otaProvider: undefined },
       }),
     ).rejects.toMatchObject({ status: 400 });
     expect(await getOnboardingProfile(ctx.organizationId)).toBeNull();

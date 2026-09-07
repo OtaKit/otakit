@@ -74,7 +74,9 @@ This is the most simple, default hosted setup path.
 
 ### 1. Connect your app in the dashboard
 
-Sign in to the OtaKit dashboard , choose “Connect your app”, and copy its OtaKit `appId`. The floating setup panel also guides you through connecting your project. Your app identifier can be a simple label such as `my-app`; it does not need to match your native app ID.
+Sign in to the OtaKit dashboard and choose “Connect your app”. Give it a label that is unique in your workspace, such as `my-app`; it does not need to match your native app ID.
+
+OtaKit generates a separate app ID. Copy that generated value from the dashboard into `plugins.OtaKit.appId`, not the label you entered. The floating setup panel guides you through connecting your project.
 
 ### 2. Install the Capacitor plugin
 

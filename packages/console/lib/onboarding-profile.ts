@@ -55,11 +55,25 @@ export function onboardingStepError(
     if (!answers.appStage) return 'Choose where your app is today.';
   }
   if (step === 'updates' && !answers.otaProvider) return 'Choose your current update setup.';
-  if (step === 'audience') {
-    if (answers.activeUsers === undefined)
-      return 'Enter your monthly audience, or choose “Not sure yet”.';
-    if (answers.updatesPerMonth === undefined)
-      return 'Enter your update frequency, or choose “Not sure yet”.';
+  if (step === 'audience') return onboardingUsageError(answers)?.message ?? null;
+  return null;
+}
+
+export function onboardingUsageError(answers: OnboardingAnswers): {
+  field: 'activeUsers' | 'updatesPerMonth';
+  message: string;
+} | null {
+  for (const [field, label, max] of [
+    ['activeUsers', 'Monthly active users', 1_000_000_000],
+    ['updatesPerMonth', 'Monthly OTA updates', 1_000],
+  ] as const) {
+    const value = answers[field];
+    if (value != null && (!Number.isInteger(value) || value < 0 || value > max)) {
+      return {
+        field,
+        message: `${label} must be a whole number from 0 to ${max.toLocaleString('en-US')}. You can leave it blank if you’re not sure.`,
+      };
+    }
   }
   return null;
 }

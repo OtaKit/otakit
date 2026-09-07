@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       customerEmail: ctx.email,
       successUrl:
         body.returnTo === 'dashboard'
-          ? `${appUrl}/dashboard`
+          ? `${appUrl}/dashboard?checkout=onboarding&checkout_org=${encodeURIComponent(ctx.organizationId)}`
           : `${appUrl}/dashboard/settings?pricing=1&checkout=success`,
       ...(body.returnTo === 'dashboard' ? { returnUrl: `${appUrl}/dashboard` } : {}),
       metadata: {

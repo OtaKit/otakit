@@ -37,7 +37,7 @@ describe('guided onboarding validation', () => {
   });
 
   it('distinguishes not answered, unknown, and a pre-launch audience of zero', () => {
-    expect(onboardingStepError({}, 'audience')).toBeTruthy();
+    expect(onboardingStepError({}, 'audience')).toBeNull();
     expect(
       onboardingStepError({ activeUsers: null, updatesPerMonth: null }, 'audience'),
     ).toBeNull();
@@ -45,6 +45,18 @@ describe('guided onboarding validation', () => {
     expect(estimateMonthlyDownloads({ activeUsers: null, updatesPerMonth: 4 })).toBeNull();
     expect(estimateMonthlyDownloads({ activeUsers: 0, updatesPerMonth: 4 })).toBe(0);
     expect(estimateMonthlyDownloads(answers)).toBe(4000);
+  });
+
+  it('allows blank audience estimates but reports invalid entered numbers', () => {
+    for (const activeUsers of [-1, 1.5, Infinity, 1_000_000_001]) {
+      expect(onboardingStepError({ activeUsers }, 'audience')).toContain('Monthly active users');
+    }
+    for (const updatesPerMonth of [-1, 1.5, 1001]) {
+      expect(onboardingStepError({ updatesPerMonth }, 'audience')).toContain('Monthly OTA updates');
+    }
+    expect(
+      onboardingStepError({ activeUsers: 1_000_000_000, updatesPerMonth: 1000 }, 'audience'),
+    ).toBeNull();
   });
 
   it('rejects impossible usage, arbitrary fields, and attempts to skip completion', () => {

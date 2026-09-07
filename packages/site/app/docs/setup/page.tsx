@@ -30,10 +30,14 @@ export default function SetupPage() {
           className="font-medium text-foreground underline underline-offset-4"
         >
           OtaKit dashboard
-        </Link>
-        , choose “Connect your app”, and copy its OtaKit <Code>appId</Code>. The floating setup
-        panel also guides you through connecting your project. Your app identifier can be a simple
-        label such as <Code>my-app</Code>; it does not need to match your native app ID.
+        </Link>{' '}
+        and choose “Connect your app”. Give it a label that is unique in your workspace, such as{' '}
+        <Code>my-app</Code>; it does not need to match your native app ID.
+      </P>
+      <P>
+        OtaKit generates a separate app ID. Copy that generated value from the dashboard into{' '}
+        <Code>plugins.OtaKit.appId</Code>, not the label you entered. The floating setup panel
+        guides you through connecting your project.
       </P>
 
       <Separator className="my-10" />
