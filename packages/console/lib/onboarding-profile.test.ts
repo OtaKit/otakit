@@ -19,21 +19,21 @@ const answers: OnboardingAnswers = {
   otaProvider: 'none',
   activeUsers: 1000,
   updatesPerMonth: 4,
-  selectedPlan: 'free',
 };
 
 describe('guided onboarding validation', () => {
-  it('resumes at the first unanswered step instead of accepting a jump to connection', () => {
-    expect(resumeOnboardingStep({}, 'connect')).toBe('app');
-    expect(resumeOnboardingStep({ ...answers, otaProvider: undefined }, 'connect')).toBe('updates');
-    expect(resumeOnboardingStep({ ...answers, selectedPlan: undefined }, 'connect')).toBe('plans');
-    expect(resumeOnboardingStep(answers, 'connect')).toBe('connect');
+  it('resumes the saved question and corrects incomplete earlier answers', () => {
+    expect(resumeOnboardingStep({}, 'audience')).toBe('app');
+    expect(resumeOnboardingStep({ ...answers, otaProvider: undefined }, 'audience')).toBe(
+      'updates',
+    );
+    expect(resumeOnboardingStep(answers, 'audience')).toBe('audience');
     expect(resumeOnboardingStep(answers, 'updates')).toBe('updates');
   });
 
   it('allows a known unsupported platform to finish without a pricing survey', () => {
     expect(onboardingStepError({ technology: 'react_native' }, 'app')).toBeNull();
-    expect(resumeOnboardingStep({ technology: 'flutter' }, 'plans')).toBe('app');
+    expect(resumeOnboardingStep({ technology: 'flutter' }, 'audience')).toBe('app');
   });
 
   it('distinguishes not answered, unknown, and a pre-launch audience of zero', () => {
@@ -47,7 +47,7 @@ describe('guided onboarding validation', () => {
     expect(estimateMonthlyDownloads(answers)).toBe(4000);
   });
 
-  it('rejects impossible usage, arbitrary fields, and invalid billing combinations', () => {
+  it('rejects impossible usage, arbitrary fields, and attempts to skip completion', () => {
     for (const activeUsers of [-1, 1.5, NaN, Infinity, 1_000_000_001, '1000']) {
       expect(onboardingAnswersSchema.safeParse({ activeUsers }).success).toBe(false);
     }
@@ -55,7 +55,7 @@ describe('guided onboarding validation', () => {
       onboardingRequestSchema.safeParse({
         action: 'save',
         answers,
-        step: 'connect',
+        step: 'audience',
         organizationId: 'another-org',
       }).success,
     ).toBe(false);
@@ -63,12 +63,12 @@ describe('guided onboarding validation', () => {
       onboardingAnswersSchema.safeParse({ technology: 'capacitor', unknown: true }).success,
     ).toBe(false);
     expect(
-      onboardingStepError({ selectedPlan: 'starter', billingInterval: 'year' }, 'plans'),
-    ).toBeTruthy();
-    expect(onboardingStepError({ selectedPlan: 'pro' }, 'plans')).toBeTruthy();
+      onboardingRequestSchema.safeParse({ action: 'save', step: 'plans', answers }).success,
+    ).toBe(false);
     expect(
-      onboardingStepError({ selectedPlan: 'pro', billingInterval: 'year' }, 'plans'),
-    ).toBeNull();
+      onboardingRequestSchema.safeParse({ action: 'complete', answers, slug: 'my-app' }).success,
+    ).toBe(false);
+    expect(onboardingRequestSchema.safeParse({ action: 'complete', answers }).success).toBe(true);
   });
 
   it.each([

@@ -59,8 +59,10 @@ describe('onboarding profile route', () => {
   it('rejects malformed answers and caller-supplied organization IDs', async () => {
     for (const body of [
       null,
-      { action: 'save', step: 'connect', answers: { activeUsers: -1 } },
+      { action: 'save', step: 'audience', answers: { activeUsers: -1 } },
       { action: 'skip', organizationId: 'org-2' },
+      { action: 'complete', answers: {}, slug: 'my-app' },
+      { action: 'save', answers: {}, step: 'plans' },
     ]) {
       expect((await POST(request(body))).status).toBe(400);
     }

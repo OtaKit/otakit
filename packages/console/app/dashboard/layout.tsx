@@ -14,7 +14,15 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const initialData = await getDashboardInitialData();
   if (initialData.apps.length === 0 && initialData.activeOrganization.role === 'owner') {
     const profile = await getOnboardingProfile(initialData.activeOrganization.id);
-    if (shouldShowOnboarding({ appCount: 0, role: initialData.activeOrganization.role, profile })) {
+    // Business onboarding ends when the questions are completed or skipped.
+    // Connecting an app is a separate flow in the dashboard's setup panel.
+    if (
+      shouldShowOnboarding({
+        appCount: initialData.apps.length,
+        role: initialData.activeOrganization.role,
+        profile,
+      })
+    ) {
       redirect('/onboarding');
     }
   }

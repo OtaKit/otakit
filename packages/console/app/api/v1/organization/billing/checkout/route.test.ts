@@ -42,15 +42,15 @@ describe('billing checkout return paths', () => {
     mocks.planKeyToProductId.mockReturnValue('product-pro-yearly');
     mocks.createCheckout.mockResolvedValue({ url: 'https://checkout.example/session' });
   });
-  it('returns onboarding checkout to setup and provides a safe cancel path', async () => {
+  it('returns successful and cancelled welcome checkout to the dashboard', async () => {
     const response = await POST(
-      request({ planKey: 'pro', interval: 'year', returnTo: 'onboarding' }),
+      request({ planKey: 'pro', interval: 'year', returnTo: 'dashboard' }),
     );
     expect(response.status).toBe(201);
     expect(mocks.createCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
-        successUrl: 'https://console.example/onboarding?checkout=success',
-        returnUrl: 'https://console.example/onboarding',
+        successUrl: 'https://console.example/dashboard',
+        returnUrl: 'https://console.example/dashboard',
         externalCustomerId: 'organization:org-1',
         metadata: expect.objectContaining({ billingInterval: 'year' }),
       }),
@@ -74,7 +74,7 @@ describe('billing checkout return paths', () => {
   });
   it('does not create a second active subscription', async () => {
     mocks.findUnique.mockResolvedValue({ isActive: true });
-    expect((await POST(request({ planKey: 'pro', returnTo: 'onboarding' }))).status).toBe(409);
+    expect((await POST(request({ planKey: 'pro', returnTo: 'dashboard' }))).status).toBe(409);
     expect(mocks.createCheckout).not.toHaveBeenCalled();
   });
   it('returns a retryable failure when the billing provider is unavailable', async () => {

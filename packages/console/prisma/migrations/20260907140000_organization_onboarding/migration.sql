@@ -3,17 +3,13 @@ CREATE TABLE "OrganizationOnboarding" (
     "version" INTEGER NOT NULL DEFAULT 1,
     "answers" JSONB NOT NULL DEFAULT '{}',
     "step" TEXT NOT NULL DEFAULT 'app',
-    "connectedAppId" TEXT,
     "completedAt" TIMESTAMP(3),
     "skippedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "OrganizationOnboarding_pkey" PRIMARY KEY ("organizationId"),
-    CONSTRAINT "OrganizationOnboarding_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "OrganizationOnboarding_connectedAppId_fkey" FOREIGN KEY ("connectedAppId") REFERENCES "App"("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "OrganizationOnboarding_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-
-CREATE UNIQUE INDEX "OrganizationOnboarding_connectedAppId_key" ON "OrganizationOnboarding"("connectedAppId");
 
 -- Insights uses a dedicated role that may not exist on self-hosted instances.
 DO $$

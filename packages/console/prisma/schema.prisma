@@ -336,8 +336,6 @@ model OrganizationOnboarding {
   version        Int          @default(1)
   answers        Json         @default("{}")
   step           String       @default("app")
-  connectedAppId String?      @unique
-  connectedApp   App?         @relation(fields: [connectedAppId], references: [id], onDelete: SetNull)
   completedAt    DateTime?
   skippedAt      DateTime?
   createdAt      DateTime     @default(now())
@@ -408,16 +406,15 @@ model AuditLog {
 // ── App & bundles ───────────────────────────────────────────────────
 
 model App {
-  id             String                  @id @default(uuid())
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String          @id @default(uuid())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
   slug           String
   bundles        Bundle[]
   releases       Release[]
   uploadSessions UploadSession[]
-  onboarding     OrganizationOnboarding?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId, createdAt(sort: Desc)])

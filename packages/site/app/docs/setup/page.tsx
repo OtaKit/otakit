@@ -31,9 +31,9 @@ export default function SetupPage() {
         >
           OtaKit dashboard
         </Link>
-        , choose “Connect your app”, and copy its OtaKit <Code>appId</Code>. If you already
-        registered your app during onboarding, use the ID shown there. Your app identifier can be a
-        simple label such as <Code>my-app</Code>; it does not need to match your native app ID.
+        , choose “Connect your app”, and copy its OtaKit <Code>appId</Code>. The floating setup
+        panel also guides you through connecting your project. Your app identifier can be a simple
+        label such as <Code>my-app</Code>; it does not need to match your native app ID.
       </P>
 
       <Separator className="my-10" />

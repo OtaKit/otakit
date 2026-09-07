@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-export const ONBOARDING_STEPS = ['app', 'updates', 'audience', 'plans', 'connect'] as const;
+export const ONBOARDING_QUESTIONS = ['app', 'updates', 'audience'] as const;
+export type OnboardingQuestion = (typeof ONBOARDING_QUESTIONS)[number];
+export const ONBOARDING_STEPS = [...ONBOARDING_QUESTIONS, 'plans'] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
 export const onboardingAnswersSchema = z
@@ -21,8 +23,6 @@ export const onboardingAnswersSchema = z
       .enum(['search', 'ai', 'community', 'recommendation', 'launch_site', 'ad', 'other'])
       .optional(),
     sourceDetail: z.string().trim().max(120).optional(),
-    selectedPlan: z.enum(['free', 'starter', 'pro', 'enterprise']).optional(),
-    billingInterval: z.enum(['month', 'year']).optional(),
   })
   .strict();
 
@@ -33,7 +33,6 @@ export type OnboardingProfile = {
   step: OnboardingStep;
   completedAt: string | null;
   skippedAt: string | null;
-  connectedApp: { id: string; slug: string } | null;
 };
 
 export function isUnsupportedTechnology(technology: OnboardingAnswers['technology']) {
@@ -62,26 +61,18 @@ export function onboardingStepError(
     if (answers.updatesPerMonth === undefined)
       return 'Enter your update frequency, or choose “Not sure yet”.';
   }
-  if (step === 'plans') {
-    if (!answers.selectedPlan) return 'Choose a plan to get started.';
-    if (answers.selectedPlan === 'starter' && answers.billingInterval === 'year') {
-      return 'Starter is billed monthly.';
-    }
-    if (answers.selectedPlan === 'pro' && !answers.billingInterval)
-      return 'Choose monthly or yearly billing for Pro.';
-  }
   return null;
 }
 
 export function resumeOnboardingStep(
   answers: OnboardingAnswers,
-  saved: OnboardingStep,
-): OnboardingStep {
+  saved: OnboardingQuestion,
+): OnboardingQuestion {
   if (isUnsupportedTechnology(answers.technology)) return 'app';
-  for (const step of ONBOARDING_STEPS) {
+  for (const step of ONBOARDING_QUESTIONS) {
     if (step === saved || onboardingStepError(answers, step)) return step;
   }
-  return 'connect';
+  return 'audience';
 }
 
 export function shouldShowOnboarding(input: {
@@ -116,14 +107,13 @@ export const onboardingRequestSchema = z.discriminatedUnion('action', [
     .object({
       action: z.literal('save'),
       answers: onboardingAnswersSchema,
-      step: z.enum(ONBOARDING_STEPS),
+      step: z.enum(ONBOARDING_QUESTIONS),
     })
     .strict(),
   z
     .object({
       action: z.literal('complete'),
       answers: onboardingAnswersSchema,
-      slug: z.string().max(120).optional(),
     })
     .strict(),
   z.object({ action: z.literal('skip') }).strict(),

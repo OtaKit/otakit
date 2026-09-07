@@ -94,10 +94,10 @@ export async function POST(request: NextRequest) {
       externalCustomerId: getExternalCustomerId(ctx.organizationId),
       customerEmail: ctx.email,
       successUrl:
-        body.returnTo === 'onboarding'
-          ? `${appUrl}/onboarding?checkout=success`
+        body.returnTo === 'dashboard'
+          ? `${appUrl}/dashboard`
           : `${appUrl}/dashboard/settings?pricing=1&checkout=success`,
-      ...(body.returnTo === 'onboarding' ? { returnUrl: `${appUrl}/onboarding` } : {}),
+      ...(body.returnTo === 'dashboard' ? { returnUrl: `${appUrl}/dashboard` } : {}),
       metadata: {
         organizationId: ctx.organizationId,
         initiatedByUserId: ctx.userId,
