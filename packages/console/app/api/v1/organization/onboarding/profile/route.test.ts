@@ -60,6 +60,7 @@ describe('onboarding profile route', () => {
     for (const body of [
       null,
       { action: 'save', step: 'audience', answers: { activeUsers: -1 } },
+      { action: 'skip', answers: { activeUsers: -1 } },
       { action: 'skip', organizationId: 'org-2' },
       { action: 'complete', answers: {}, slug: 'my-app' },
       { action: 'save', answers: {}, step: 'plans' },

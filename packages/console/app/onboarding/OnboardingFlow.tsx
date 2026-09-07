@@ -15,6 +15,7 @@ import {
   ONBOARDING_STEPS,
   estimateMonthlyDownloads,
   isUnsupportedTechnology,
+  onboardingAnswersSchema,
   onboardingStepError,
   type OnboardingAnswers,
   type OnboardingProfile,
@@ -164,8 +165,10 @@ export function OnboardingFlow({
       return;
     }
     void run(async () => {
-      await save({ action: 'save', answers, step });
-      await save({ action: 'skip' });
+      // Skipping must work even when the current draft contains an invalid number.
+      // Keep valid draft answers in the same request; otherwise retain the last save.
+      const draft = onboardingAnswersSchema.safeParse(answers);
+      await save({ action: 'skip', ...(draft.success ? { answers: draft.data } : {}) });
       goToDashboard();
     });
   }
@@ -394,6 +397,7 @@ export function OnboardingFlow({
                   id="active-users"
                   label="Monthly active users"
                   hint="People who open your app in a typical month. Enter 0 if you haven’t launched."
+                  placeholder="e.g. 1000"
                   value={answers.activeUsers}
                   max={1_000_000_000}
                   onChange={(value) => update({ activeUsers: value })}
@@ -402,6 +406,7 @@ export function OnboardingFlow({
                   id="updates-month"
                   label="OTA updates you expect to ship each month"
                   hint="A rough estimate helps translate your audience into downloaded updates."
+                  placeholder="e.g. 4"
                   value={answers.updatesPerMonth}
                   max={1_000}
                   onChange={(value) => update({ updatesPerMonth: value })}
@@ -717,6 +722,7 @@ function UsageInput({
   id,
   label,
   hint,
+  placeholder,
   value,
   max,
   onChange,
@@ -724,6 +730,7 @@ function UsageInput({
   id: string;
   label: string;
   hint: string;
+  placeholder: string;
   value: number | null | undefined;
   max: number;
   onChange: (value: number | null | undefined) => void;
@@ -743,7 +750,7 @@ function UsageInput({
           min={0}
           max={max}
           step={1}
-          placeholder="e.g. 1000"
+          placeholder={placeholder}
           value={value ?? ''}
           aria-describedby={`${id}-hint`}
           onChange={(event) =>

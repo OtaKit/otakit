@@ -68,6 +68,7 @@ export async function updateOnboardingProfile(
     const data: Prisma.OrganizationOnboardingUpdateInput = {};
     if (input.action === 'skip') {
       data.skippedAt = existing.skippedAt ?? new Date();
+      if (input.answers) data.answers = input.answers;
     } else {
       data.answers = input.answers;
       if (input.action === 'save') {

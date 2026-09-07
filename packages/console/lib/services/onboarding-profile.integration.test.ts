@@ -96,11 +96,23 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
       answers: {},
       step: 'app',
     });
-    const lateSkip = await updateOnboardingProfile(ctx, { action: 'skip' });
+    const lateSkip = await updateOnboardingProfile(ctx, { action: 'skip', answers: {} });
     expect(lateSave).toEqual(profiles[0]);
     expect(lateSkip).toEqual(profiles[0]);
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: lateSave })).toBe(false);
     expect(await db.app.count({ where: { organizationId: ctx.organizationId } })).toBe(0);
+  });
+
+  it('skips with a partial draft in one write and retains answers when no draft is supplied', async () => {
+    const draft = { technology: 'capacitor' } as const;
+    const skipped = await updateOnboardingProfile(ctx, { action: 'skip', answers: draft });
+    expect(skipped).toMatchObject({
+      answers: draft,
+      skippedAt: expect.any(String),
+      completedAt: null,
+    });
+    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: skipped })).toBe(false);
+    expect(await updateOnboardingProfile(ctx, { action: 'skip' })).toEqual(skipped);
   });
 
   it('keeps survey answers isolated between workspaces', async () => {

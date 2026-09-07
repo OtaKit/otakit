@@ -116,7 +116,7 @@ export const onboardingRequestSchema = z.discriminatedUnion('action', [
       answers: onboardingAnswersSchema,
     })
     .strict(),
-  z.object({ action: z.literal('skip') }).strict(),
+  z.object({ action: z.literal('skip'), answers: onboardingAnswersSchema.optional() }).strict(),
 ]);
 
 export type OnboardingRequest = z.infer<typeof onboardingRequestSchema>;
