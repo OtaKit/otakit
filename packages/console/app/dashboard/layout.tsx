@@ -12,7 +12,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <DashboardDataProvider initialData={initialData}>
       <SignupTracker userId={initialData.user.id} createdAt={initialData.user.createdAt} />
-      <SetupStatusProvider>{children}</SetupStatusProvider>
+      <SetupStatusProvider
+        key={`${initialData.user.id}:${initialData.activeOrganization.id}`}
+        userId={initialData.user.id}
+        organizationId={initialData.activeOrganization.id}
+      >
+        {children}
+      </SetupStatusProvider>
     </DashboardDataProvider>
   );
 }

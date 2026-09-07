@@ -11,6 +11,13 @@ export async function GET(request: NextRequest) {
   if (!ctx) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+  const expectedOrganization = request.headers.get('x-otakit-organization-id');
+  if (expectedOrganization && expectedOrganization !== ctx.organizationId) {
+    return NextResponse.json(
+      { error: 'Your active workspace changed. Reload to continue.' },
+      { status: 409 },
+    );
+  }
 
   try {
     const appId = request.nextUrl.searchParams.get('appId')?.trim();

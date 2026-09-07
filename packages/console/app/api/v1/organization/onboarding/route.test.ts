@@ -59,4 +59,28 @@ describe('onboarding route', () => {
       expect.objectContaining({ appId: undefined }),
     );
   });
+
+  it('rejects a stale workspace poll before reading another workspace’s progress', async () => {
+    const req = request();
+    req.headers.set('x-otakit-organization-id', 'org-2');
+
+    const response = await GET(req);
+
+    expect(response.status).toBe(409);
+    expect(mocks.getOnboardingSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('returns progress when the poll still matches the active workspace', async () => {
+    const req = request();
+    req.headers.set('x-otakit-organization-id', 'org-1');
+
+    const response = await GET(req);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ complete: false });
+    expect(mocks.getOnboardingSnapshot).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      appId: undefined,
+    });
+  });
 });
