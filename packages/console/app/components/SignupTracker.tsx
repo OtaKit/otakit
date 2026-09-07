@@ -8,7 +8,7 @@ import { trackConversion } from '@/lib/gtag';
 // storage or sign in on a new device.
 const SIGNUP_WINDOW_MS = 30 * 60 * 1000;
 
-// Fires the sign_up conversion exactly once per user, on the first dashboard
+// Fires the sign_up conversion exactly once per user, on the first console
 // visit after account creation. Client-side because the Google tag (and the
 // ad-click cookies it needs) only exist in the browser.
 export function SignupTracker({ userId, createdAt }: { userId: string; createdAt: string }) {

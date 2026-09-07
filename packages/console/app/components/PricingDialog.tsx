@@ -323,7 +323,7 @@ export function PricingDialog({
   );
 }
 
-function PlanCard({
+export function PlanCard({
   name,
   price,
   priceNote,

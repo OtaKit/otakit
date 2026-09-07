@@ -40,7 +40,7 @@ function ProgressBar({ pct, blocked }: { pct: number; blocked: boolean }) {
  *
  * It removes itself for good once the first update lands.
  */
-export function SetupLauncher() {
+export function SetupLauncher({ openOnEmpty = true }: { openOnEmpty?: boolean }) {
   const { snapshot, hidden, dismiss } = useSetupStatus();
   const [choice, setChoice] = useState<boolean | null>(null);
 
@@ -49,7 +49,7 @@ export function SetupLauncher() {
   // first step lands, and the panel must not slam shut while it is being used.
   const [autoOpen, setAutoOpen] = useState<boolean | null>(null);
   if (snapshot && autoOpen === null) {
-    setAutoOpen(snapshot.completedCount === 0);
+    setAutoOpen(openOnEmpty && snapshot.completedCount === 0);
   }
 
   const open = choice ?? autoOpen === true;

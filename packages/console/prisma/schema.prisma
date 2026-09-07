@@ -301,22 +301,22 @@ enum ReleaseMutationStatus {
 // ── Organizations & membership ──────────────────────────────────────
 
 model Organization {
-  id                  String               @id @default(uuid())
+  id                  String                  @id @default(uuid())
   name                String
   // Billing (Polar)
-  planKey             PlanKey              @default(free)
+  planKey             PlanKey                 @default(free)
   // Persists the Free-tier allowance an organization was granted. Existing
   // Free organizations are grandfathered at 100k; new organizations get 5k.
-  freeDownloadsLimit  Int                  @default(5000)
-  isActive            Boolean              @default(false)
+  freeDownloadsLimit  Int                     @default(5000)
+  isActive            Boolean                 @default(false)
   polarCustomerId     String?
   polarSubscriptionId String?
   usagePeriodStart    DateTime?
   usageCalculatedAt   DateTime?
-  downloadsCount      Int                  @default(0)
-  usageBlocked        Boolean              @default(false)
-  overageEnabled      Boolean              @default(false)
-  warningSent         UsageWarningSent     @default(none)
+  downloadsCount      Int                     @default(0)
+  usageBlocked        Boolean                 @default(false)
+  overageEnabled      Boolean                 @default(false)
+  warningSent         UsageWarningSent        @default(none)
   // Relations
   apps                App[]
   apiKeys             OrganizationApiKey[]
@@ -324,9 +324,22 @@ model Organization {
   invites             OrganizationInvite[]
   auditLogs           AuditLog[]
   releaseMutations    ReleaseMutation[]
-  activeForUsers      User[]               @relation("UserActiveOrganization")
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  activeForUsers      User[]                  @relation("UserActiveOrganization")
+  onboarding          OrganizationOnboarding?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+}
+
+model OrganizationOnboarding {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version        Int          @default(1)
+  answers        Json         @default("{}")
+  step           String       @default("app")
+  completedAt    DateTime?
+  skippedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model OrganizationMember {

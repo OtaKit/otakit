@@ -212,10 +212,10 @@ export function LoginPageClient({
     try {
       const { data, error: signInError } = await authClient.signIn.social({
         provider,
-        // A pending MCP authorization outranks the dashboard for both new and
-        // returning users; otherwise this is unchanged.
+        // MCP authorization takes priority. Otherwise the dashboard resumes
+        // onboarding only for owners of an unfinished, empty workspace.
         callbackURL: authorizationPath ?? '/dashboard',
-        newUserCallbackURL: authorizationPath ?? '/dashboard?pricing=1',
+        newUserCallbackURL: authorizationPath ?? '/dashboard',
         errorCallbackURL: '/login',
         disableRedirect: true,
       });
@@ -303,13 +303,8 @@ export function LoginPageClient({
           return;
         }
 
-        // Both timestamps come from the server, so this never depends on the
-        // browser clock: a freshly inserted user still has updatedAt === createdAt.
-        const isNewUser =
-          typeof data?.user?.createdAt !== 'undefined' &&
-          String(data.user.createdAt) === String(data.user.updatedAt);
-
-        window.location.href = isNewUser ? '/dashboard?pricing=1' : '/dashboard';
+        // The dashboard checks workspace progress and resumes onboarding when needed.
+        window.location.href = '/dashboard';
       } catch (cause) {
         submittedCode.current = null;
         setError(cause instanceof Error ? cause.message : 'Invalid code');
