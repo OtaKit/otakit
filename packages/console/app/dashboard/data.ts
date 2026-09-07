@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -86,7 +87,7 @@ async function getOrganizationData(organizationId: string) {
   };
 }
 
-export async function getDashboardInitialData(): Promise<DashboardInitialData> {
+export const getDashboardInitialData = cache(async (): Promise<DashboardInitialData> => {
   const { session, memberships, activeMembership } = await getUserContext();
   const organizationData = await getOrganizationData(activeMembership.organizationId);
 
@@ -127,4 +128,4 @@ export async function getDashboardInitialData(): Promise<DashboardInitialData> {
     analyticsEnabled: isTinybirdConfigured(),
     remoteMcpOAuthEnabled: isRemoteMcpOAuthEnabled(),
   };
-}
+});

@@ -833,11 +833,17 @@ function UsageInput({
           max={max}
           step={1}
           placeholder={placeholder}
-          value={value ?? ''}
+          value={value == null || Number.isNaN(value) ? '' : value}
           aria-invalid={invalid || undefined}
           aria-describedby={`${id}-hint${invalid ? ' onboarding-error' : ''}`}
           onChange={(event) =>
-            onChange(event.target.value === '' ? undefined : Number(event.target.value))
+            onChange(
+              event.target.validity.badInput
+                ? NaN
+                : event.target.value === ''
+                  ? undefined
+                  : Number(event.target.value),
+            )
           }
         />
       </div>

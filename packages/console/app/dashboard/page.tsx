@@ -9,13 +9,14 @@ import { shouldShowOnboarding } from '@/lib/onboarding-profile';
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pricing?: string; checkout?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [initialData, params] = await Promise.all([getDashboardInitialData(), searchParams]);
+  const pricing = Array.isArray(params.pricing) ? params.pricing[0] : params.pricing;
+  const checkout = Array.isArray(params.checkout) ? params.checkout[0] : params.checkout;
   // Only intercept the app dashboard. Settings and explicit billing links must
   // stay reachable while the business questionnaire is unfinished.
-  const billingVisit =
-    params.pricing === '1' || ['success', 'onboarding'].includes(params.checkout ?? '');
+  const billingVisit = pricing === '1' || ['success', 'onboarding'].includes(checkout ?? '');
   if (
     !billingVisit &&
     initialData.apps.length === 0 &&
@@ -36,7 +37,7 @@ export default async function DashboardPage({
     <>
       <ProductDashboard initialData={initialData} />
       {/* Only on the apps view: Settings already has a launcher in this corner. */}
-      <SetupLauncher openOnEmpty={params.checkout !== 'onboarding'} />
+      <SetupLauncher openOnEmpty={checkout !== 'onboarding'} />
     </>
   );
 }

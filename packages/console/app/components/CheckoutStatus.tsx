@@ -25,49 +25,63 @@ export function CheckoutStatus({ organizationId }: { organizationId: string }) {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let finishDelay: (() => void) | undefined;
     setChecking(true);
     setStatus({ message: 'Checking your subscription…' });
     async function refresh() {
       try {
-        const response = await fetch('/api/v1/organization/billing/refresh', {
-          method: 'POST',
-          headers: { 'x-otakit-organization-id': organizationId },
+        for (let check = 0; check < 3; check++) {
+          if (check > 0) {
+            await new Promise<void>((resolve) => {
+              finishDelay = resolve;
+              retryTimer = setTimeout(resolve, check * 1000);
+            });
+            finishDelay = undefined;
+          }
+          if (cancelled) return;
+          const response = await fetch('/api/v1/organization/billing/refresh', {
+            method: 'POST',
+            headers: { 'x-otakit-organization-id': organizationId },
+            signal: controller.signal,
+          });
+          if (cancelled) return;
+          if (response.status === 401) {
+            setStatus({ message: 'Sign in again to check your subscription.', signIn: true });
+            return;
+          }
+          if (response.status === 409) {
+            setStatus({
+              message:
+                'Your active workspace changed. Switch back in Settings to check this subscription.',
+              settings: true,
+            });
+            return;
+          }
+          if (!response.ok) throw new Error('Billing refresh failed');
+          const data = (await response.json()) as {
+            billing?: { isActive?: boolean; planKey?: string };
+          };
+          if (cancelled) return;
+          const plan = data.billing?.planKey;
+          if (data.billing?.isActive && (plan === 'starter' || plan === 'pro')) {
+            setStatus({
+              message: `${plan === 'pro' ? 'Pro' : 'Starter'} is active for this workspace. You’re ready to connect your app.`,
+            });
+            // Only remove the return marker after the server confirms the plan.
+            const current = new URL(window.location.href);
+            current.searchParams.delete('checkout');
+            current.searchParams.delete('checkout_org');
+            window.history.replaceState(window.history.state, '', current);
+            return;
+          }
+        }
+        setStatus({
+          message:
+            'Your paid plan is not active yet. You can continue setting up your app and check again shortly.',
+          retry: true,
         });
-        if (cancelled) return;
-        if (response.status === 401) {
-          setStatus({ message: 'Sign in again to check your subscription.', signIn: true });
-          return;
-        }
-        if (response.status === 409) {
-          setStatus({
-            message:
-              'Your active workspace changed. Switch back in Settings to check this subscription.',
-            settings: true,
-          });
-          return;
-        }
-        if (!response.ok) throw new Error('Billing refresh failed');
-        const data = (await response.json()) as {
-          billing?: { isActive?: boolean; planKey?: string };
-        };
-        if (cancelled) return;
-        const plan = data.billing?.planKey;
-        if (data.billing?.isActive && (plan === 'starter' || plan === 'pro')) {
-          setStatus({
-            message: `${plan === 'pro' ? 'Pro' : 'Starter'} is active for this workspace. You’re ready to connect your app.`,
-          });
-          // Only remove the return marker after the server confirms the plan.
-          const current = new URL(window.location.href);
-          current.searchParams.delete('checkout');
-          current.searchParams.delete('checkout_org');
-          window.history.replaceState(window.history.state, '', current);
-        } else {
-          setStatus({
-            message:
-              'Your paid plan is not active yet. You can continue setting up your app and check again shortly.',
-            retry: true,
-          });
-        }
       } catch {
         if (!cancelled)
           setStatus({
@@ -81,6 +95,9 @@ export function CheckoutStatus({ organizationId }: { organizationId: string }) {
     void refresh();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(retryTimer);
+      finishDelay?.();
     };
   }, [organizationId, attempt]);
 
