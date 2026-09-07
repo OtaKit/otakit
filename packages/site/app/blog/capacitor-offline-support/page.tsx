@@ -54,7 +54,7 @@ Network.addListener('networkStatusChange', (s) => {
         so losing the network mid-check never breaks the app &mdash; the update simply doesn&apos;t apply
         yet and retries when connectivity returns:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 Network.addListener('networkStatusChange', (s) => {
   if (s.connected) OtaKit.check(); // resume the check when back online

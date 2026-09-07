@@ -64,7 +64,7 @@ export default function AppflowShutdownPage() {
       <ol>
         <li>
           Swap the plugin. Remove the Appflow live-update dependency and install{' '}
-          <Code>@otakit/capacitor-plugin</Code>. Point config at your OtaKit app and channel.
+          <Code>@otakit/capacitor-updater</Code>. Point config at your OtaKit app and channel.
         </li>
         <li>
           Wire a release step. Where Appflow ran a deploy automation, run the OtaKit CLI:

@@ -62,7 +62,7 @@ App.addListener('pause', async () => {
         user is about to interact anyway. Trigger a check on resume so an available bundle is ready by the
         time they need it:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 App.addListener('resume', () => {
   OtaKit.check();

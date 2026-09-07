@@ -51,7 +51,7 @@ await SplashScreen.hide();`}</Pre>
         already downloaded and ready, applying it before you hide the splash means the user boots straight
         into the newest bundle &mdash; no visible reload:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 const state = await OtaKit.getState();
 // let a ready update apply, then reveal the app

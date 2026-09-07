@@ -62,7 +62,7 @@ otakit upload --release production`}</Pre>
       <h2>Plugin swap</h2>
       <p>
         Remove the CodePush/App Center SDK and install{' '}
-        <Code>@otakit/capacitor-plugin</Code>. On the app side, the important call is{' '}
+        <Code>@otakit/capacitor-updater</Code>. On the app side, the important call is{' '}
         <Code>notifyAppReady()</Code> after a successful boot &mdash; it&apos;s the signal that arms
         automatic rollback, the equivalent of CodePush&apos;s <Code>notifyApplicationReady</Code>.
       </p>

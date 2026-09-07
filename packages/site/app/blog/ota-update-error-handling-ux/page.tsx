@@ -41,7 +41,7 @@ export default function ErrorHandlingPage() {
         background download is not a user-facing error &mdash; it&apos;s a &ldquo;try again later&rdquo;
         for your code, not a dialog for the user:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 OtaKit.addListener('downloadFailed', (info) => {
   // log it, retry later — do NOT alert the user

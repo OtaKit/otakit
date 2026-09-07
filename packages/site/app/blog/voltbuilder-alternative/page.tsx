@@ -47,7 +47,7 @@ export default function VoltBuilderAlternativePage() {
       </p>
       <ol>
         <li>
-          Install <Code>@otakit/capacitor-plugin</Code> and include it before you build your binary
+          Install <Code>@otakit/capacitor-updater</Code> and include it before you build your binary
           in VoltBuilder.
         </li>
         <li>

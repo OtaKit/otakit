@@ -63,7 +63,7 @@ npx cap add android`}</Pre>
       <p>
         Cordova&apos;s update story was awkward &mdash; the community options were limited and the
         hosted ones have since shut down. On Capacitor, add{' '}
-        <Code>@otakit/capacitor-plugin</Code> and you can ship web-layer changes over the air:
+        <Code>@otakit/capacitor-updater</Code> and you can ship web-layer changes over the air:
       </p>
       <Pre>{`otakit upload --release production`}</Pre>
       <p>

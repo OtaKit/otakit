@@ -62,7 +62,7 @@ export default function DebugPage() {
         upload or a caching artifact. Re-release and confirm the manifest updated.
       </p>
 
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 const state = await OtaKit.getState();
 const failure = await OtaKit.getLastFailure();

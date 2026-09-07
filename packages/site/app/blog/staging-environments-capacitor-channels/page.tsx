@@ -38,7 +38,7 @@ export default function StagingEnvPage() {
         The configured channel is the default; apps override it at runtime. Give your internal builds a
         way to switch &mdash; a hidden settings toggle, a build flag, or an environment check:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 // QA build follows staging; everyone else uses the configured default
 if (isInternalBuild) {

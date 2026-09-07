@@ -37,7 +37,7 @@ export default function ChangelogPage() {
         new&rdquo; payload with the bundle and display it after an update applies. Listen for the applied
         event and check whether this bundle has notes the user hasn&apos;t seen:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 OtaKit.addListener('updateApplied', async () => {
   const notes = await loadBundledReleaseNotes();

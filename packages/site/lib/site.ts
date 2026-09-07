@@ -16,8 +16,8 @@ export const site = {
   signup: `${consoleUrl}/dashboard`,
   github: 'https://github.com/OtaKit/otakit',
   npm: 'https://www.npmjs.com/package/@otakit/cli',
-  plugin: 'https://www.npmjs.com/package/@otakit/capacitor-plugin',
-  install: 'npm install @otakit/capacitor-plugin',
+  plugin: 'https://www.npmjs.com/package/@otakit/capacitor-updater',
+  install: 'npm install @otakit/capacitor-updater',
   supportEmail: process.env.SUPPORT_EMAIL?.trim() || 'support@otakit.app',
   securityEmail: process.env.NEXT_PUBLIC_SECURITY_EMAIL?.trim() || 'security@otakit.app',
 } as const;

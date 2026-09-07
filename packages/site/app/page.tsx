@@ -426,7 +426,7 @@ export default function LandingPage() {
                 number="01"
                 title="Install"
                 description="Add the OtaKit plugin to your Capacitor app and publish once to the stores."
-                code="npm install @otakit/capacitor-plugin"
+                code="npm install @otakit/capacitor-updater"
               />
               <StepCard
                 number="02"

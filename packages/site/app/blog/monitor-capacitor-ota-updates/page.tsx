@@ -29,7 +29,7 @@ export default function MonitorPage() {
         The plugin emits lifecycle events you can subscribe to and forward to your analytics or logging
         backend:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 OtaKit.addListener('updateAvailable', (info) => track('ota_available', info));
 OtaKit.addListener('downloaded', (info) => track('ota_downloaded', info));

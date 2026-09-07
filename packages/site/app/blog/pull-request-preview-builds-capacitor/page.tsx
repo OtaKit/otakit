@@ -49,7 +49,7 @@ otakit upload --release "pr-\${PR_NUMBER}"`}</Pre>
         In the preview build, expose a way to enter a channel name (a debug screen). A reviewer types{' '}
         <Code>pr-123</Code>, the app switches, and they&apos;re running that PR:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 await OtaKit.setChannel({ channel: 'pr-123' });`}</Pre>
       <p>
         See <A href="/blog/target-ota-updates-to-specific-users">targeting users with channels</A> for the

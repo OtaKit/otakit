@@ -20,7 +20,7 @@ export default function ABTestingPage() {
         Put a slice of users on a channel carrying variant B while everyone else stays on A. Because
         your app chooses the channel at runtime, you control the split:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 // deterministic 50/50 split by a stable user id hash
 const inVariantB = hash(user.id) % 2 === 0;

@@ -28,7 +28,7 @@ export default function TargetUsersPage() {
         Your app decides which channel a device follows &mdash; based on a user flag, a plan tier, an
         opt-in toggle, whatever you know about the user. Set it from the app:
       </p>
-      <Pre>{`import { OtaKit } from '@otakit/capacitor-plugin';
+      <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
 // put beta opt-in users on the beta stream
 if (user.isBetaTester) {
