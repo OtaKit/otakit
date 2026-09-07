@@ -5,9 +5,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { useStoredPreference } from '@/app/components/useStoredPreference';
 import type { OnboardingSnapshot } from '@/lib/services/onboarding';
 
-const DONE_STORAGE_KEY = 'otakit.setup.done';
-const DISMISS_STORAGE_KEY = 'otakit.setup.dismissed';
-
 /** Quick while a device is expected to report in, unhurried otherwise. */
 const POLL_WAITING_MS = 5_000;
 const POLL_IDLE_MS = 20_000;
@@ -37,10 +34,21 @@ export function useSetupStatus(): SetupStatus {
  * and this stops asking altogether — otherwise every dashboard visit, forever,
  * would pay an analytics query for a checklist that has been green for months.
  */
-export function SetupStatusProvider({ children }: { children: ReactNode }) {
+export function SetupStatusProvider({
+  userId,
+  organizationId,
+  children,
+}: {
+  userId: string;
+  organizationId: string;
+  children: ReactNode;
+}) {
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
-  const [doneValue, setDone] = useStoredPreference(DONE_STORAGE_KEY);
-  const [dismissedValue, setDismissed] = useStoredPreference(DISMISS_STORAGE_KEY);
+  // Legacy browser-wide flags cannot identify which account or workspace was
+  // finished or dismissed. Ignore them so a fresh workspace can show its help.
+  const scope = `${userId}:${organizationId}`;
+  const [doneValue, setDone] = useStoredPreference(`otakit.setup.done:${scope}`);
+  const [dismissedValue, setDismissed] = useStoredPreference(`otakit.setup.dismissed:${scope}`);
 
   const silent = doneValue === '1' || dismissedValue === '1';
 
@@ -57,9 +65,18 @@ export function SetupStatusProvider({ children }: { children: ReactNode }) {
         try {
           const response = await fetch('/api/v1/organization/onboarding', {
             signal: controller.signal,
+            headers: { 'x-otakit-organization-id': organizationId },
+            cache: 'no-store',
           });
+          if (response.status === 409 && !stopped) {
+            // Another tab switched workspaces. Its progress must not be saved
+            // as completion of the workspace still shown in this tab.
+            setSnapshot(null);
+            return;
+          }
           if (response.ok && !stopped) {
             const next = (await response.json()) as OnboardingSnapshot;
+            if (stopped) return;
             setSnapshot(next);
             if (next.complete) {
               setDone('1');
@@ -82,7 +99,7 @@ export function SetupStatusProvider({ children }: { children: ReactNode }) {
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [silent, setDone]);
+  }, [silent, setDone, organizationId]);
 
   return (
     <SetupStatusContext.Provider
