@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
-export const ONBOARDING_QUESTIONS = ['app', 'updates', 'audience'] as const;
+export const ONBOARDING_QUESTIONS = ['app', 'stage', 'updates', 'audience', 'source'] as const;
 export type OnboardingQuestion = (typeof ONBOARDING_QUESTIONS)[number];
 export const ONBOARDING_STEPS = [...ONBOARDING_QUESTIONS, 'plans'] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
+// `framework`, `goal`, `otherProvider` and `sourceDetail` are no longer asked:
+// they made the questionnaire longer without telling us anything the remaining
+// answers don't. They stay in the schema because the parse is strict, and
+// dropping them would make every stored answer fail and read back as empty.
 export const onboardingAnswersSchema = z
   .object({
     technology: z
@@ -43,17 +47,11 @@ export function onboardingStepError(
   answers: OnboardingAnswers,
   step: OnboardingStep,
 ): string | null {
-  if (step === 'app') {
-    if (!answers.technology) return 'Choose what your app is built with.';
-    if (isUnsupportedTechnology(answers.technology)) return null;
-    if (
-      (answers.technology === 'capacitor' || answers.technology === 'web') &&
-      !answers.framework
-    ) {
-      return 'Choose your web framework, or select “Not sure”.';
-    }
-    if (!answers.appStage) return 'Choose where your app is today.';
-  }
+  if (step === 'app' && !answers.technology) return 'Choose what your app is built with.';
+  // Everything after the platform question is moot once the answer is one we
+  // cannot serve, so nothing later is allowed to hold that person up.
+  if (isUnsupportedTechnology(answers.technology)) return null;
+  if (step === 'stage' && !answers.appStage) return 'Choose where your app is today.';
   if (step === 'updates' && !answers.otaProvider) return 'Choose your current update setup.';
   if (step === 'audience') return onboardingUsageError(answers)?.message ?? null;
   return null;
@@ -86,7 +84,7 @@ export function resumeOnboardingStep(
   for (const step of ONBOARDING_QUESTIONS) {
     if (step === saved || onboardingStepError(answers, step)) return step;
   }
-  return 'audience';
+  return ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
 }
 
 export function shouldShowOnboarding(input: {

@@ -32,6 +32,17 @@ describe('guided onboarding validation', () => {
     expect(resumeOnboardingStep(answers, 'updates')).toBe('updates');
   });
 
+  it('asks the platform and the stage on their own screens, and never the framework', () => {
+    expect(onboardingStepError({ technology: 'capacitor' }, 'app')).toBeNull();
+    expect(onboardingStepError({ technology: 'capacitor' }, 'stage')).toContain(
+      'where your app is',
+    );
+    expect(onboardingStepError({ technology: 'capacitor', appStage: 'live' }, 'stage')).toBeNull();
+    // Attribution is optional, so it can never hold the questionnaire up.
+    expect(onboardingStepError({}, 'source')).toBeNull();
+    expect(resumeOnboardingStep({ technology: 'capacitor' }, 'source')).toBe('stage');
+  });
+
   it('allows a known unsupported platform to finish without a pricing survey', () => {
     expect(onboardingStepError({ technology: 'react_native' }, 'app')).toBeNull();
     expect(resumeOnboardingStep({ technology: 'flutter' }, 'audience')).toBe('app');
