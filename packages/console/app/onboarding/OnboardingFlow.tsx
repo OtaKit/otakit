@@ -82,6 +82,9 @@ const PLAN_NAMES: Record<PlanKey, string> = {
 
 const number = (value: number) => value.toLocaleString('en-US');
 
+/** How long the card takes to change width. Kept in step with the class below. */
+const RESIZE_MS = 280;
+
 export function OnboardingFlow({
   organizationId,
   organizationName,
@@ -240,6 +243,21 @@ export function OnboardingFlow({
   }
 
   const finishing = step === 'plans' && !billingEnabled;
+  const wide = step === 'plans' && !finishing;
+
+  // Only the plan table needs the extra room, so the card changes width exactly
+  // once. Reflowing four columns of prices live through that change is what
+  // looked broken, so the content sits out the resize and fades back once the
+  // width has settled: the frame glides, the text never re-wraps on screen.
+  const [resizing, setResizing] = useState(false);
+  const wasWide = useRef(wide);
+  useEffect(() => {
+    if (wasWide.current === wide) return;
+    wasWide.current = wide;
+    setResizing(true);
+    const timer = setTimeout(() => setResizing(false), RESIZE_MS);
+    return () => clearTimeout(timer);
+  }, [wide]);
   const headline = finishing
     ? {
         title: 'You’re all set',
@@ -277,15 +295,13 @@ export function OnboardingFlow({
         </div>
       </header>
 
-      {/* Only the plan table wants the room, and it is the last thing here, so
-          the card eases open once instead of resizing between questions. */}
       <main
         className={cn(
           // Fills whatever is left under the header, so the page never ends in a
           // short card floating over empty background.
           'relative mx-auto flex w-full flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14',
-          'transition-[max-width] duration-500 ease-out motion-reduce:transition-none',
-          step === 'plans' && !finishing ? 'max-w-6xl' : 'max-w-2xl',
+          'transition-[max-width] duration-[280ms] ease-out motion-reduce:transition-none',
+          wide ? 'max-w-6xl' : 'max-w-2xl',
         )}
       >
         {/* The card takes the height the page has, which is what puts Back and
@@ -302,309 +318,327 @@ export function OnboardingFlow({
             style={{ width: `${((index + 1) / ONBOARDING_STEPS.length) * 100}%` }}
           />
 
-          <div className="px-6 py-8 sm:px-8">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Step {index + 1} of {ONBOARDING_STEPS.length}
-            </p>
-            <h1
-              ref={heading}
-              tabIndex={-1}
-              id="onboarding-title"
-              className="mt-2 text-xl font-semibold tracking-tight outline-none sm:text-2xl"
-            >
-              {headline.title}
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{headline.lead}</p>
-          </div>
-
-          <form
-            noValidate
-            className="flex flex-1 flex-col"
-            onSubmit={(event) => {
-              event.preventDefault();
-              next();
-            }}
-          >
-            <fieldset className="flex-1" disabled={busy}>
-              {step === 'app' && (
-                <Stack
-                  value={answers.technologies ?? []}
-                  onChange={(technologies) => update({ technologies })}
-                  options={[
-                    ['capacitor', 'Capacitor / Ionic'],
-                    ['web', 'A web app'],
-                    ['react_native', 'React Native / Expo'],
-                    ['flutter', 'Flutter'],
-                    ['native', 'Native iOS / Android'],
-                  ]}
-                />
-              )}
-
-              {step === 'stage' && (
-                <Choices
-                  id="app-stage"
-                  value={answers.appStage}
-                  onChange={(value) => update({ appStage: value as OnboardingAnswers['appStage'] })}
-                  options={[
-                    ['live', 'Live with users'],
-                    ['testing', 'Testing a native build'],
-                    ['building', 'Still building'],
-                    ['exploring', 'Just exploring'],
-                  ]}
-                />
-              )}
-
-              {step === 'updates' && (
-                <Choices
-                  id="ota-provider"
-                  value={answers.otaProvider}
-                  onChange={(value) =>
-                    update({ otaProvider: value as OnboardingAnswers['otaProvider'] })
-                  }
-                  options={[
-                    ['none', 'Not yet'],
-                    ['appflow', 'Ionic Appflow'],
-                    ['capgo', 'Capgo'],
-                    ['capawesome', 'Capawesome'],
-                    ['custom', 'Our own setup'],
-                    ['other', 'Another provider'],
-                    ['not_sure', 'Not sure'],
-                  ]}
-                />
-              )}
-
-              {step === 'audience' && (
-                <>
-                  <Section>
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      <UsageInput
-                        id="active-users"
-                        label="Monthly active users"
-                        hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
-                        placeholder="1000"
-                        value={answers.activeUsers}
-                        max={1_000_000_000}
-                        invalid={invalidField === 'activeUsers'}
-                        onChange={(value) => update({ activeUsers: value })}
-                      />
-                      <UsageInput
-                        id="updates-month"
-                        label="Updates per month"
-                        hint="How often you expect to ship an OTA update. A rough number is enough."
-                        placeholder="4"
-                        value={answers.updatesPerMonth}
-                        max={1_000}
-                        invalid={invalidField === 'updatesPerMonth'}
-                        onChange={(value) => update({ updatesPerMonth: value })}
-                      />
-                    </div>
-                  </Section>
-                  {estimatedDownloads !== null && (
-                    <Section className="bg-muted/20">
-                      <Readout
-                        label="Estimated downloads"
-                        value={`${number(estimatedDownloads)} / month`}
-                        caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
-                      />
-                    </Section>
-                  )}
-                </>
-              )}
-
-              {step === 'source' && (
-                <Choices
-                  id="source"
-                  value={answers.source}
-                  onChange={(value) => update({ source: value as OnboardingAnswers['source'] })}
-                  options={[
-                    ['search', 'Search engine'],
-                    ['ai', 'An AI assistant'],
-                    ['community', 'Community or social'],
-                    ['recommendation', 'Someone recommended it'],
-                    ['launch_site', 'Product Hunt or a directory'],
-                    ['ad', 'An ad'],
-                    ['other', 'Somewhere else'],
-                  ]}
-                />
-              )}
-
-              {step === 'plans' &&
-                (finishing ? (
-                  <Section>
-                    <Button type="button" onClick={goToDashboard}>
-                      Go to dashboard
-                      <ArrowRight className="size-4" />
-                    </Button>
-                  </Section>
-                ) : hasSubscription ? (
-                  <Section>
-                    <p className="text-sm">
-                      This workspace is already on{' '}
-                      <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can change
-                      it later from Billing in Settings.
-                    </p>
-                    <Button type="button" className="mt-4" onClick={goToDashboard}>
-                      Continue on {PLAN_NAMES[currentPlan]}
-                      <ArrowRight className="size-4" />
-                    </Button>
-                  </Section>
-                ) : (
-                  <Section>
-                    {estimatedDownloads !== null && (
-                      <p className="mb-5 text-sm text-muted-foreground">
-                        Your estimate is{' '}
-                        <span className="font-medium text-foreground">
-                          {number(estimatedDownloads)} downloads a month
-                        </span>
-                        {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
-                      </p>
-                    )}
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <PlanCard
-                        name="Free"
-                        price="$0"
-                        priceNote="No card required"
-                        subtitle={`${number(freeDownloads)} downloads / month`}
-                        features={[
-                          'Unlimited apps and updates',
-                          'Dashboard + CLI',
-                          'Single-member workspace',
-                          'Hard cap — no overage',
-                        ]}
-                        current={false}
-                        actionLabel="Continue with Free"
-                        actionIcon={Leaf}
-                        disabled={busy}
-                        onAction={goToDashboard}
-                        tag={suggested === 'free' ? 'Fits your estimate' : undefined}
-                        highlighted={suggested === 'free'}
-                      />
-                      <PlanCard
-                        name="Starter"
-                        price="$10"
-                        priceNote="Billed monthly"
-                        subtitle={`${number(STARTER_DOWNLOADS)} downloads / month`}
-                        features={[
-                          'Unlimited apps and updates',
-                          'Dashboard + CLI',
-                          'Single-member workspace',
-                          'Hard cap — no overage',
-                        ]}
-                        current={false}
-                        actionLabel={
-                          freeDownloads >= STARTER_DOWNLOADS ? 'Included in Free' : 'Choose Starter'
-                        }
-                        actionIcon={Rocket}
-                        disabled={busy || freeDownloads >= STARTER_DOWNLOADS}
-                        loading={checkingOut === 'starter'}
-                        onAction={() => void run(() => checkout('starter', 'month'))}
-                        tag={suggested === 'starter' ? 'Fits your estimate' : undefined}
-                        highlighted={suggested === 'starter'}
-                      />
-                      <PlanCard
-                        name="Pro"
-                        price="$25"
-                        priceNote="Billed $300/year, or $50 monthly"
-                        subtitle={`${number(PRO_DOWNLOADS)} downloads / month`}
-                        features={[
-                          'Everything in Free',
-                          'Team members and roles',
-                          `Optional overage: $50 / extra ${number(PRO_DOWNLOADS)}`,
-                          'Priority support',
-                        ]}
-                        current={false}
-                        actionLabel="Choose Pro"
-                        actionIcon={Star}
-                        disabled={busy}
-                        loading={checkingOut === 'pro'}
-                        actionItems={[
-                          {
-                            label: 'Yearly',
-                            description: '$300/year · $25/month',
-                            onSelect: () => void run(() => checkout('pro', 'year')),
-                          },
-                          {
-                            label: 'Monthly',
-                            description: '$50/month',
-                            onSelect: () => void run(() => checkout('pro', 'month')),
-                          },
-                        ]}
-                        tag={suggested === 'pro' ? 'Fits your estimate' : undefined}
-                        highlighted={suggested === 'pro'}
-                      />
-                      <PlanCard
-                        name="Enterprise"
-                        price="Custom"
-                        priceNote="Tailored to your volume"
-                        subtitle="Custom download volume"
-                        features={[
-                          'Everything in Pro',
-                          'Custom limits and contract',
-                          'SSO and priority SLAs',
-                          'Dedicated support',
-                        ]}
-                        current={false}
-                        actionLabel="Contact sales"
-                        actionIcon={Building2}
-                        disabled={busy}
-                        onAction={() => {
-                          window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
-                        }}
-                        tag={suggested === 'enterprise' ? 'Discuss your volume' : undefined}
-                        highlighted={suggested === 'enterprise'}
-                      />
-                    </div>
-                  </Section>
-                ))}
-            </fieldset>
-
-            {error && (
-              <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
-                <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-                <p
-                  id="onboarding-error"
-                  ref={errorRef}
-                  tabIndex={-1}
-                  role="alert"
-                  className="text-sm leading-relaxed text-destructive outline-none"
-                >
-                  {error}
-                  {sessionExpired && (
-                    <a href="/login" className="ml-2 font-medium underline underline-offset-4">
-                      Sign in again
-                    </a>
-                  )}
-                </p>
-              </div>
+          {/* Hidden outright while the width moves — no transition class, so it
+              goes at once — then eased back in against a card that has stopped
+              moving. */}
+          <div
+            className={cn(
+              'flex flex-1 flex-col',
+              resizing
+                ? 'opacity-0'
+                : 'opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none',
             )}
-
-            <div className="mt-auto flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
-              {index > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-2 text-muted-foreground"
-                  disabled={busy}
-                  onClick={() => {
-                    setError(null);
-                    setInvalidField(null);
-                    setStep(ONBOARDING_STEPS[index - 1]);
-                  }}
-                >
-                  <ArrowLeft className="size-3.5" />
-                  Back
-                </Button>
-              )}
-              {step !== 'plans' && (
-                <Button type="submit" className="ml-auto" disabled={busy}>
-                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                  {step === lastQuestion ? 'Finish' : 'Continue'}
-                  {busy ? null : <ArrowRight className="size-4" />}
-                </Button>
-              )}
+          >
+            <div className="px-6 py-8 sm:px-8">
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Step {index + 1} of {ONBOARDING_STEPS.length}
+              </p>
+              <h1
+                ref={heading}
+                tabIndex={-1}
+                id="onboarding-title"
+                className="mt-2 text-xl font-semibold tracking-tight outline-none sm:text-2xl"
+              >
+                {headline.title}
+              </h1>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                {headline.lead}
+              </p>
             </div>
-          </form>
+
+            <form
+              noValidate
+              className="flex flex-1 flex-col"
+              onSubmit={(event) => {
+                event.preventDefault();
+                next();
+              }}
+            >
+              <fieldset className="flex-1" disabled={busy}>
+                {step === 'app' && (
+                  <Stack
+                    value={answers.technologies ?? []}
+                    onChange={(technologies) => update({ technologies })}
+                    options={[
+                      ['capacitor', 'Capacitor / Ionic'],
+                      ['web', 'A web app'],
+                      ['react_native', 'React Native / Expo'],
+                      ['flutter', 'Flutter'],
+                      ['native', 'Native iOS / Android'],
+                    ]}
+                  />
+                )}
+
+                {step === 'stage' && (
+                  <Choices
+                    id="app-stage"
+                    value={answers.appStage}
+                    onChange={(value) =>
+                      update({ appStage: value as OnboardingAnswers['appStage'] })
+                    }
+                    options={[
+                      ['live', 'Live with users'],
+                      ['testing', 'Testing a native build'],
+                      ['building', 'Still building'],
+                      ['exploring', 'Just exploring'],
+                    ]}
+                  />
+                )}
+
+                {step === 'updates' && (
+                  <Choices
+                    id="ota-provider"
+                    value={answers.otaProvider}
+                    onChange={(value) =>
+                      update({ otaProvider: value as OnboardingAnswers['otaProvider'] })
+                    }
+                    options={[
+                      ['none', 'Not yet'],
+                      ['appflow', 'Ionic Appflow'],
+                      ['capgo', 'Capgo'],
+                      ['capawesome', 'Capawesome'],
+                      ['custom', 'Our own setup'],
+                      ['other', 'Another provider'],
+                      ['not_sure', 'Not sure'],
+                    ]}
+                  />
+                )}
+
+                {step === 'audience' && (
+                  <>
+                    <Section>
+                      <div className="grid gap-6 sm:grid-cols-2">
+                        <UsageInput
+                          id="active-users"
+                          label="Monthly active users"
+                          hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
+                          placeholder="1000"
+                          value={answers.activeUsers}
+                          max={1_000_000_000}
+                          invalid={invalidField === 'activeUsers'}
+                          onChange={(value) => update({ activeUsers: value })}
+                        />
+                        <UsageInput
+                          id="updates-month"
+                          label="Updates per month"
+                          hint="How often you expect to ship an OTA update. A rough number is enough."
+                          placeholder="4"
+                          value={answers.updatesPerMonth}
+                          max={1_000}
+                          invalid={invalidField === 'updatesPerMonth'}
+                          onChange={(value) => update({ updatesPerMonth: value })}
+                        />
+                      </div>
+                    </Section>
+                    {estimatedDownloads !== null && (
+                      <Section className="bg-muted/20">
+                        <Readout
+                          label="Estimated downloads"
+                          value={`${number(estimatedDownloads)} / month`}
+                          caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
+                        />
+                      </Section>
+                    )}
+                  </>
+                )}
+
+                {step === 'source' && (
+                  <Choices
+                    id="source"
+                    value={answers.source}
+                    onChange={(value) => update({ source: value as OnboardingAnswers['source'] })}
+                    options={[
+                      ['search', 'Search engine'],
+                      ['ai', 'An AI assistant'],
+                      ['community', 'Community or social'],
+                      ['recommendation', 'Someone recommended it'],
+                      ['launch_site', 'Product Hunt or a directory'],
+                      ['ad', 'An ad'],
+                      ['other', 'Somewhere else'],
+                    ]}
+                  />
+                )}
+
+                {step === 'plans' &&
+                  (finishing ? (
+                    <Section>
+                      <Button type="button" onClick={goToDashboard}>
+                        Go to dashboard
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </Section>
+                  ) : hasSubscription ? (
+                    <Section>
+                      <p className="text-sm">
+                        This workspace is already on{' '}
+                        <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can
+                        change it later from Billing in Settings.
+                      </p>
+                      <Button type="button" className="mt-4" onClick={goToDashboard}>
+                        Continue on {PLAN_NAMES[currentPlan]}
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </Section>
+                  ) : (
+                    <Section>
+                      {estimatedDownloads !== null && (
+                        <p className="mb-5 text-sm text-muted-foreground">
+                          Your estimate is{' '}
+                          <span className="font-medium text-foreground">
+                            {number(estimatedDownloads)} downloads a month
+                          </span>
+                          {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
+                        </p>
+                      )}
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <PlanCard
+                          name="Free"
+                          price="$0"
+                          priceNote="No card required"
+                          subtitle={`${number(freeDownloads)} downloads / month`}
+                          features={[
+                            'Unlimited apps and updates',
+                            'Dashboard + CLI',
+                            'Single-member workspace',
+                            'Hard cap — no overage',
+                          ]}
+                          current={false}
+                          actionLabel="Continue with Free"
+                          actionIcon={Leaf}
+                          disabled={busy}
+                          onAction={goToDashboard}
+                          tag={suggested === 'free' ? 'Fits your estimate' : undefined}
+                          highlighted={suggested === 'free'}
+                        />
+                        <PlanCard
+                          name="Starter"
+                          price="$10"
+                          priceNote="Billed monthly"
+                          subtitle={`${number(STARTER_DOWNLOADS)} downloads / month`}
+                          features={[
+                            'Unlimited apps and updates',
+                            'Dashboard + CLI',
+                            'Single-member workspace',
+                            'Hard cap — no overage',
+                          ]}
+                          current={false}
+                          actionLabel={
+                            freeDownloads >= STARTER_DOWNLOADS
+                              ? 'Included in Free'
+                              : 'Choose Starter'
+                          }
+                          actionIcon={Rocket}
+                          disabled={busy || freeDownloads >= STARTER_DOWNLOADS}
+                          loading={checkingOut === 'starter'}
+                          onAction={() => void run(() => checkout('starter', 'month'))}
+                          tag={suggested === 'starter' ? 'Fits your estimate' : undefined}
+                          highlighted={suggested === 'starter'}
+                        />
+                        <PlanCard
+                          name="Pro"
+                          price="$25"
+                          priceNote="Billed $300/year, or $50 monthly"
+                          subtitle={`${number(PRO_DOWNLOADS)} downloads / month`}
+                          features={[
+                            'Everything in Free',
+                            'Team members and roles',
+                            `Optional overage: $50 / extra ${number(PRO_DOWNLOADS)}`,
+                            'Priority support',
+                          ]}
+                          current={false}
+                          actionLabel="Choose Pro"
+                          actionIcon={Star}
+                          disabled={busy}
+                          loading={checkingOut === 'pro'}
+                          actionItems={[
+                            {
+                              label: 'Yearly',
+                              description: '$300/year · $25/month',
+                              onSelect: () => void run(() => checkout('pro', 'year')),
+                            },
+                            {
+                              label: 'Monthly',
+                              description: '$50/month',
+                              onSelect: () => void run(() => checkout('pro', 'month')),
+                            },
+                          ]}
+                          tag={suggested === 'pro' ? 'Fits your estimate' : undefined}
+                          highlighted={suggested === 'pro'}
+                        />
+                        <PlanCard
+                          name="Enterprise"
+                          price="Custom"
+                          priceNote="Tailored to your volume"
+                          subtitle="Custom download volume"
+                          features={[
+                            'Everything in Pro',
+                            'Custom limits and contract',
+                            'SSO and priority SLAs',
+                            'Dedicated support',
+                          ]}
+                          current={false}
+                          actionLabel="Contact sales"
+                          actionIcon={Building2}
+                          disabled={busy}
+                          onAction={() => {
+                            window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
+                          }}
+                          tag={suggested === 'enterprise' ? 'Discuss your volume' : undefined}
+                          highlighted={suggested === 'enterprise'}
+                        />
+                      </div>
+                    </Section>
+                  ))}
+              </fieldset>
+
+              {error && (
+                <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
+                  <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                  <p
+                    id="onboarding-error"
+                    ref={errorRef}
+                    tabIndex={-1}
+                    role="alert"
+                    className="text-sm leading-relaxed text-destructive outline-none"
+                  >
+                    {error}
+                    {sessionExpired && (
+                      <a href="/login" className="ml-2 font-medium underline underline-offset-4">
+                        Sign in again
+                      </a>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-auto flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
+                {index > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2 text-muted-foreground"
+                    disabled={busy}
+                    onClick={() => {
+                      setError(null);
+                      setInvalidField(null);
+                      setStep(ONBOARDING_STEPS[index - 1]);
+                    }}
+                  >
+                    <ArrowLeft className="size-3.5" />
+                    Back
+                  </Button>
+                )}
+                {step !== 'plans' && (
+                  <Button type="submit" className="ml-auto" disabled={busy}>
+                    {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    {step === lastQuestion ? 'Finish' : 'Continue'}
+                    {busy ? null : <ArrowRight className="size-4" />}
+                  </Button>
+                )}
+              </div>
+            </form>
+          </div>
         </div>
 
         <p className="pt-10 text-center text-sm text-muted-foreground">
