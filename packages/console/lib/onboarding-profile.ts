@@ -134,3 +134,29 @@ export const onboardingRequestSchema = z.discriminatedUnion('action', [
 ]);
 
 export type OnboardingRequest = z.infer<typeof onboardingRequestSchema>;
+
+/**
+ * Included monthly downloads on the paid tiers, kept next to the recommendation
+ * so the onboarding plan list and the plan it suggests cannot drift apart.
+ * The Free allowance is per-workspace and is passed in.
+ */
+export const STARTER_DOWNLOADS = 100_000;
+export const PRO_DOWNLOADS = 1_000_000;
+
+export type RecommendablePlan = 'free' | 'starter' | 'pro' | 'enterprise';
+
+/**
+ * The cheapest plan whose included volume covers the estimate. Answers null
+ * when the estimate is unknown — suggesting a plan on a guess is worse than
+ * letting someone read the list themselves.
+ */
+export function recommendedPlan(
+  estimatedDownloads: number | null,
+  freeDownloads: number,
+): RecommendablePlan | null {
+  if (estimatedDownloads === null) return null;
+  if (estimatedDownloads <= freeDownloads) return 'free';
+  if (estimatedDownloads <= STARTER_DOWNLOADS) return 'starter';
+  if (estimatedDownloads <= PRO_DOWNLOADS) return 'pro';
+  return 'enterprise';
+}

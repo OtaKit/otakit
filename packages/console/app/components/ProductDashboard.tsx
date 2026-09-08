@@ -32,6 +32,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
@@ -2342,7 +2343,16 @@ export function ProductDashboard({
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
-              <Label htmlFor="new-app-slug">App identifier</Label>
+              {/* The ⓘ is a sibling of the label, not a child: a button inside a
+                  label swallows the click that should focus the field. */}
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="new-app-slug">App identifier</Label>
+                <InfoHint label="About the app identifier">
+                  Any unique label in this workspace works, such as <code>my-app</code>. It does not
+                  need to match your native app ID. Use 3–120 letters, numbers, dots, underscores,
+                  or hyphens.
+                </InfoHint>
+              </div>
               <Input
                 id="new-app-slug"
                 placeholder="my-app"
@@ -2359,10 +2369,11 @@ export function ProductDashboard({
                   setCreateAppError(null);
                 }}
               />
-              <p id="new-app-help" className="text-sm leading-6 text-muted-foreground">
-                Any unique label in this workspace works, such as <code>my-app</code>. It does not
-                need to match your native app ID. Use 3–120 letters, numbers, dots, underscores, or
-                hyphens.
+              {/* The rule stays behind the ⓘ visually, but a screen reader still
+                  reads it as the field's description rather than as a button. */}
+              <p id="new-app-help" className="sr-only">
+                Any unique label in this workspace works, such as my-app. It does not need to match
+                your native app ID. Use 3–120 letters, numbers, dots, underscores, or hyphens.
               </p>
               <p id="new-app-error" role="alert" className="text-sm text-destructive">
                 {createAppError}

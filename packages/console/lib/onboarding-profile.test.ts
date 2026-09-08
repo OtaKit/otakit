@@ -6,6 +6,7 @@ import {
   onboardingAnswersSchema,
   onboardingRequestSchema,
   onboardingStepError,
+  recommendedPlan,
   resumeOnboardingStep,
   shouldShowOnboarding,
   type OnboardingAnswers,
@@ -110,5 +111,21 @@ describe('guided onboarding validation', () => {
     expect(
       shouldShowOnboarding({ ...input, profile: { skippedAt: null, completedAt: '2026-09-07' } }),
     ).toBe(false);
+  });
+
+  it('suggests the cheapest plan whose included volume covers the estimate', () => {
+    expect(recommendedPlan(null, 5_000)).toBeNull();
+    expect(recommendedPlan(0, 5_000)).toBe('free');
+    expect(recommendedPlan(5_000, 5_000)).toBe('free');
+    expect(recommendedPlan(5_001, 5_000)).toBe('starter');
+    expect(recommendedPlan(100_000, 5_000)).toBe('starter');
+    expect(recommendedPlan(100_001, 5_000)).toBe('pro');
+    expect(recommendedPlan(1_000_000, 5_000)).toBe('pro');
+    expect(recommendedPlan(1_000_001, 5_000)).toBe('enterprise');
+  });
+
+  it('respects a grandfathered Free allowance before suggesting Starter', () => {
+    expect(recommendedPlan(100_000, 100_000)).toBe('free');
+    expect(recommendedPlan(100_001, 100_000)).toBe('pro');
   });
 });

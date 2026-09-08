@@ -36,8 +36,8 @@ export default async function DashboardPage({
   return (
     <>
       <ProductDashboard initialData={initialData} />
-      {/* Only on the apps view: Settings already has a launcher in this corner. */}
-      <SetupLauncher openOnEmpty={checkout !== 'onboarding'} />
+      {/* Only on the apps view: Settings already has a button in this corner. */}
+      <SetupLauncher />
     </>
   );
 }
