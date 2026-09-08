@@ -8,8 +8,7 @@ import { getOnboardingProfile, updateOnboardingProfile } from './onboarding-prof
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 const answers: OnboardingAnswers = {
-  technology: 'capacitor',
-  framework: 'react',
+  technologies: ['capacitor'],
   appStage: 'live',
   otaProvider: 'capgo',
   activeUsers: 2500,
@@ -144,17 +143,26 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     }
   });
 
-  it('records unsupported platforms without adding an app to the activation funnel', async () => {
+  it('records a platform OtaKit cannot update as information, not a rejection', async () => {
     const profile = await updateOnboardingProfile(ctx, {
       action: 'complete',
-      answers: { technology: 'flutter' },
+      answers: { ...answers, technologies: ['capacitor', 'flutter'] },
     });
     expect(profile).toMatchObject({
       completedAt: expect.any(String),
-      answers: { technology: 'flutter' },
+      answers: { technologies: ['capacitor', 'flutter'] },
     });
     expect(await db.app.count({ where: { organizationId: ctx.organizationId } })).toBe(0);
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
+  });
+
+  it('still needs the rest of the questions, whatever the stack says', async () => {
+    await expect(
+      updateOnboardingProfile(ctx, {
+        action: 'complete',
+        answers: { technologies: ['capacitor', 'flutter'] },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('rejects members and unfinished answers without creating a profile', async () => {
