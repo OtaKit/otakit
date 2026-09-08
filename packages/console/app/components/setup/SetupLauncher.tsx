@@ -40,16 +40,18 @@ function ProgressBar({ pct, blocked }: { pct: number; blocked: boolean }) {
  *
  * It removes itself for good once the first update lands.
  */
-export function SetupLauncher({ openOnEmpty = true }: { openOnEmpty?: boolean }) {
+export function SetupLauncher() {
   const { snapshot, hidden, dismiss } = useSetupStatus();
   const [choice, setChoice] = useState<boolean | null>(null);
 
   // Open on its own for an account that has done nothing yet, decided once from
   // the first snapshot. `completedCount === 0` stops being true the moment the
   // first step lands, and the panel must not slam shut while it is being used.
+  // Arriving straight from the questionnaire or from checkout is exactly when
+  // connecting the app is the next thing to do, so those are not exceptions.
   const [autoOpen, setAutoOpen] = useState<boolean | null>(null);
   if (snapshot && autoOpen === null) {
-    setAutoOpen(openOnEmpty && snapshot.completedCount === 0);
+    setAutoOpen(snapshot.completedCount === 0);
   }
 
   const open = choice ?? autoOpen === true;
