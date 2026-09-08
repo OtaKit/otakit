@@ -16,6 +16,7 @@ import {
 import { InfoHint } from '@/app/components/InfoHint';
 import { PlanCard, type PlanKey } from '@/app/components/PricingDialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -27,34 +28,49 @@ import {
   PRO_DOWNLOADS,
   STARTER_DOWNLOADS,
   estimateMonthlyDownloads,
-  isUnsupportedTechnology,
+  LOCKED_TECHNOLOGY,
   onboardingAnswersSchema,
   onboardingStepError,
   onboardingUsageError,
+  technologiesOf,
   recommendedPlan,
   type OnboardingAnswers,
   type OnboardingProfile,
   type OnboardingRequest,
   type OnboardingStep,
+  type Technology,
 } from '@/lib/onboarding-profile';
 
 /**
- * Title and, only where it earns one, a single supporting line. The title is
- * the question, so nothing repeats it as a field label underneath.
+ * The title asks the question, so nothing repeats it as a field label. The
+ * line under it says why we are asking, which is the only reason a screen gets
+ * a second sentence at all.
  */
-const SCREENS: Record<OnboardingStep, { title: string; lead?: string }> = {
+const SCREENS: Record<OnboardingStep, { title: string; lead: string }> = {
   app: {
-    title: 'What are you building?',
-    lead: 'Five quick questions. Skip any of them — none of this blocks the dashboard.',
+    title: 'What do you build with?',
+    lead: 'OtaKit currently supports Capacitor apps. Tick anything else in your stack.',
   },
-  stage: { title: 'Where is your app today?' },
-  updates: { title: 'Are you shipping OTA updates today?' },
+  stage: {
+    title: 'Where is your app today?',
+    lead: 'It decides whether we point you at a test device or a store release first.',
+  },
+  updates: {
+    title: 'Are you shipping OTA updates today?',
+    lead: 'So we know whether to set you up from scratch or help you move across.',
+  },
   audience: {
     title: 'How much traffic do you expect?',
-    lead: 'A rough estimate is enough. It only decides which plan we suggest.',
+    lead: 'A rough estimate is enough — it only decides which plan we suggest.',
   },
-  source: { title: 'How did you hear about us?' },
-  plans: { title: 'Pick a starting plan', lead: 'Change it whenever you like.' },
+  source: {
+    title: 'How did you hear about us?',
+    lead: 'It is how we know which channels are worth keeping.',
+  },
+  plans: {
+    title: 'Pick a starting plan',
+    lead: 'Every plan includes unlimited apps and updates. Usage counts update downloads — one device taking one update.',
+  },
 };
 
 const PLAN_NAMES: Record<PlanKey, string> = {
@@ -83,7 +99,10 @@ export function OnboardingFlow({
   hasSubscription: boolean;
   freeDownloads: number;
 }) {
-  const [answers, setAnswers] = useState<OnboardingAnswers>(initialProfile?.answers ?? {});
+  const [answers, setAnswers] = useState<OnboardingAnswers>(() => {
+    const saved = initialProfile?.answers ?? {};
+    return { ...saved, technologies: technologiesOf(saved) };
+  });
   const [step, setStep] = useState<OnboardingStep>(initialProfile?.step ?? 'app');
   const [completed, setCompleted] = useState(Boolean(initialProfile?.completedAt));
   const [busy, setBusy] = useState(false);
@@ -97,7 +116,6 @@ export function OnboardingFlow({
   const landed = useRef(false);
   const index = ONBOARDING_STEPS.indexOf(step);
   const lastQuestion = ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
-  const unsupported = isUnsupportedTechnology(answers.technology);
   const estimatedDownloads = estimateMonthlyDownloads(answers);
   const suggested = recommendedPlan(estimatedDownloads, freeDownloads);
 
@@ -196,7 +214,7 @@ export function OnboardingFlow({
       const profile = await save(
         // Driven by the question list, so adding or splitting a screen cannot
         // leave the questionnaire finishing one screen early.
-        unsupported || step === lastQuestion
+        step === lastQuestion
           ? { action: 'complete', answers }
           : { action: 'save', answers, step: ONBOARDING_QUESTIONS[index + 1] },
       );
@@ -222,20 +240,12 @@ export function OnboardingFlow({
   }
 
   const finishing = step === 'plans' && !billingEnabled;
-  // A platform OtaKit cannot serve is told so on its own screen rather than by
-  // a note sliding in under the answer that caused it.
-  const dead_end = unsupported && completed;
-  const headline = dead_end
+  const headline = finishing
     ? {
-        title: 'OtaKit is built for Capacitor apps',
-        lead: 'It replaces the web layer inside a Capacitor shell, so it cannot update React Native, Flutter, or native code. We have noted the platform you asked for.',
+        title: 'You’re all set',
+        lead: 'Your answers are saved. The dashboard walks you through connecting your app.',
       }
-    : finishing
-      ? {
-          title: 'You’re all set',
-          lead: 'Your answers are saved. The dashboard walks you through connecting your app.',
-        }
-      : SCREENS[step];
+    : SCREENS[step];
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-background text-foreground">
@@ -275,29 +285,27 @@ export function OnboardingFlow({
           // short card floating over empty background.
           'relative mx-auto flex w-full flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14',
           'transition-[max-width] duration-500 ease-out motion-reduce:transition-none',
-          step === 'plans' && !finishing && !dead_end ? 'max-w-6xl' : 'max-w-2xl',
+          step === 'plans' && !finishing ? 'max-w-6xl' : 'max-w-2xl',
         )}
       >
-        <div className="relative bg-card">
+        {/* The card takes the height the page has, which is what puts Back and
+            Continue on the bottom edge instead of halfway up the screen. */}
+        <div className="relative flex flex-1 flex-col bg-card">
           <Frame />
 
           {/* Progress is the card's own top edge darkening from the left. There is
               no separate widget to reflow, and the eyebrow below says where you
               are exactly. */}
-          {!dead_end && (
-            <div
-              aria-hidden
-              className="absolute inset-x-0 top-0 z-20 h-px bg-foreground transition-[width] duration-500 ease-out motion-reduce:transition-none"
-              style={{ width: `${((index + 1) / ONBOARDING_STEPS.length) * 100}%` }}
-            />
-          )}
+          <div
+            aria-hidden
+            className="absolute inset-x-0 top-0 z-20 h-px bg-foreground transition-[width] duration-500 ease-out motion-reduce:transition-none"
+            style={{ width: `${((index + 1) / ONBOARDING_STEPS.length) * 100}%` }}
+          />
 
           <div className="px-6 py-8 sm:px-8">
-            {!dead_end && (
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                Step {index + 1} of {ONBOARDING_STEPS.length}
-              </p>
-            )}
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Step {index + 1} of {ONBOARDING_STEPS.length}
+            </p>
             <h1
               ref={heading}
               tabIndex={-1}
@@ -306,322 +314,300 @@ export function OnboardingFlow({
             >
               {headline.title}
             </h1>
-            {headline.lead ? (
-              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                {headline.lead}
-              </p>
-            ) : null}
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{headline.lead}</p>
           </div>
 
-          {dead_end ? (
-            <Section>
-              <Button type="button" onClick={goToDashboard}>
-                Explore the dashboard
-                <ArrowRight className="size-4" />
-              </Button>
-            </Section>
-          ) : (
-            <form
-              noValidate
-              onSubmit={(event) => {
-                event.preventDefault();
-                next();
-              }}
-            >
-              <fieldset disabled={busy}>
-                {step === 'app' && (
-                  <Choices
-                    id="technology"
-                    value={answers.technology}
-                    onChange={(value) =>
-                      update({ technology: value as OnboardingAnswers['technology'] })
-                    }
-                    options={[
-                      ['capacitor', 'Capacitor / Ionic'],
-                      ['web', 'A web app, no native build yet'],
-                      ['react_native', 'React Native / Expo'],
-                      ['flutter', 'Flutter'],
-                      ['native', 'Native iOS / Android'],
-                      ['not_sure', 'Not sure yet'],
-                    ]}
-                  />
-                )}
-
-                {step === 'stage' && (
-                  <Choices
-                    id="app-stage"
-                    value={answers.appStage}
-                    onChange={(value) =>
-                      update({ appStage: value as OnboardingAnswers['appStage'] })
-                    }
-                    options={[
-                      ['live', 'Live with users'],
-                      ['testing', 'Testing a native build'],
-                      ['building', 'Still building'],
-                      ['exploring', 'Just exploring'],
-                    ]}
-                  />
-                )}
-
-                {step === 'updates' && (
-                  <Choices
-                    id="ota-provider"
-                    value={answers.otaProvider}
-                    onChange={(value) =>
-                      update({ otaProvider: value as OnboardingAnswers['otaProvider'] })
-                    }
-                    options={[
-                      ['none', 'Not yet'],
-                      ['appflow', 'Ionic Appflow'],
-                      ['capgo', 'Capgo'],
-                      ['capawesome', 'Capawesome'],
-                      ['custom', 'Our own setup'],
-                      ['other', 'Another provider'],
-                      ['not_sure', 'Not sure'],
-                    ]}
-                  />
-                )}
-
-                {step === 'audience' && (
-                  <>
-                    <Section>
-                      <div className="grid gap-6 sm:grid-cols-2">
-                        <UsageInput
-                          id="active-users"
-                          label="Monthly active users"
-                          hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
-                          placeholder="1000"
-                          value={answers.activeUsers}
-                          max={1_000_000_000}
-                          invalid={invalidField === 'activeUsers'}
-                          onChange={(value) => update({ activeUsers: value })}
-                        />
-                        <UsageInput
-                          id="updates-month"
-                          label="Updates per month"
-                          hint="How often you expect to ship an OTA update. A rough number is enough."
-                          placeholder="4"
-                          value={answers.updatesPerMonth}
-                          max={1_000}
-                          invalid={invalidField === 'updatesPerMonth'}
-                          onChange={(value) => update({ updatesPerMonth: value })}
-                        />
-                      </div>
-                    </Section>
-                    {estimatedDownloads !== null && (
-                      <Section className="bg-muted/20">
-                        <Readout
-                          label="Estimated downloads"
-                          value={`${number(estimatedDownloads)} / month`}
-                          caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
-                        />
-                      </Section>
-                    )}
-                  </>
-                )}
-
-                {step === 'source' && (
-                  <Choices
-                    id="source"
-                    value={answers.source}
-                    onChange={(value) => update({ source: value as OnboardingAnswers['source'] })}
-                    options={[
-                      ['search', 'Search engine'],
-                      ['ai', 'An AI assistant'],
-                      ['community', 'Community or social'],
-                      ['recommendation', 'Someone recommended it'],
-                      ['launch_site', 'Product Hunt or a directory'],
-                      ['ad', 'An ad'],
-                      ['other', 'Somewhere else'],
-                    ]}
-                  />
-                )}
-
-                {step === 'plans' &&
-                  (finishing ? (
-                    <Section>
-                      <Button type="button" onClick={goToDashboard}>
-                        Go to dashboard
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </Section>
-                  ) : hasSubscription ? (
-                    <Section>
-                      <p className="text-sm">
-                        This workspace is already on{' '}
-                        <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can
-                        change it later from Billing in Settings.
-                      </p>
-                      <Button type="button" className="mt-4" onClick={goToDashboard}>
-                        Continue on {PLAN_NAMES[currentPlan]}
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </Section>
-                  ) : (
-                    <Section>
-                      {estimatedDownloads !== null && (
-                        <p className="mb-5 text-sm text-muted-foreground">
-                          Your estimate is{' '}
-                          <span className="font-medium text-foreground">
-                            {number(estimatedDownloads)} downloads a month
-                          </span>
-                          {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
-                        </p>
-                      )}
-                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <PlanCard
-                          name="Free"
-                          price="$0"
-                          priceNote="No card required"
-                          subtitle={`${number(freeDownloads)} downloads / month`}
-                          features={[
-                            'Unlimited apps and updates',
-                            'Dashboard + CLI',
-                            'Single-member workspace',
-                            'Hard cap — no overage',
-                          ]}
-                          current={false}
-                          actionLabel="Continue with Free"
-                          actionIcon={Leaf}
-                          disabled={busy}
-                          onAction={goToDashboard}
-                          tag={suggested === 'free' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'free'}
-                        />
-                        <PlanCard
-                          name="Starter"
-                          price="$10"
-                          priceNote="Billed monthly"
-                          subtitle={`${number(STARTER_DOWNLOADS)} downloads / month`}
-                          features={[
-                            'Unlimited apps and updates',
-                            'Dashboard + CLI',
-                            'Single-member workspace',
-                            'Hard cap — no overage',
-                          ]}
-                          current={false}
-                          actionLabel={
-                            freeDownloads >= STARTER_DOWNLOADS
-                              ? 'Included in Free'
-                              : 'Choose Starter'
-                          }
-                          actionIcon={Rocket}
-                          disabled={busy || freeDownloads >= STARTER_DOWNLOADS}
-                          loading={checkingOut === 'starter'}
-                          onAction={() => void run(() => checkout('starter', 'month'))}
-                          tag={suggested === 'starter' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'starter'}
-                        />
-                        <PlanCard
-                          name="Pro"
-                          price="$25"
-                          priceNote="Billed $300/year, or $50 monthly"
-                          subtitle={`${number(PRO_DOWNLOADS)} downloads / month`}
-                          features={[
-                            'Everything in Free',
-                            'Team members and roles',
-                            `Optional overage: $50 / extra ${number(PRO_DOWNLOADS)}`,
-                            'Priority support',
-                          ]}
-                          current={false}
-                          actionLabel="Choose Pro"
-                          actionIcon={Star}
-                          disabled={busy}
-                          loading={checkingOut === 'pro'}
-                          actionItems={[
-                            {
-                              label: 'Yearly',
-                              description: '$300/year · $25/month',
-                              onSelect: () => void run(() => checkout('pro', 'year')),
-                            },
-                            {
-                              label: 'Monthly',
-                              description: '$50/month',
-                              onSelect: () => void run(() => checkout('pro', 'month')),
-                            },
-                          ]}
-                          tag={suggested === 'pro' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'pro'}
-                        />
-                        <PlanCard
-                          name="Enterprise"
-                          price="Custom"
-                          priceNote="Tailored to your volume"
-                          subtitle="Custom download volume"
-                          features={[
-                            'Everything in Pro',
-                            'Custom limits and contract',
-                            'SSO and priority SLAs',
-                            'Dedicated support',
-                          ]}
-                          current={false}
-                          actionLabel="Contact sales"
-                          actionIcon={Building2}
-                          disabled={busy}
-                          onAction={() => {
-                            window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
-                          }}
-                          tag={suggested === 'enterprise' ? 'Discuss your volume' : undefined}
-                          highlighted={suggested === 'enterprise'}
-                        />
-                      </div>
-                    </Section>
-                  ))}
-              </fieldset>
-
-              {error && (
-                <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
-                  <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-                  <p
-                    id="onboarding-error"
-                    ref={errorRef}
-                    tabIndex={-1}
-                    role="alert"
-                    className="text-sm leading-relaxed text-destructive outline-none"
-                  >
-                    {error}
-                    {sessionExpired && (
-                      <a href="/login" className="ml-2 font-medium underline underline-offset-4">
-                        Sign in again
-                      </a>
-                    )}
-                  </p>
-                </div>
+          <form
+            noValidate
+            className="flex flex-1 flex-col"
+            onSubmit={(event) => {
+              event.preventDefault();
+              next();
+            }}
+          >
+            <fieldset className="flex-1" disabled={busy}>
+              {step === 'app' && (
+                <Stack
+                  value={answers.technologies ?? []}
+                  onChange={(technologies) => update({ technologies })}
+                  options={[
+                    ['capacitor', 'Capacitor / Ionic'],
+                    ['web', 'A web app'],
+                    ['react_native', 'React Native / Expo'],
+                    ['flutter', 'Flutter'],
+                    ['native', 'Native iOS / Android'],
+                  ]}
+                />
               )}
 
-              <div className="flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
-                {index > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-2 text-muted-foreground"
-                    disabled={busy}
-                    onClick={() => {
-                      setError(null);
-                      setInvalidField(null);
-                      setStep(ONBOARDING_STEPS[index - 1]);
-                    }}
-                  >
-                    <ArrowLeft className="size-3.5" />
-                    Back
-                  </Button>
-                )}
-                {step !== 'plans' && (
-                  <Button type="submit" className="ml-auto" disabled={busy}>
-                    {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                    {step === lastQuestion && !unsupported ? 'Finish' : 'Continue'}
-                    {busy ? null : <ArrowRight className="size-4" />}
-                  </Button>
-                )}
+              {step === 'stage' && (
+                <Choices
+                  id="app-stage"
+                  value={answers.appStage}
+                  onChange={(value) => update({ appStage: value as OnboardingAnswers['appStage'] })}
+                  options={[
+                    ['live', 'Live with users'],
+                    ['testing', 'Testing a native build'],
+                    ['building', 'Still building'],
+                    ['exploring', 'Just exploring'],
+                  ]}
+                />
+              )}
+
+              {step === 'updates' && (
+                <Choices
+                  id="ota-provider"
+                  value={answers.otaProvider}
+                  onChange={(value) =>
+                    update({ otaProvider: value as OnboardingAnswers['otaProvider'] })
+                  }
+                  options={[
+                    ['none', 'Not yet'],
+                    ['appflow', 'Ionic Appflow'],
+                    ['capgo', 'Capgo'],
+                    ['capawesome', 'Capawesome'],
+                    ['custom', 'Our own setup'],
+                    ['other', 'Another provider'],
+                    ['not_sure', 'Not sure'],
+                  ]}
+                />
+              )}
+
+              {step === 'audience' && (
+                <>
+                  <Section>
+                    <div className="grid gap-6 sm:grid-cols-2">
+                      <UsageInput
+                        id="active-users"
+                        label="Monthly active users"
+                        hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
+                        placeholder="1000"
+                        value={answers.activeUsers}
+                        max={1_000_000_000}
+                        invalid={invalidField === 'activeUsers'}
+                        onChange={(value) => update({ activeUsers: value })}
+                      />
+                      <UsageInput
+                        id="updates-month"
+                        label="Updates per month"
+                        hint="How often you expect to ship an OTA update. A rough number is enough."
+                        placeholder="4"
+                        value={answers.updatesPerMonth}
+                        max={1_000}
+                        invalid={invalidField === 'updatesPerMonth'}
+                        onChange={(value) => update({ updatesPerMonth: value })}
+                      />
+                    </div>
+                  </Section>
+                  {estimatedDownloads !== null && (
+                    <Section className="bg-muted/20">
+                      <Readout
+                        label="Estimated downloads"
+                        value={`${number(estimatedDownloads)} / month`}
+                        caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
+                      />
+                    </Section>
+                  )}
+                </>
+              )}
+
+              {step === 'source' && (
+                <Choices
+                  id="source"
+                  value={answers.source}
+                  onChange={(value) => update({ source: value as OnboardingAnswers['source'] })}
+                  options={[
+                    ['search', 'Search engine'],
+                    ['ai', 'An AI assistant'],
+                    ['community', 'Community or social'],
+                    ['recommendation', 'Someone recommended it'],
+                    ['launch_site', 'Product Hunt or a directory'],
+                    ['ad', 'An ad'],
+                    ['other', 'Somewhere else'],
+                  ]}
+                />
+              )}
+
+              {step === 'plans' &&
+                (finishing ? (
+                  <Section>
+                    <Button type="button" onClick={goToDashboard}>
+                      Go to dashboard
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  </Section>
+                ) : hasSubscription ? (
+                  <Section>
+                    <p className="text-sm">
+                      This workspace is already on{' '}
+                      <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can change
+                      it later from Billing in Settings.
+                    </p>
+                    <Button type="button" className="mt-4" onClick={goToDashboard}>
+                      Continue on {PLAN_NAMES[currentPlan]}
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  </Section>
+                ) : (
+                  <Section>
+                    {estimatedDownloads !== null && (
+                      <p className="mb-5 text-sm text-muted-foreground">
+                        Your estimate is{' '}
+                        <span className="font-medium text-foreground">
+                          {number(estimatedDownloads)} downloads a month
+                        </span>
+                        {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
+                      </p>
+                    )}
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <PlanCard
+                        name="Free"
+                        price="$0"
+                        priceNote="No card required"
+                        subtitle={`${number(freeDownloads)} downloads / month`}
+                        features={[
+                          'Unlimited apps and updates',
+                          'Dashboard + CLI',
+                          'Single-member workspace',
+                          'Hard cap — no overage',
+                        ]}
+                        current={false}
+                        actionLabel="Continue with Free"
+                        actionIcon={Leaf}
+                        disabled={busy}
+                        onAction={goToDashboard}
+                        tag={suggested === 'free' ? 'Fits your estimate' : undefined}
+                        highlighted={suggested === 'free'}
+                      />
+                      <PlanCard
+                        name="Starter"
+                        price="$10"
+                        priceNote="Billed monthly"
+                        subtitle={`${number(STARTER_DOWNLOADS)} downloads / month`}
+                        features={[
+                          'Unlimited apps and updates',
+                          'Dashboard + CLI',
+                          'Single-member workspace',
+                          'Hard cap — no overage',
+                        ]}
+                        current={false}
+                        actionLabel={
+                          freeDownloads >= STARTER_DOWNLOADS ? 'Included in Free' : 'Choose Starter'
+                        }
+                        actionIcon={Rocket}
+                        disabled={busy || freeDownloads >= STARTER_DOWNLOADS}
+                        loading={checkingOut === 'starter'}
+                        onAction={() => void run(() => checkout('starter', 'month'))}
+                        tag={suggested === 'starter' ? 'Fits your estimate' : undefined}
+                        highlighted={suggested === 'starter'}
+                      />
+                      <PlanCard
+                        name="Pro"
+                        price="$25"
+                        priceNote="Billed $300/year, or $50 monthly"
+                        subtitle={`${number(PRO_DOWNLOADS)} downloads / month`}
+                        features={[
+                          'Everything in Free',
+                          'Team members and roles',
+                          `Optional overage: $50 / extra ${number(PRO_DOWNLOADS)}`,
+                          'Priority support',
+                        ]}
+                        current={false}
+                        actionLabel="Choose Pro"
+                        actionIcon={Star}
+                        disabled={busy}
+                        loading={checkingOut === 'pro'}
+                        actionItems={[
+                          {
+                            label: 'Yearly',
+                            description: '$300/year · $25/month',
+                            onSelect: () => void run(() => checkout('pro', 'year')),
+                          },
+                          {
+                            label: 'Monthly',
+                            description: '$50/month',
+                            onSelect: () => void run(() => checkout('pro', 'month')),
+                          },
+                        ]}
+                        tag={suggested === 'pro' ? 'Fits your estimate' : undefined}
+                        highlighted={suggested === 'pro'}
+                      />
+                      <PlanCard
+                        name="Enterprise"
+                        price="Custom"
+                        priceNote="Tailored to your volume"
+                        subtitle="Custom download volume"
+                        features={[
+                          'Everything in Pro',
+                          'Custom limits and contract',
+                          'SSO and priority SLAs',
+                          'Dedicated support',
+                        ]}
+                        current={false}
+                        actionLabel="Contact sales"
+                        actionIcon={Building2}
+                        disabled={busy}
+                        onAction={() => {
+                          window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
+                        }}
+                        tag={suggested === 'enterprise' ? 'Discuss your volume' : undefined}
+                        highlighted={suggested === 'enterprise'}
+                      />
+                    </div>
+                  </Section>
+                ))}
+            </fieldset>
+
+            {error && (
+              <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
+                <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                <p
+                  id="onboarding-error"
+                  ref={errorRef}
+                  tabIndex={-1}
+                  role="alert"
+                  className="text-sm leading-relaxed text-destructive outline-none"
+                >
+                  {error}
+                  {sessionExpired && (
+                    <a href="/login" className="ml-2 font-medium underline underline-offset-4">
+                      Sign in again
+                    </a>
+                  )}
+                </p>
               </div>
-            </form>
-          )}
+            )}
+
+            <div className="mt-auto flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
+              {index > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 text-muted-foreground"
+                  disabled={busy}
+                  onClick={() => {
+                    setError(null);
+                    setInvalidField(null);
+                    setStep(ONBOARDING_STEPS[index - 1]);
+                  }}
+                >
+                  <ArrowLeft className="size-3.5" />
+                  Back
+                </Button>
+              )}
+              {step !== 'plans' && (
+                <Button type="submit" className="ml-auto" disabled={busy}>
+                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                  {step === lastQuestion ? 'Finish' : 'Continue'}
+                  {busy ? null : <ArrowRight className="size-4" />}
+                </Button>
+              )}
+            </div>
+          </form>
         </div>
 
-        {/* mt-auto keeps this on the bottom edge whether the card is short or
-            taller than the screen. */}
-        <p className="mt-auto pt-10 text-center text-sm text-muted-foreground">
+        <p className="pt-10 text-center text-sm text-muted-foreground">
           Stuck on something?{' '}
           <a href={SUPPORT_MAILTO} className="underline underline-offset-4 hover:text-foreground">
             Talk to us
@@ -721,9 +707,67 @@ function Readout({ label, value, caption }: { label: string; value: string; capt
 }
 
 /**
- * The screen title asks the question, so the group only needs the answers.
- * Every option is one line: a hint on some of them and not others made the
- * tiles look like two different controls sharing a grid.
+ * One line per option, whatever the control. A hint on some options and not
+ * others made the tiles read as two different controls sharing a grid.
+ */
+function tile(selected: boolean, locked = false) {
+  return cn(
+    'items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors',
+    locked ? 'cursor-default' : 'cursor-pointer',
+    selected ? 'border-foreground/30 bg-muted/60' : 'border-border hover:bg-muted/30',
+  );
+}
+
+/**
+ * The stack question, which is a list rather than a choice: people ship a
+ * Capacitor app and a native one, and saying so should not mean picking the
+ * lesser truth. Capacitor is ticked and fixed because it is the thing OtaKit
+ * updates — the screen says as much rather than warning anyone off afterwards.
+ */
+function Stack({
+  value,
+  options,
+  onChange,
+}: {
+  value: Technology[];
+  options: Array<[Technology, string]>;
+  onChange: (value: Technology[]) => void;
+}) {
+  return (
+    <Section>
+      <div role="group" aria-labelledby="onboarding-title" className="grid gap-2 sm:grid-cols-2">
+        {options.map(([option, title]) => {
+          const locked = option === LOCKED_TECHNOLOGY;
+          const checked = locked || value.includes(option);
+          return (
+            <Label key={option} htmlFor={`stack-${option}`} className={tile(checked, locked)}>
+              <Checkbox
+                id={`stack-${option}`}
+                checked={checked}
+                disabled={locked}
+                // Locked, not greyed out: it is a true answer, not one that is
+                // unavailable, and washing it out reads as an error.
+                className={locked ? 'disabled:cursor-default disabled:opacity-100' : undefined}
+                onCheckedChange={(next) =>
+                  onChange(
+                    next === true ? [...value, option] : value.filter((item) => item !== option),
+                  )
+                }
+              />
+              <span className="text-sm font-medium leading-snug">{title}</span>
+              {locked ? (
+                <span className="ml-auto text-[11px] text-muted-foreground">Required</span>
+              ) : null}
+            </Label>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * A single choice, where the screen title is the question the group answers.
  */
 function Choices({
   id,
@@ -745,16 +789,7 @@ function Choices({
         className="grid gap-2 sm:grid-cols-2"
       >
         {options.map(([option, title]) => (
-          <Label
-            key={option}
-            htmlFor={`${id}-${option}`}
-            className={cn(
-              'cursor-pointer items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors',
-              value === option
-                ? 'border-foreground/30 bg-muted/60'
-                : 'border-border hover:bg-muted/30',
-            )}
-          >
+          <Label key={option} htmlFor={`${id}-${option}`} className={tile(value === option)}>
             <RadioGroupItem id={`${id}-${option}`} value={option} />
             <span className="text-sm font-medium leading-snug">{title}</span>
           </Label>
