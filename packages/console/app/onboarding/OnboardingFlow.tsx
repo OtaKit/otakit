@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Building2,
   CircleAlert,
-  Info,
   Leaf,
   LoaderCircle,
   Rocket,
@@ -20,13 +19,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { SUPPORT_MAILTO } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import {
@@ -47,32 +39,22 @@ import {
 } from '@/lib/onboarding-profile';
 
 /**
- * One line per step: the word on the progress rail, the question the step
- * actually asks, and why it is being asked. Anything that does not fit those
- * three slots is a note attached to the answer that earned it, not loose prose
- * dropped between sections.
+ * Title and, only where it earns one, a single supporting line. The title is
+ * the question, so nothing repeats it as a field label underneath.
  */
-const STEPS: Record<OnboardingStep, { nav: string; title: string; lead: string }> = {
+const SCREENS: Record<OnboardingStep, { title: string; lead?: string }> = {
   app: {
-    nav: 'Your app',
-    title: 'Tell us about your app',
-    lead: 'So the setup we hand you afterwards matches the stack you actually build on.',
+    title: 'What are you building?',
+    lead: 'Five quick questions. Skip any of them — none of this blocks the dashboard.',
   },
-  updates: {
-    nav: 'Updates',
-    title: 'Where you are with OTA today',
-    lead: 'This decides whether you start clean or migrate off another provider.',
-  },
+  stage: { title: 'Where is your app today?' },
+  updates: { title: 'Are you shipping OTA updates today?' },
   audience: {
-    nav: 'Scale',
-    title: 'How much traffic to expect',
-    lead: 'Used only to suggest a plan. A rough estimate is enough, and you can skip it.',
+    title: 'How much traffic do you expect?',
+    lead: 'A rough estimate is enough. It only decides which plan we suggest.',
   },
-  plans: {
-    nav: 'Plan',
-    title: 'Pick a starting plan',
-    lead: 'Change it whenever you like. Nothing here blocks the dashboard.',
-  },
+  source: { title: 'How did you hear about us?' },
+  plans: { title: 'Pick a starting plan', lead: 'Change it whenever you like.' },
 };
 
 const PLAN_NAMES: Record<PlanKey, string> = {
@@ -114,6 +96,7 @@ export function OnboardingFlow({
   const errorRef = useRef<HTMLParagraphElement>(null);
   const landed = useRef(false);
   const index = ONBOARDING_STEPS.indexOf(step);
+  const lastQuestion = ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
   const unsupported = isUnsupportedTechnology(answers.technology);
   const estimatedDownloads = estimateMonthlyDownloads(answers);
   const suggested = recommendedPlan(estimatedDownloads, freeDownloads);
@@ -211,15 +194,17 @@ export function OnboardingFlow({
     }
     void run(async () => {
       const profile = await save(
-        unsupported || step === 'audience'
+        // Driven by the question list, so adding or splitting a screen cannot
+        // leave the questionnaire finishing one screen early.
+        unsupported || step === lastQuestion
           ? { action: 'complete', answers }
           : { action: 'save', answers, step: ONBOARDING_QUESTIONS[index + 1] },
       );
       setAnswers(profile.answers);
       setStep(profile.step);
       setCompleted(Boolean(profile.completedAt));
-      if (isUnsupportedTechnology(profile.answers.technology) && profile.completedAt)
-        goToDashboard();
+      // An unsupported platform stops here on its own screen rather than being
+      // dropped on the dashboard with no idea why the questions ended.
     });
   }
   function skip() {
@@ -237,15 +222,23 @@ export function OnboardingFlow({
   }
 
   const finishing = step === 'plans' && !billingEnabled;
-  const headline = finishing
+  // A platform OtaKit cannot serve is told so on its own screen rather than by
+  // a note sliding in under the answer that caused it.
+  const dead_end = unsupported && completed;
+  const headline = dead_end
     ? {
-        title: 'You’re all set',
-        lead: 'Your answers are saved. Connect your app next — the dashboard walks you through it.',
+        title: 'OtaKit is built for Capacitor apps',
+        lead: 'It replaces the web layer inside a Capacitor shell, so it cannot update React Native, Flutter, or native code. We have noted the platform you asked for.',
       }
-    : STEPS[step];
+    : finishing
+      ? {
+          title: 'You’re all set',
+          lead: 'Your answers are saved. The dashboard walks you through connecting your app.',
+        }
+      : SCREENS[step];
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-background text-foreground">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-background text-foreground">
       <Backdrop />
 
       <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-2xl">
@@ -274,341 +267,208 @@ export function OnboardingFlow({
         </div>
       </header>
 
-      <main className="relative mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+      {/* Only the plan table wants the room, and it is the last thing here, so
+          the card eases open once instead of resizing between questions. */}
+      <main
+        className={cn(
+          // Fills whatever is left under the header, so the page never ends in a
+          // short card floating over empty background.
+          'relative mx-auto flex w-full flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14',
+          'transition-[max-width] duration-500 ease-out motion-reduce:transition-none',
+          step === 'plans' && !finishing && !dead_end ? 'max-w-6xl' : 'max-w-2xl',
+        )}
+      >
         <div className="relative bg-card">
           <Frame />
 
-          <nav
-            aria-label="Onboarding progress"
-            className="border-b border-border px-6 py-4 sm:px-8"
-          >
-            <ol className="grid grid-cols-4 gap-2 sm:gap-3">
-              {ONBOARDING_STEPS.map((item, position) => {
-                const state =
-                  position === index ? 'current' : position < index ? 'done' : 'upcoming';
-                return (
-                  <li key={item} aria-current={state === 'current' ? 'step' : undefined}>
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'block h-0.5 w-full',
-                        state === 'current'
-                          ? 'bg-foreground'
-                          : state === 'done'
-                            ? 'bg-foreground/40'
-                            : 'bg-border',
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        'mt-2 block truncate text-[11px] font-medium leading-none',
-                        state === 'current' ? 'text-foreground' : 'text-muted-foreground',
-                        state === 'upcoming' && 'opacity-70',
-                      )}
-                    >
-                      {item === 'plans' && !billingEnabled ? 'Done' : STEPS[item].nav}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
+          {/* Progress is the card's own top edge darkening from the left. There is
+              no separate widget to reflow, and the eyebrow below says where you
+              are exactly. */}
+          {!dead_end && (
+            <div
+              aria-hidden
+              className="absolute inset-x-0 top-0 z-20 h-px bg-foreground transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${((index + 1) / ONBOARDING_STEPS.length) * 100}%` }}
+            />
+          )}
 
-          <div className="px-6 py-7 sm:px-8">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Step {index + 1} of {ONBOARDING_STEPS.length}
-            </p>
+          <div className="px-6 py-8 sm:px-8">
+            {!dead_end && (
+              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Step {index + 1} of {ONBOARDING_STEPS.length}
+              </p>
+            )}
             <h1
               ref={heading}
               tabIndex={-1}
+              id="onboarding-title"
               className="mt-2 text-xl font-semibold tracking-tight outline-none sm:text-2xl"
             >
               {headline.title}
             </h1>
-            <p className="mt-1.5 max-w-xl text-sm leading-6 text-muted-foreground">
-              {headline.lead}
-            </p>
+            {headline.lead ? (
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                {headline.lead}
+              </p>
+            ) : null}
           </div>
 
-          <form
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault();
-              next();
-            }}
-          >
-            <fieldset disabled={busy}>
-              {step === 'app' && (
-                <>
+          {dead_end ? (
+            <Section>
+              <Button type="button" onClick={goToDashboard}>
+                Explore the dashboard
+                <ArrowRight className="size-4" />
+              </Button>
+            </Section>
+          ) : (
+            <form
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                next();
+              }}
+            >
+              <fieldset disabled={busy}>
+                {step === 'app' && (
                   <Choices
                     id="technology"
-                    label="What is your app built with?"
                     value={answers.technology}
                     onChange={(value) =>
-                      update({
-                        technology: value as OnboardingAnswers['technology'],
-                        framework: undefined,
-                        appStage: undefined,
-                      })
+                      update({ technology: value as OnboardingAnswers['technology'] })
                     }
                     options={[
-                      ['capacitor', 'Capacitor / Ionic', 'An iOS or Android app using Capacitor'],
-                      ['web', 'Web app', 'Adding iOS or Android with Capacitor'],
+                      ['capacitor', 'Capacitor / Ionic'],
+                      ['web', 'A web app, no native build yet'],
                       ['react_native', 'React Native / Expo'],
                       ['flutter', 'Flutter'],
-                      ['native', 'Native iOS / Android', 'Swift, Objective-C, Java, or Kotlin'],
+                      ['native', 'Native iOS / Android'],
                       ['not_sure', 'Not sure yet'],
                     ]}
-                  >
-                    {unsupported ? (
-                      <Note>
-                        OtaKit updates the HTML, CSS, and JavaScript inside a Capacitor app, so it
-                        cannot update React Native, Flutter, or native code. Look around anyway —
-                        we’ll note the platform you asked for.
-                      </Note>
-                    ) : answers.technology === 'web' || answers.technology === 'not_sure' ? (
-                      <Note>
-                        You can explore now. The updater itself needs an iOS or Android build made
-                        with Capacitor.
-                      </Note>
-                    ) : null}
-                  </Choices>
+                  />
+                )}
 
-                  {!unsupported &&
-                    (answers.technology === 'capacitor' || answers.technology === 'web') && (
-                      <Choices
-                        id="framework"
-                        columns={3}
-                        label="Which web framework?"
-                        value={answers.framework}
-                        onChange={(value) =>
-                          update({ framework: value as OnboardingAnswers['framework'] })
-                        }
-                        options={[
-                          ['react', 'React'],
-                          ['vue', 'Vue'],
-                          ['angular', 'Angular'],
-                          ['svelte', 'Svelte'],
-                          ['other', 'Another one'],
-                          ['not_sure', 'Not sure'],
-                        ]}
-                      />
-                    )}
-
-                  {!unsupported && answers.technology && (
-                    <Choices
-                      id="app-stage"
-                      label="Where is your app today?"
-                      value={answers.appStage}
-                      onChange={(value) =>
-                        update({ appStage: value as OnboardingAnswers['appStage'] })
-                      }
-                      options={[
-                        ['live', 'Live with users'],
-                        ['testing', 'Testing a native build'],
-                        ['building', 'Still building'],
-                        ['exploring', 'Just exploring'],
-                      ]}
-                    />
-                  )}
-                </>
-              )}
-
-              {step === 'updates' && (
-                <>
+                {step === 'stage' && (
                   <Choices
-                    id="ota-provider"
-                    label="Are you shipping OTA updates today?"
-                    value={answers.otaProvider}
+                    id="app-stage"
+                    value={answers.appStage}
                     onChange={(value) =>
-                      update({
-                        otaProvider: value as OnboardingAnswers['otaProvider'],
-                        otherProvider: undefined,
-                      })
+                      update({ appStage: value as OnboardingAnswers['appStage'] })
                     }
                     options={[
-                      ['none', 'Not yet', 'Everything ships through the app stores'],
+                      ['live', 'Live with users'],
+                      ['testing', 'Testing a native build'],
+                      ['building', 'Still building'],
+                      ['exploring', 'Just exploring'],
+                    ]}
+                  />
+                )}
+
+                {step === 'updates' && (
+                  <Choices
+                    id="ota-provider"
+                    value={answers.otaProvider}
+                    onChange={(value) =>
+                      update({ otaProvider: value as OnboardingAnswers['otaProvider'] })
+                    }
+                    options={[
+                      ['none', 'Not yet'],
                       ['appflow', 'Ionic Appflow'],
                       ['capgo', 'Capgo'],
                       ['capawesome', 'Capawesome'],
-                      ['custom', 'Something we built'],
+                      ['custom', 'Our own setup'],
                       ['other', 'Another provider'],
                       ['not_sure', 'Not sure'],
                     ]}
-                  >
-                    {answers.otaProvider === 'other' && (
-                      <Followup
-                        htmlFor="other-provider"
-                        label="Which provider?"
-                        className="mt-4"
-                        optional
-                      >
-                        <Input
-                          id="other-provider"
-                          className="sm:max-w-sm"
-                          maxLength={120}
-                          value={answers.otherProvider ?? ''}
-                          onChange={(event) => update({ otherProvider: event.target.value })}
-                        />
-                      </Followup>
-                    )}
-                    {answers.otaProvider === 'none' ? (
-                      <Note>
-                        A device starts receiving OtaKit updates once it runs a build that includes
-                        the plugin. Test that locally first, then ship one store release.
-                      </Note>
-                    ) : answers.otaProvider && answers.otaProvider !== 'not_sure' ? (
-                      <Note>
-                        Moving from another provider takes one store release: install OtaKit, test
-                        it in a separate build, then ship it to your existing users.
-                      </Note>
-                    ) : null}
-                  </Choices>
-
-                  <Choices
-                    id="goal"
-                    label="What do you want to get done first?"
-                    optional
-                    value={answers.goal}
-                    onChange={(value) => update({ goal: value as OnboardingAnswers['goal'] })}
-                    options={[
-                      ['start', 'Ship my first OTA update'],
-                      ['migrate', 'Switch providers'],
-                      ['cost', 'Cut update costs'],
-                      ['explore', 'Compare the options'],
-                    ]}
                   />
+                )}
 
-                  <Section>
-                    <FieldLabel id="source-label" optional>
-                      How did you find OtaKit?
-                    </FieldLabel>
-                    <Select
-                      value={answers.source ?? ''}
-                      onValueChange={(value) =>
-                        update({
-                          source: value as OnboardingAnswers['source'],
-                          sourceDetail: undefined,
-                        })
-                      }
-                    >
-                      <SelectTrigger
-                        id="source"
-                        aria-labelledby="source-label source"
-                        className="mt-3 w-full sm:max-w-sm"
-                      >
-                        <SelectValue placeholder="Choose one" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="search">Search engine</SelectItem>
-                        <SelectItem value="ai">AI assistant</SelectItem>
-                        <SelectItem value="community">Community or social media</SelectItem>
-                        <SelectItem value="recommendation">Someone recommended it</SelectItem>
-                        <SelectItem value="launch_site">Product Hunt or a directory</SelectItem>
-                        <SelectItem value="ad">An ad</SelectItem>
-                        <SelectItem value="other">Somewhere else</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {answers.source && (
-                      <Followup
-                        htmlFor="source-detail"
-                        label="Which one?"
-                        className="mt-4"
-                        optional
-                      >
-                        <Input
-                          id="source-detail"
-                          className="sm:max-w-sm"
-                          maxLength={120}
-                          placeholder="Google, Claude, Reddit, Product Hunt…"
-                          value={answers.sourceDetail ?? ''}
-                          onChange={(event) => update({ sourceDetail: event.target.value })}
-                        />
-                      </Followup>
-                    )}
-                  </Section>
-                </>
-              )}
-
-              {step === 'audience' && (
-                <>
-                  <Section>
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      <UsageInput
-                        id="active-users"
-                        label="Monthly active users"
-                        hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
-                        placeholder="1000"
-                        value={answers.activeUsers}
-                        max={1_000_000_000}
-                        invalid={invalidField === 'activeUsers'}
-                        onChange={(value) => update({ activeUsers: value })}
-                      />
-                      <UsageInput
-                        id="updates-month"
-                        label="Updates per month"
-                        hint="How often you expect to ship an OTA update. A rough number is enough."
-                        placeholder="4"
-                        value={answers.updatesPerMonth}
-                        max={1_000}
-                        invalid={invalidField === 'updatesPerMonth'}
-                        onChange={(value) => update({ updatesPerMonth: value })}
-                      />
-                    </div>
-                  </Section>
-                  <Section className="bg-muted/20">
-                    <Readout
-                      label="Estimated downloads"
-                      value={
-                        estimatedDownloads === null ? '—' : `${number(estimatedDownloads)} / month`
-                      }
-                      caption={
-                        estimatedDownloads === null
-                          ? 'Fill in both numbers and we’ll suggest a plan on the next step.'
-                          : `${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates. Real usage depends on how many devices download each one.`
-                      }
-                    />
-                  </Section>
-                </>
-              )}
-
-              {step === 'plans' &&
-                (finishing ? (
-                  <Section>
-                    <Button type="button" onClick={goToDashboard}>
-                      Go to dashboard
-                      <ArrowRight className="size-4" />
-                    </Button>
-                  </Section>
-                ) : hasSubscription ? (
-                  <Section>
-                    <p className="text-sm">
-                      This workspace is already on{' '}
-                      <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can change
-                      it later from Billing in Settings.
-                    </p>
-                    <Button type="button" className="mt-4" onClick={goToDashboard}>
-                      Continue on {PLAN_NAMES[currentPlan]}
-                      <ArrowRight className="size-4" />
-                    </Button>
-                  </Section>
-                ) : (
+                {step === 'audience' && (
                   <>
+                    <Section>
+                      <div className="grid gap-6 sm:grid-cols-2">
+                        <UsageInput
+                          id="active-users"
+                          label="Monthly active users"
+                          hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
+                          placeholder="1000"
+                          value={answers.activeUsers}
+                          max={1_000_000_000}
+                          invalid={invalidField === 'activeUsers'}
+                          onChange={(value) => update({ activeUsers: value })}
+                        />
+                        <UsageInput
+                          id="updates-month"
+                          label="Updates per month"
+                          hint="How often you expect to ship an OTA update. A rough number is enough."
+                          placeholder="4"
+                          value={answers.updatesPerMonth}
+                          max={1_000}
+                          invalid={invalidField === 'updatesPerMonth'}
+                          onChange={(value) => update({ updatesPerMonth: value })}
+                        />
+                      </div>
+                    </Section>
                     {estimatedDownloads !== null && (
                       <Section className="bg-muted/20">
                         <Readout
-                          label="Your estimate"
-                          value={`${number(estimatedDownloads)} downloads / month`}
-                          caption={
-                            suggested
-                              ? `${PLAN_NAMES[suggested]} is the smallest plan that covers it.`
-                              : undefined
-                          }
+                          label="Estimated downloads"
+                          value={`${number(estimatedDownloads)} / month`}
+                          caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
                         />
                       </Section>
                     )}
+                  </>
+                )}
+
+                {step === 'source' && (
+                  <Choices
+                    id="source"
+                    value={answers.source}
+                    onChange={(value) => update({ source: value as OnboardingAnswers['source'] })}
+                    options={[
+                      ['search', 'Search engine'],
+                      ['ai', 'An AI assistant'],
+                      ['community', 'Community or social'],
+                      ['recommendation', 'Someone recommended it'],
+                      ['launch_site', 'Product Hunt or a directory'],
+                      ['ad', 'An ad'],
+                      ['other', 'Somewhere else'],
+                    ]}
+                  />
+                )}
+
+                {step === 'plans' &&
+                  (finishing ? (
                     <Section>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <Button type="button" onClick={goToDashboard}>
+                        Go to dashboard
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </Section>
+                  ) : hasSubscription ? (
+                    <Section>
+                      <p className="text-sm">
+                        This workspace is already on{' '}
+                        <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can
+                        change it later from Billing in Settings.
+                      </p>
+                      <Button type="button" className="mt-4" onClick={goToDashboard}>
+                        Continue on {PLAN_NAMES[currentPlan]}
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </Section>
+                  ) : (
+                    <Section>
+                      {estimatedDownloads !== null && (
+                        <p className="mb-5 text-sm text-muted-foreground">
+                          Your estimate is{' '}
+                          <span className="font-medium text-foreground">
+                            {number(estimatedDownloads)} downloads a month
+                          </span>
+                          {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
+                        </p>
+                      )}
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <PlanCard
                           name="Free"
                           price="$0"
@@ -705,74 +565,63 @@ export function OnboardingFlow({
                           highlighted={suggested === 'enterprise'}
                         />
                       </div>
-                      <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
-                        Free and Starter stop serving updates at their included limits; Pro overage
-                        is optional. Choosing a paid plan opens checkout — you can also start Free
-                        and upgrade later.
-                        {suggested === 'enterprise' &&
-                          ' Your estimate is past Pro’s included volume, so enable paid overage on Pro or talk to us about Enterprise.'}
-                      </p>
                     </Section>
-                  </>
-                ))}
-            </fieldset>
+                  ))}
+              </fieldset>
 
-            {error && (
-              <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
-                <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-                <p
-                  id="onboarding-error"
-                  ref={errorRef}
-                  tabIndex={-1}
-                  role="alert"
-                  className="text-sm leading-relaxed text-destructive outline-none"
-                >
-                  {error}
-                  {sessionExpired && (
-                    <a href="/login" className="ml-2 font-medium underline underline-offset-4">
-                      Sign in again
-                    </a>
-                  )}
-                </p>
+              {error && (
+                <div className="flex gap-2.5 border-t border-destructive/30 bg-destructive/5 px-6 py-3.5 sm:px-8">
+                  <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+                  <p
+                    id="onboarding-error"
+                    ref={errorRef}
+                    tabIndex={-1}
+                    role="alert"
+                    className="text-sm leading-relaxed text-destructive outline-none"
+                  >
+                    {error}
+                    {sessionExpired && (
+                      <a href="/login" className="ml-2 font-medium underline underline-offset-4">
+                        Sign in again
+                      </a>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
+                {index > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2 text-muted-foreground"
+                    disabled={busy}
+                    onClick={() => {
+                      setError(null);
+                      setInvalidField(null);
+                      setStep(ONBOARDING_STEPS[index - 1]);
+                    }}
+                  >
+                    <ArrowLeft className="size-3.5" />
+                    Back
+                  </Button>
+                )}
+                {step !== 'plans' && (
+                  <Button type="submit" className="ml-auto" disabled={busy}>
+                    {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    {step === lastQuestion && !unsupported ? 'Finish' : 'Continue'}
+                    {busy ? null : <ArrowRight className="size-4" />}
+                  </Button>
+                )}
               </div>
-            )}
-
-            <div className="flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
-              {index > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="-ml-2 text-muted-foreground"
-                  disabled={busy}
-                  onClick={() => {
-                    setError(null);
-                    setInvalidField(null);
-                    setStep(ONBOARDING_STEPS[index - 1]);
-                  }}
-                >
-                  <ArrowLeft className="size-3.5" />
-                  Back
-                </Button>
-              )}
-              {step !== 'plans' && (
-                <Button type="submit" className="ml-auto" disabled={busy}>
-                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                  {unsupported
-                    ? 'Save and explore'
-                    : step === 'audience'
-                      ? billingEnabled
-                        ? 'See plans'
-                        : 'Finish'
-                      : 'Continue'}
-                  {busy ? null : <ArrowRight className="size-4" />}
-                </Button>
-              )}
-            </div>
-          </form>
+            </form>
+          )}
         </div>
 
-        <p className="mt-6 text-center text-sm text-muted-foreground">
+        {/* mt-auto keeps this on the bottom edge whether the card is short or
+            taller than the screen. */}
+        <p className="mt-auto pt-10 text-center text-sm text-muted-foreground">
           Stuck on something?{' '}
           <a href={SUPPORT_MAILTO} className="underline underline-offset-4 hover:text-foreground">
             Talk to us
@@ -856,43 +705,6 @@ function FieldLabel({
   );
 }
 
-/** A question that only exists because of the answer above it. */
-function Followup({
-  htmlFor,
-  label,
-  optional,
-  className,
-  children,
-}: {
-  htmlFor: string;
-  label: string;
-  optional?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <FieldLabel htmlFor={htmlFor} optional={optional}>
-        {label}
-      </FieldLabel>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
-}
-
-/**
- * A caveat earns its place by hanging off the answer that raised it, which is
- * why this is only ever rendered inside the question it belongs to.
- */
-function Note({ children }: { children: ReactNode }) {
-  return (
-    <div className="mt-3 flex gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
-      <Info className="mt-px size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <p className="text-xs leading-relaxed text-muted-foreground">{children}</p>
-    </div>
-  );
-}
-
 /** A number the reader gave us, read back to them. */
 function Readout({ label, value, caption }: { label: string; value: string; caption?: string }) {
   return (
@@ -908,72 +720,46 @@ function Readout({ label, value, caption }: { label: string; value: string; capt
   );
 }
 
+/**
+ * The screen title asks the question, so the group only needs the answers.
+ * Every option is one line: a hint on some of them and not others made the
+ * tiles look like two different controls sharing a grid.
+ */
 function Choices({
   id,
-  label,
-  optional,
   value,
   options,
   onChange,
-  columns = 2,
-  children,
 }: {
   id: string;
-  label: string;
-  optional?: boolean;
   value?: string;
-  options: Array<[string, string, string?]>;
+  options: Array<[string, string]>;
   onChange: (value: string) => void;
-  columns?: 2 | 3;
-  /** Follow-ups and notes that belong to this question. */
-  children?: ReactNode;
 }) {
-  // One shape for every option in a group: a hint on one of them would
-  // otherwise drag its neighbours' text off the shared baseline.
-  const hinted = options.some(([, , hint]) => hint);
   return (
     <Section>
-      <FieldLabel id={`${id}-label`} optional={optional}>
-        {label}
-      </FieldLabel>
       <RadioGroup
         value={value ?? ''}
         onValueChange={onChange}
-        aria-labelledby={`${id}-label`}
-        className={cn(
-          'mt-3 grid gap-2',
-          columns === 3 ? 'grid-cols-2 sm:grid-cols-3' : 'sm:grid-cols-2',
-        )}
+        aria-labelledby="onboarding-title"
+        className="grid gap-2 sm:grid-cols-2"
       >
-        {options.map(([option, title, hint]) => (
+        {options.map(([option, title]) => (
           <Label
             key={option}
             htmlFor={`${id}-${option}`}
             className={cn(
-              'cursor-pointer gap-3 rounded-lg border p-3 transition-colors',
-              hinted ? 'items-start' : 'items-center',
+              'cursor-pointer items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors',
               value === option
                 ? 'border-foreground/30 bg-muted/60'
                 : 'border-border hover:bg-muted/30',
             )}
           >
-            <RadioGroupItem
-              id={`${id}-${option}`}
-              value={option}
-              className={hinted ? 'mt-0.5' : undefined}
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium leading-snug">{title}</span>
-              {hint ? (
-                <span className="mt-1 block text-xs leading-relaxed font-normal text-muted-foreground">
-                  {hint}
-                </span>
-              ) : null}
-            </span>
+            <RadioGroupItem id={`${id}-${option}`} value={option} />
+            <span className="text-sm font-medium leading-snug">{title}</span>
           </Label>
         ))}
       </RadioGroup>
-      {children}
     </Section>
   );
 }
