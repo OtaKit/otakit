@@ -5,7 +5,6 @@ import { SignupTracker } from '@/app/components/SignupTracker';
 import { db } from '@/lib/db';
 import { getOnboardingProfile } from '@/lib/services/onboarding-profile';
 import { getPlanLimits } from '@/lib/billing/config';
-import { isUnsupportedTechnology } from '@/lib/onboarding-profile';
 import { OnboardingFlow } from './OnboardingFlow';
 
 export const dynamic = 'force-dynamic';
@@ -23,10 +22,7 @@ export default async function OnboardingPage() {
       select: { planKey: true, isActive: true, freeDownloadsLimit: true },
     }),
   ]);
-  if (
-    data.apps.length > 0 ||
-    (profile?.completedAt && isUnsupportedTechnology(profile.answers.technology))
-  ) {
+  if (data.apps.length > 0) {
     redirect('/dashboard');
   }
 

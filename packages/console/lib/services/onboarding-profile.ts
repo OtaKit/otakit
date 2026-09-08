@@ -5,7 +5,6 @@ import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 import type { SessionContext } from '@/lib/session';
 import {
   ONBOARDING_QUESTIONS,
-  isUnsupportedTechnology,
   onboardingAnswersSchema,
   onboardingStepError,
   resumeOnboardingStep,
@@ -45,10 +44,7 @@ export async function updateOnboardingProfile(
     );
   }
   if (input.action === 'complete') {
-    const questions = isUnsupportedTechnology(input.answers.technology)
-      ? (['app'] as const)
-      : ONBOARDING_QUESTIONS;
-    for (const question of questions) {
+    for (const question of ONBOARDING_QUESTIONS) {
       const error = onboardingStepError(input.answers, question);
       if (error) throw new OtaKitServiceError('INVALID_INPUT', error, 400);
     }

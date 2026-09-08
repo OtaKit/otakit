@@ -8,6 +8,7 @@ import {
   onboardingStepError,
   recommendedPlan,
   resumeOnboardingStep,
+  technologiesOf,
   shouldShowOnboarding,
   type OnboardingAnswers,
 } from './onboarding-profile';
@@ -24,7 +25,8 @@ const answers: OnboardingAnswers = {
 
 describe('guided onboarding validation', () => {
   it('resumes the saved question and corrects incomplete earlier answers', () => {
-    expect(resumeOnboardingStep({}, 'audience')).toBe('app');
+    // Nothing can be missing on the stack screen: Capacitor is always ticked.
+    expect(resumeOnboardingStep({}, 'audience')).toBe('stage');
     expect(resumeOnboardingStep({ ...answers, otaProvider: undefined }, 'audience')).toBe(
       'updates',
     );
@@ -43,9 +45,19 @@ describe('guided onboarding validation', () => {
     expect(resumeOnboardingStep({ technology: 'capacitor' }, 'source')).toBe('stage');
   });
 
-  it('allows a known unsupported platform to finish without a pricing survey', () => {
-    expect(onboardingStepError({ technology: 'react_native' }, 'app')).toBeNull();
-    expect(resumeOnboardingStep({ technology: 'flutter' }, 'audience')).toBe('app');
+  it('keeps Capacitor in the stack and folds in the old single-choice answer', () => {
+    expect(technologiesOf({})).toEqual(['capacitor']);
+    expect(technologiesOf({ technology: 'flutter' })).toEqual(['capacitor', 'flutter']);
+    expect(technologiesOf({ technologies: ['capacitor', 'native'] })).toEqual([
+      'capacitor',
+      'native',
+    ]);
+    // Ticking something OtaKit does not update is information, not a blocker.
+    expect(onboardingStepError({ technologies: ['capacitor', 'react_native'] }, 'app')).toBeNull();
+    expect(
+      onboardingAnswersSchema.safeParse({ technologies: ['capacitor', 'flutter'] }).success,
+    ).toBe(true);
+    expect(onboardingAnswersSchema.safeParse({ technologies: ['nope'] }).success).toBe(false);
   });
 
   it('distinguishes not answered, unknown, and a pre-launch audience of zero', () => {

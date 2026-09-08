@@ -5,15 +5,30 @@ export type OnboardingQuestion = (typeof ONBOARDING_QUESTIONS)[number];
 export const ONBOARDING_STEPS = [...ONBOARDING_QUESTIONS, 'plans'] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
+const technologySchema = z.enum([
+  'capacitor',
+  'react_native',
+  'flutter',
+  'native',
+  'web',
+  'not_sure',
+]);
+
+export type Technology = z.infer<typeof technologySchema>;
+
+/** What OtaKit updates, so it is part of every answer and cannot be cleared. */
+export const LOCKED_TECHNOLOGY = 'capacitor' as const;
+
 // `framework`, `goal`, `otherProvider` and `sourceDetail` are no longer asked:
 // they made the questionnaire longer without telling us anything the remaining
 // answers don't. They stay in the schema because the parse is strict, and
 // dropping them would make every stored answer fail and read back as empty.
 export const onboardingAnswersSchema = z
   .object({
-    technology: z
-      .enum(['capacitor', 'react_native', 'flutter', 'native', 'web', 'not_sure'])
-      .optional(),
+    // `technology` was a single choice before the question became "everything
+    // in your stack". Stored rows still carry it, so it stays readable.
+    technology: technologySchema.optional(),
+    technologies: z.array(technologySchema).max(6).optional(),
     framework: z.enum(['react', 'vue', 'angular', 'svelte', 'other', 'not_sure']).optional(),
     appStage: z.enum(['live', 'testing', 'building', 'exploring']).optional(),
     otaProvider: z
@@ -39,18 +54,21 @@ export type OnboardingProfile = {
   skippedAt: string | null;
 };
 
-export function isUnsupportedTechnology(technology: OnboardingAnswers['technology']) {
-  return technology === 'react_native' || technology === 'flutter' || technology === 'native';
+/**
+ * The stack as a list, with Capacitor first whatever else is ticked, and the
+ * old single-choice answer folded in so returning to a saved draft does not
+ * lose what was picked before the question changed.
+ */
+export function technologiesOf(answers: OnboardingAnswers): Technology[] {
+  const chosen = answers.technologies ?? (answers.technology ? [answers.technology] : []);
+  return [LOCKED_TECHNOLOGY, ...chosen.filter((item) => item !== LOCKED_TECHNOLOGY)];
 }
 
 export function onboardingStepError(
   answers: OnboardingAnswers,
   step: OnboardingStep,
 ): string | null {
-  if (step === 'app' && !answers.technology) return 'Choose what your app is built with.';
-  // Everything after the platform question is moot once the answer is one we
-  // cannot serve, so nothing later is allowed to hold that person up.
-  if (isUnsupportedTechnology(answers.technology)) return null;
+  // The stack question always has Capacitor ticked, so it cannot be unanswered.
   if (step === 'stage' && !answers.appStage) return 'Choose where your app is today.';
   if (step === 'updates' && !answers.otaProvider) return 'Choose your current update setup.';
   if (step === 'audience') return onboardingUsageError(answers)?.message ?? null;
@@ -80,7 +98,6 @@ export function resumeOnboardingStep(
   answers: OnboardingAnswers,
   saved: OnboardingQuestion,
 ): OnboardingQuestion {
-  if (isUnsupportedTechnology(answers.technology)) return 'app';
   for (const step of ONBOARDING_QUESTIONS) {
     if (step === saved || onboardingStepError(answers, step)) return step;
   }
