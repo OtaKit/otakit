@@ -1,0 +1,16 @@
+monthly_arpa_usd,paying_organizations,annual_revenue_usd,assumed_contribution_margin,annual_contribution_before_fixed_costs_usd,assumed_incremental_annual_fixed_cost_usd,annual_contribution_after_assumed_fixed_cost_usd,break_even_customers_at_this_arpa,evidence_status
+10,100,12000,0.8,9600.0,60000,-50400.0,625.0,Illustrative economics; excludes acquisition cost and initial development payback
+10,500,60000,0.8,48000.0,60000,-12000.0,625.0,Illustrative economics; excludes acquisition cost and initial development payback
+10,1000,120000,0.8,96000.0,60000,36000.0,625.0,Illustrative economics; excludes acquisition cost and initial development payback
+25,100,30000,0.8,24000.0,60000,-36000.0,250.0,Illustrative economics; excludes acquisition cost and initial development payback
+25,500,150000,0.8,120000.0,60000,60000.0,250.0,Illustrative economics; excludes acquisition cost and initial development payback
+25,1000,300000,0.8,240000.0,60000,180000.0,250.0,Illustrative economics; excludes acquisition cost and initial development payback
+50,100,60000,0.8,48000.0,60000,-12000.0,125.0,Illustrative economics; excludes acquisition cost and initial development payback
+50,500,300000,0.8,240000.0,60000,180000.0,125.0,Illustrative economics; excludes acquisition cost and initial development payback
+50,1000,600000,0.8,480000.0,60000,420000.0,125.0,Illustrative economics; excludes acquisition cost and initial development payback
+100,100,120000,0.8,96000.0,60000,36000.0,62.5,Illustrative economics; excludes acquisition cost and initial development payback
+100,500,600000,0.8,480000.0,60000,420000.0,62.5,Illustrative economics; excludes acquisition cost and initial development payback
+100,1000,1200000,0.8,960000.0,60000,900000.0,62.5,Illustrative economics; excludes acquisition cost and initial development payback
+250,100,300000,0.8,240000.0,60000,180000.0,25.0,Illustrative economics; excludes acquisition cost and initial development payback
+250,500,1500000,0.8,1200000.0,60000,1140000.0,25.0,Illustrative economics; excludes acquisition cost and initial development payback
+250,1000,3000000,0.8,2400000.0,60000,2340000.0,25.0,Illustrative economics; excludes acquisition cost and initial development payback

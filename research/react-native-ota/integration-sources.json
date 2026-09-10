@@ -1,0 +1,223 @@
+{
+  "observedDate": "2026-09-10",
+  "purpose": "Pinned published upstream inputs for RN/Expo integration probes; not an install lockfile or device support certification.",
+  "packages": [
+    {
+      "name": "expo",
+      "version": "57.0.17",
+      "gitHead": "c300d2cc60c9e684e64f48d9bc90ea18a571d01d",
+      "tarball": "https://registry.npmjs.org/expo/-/expo-57.0.17.tgz",
+      "integrity": "sha512-RG9BItgEObzSafkJKHPUh5iCnaPCFXJTDwfEJe3t7uhmqipVhcsf6gAJEtME0xaGaMp4Z3C+HLbPW9DMea8G0w==",
+      "files": [
+        {
+          "path": "src/dom/base.ts",
+          "sha256": "2294d2e05449056c4c1e8358cbe2e33027ecc3308a12dac76ce52c01de72d750"
+        },
+        {
+          "path": "src/dom/webview-wrapper.tsx",
+          "sha256": "ea3fbc04e332392357f0ba6bbb5bb075cdcd2dadc4842815dc7feeced7f13d51"
+        },
+        {
+          "path": "android/src/main/java/expo/modules/ExpoReactHostFactory.kt",
+          "sha256": "12c7a812e557bbc5c58238241065841e85b3d3b295c3910ebea733e33ce2f91e"
+        },
+        {
+          "path": "ios/AppDelegates/ExpoReactNativeFactory.swift",
+          "sha256": "fff6c0bd8c132272675db99583e1cc990dc776820e12a60dfd4809337f7f6529"
+        },
+        {
+          "path": "bundledNativeModules.json",
+          "sha256": "e5852366d2a6d7f52fc95b940130f865e029f41659f76ed479199d5f22bc7640"
+        }
+      ]
+    },
+    {
+      "name": "expo-constants",
+      "version": "57.0.15",
+      "gitHead": "c300d2cc60c9e684e64f48d9bc90ea18a571d01d",
+      "tarball": "https://registry.npmjs.org/expo-constants/-/expo-constants-57.0.15.tgz",
+      "integrity": "sha512-rLME1H/K+/uFMR/jEpe/p1nribvCEZZmQegzqxu/R1HTyvYweq4E+B38zB0baie+SEwmeIPLaM4KLVMnejhm5A==",
+      "files": [
+        {
+          "path": "src/Constants.ts",
+          "sha256": "47ff54233d77b23307234268933c0eabfec2adaf50a9b8a8c0086211acf71407"
+        }
+      ]
+    },
+    {
+      "name": "expo-asset",
+      "version": "57.0.15",
+      "gitHead": "c300d2cc60c9e684e64f48d9bc90ea18a571d01d",
+      "tarball": "https://registry.npmjs.org/expo-asset/-/expo-asset-57.0.15.tgz",
+      "integrity": "sha512-ZoiUftQb1Nn1jvL6l1kZoUXvgRCx57tMQYxSsp+g4ZvY+jgVWp/THruXOtPtZVdC/WWZxPUTct53bfAm2EPDAQ==",
+      "files": [
+        {
+          "path": "src/Asset.ts",
+          "sha256": "b3723df6b2b6345d7fea3c04cf55b351c9e129099ba7c9c0a57e1854ef4c0cfd"
+        },
+        {
+          "path": "src/PlatformUtils.ts",
+          "sha256": "95aeecf9bbfff1038efa123b6c2c2897c79f0c89ff4a1f3ba38c244da02ee6bd"
+        },
+        {
+          "path": "src/resolveAssetSource.native.ts",
+          "sha256": "09c637e8cec486016810ed34b9211c311f813d1f21d4769f5826e1481b5af16b"
+        }
+      ]
+    },
+    {
+      "name": "expo-updates",
+      "version": "57.0.18",
+      "gitHead": "c300d2cc60c9e684e64f48d9bc90ea18a571d01d",
+      "tarball": "https://registry.npmjs.org/expo-updates/-/expo-updates-57.0.18.tgz",
+      "integrity": "sha512-guTp5U6RbMOivi3GWXsflZA6M/4oTZKj1/M69sEzVW9MII/FQt+lPgbbEHwcIGrpXBr4RuJIYVrh492kkptJvQ==",
+      "files": [
+        {
+          "path": "android/src/main/java/expo/modules/updates/UpdatesPackage.kt",
+          "sha256": "5972b53149d6aa82dabe1f208cf817fe20fd2b7da33ecf2c19549c5b02bccdca"
+        },
+        {
+          "path": "ios/EXUpdates/Procedures/RecreateReactContextProcedure.swift",
+          "sha256": "1cc42cb14f9b44337b4107a42f7e1c55f2a38e0d135dd4393b692f1ba59568f9"
+        },
+        {
+          "path": "ios/EXUpdates/ReactDelegateHandler/ExpoUpdatesReactDelegateHandler.swift",
+          "sha256": "e2e173d14fa383242c8bd12a244ac3491317d341cf5f4abc1bdcab60f6b5a7d8"
+        }
+      ]
+    },
+    {
+      "name": "@expo/dom-webview",
+      "version": "57.0.1",
+      "gitHead": "b9503d06b8e130abfca1bc16f671dbefb41ad709",
+      "tarball": "https://registry.npmjs.org/@expo/dom-webview/-/dom-webview-57.0.1.tgz",
+      "integrity": "sha512-lAKsME4SAq+8sf56oN0DX5TBYyruupoRxbWbD2xf9RnKY8y6x8eb9LCE5pxSN0qyWdqnp+0wmyWzDkKboThKAw==",
+      "files": [
+        {
+          "path": "ios/DomWebView.swift",
+          "sha256": "8c292e5c07f0bc4bd2a55763e1aaa5b2d2755ff76c55b352dd8f2864ab5ffc37"
+        },
+        {
+          "path": "android/src/main/java/expo/modules/webview/DomWebView.kt",
+          "sha256": "b34074934d5a937e0759d49a2f71c8beede3f301f91a8523aef930910b6555ef"
+        }
+      ]
+    },
+    {
+      "name": "@expo/cli",
+      "version": "57.0.19",
+      "gitHead": "c300d2cc60c9e684e64f48d9bc90ea18a571d01d",
+      "tarball": "https://registry.npmjs.org/@expo/cli/-/cli-57.0.19.tgz",
+      "integrity": "sha512-HcvVmm0FNL1P3Lf23z1L/sLZtdcWfKW8P5L/doQbICWVG/PL7uI5+G2Ttxnj9QGNmpYgJ89E7+LJefS5jJMUlQ==",
+      "files": [
+        {
+          "path": "build/src/export/embed/exportEmbedAsync.js",
+          "sha256": "1f27cd837bd01ac553d20270f94165fc2c87df03171f99d91dda35bf40c2b384"
+        },
+        {
+          "path": "build/src/export/exportDomComponents.js",
+          "sha256": "52b7f6c27dd81b6418eac98d07d8466bf203730e7d1faa19cf5551ab880b4f04"
+        }
+      ]
+    },
+    {
+      "name": "@expo/fingerprint",
+      "version": "0.20.6",
+      "gitHead": "a4789f1e53353f4929b0baddcfe5a7c622b99c71",
+      "tarball": "https://registry.npmjs.org/@expo/fingerprint/-/fingerprint-0.20.6.tgz",
+      "integrity": "sha512-cmC/6BOPRbdKr77Mgjwszb8aM0hY2RKBpMRCmjSdn9zIcn2FGor/ic4fHVr46cQFa1G6RDGg1GyAjRw3US4CCQ==",
+      "files": [
+        {
+          "path": "build/sourcer/Bare.js",
+          "sha256": "59868477fd997ca16383875fafeff2f4e9674c7a79ef7dd8d4a841ad7f4a4992"
+        },
+        {
+          "path": "build/sourcer/Expo.js",
+          "sha256": "a4cf24c25c73a25b0d5060d9f410b1f91ead8e90585865b660bb095f8c3067d0"
+        }
+      ]
+    }
+  ],
+  "reactNative": [
+    {
+      "version": "0.86.3",
+      "files": [
+        {
+          "path": "ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm",
+          "sha256": "20691132a5eb1bb6f1d780b6562e9c6d16e1c15efd22844ee4cd842beafef564"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.kt",
+          "sha256": "506b5f20604c62fef9d9986236c77c41a844f44229f1abab74304fa8fd6e4af9"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/HeadlessJsTaskService.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/HeadlessJsTaskService.kt",
+          "sha256": "3e0c57fb63391f60a657df265c5a27daa831e29c35133a08ea0639152f1179bb"
+        },
+        {
+          "path": "React/Base/RCTReloadCommand.m",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/React/Base/RCTReloadCommand.m",
+          "sha256": "e83930928ac0c23548646400d9cdb8c6d4882260c911ba9ee011917f152bb7cc"
+        },
+        {
+          "path": "Libraries/Image/AssetSourceResolver.js",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/Libraries/Image/AssetSourceResolver.js",
+          "sha256": "9723fffa3399da57719b2f6f7d62c06f7edb73702b387f358ee1daa941c48ab1"
+        },
+        {
+          "path": "Libraries/Image/resolveAssetSource.js",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/Libraries/Image/resolveAssetSource.js",
+          "sha256": "4b9f298900bb16f73369eb806e30505d39c6e3a269bd93a8058a8fac6603f6ca"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/jstasks/HeadlessJsTaskContext.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.86.3/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/jstasks/HeadlessJsTaskContext.kt",
+          "sha256": "79c47ea668cd250b4d504b11939ede85f1eba1e7ad4b5bcc51161a2a6161e654"
+        }
+      ]
+    },
+    {
+      "version": "0.87.0",
+      "files": [
+        {
+          "path": "ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHost.mm",
+          "sha256": "20691132a5eb1bb6f1d780b6562e9c6d16e1c15efd22844ee4cd842beafef564"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.kt",
+          "sha256": "d431fdf7b819ca10f801d09e00e131d3ea40a443f282ee14d4105d75e8ada417"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/HeadlessJsTaskService.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/HeadlessJsTaskService.kt",
+          "sha256": "3e0c57fb63391f60a657df265c5a27daa831e29c35133a08ea0639152f1179bb"
+        },
+        {
+          "path": "React/Base/RCTReloadCommand.m",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/React/Base/RCTReloadCommand.m",
+          "sha256": "e83930928ac0c23548646400d9cdb8c6d4882260c911ba9ee011917f152bb7cc"
+        },
+        {
+          "path": "Libraries/Image/AssetSourceResolver.js",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/Libraries/Image/AssetSourceResolver.js",
+          "sha256": "d84e7ad92b4be3c3d4748e3356aea293021957c9e7aa1a0d95193a848961a811"
+        },
+        {
+          "path": "Libraries/Image/resolveAssetSource.js",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/Libraries/Image/resolveAssetSource.js",
+          "sha256": "b5c1b27fb9a5b1e9915c8495f8b3235462bcffe745cfe7afaad5fcaa1f3d5930"
+        },
+        {
+          "path": "ReactAndroid/src/main/java/com/facebook/react/jstasks/HeadlessJsTaskContext.kt",
+          "url": "https://raw.githubusercontent.com/facebook/react-native/v0.87.0/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/jstasks/HeadlessJsTaskContext.kt",
+          "sha256": "79c47ea668cd250b4d504b11939ede85f1eba1e7ad4b5bcc51161a2a6161e654"
+        }
+      ]
+    }
+  ]
+}

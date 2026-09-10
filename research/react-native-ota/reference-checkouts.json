@@ -1,0 +1,203 @@
+{
+  "observed_date": "2026-09-10",
+  "repositories": [
+    {
+      "name": "hot-updater",
+      "repository": "gronxb/hot-updater",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/hot-updater",
+      "clone_exit": 0,
+      "commit": "26b7c7f40e1f167a7f0d0f06345ce8a51a48aed8",
+      "commit_date": "2026-09-10T20:55:16+09:00",
+      "html_url": "https://github.com/gronxb/hot-updater",
+      "archived": false,
+      "stargazers_count": 1707,
+      "forks_count": 175,
+      "open_issues_count": 15,
+      "pushed_at": "2026-09-10T14:30:48Z",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "description": "A self-hostable OTA update solution for React Native (Alternative to CodePush)",
+      "working_tree_clean": true
+    },
+    {
+      "name": "custom-expo-updates-server",
+      "repository": "expo/custom-expo-updates-server",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/custom-expo-updates-server",
+      "clone_exit": 0,
+      "commit": "feb29fc4ac1f5eb011bdfe95391190a91da4bb31",
+      "commit_date": "2025-09-17T12:10:01-07:00",
+      "html_url": "https://github.com/expo/custom-expo-updates-server",
+      "archived": false,
+      "stargazers_count": 533,
+      "forks_count": 141,
+      "open_issues_count": 3,
+      "pushed_at": "2025-11-05T01:22:40Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "description": "A simplified demonstration of expo-updates protocol use.",
+      "working_tree_clean": true
+    },
+    {
+      "name": "code-push-server",
+      "repository": "microsoft/code-push-server",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/code-push-server",
+      "clone_exit": 0,
+      "commit": "ff1d84cde0e18e5760df7b9622c46d5cad236016",
+      "commit_date": "2025-05-20T13:27:22+02:00",
+      "html_url": "https://github.com/microsoft/code-push-server",
+      "archived": true,
+      "stargazers_count": 986,
+      "forks_count": 485,
+      "open_issues_count": 53,
+      "pushed_at": "2025-05-20T11:27:24Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "description": "Standalone CodePush server from App Center",
+      "working_tree_clean": true
+    },
+    {
+      "name": "react-native-code-push",
+      "repository": "microsoft/react-native-code-push",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/react-native-code-push",
+      "clone_exit": 0,
+      "commit": "50a7ed5bc0f195f22ffefe8dad4109f1dd0b869e",
+      "commit_date": "2025-05-20T13:58:16+02:00",
+      "html_url": "https://github.com/microsoft/react-native-code-push",
+      "archived": true,
+      "stargazers_count": 9124,
+      "forks_count": 1585,
+      "open_issues_count": 15,
+      "pushed_at": "2025-05-20T11:58:16Z",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "description": "React Native module for CodePush",
+      "working_tree_clean": true
+    },
+    {
+      "name": "otaship",
+      "repository": "vknow360/otaship",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/otaship",
+      "clone_exit": 0,
+      "commit": "3d5ae5afaa2e8a81c577a5c352313c52e1173a22",
+      "commit_date": "2026-06-13T21:34:03+05:30",
+      "html_url": "https://github.com/vknow360/otaship",
+      "archived": false,
+      "stargazers_count": 24,
+      "forks_count": 2,
+      "open_issues_count": 1,
+      "pushed_at": "2026-06-13T16:11:10Z",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "description": "Self-hosted over-the-air updates for Expo & React Native.",
+      "working_tree_clean": true
+    },
+    {
+      "name": "expo-open-ota",
+      "repository": "mercuretechnologies/expo-open-ota",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/expo-open-ota",
+      "clone_exit": 0,
+      "commit": "a2fc6572b0d9ce4433e9db3949bb812cd793cf23",
+      "commit_date": "2026-09-10T12:10:48+02:00",
+      "html_url": "https://github.com/mercuretechnologies/xprem",
+      "archived": false,
+      "stargazers_count": 527,
+      "forks_count": 83,
+      "open_issues_count": 10,
+      "pushed_at": "2026-09-10T10:40:57Z",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "description": "Self-hosted Expo OTA Updates alternative to EAS Update, on the official Expo Updates protocol. Multi-app dashboard, progressive rollouts, instant rollbacks, and per-update crashes, metrics and logs from every device via expo-observe. Your bucket, your CDN, your data. Formerly expo-open-ota.",
+      "working_tree_clean": true
+    },
+    {
+      "name": "expo",
+      "repository": "expo/expo",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/expo",
+      "html_url": "https://github.com/expo/expo",
+      "commit": "176be976b9f4290afbf03b6ddd0cb001326a2c01",
+      "commit_date": "2026-09-10T14:27:09+01:00",
+      "archived": false,
+      "stargazers_count": 52143,
+      "forks_count": 13891,
+      "pushed_at": "2026-09-10T16:04:31Z",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "working_tree_clean": true
+    },
+    {
+      "name": "revopush-react-native-code-push",
+      "repository": "revopush/react-native-code-push",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/revopush-react-native-code-push",
+      "html_url": "https://github.com/revopush/react-native-code-push",
+      "commit": "7c8e405921bea0903113199066b887437c6bc8b6",
+      "commit_date": "2026-08-01T14:54:43+01:00",
+      "archived": false,
+      "stargazers_count": 52,
+      "forks_count": 9,
+      "pushed_at": "2026-08-01T13:55:34Z",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "working_tree_clean": true
+    },
+    {
+      "name": "codemagic-patch",
+      "repository": "codemagic-ci-cd/codemagic-patch",
+      "path": "/Users/gergomiklos/otakit-references/react-native-ota/codemagic-patch",
+      "html_url": "https://github.com/codemagic-ci-cd/codemagic-patch",
+      "commit": "f22294f7c2599b79979b8620e5cb6db4bf3bdf0a",
+      "commit_date": "2026-09-07T18:58:35+09:00",
+      "archived": false,
+      "stargazers_count": 115,
+      "forks_count": 11,
+      "pushed_at": "2026-09-07T10:02:46Z",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "working_tree_clean": true
+    }
+  ]
+}
