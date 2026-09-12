@@ -481,6 +481,16 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
         else expect(adopted.baseline.bundle.sha256).toBe(adopted.baseline.declaration.sha256);
         expect(adopted.baseline.adopted).toBe(true);
         expect(await readFile(join(second, 'adoption.json'), 'utf8')).not.toContain('rotating=');
+        if (strategy === 'deltas') {
+          const adoptionPuts = putCount;
+          // A new receipt cannot silently adopt an already uploaded ordinary OTA version.
+          await expect(command('upload', second)).rejects.toThrow('already exists');
+          const conflicted = JSON.parse(await readFile(join(second, 'upload.json'), 'utf8'));
+          expect(conflicted.baseline.bundle.id).toBe(finished.baseline.bundle.id);
+          expect(conflicted.ota.uploadId).toBeNull();
+          expect(putCount).toBe(adoptionPuts);
+          expect(await database.bundle.count({ where: { appId } })).toBe(2);
+        }
         if (process.env.RN_OTA_COLLECTION_EXPORT) {
           const third = join(root, 'other-platform');
           const collection = join(root, 'upload-collection.json');

@@ -30,6 +30,16 @@ const adb = process.env.ANDROID_HOME ? join(process.env.ANDROID_HOME, 'platform-
 const android = (args) => run(adb, ['-s', device, ...args], { timeout: 60_000 });
 const appId = 'com.otakit.expofixture';
 const ios = (args) => run('xcrun', ['simctl', ...args], { timeout: 60_000 });
+async function captureScreenshot(suffix = '') {
+  const path = join(directory, `${device}${suffix}.png`);
+  if (!isAndroid) return ios(['io', device, 'screenshot', path]);
+  const screenshot = await run(adb, ['-s', device, 'exec-out', 'screencap', '-p'], {
+    encoding: 'buffer',
+    timeout: 10_000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  await writeFile(path, screenshot.stdout);
+}
 const iosLaunches = [];
 let appConsole;
 async function stop() {
@@ -417,22 +427,12 @@ try {
     }
     console.log('PASS Expo Router cold deep link completes splash and local readiness');
   }
-  if (isAndroid) {
-    const screenshot = await run(adb, ['-s', device, 'exec-out', 'screencap', '-p'], {
-      encoding: 'buffer',
-      timeout: 10_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    await writeFile(join(directory, `${device}.png`), screenshot.stdout);
-  } else await ios(['io', device, 'screenshot', join(directory, `${device}.png`)]);
+  await captureScreenshot();
   console.log(
     `PASS ${device}: verified native DOM resources, Expo Constants, DOM readiness, process restart generations`,
   );
 } catch (error) {
-  if (!isAndroid)
-    await ios(['io', device, 'screenshot', join(directory, `${device}-failure.png`)]).catch(
-      () => {},
-    );
+  await captureScreenshot('-failure').catch(() => {});
   throw error;
 } finally {
   try {
