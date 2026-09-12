@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "ios": { "bundleIdentifier": "com.otakit.expofixture" },
     "android": { "package": "com.otakit.expofixture" },
-    "plugins": ["expo-router", "expo-splash-screen"],
+    "plugins": ["expo-router", "expo-splash-screen", "./with-ios-fixture.cjs"],
     "extra": { "fixtureVersion": "embedded" }
   }
 }

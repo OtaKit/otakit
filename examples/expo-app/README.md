@@ -1,6 +1,6 @@
 # Expo compatibility fixture
 
-This private fixture exercises Expo export and Android native host integration while preserving a Router/splash/DOM scaffold. Automatic config-plugin installation, iOS host integration and the full OTA device matrix remain unfinished. It is not a release integration example yet.
+This private fixture exercises Expo export and iOS/Android native host integration while preserving a Router/splash/DOM scaffold. The public config-plugin installer and the full OTA device matrix remain unfinished. It is not a release integration example yet.
 
 The fixture includes Router, splash, Constants and a DOM component for that later acceptance. Bare React Native testing lives in `../react-native-app` and does not require native Expo dependencies.
 
@@ -40,4 +40,29 @@ Preparation requires a new output directory outside the repository and creates l
 
 With `--updates`, the runner also serves the local signed fixtures created by `prepare-updates.mjs`. It verifies an AES-GCM encrypted update, cold restart into that update, rollback of an unconfirmed update, an uncaught JS error reaching the default fatal handler followed by cold-start recovery, and return to the embedded baseline without an archive request. Separate markers identify the native bundle, Expo config, DOM script and DOM HTML; staging must preserve the current instance's context. The fixture generator deliberately changes archived test payloads and signs them with its local key. It is not the CLI publication or native-build-receipt workflow. Omit `--updates` to run only the embedded startup checks.
 
-API 36 passed startup and signed update checks. On the API 24 emulator the native host starts, but its bundled Android WebView 53.0.2785.124 fails the DOM page with `TypeError: e.getRootNode is not a function`; DOM readiness correctly fails. Expo DOM acceptance on that device requires a compatible WebView and a rerun. Bare RN's separate API 24 device scenarios pass. Expo iOS, deferred/cancelled startup, and the full development/Router/splash matrix remain unverified.
+API 36 passed startup and signed update checks. On the API 24 emulator the native host starts, but its bundled Android WebView 53.0.2785.124 fails the DOM page with `TypeError: e.getRootNode is not a function`; DOM readiness correctly fails. Expo DOM acceptance on that device requires a compatible WebView and a rerun. Bare RN's separate API 24 device scenarios pass. Deferred/cancelled startup and the full development/Router/splash matrix remain unverified.
+
+## iOS native acceptance
+
+The local module also supplies an Expo React delegate handler. It returns a deferred container while OtaKit prepares storage, then asks the existing Expo factory to create the real root with the original module name, initial props and launch options. Root customization still runs through Expo. A small delegate subclass forwards each RN host-start notification; the handler supplies the selected bundle URL dynamically on reload. Debug returns Expo's ordinary host/root behavior.
+
+`with-ios-fixture.cjs` wires this private module into the generated Swift template and adds the core CocoaPod and resource phase. It is not the public Expo installer. `ios-fixture.sh` copies the verified payload and Expo's original `www.bundle` location, removing stale files from previous builds. Simulator builds do not issue completed-build receipts.
+
+```sh
+NODE_ENV=production pnpm --filter @otakit/expo-fixture exec expo prebuild --platform ios --no-install
+(cd examples/expo-app/ios && NODE_ENV=production pod install)
+node examples/expo-app/prepare-ios.mjs /tmp/otakit-expo-ios-acceptance
+cd examples/expo-app/ios
+NODE_ENV=production SKIP_BUNDLING=1 \
+  OTAKIT_FIXTURE_ASSETS=/tmp/otakit-expo-ios-acceptance/assets \
+  xcodebuild -workspace OtaKitExpoFixture.xcworkspace -scheme OtaKitExpoFixture \
+  -configuration Release -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=<UDID>' \
+  -derivedDataPath /tmp/otakit-expo-derived-data CODE_SIGNING_ALLOWED=NO -jobs 2 build
+cd ../../..
+node examples/expo-app/run-ios.mjs <UDID> \
+  /tmp/otakit-expo-derived-data/Build/Products/Release-iphonesimulator/OtaKitExpoFixture.app \
+  /tmp/otakit-expo-ios-acceptance --updates
+```
+
+The shared device runner checks every packaged payload file and the separate embedded DOM copy against the export inventory. iOS 26.5 passed embedded cold starts, AES-GCM OTA activation, confirmed OTA cold restart, timeout rollback, real fatal JS exception/process termination with cold-start recovery, and baseline restoration without an archive request. Sixteen reports covered generations 1–12. Native JS, config, DOM script and HTML identities were checked at each transition; the post-build native fingerprint matched its export. These checks use the independent native entry, not Router. iOS console logs, reports and a screenshot are retained beside the fixture artifacts.

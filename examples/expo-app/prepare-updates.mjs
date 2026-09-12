@@ -22,7 +22,7 @@ function encrypt(key, nonce, bytes) {
 
 export async function prepareUpdates(directory) {
   const { receipt, embeddedExport } = JSON.parse(await readFile(join(directory, 'fixture.json')));
-  assert.equal(receipt.platform, 'android');
+  assert.ok(['ios', 'android'].includes(receipt.platform));
   const { hermesCompiler } = JSON.parse(await readFile(join(directory, 'inputs.json')));
   const host = JSON.parse(await readFile(join(directory, 'host.json')));
   const privateKey = await readFile(join(directory, 'fixture-private.pem'));
@@ -157,7 +157,7 @@ export async function prepareUpdates(directory) {
       schemaVersion: 3,
       appId: receipt.appId,
       framework: 'react-native',
-      platform: 'android',
+      platform: receipt.platform,
       channel: null,
       version,
       sha256: hash(archive),
