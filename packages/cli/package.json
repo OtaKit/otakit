@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && tsc && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --alias:@otakit/mcp-core=../mcp-core/src/index.ts --outfile=dist/index.js --sourcemap",
+    "build": "npm run clean && tsc && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --alias:@otakit/mcp-core=../mcp-core/src/index.ts --alias:@otakit/rn-protocol=../rn-protocol/src/index.ts --outfile=dist/index.js --sourcemap",
     "dev": "tsc --watch",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
@@ -38,12 +38,14 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@expo/fingerprint": "0.20.6",
     "@modelcontextprotocol/server": "2.0.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "dotenv": "^17.2.3",
     "ora": "^9.1.0",
     "semver": "^7.8.5",
+    "yauzl": "3.4.0",
     "yazl": "^2.5.1",
     "zod": "4.3.6"
   },
@@ -51,8 +53,10 @@
     "@eslint/js": "^9.18.0",
     "@modelcontextprotocol/client": "2.0.0",
     "@otakit/mcp-core": "workspace:*",
+    "@otakit/rn-protocol": "workspace:*",
     "@types/node": "^25.2.0",
     "@types/semver": "^7.7.1",
+    "@types/yauzl": "2.10.3",
     "@types/yazl": "^2.4.5",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.2",

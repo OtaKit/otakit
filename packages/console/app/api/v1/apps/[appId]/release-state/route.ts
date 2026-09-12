@@ -42,6 +42,7 @@ export async function GET(
         appId,
         channel,
         runtimeVersion,
+        platform: request.nextUrl.searchParams.get('platform') ?? undefined,
       }),
     );
   } catch (error) {

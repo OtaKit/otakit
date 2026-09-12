@@ -57,6 +57,7 @@ async function getOrganizationData(organizationId: string) {
     select: {
       id: true,
       slug: true,
+      framework: true,
       createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
@@ -114,6 +115,7 @@ export const getDashboardInitialData = cache(async (): Promise<DashboardInitialD
       slug: app.slug,
       createdAt: app.createdAt.toISOString(),
       bundleCount: 0,
+      ...(app.framework === 'react_native' ? { framework: 'react-native' as const } : {}),
     })),
     organizationApiKeys:
       organizationData.organization?.apiKeys.map((apiKey) => ({

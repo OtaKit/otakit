@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { db } from '@/lib/db';
+import { getUploadFramework, prepareRNUpload } from '@/lib/services/rn-uploads';
+import { serviceErrorResponse } from '@/lib/services/http';
 import { createPresignedUpload, getMaxBundleSize } from '@/lib/storage';
 import {
   isValidMetadata,
@@ -35,6 +37,13 @@ export async function POST(
     body = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  let framework;
+  try {
+    framework = await getUploadFramework(appId, body.platform);
+  } catch (error) {
+    return serviceErrorResponse(error);
   }
 
   const rawVersion = body.version;
@@ -124,9 +133,28 @@ export async function POST(
     );
   }
 
-  const existing = await db.bundle.findUnique({
+  let rnFields;
+  try {
+    rnFields =
+      framework === 'react_native'
+        ? await prepareRNUpload(appId, body, {
+            version,
+            sha256,
+            size,
+            strategy: 'zip',
+            encryption,
+          })
+        : undefined;
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
+
+  const existing = await db.bundle.findFirst({
     where: {
-      appId_version: { appId, version },
+      appId,
+      version,
+      platform: rnFields?.platform ?? 'cross',
+      ...(rnFields ? { runtimeVersion } : {}),
     },
     select: { id: true },
   });
@@ -159,6 +187,7 @@ export async function POST(
         encryption === undefined ? undefined : ({ ...encryption } as Prisma.InputJsonValue),
       storageKey,
       expiresAt,
+      ...rnFields,
     },
   });
 

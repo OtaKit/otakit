@@ -11,6 +11,7 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 
 export type AppSummary = {
+  framework?: 'react-native';
   id: string;
   slug: string;
   createdAt: string;
@@ -39,7 +40,7 @@ export async function listOrganizationApps(input: {
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
-    select: { id: true, slug: true, createdAt: true },
+    select: { id: true, slug: true, createdAt: true, framework: true },
   });
 
   const hasMore = rows.length > limit;
@@ -49,6 +50,7 @@ export async function listOrganizationApps(input: {
       id: app.id,
       slug: app.slug,
       createdAt: app.createdAt.toISOString(),
+      ...(app.framework === 'react_native' ? { framework: 'react-native' as const } : {}),
     })),
     nextCursor: hasMore ? (selected.at(-1)?.id ?? null) : null,
   };

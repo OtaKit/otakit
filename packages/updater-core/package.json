@@ -1,0 +1,12 @@
+{
+  "name": "@otakit/updater-core",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "ios/Sources",
+    "android/src/main",
+    "OtaKitUpdaterCore.podspec",
+    "LICENSE"
+  ]
+}

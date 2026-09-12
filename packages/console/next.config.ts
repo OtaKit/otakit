@@ -5,7 +5,7 @@ const repoRoot = path.join(__dirname, '../..');
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: repoRoot,
-  transpilePackages: ['@otakit/mcp-core'],
+  transpilePackages: ['@otakit/mcp-core', '@otakit/rn-protocol'],
   turbopack: {
     root: repoRoot,
   },

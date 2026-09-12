@@ -1,0 +1,27 @@
+{
+  "manifest": {
+    "schemaVersion": 3,
+    "appId": "app-1",
+    "framework": "react-native",
+    "platform": "ios",
+    "channel": null,
+    "version": "1.2.3",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "size": 100,
+    "runtimeVersion": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "strategy": "zip",
+    "forceImmediate": false,
+    "encryption": null,
+    "releaseId": "release-1",
+    "signature": {
+      "kid": "fixture",
+      "iat": 1000,
+      "exp": 31537000,
+      "sig": "MEQCICLMQ6Q9jCRVbmFLt4dLeI4apx1Y5EJymiP64xkBvSn2AiBbMNO27iIdk1US-RmylPJ9wjJ9qpHgAd_yulo3kHvyrg"
+    },
+    "url": "https://cdn.example/artifact.zip"
+  },
+  "canonical": "MANIFEST:3\nappId:app-1\nframework:react-native\nplatform:ios\nchannel:null\nversion:1.2.3\nsha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ncontentHash:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nsize:100\nruntimeVersion:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nstrategy:zip\nforceImmediate:false\nencryption:null\nreleaseId:release-1\nkid:fixture\niat:1000\nexp:31537000",
+  "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEv6g91qxEc7/AYzH8gyo1uiOhBoW37HMKkOf9I1BdYZMgxM2jzNrXXM9cnLiPzHXSb8Bk9KxgYLk69AVjDkBbA=="
+}

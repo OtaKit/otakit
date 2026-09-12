@@ -1,4 +1,6 @@
 import { accessActor, recordAuditLog } from '@/lib/audit-log';
+import { Prisma } from '@prisma/client';
+import { assertRuntime } from '@otakit/rn-protocol';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
 import { db } from '@/lib/db';
 import type { OrganizationAccess } from '@/lib/organization-access';
@@ -12,6 +14,11 @@ const MAX_LIMIT = 200;
 const SAFE_BUNDLE_SELECT = {
   id: true,
   appId: true,
+  platform: true,
+  contentHash: true,
+  contentFiles: true,
+  embeddedReceipt: true,
+  baselineBundleId: true,
   version: true,
   sha256: true,
   size: true,
@@ -34,6 +41,11 @@ function serializeBundle(bundle: {
   nativePackages: unknown;
   encryption: unknown;
   createdAt: Date;
+  platform: 'cross' | 'ios' | 'android';
+  contentHash: string | null;
+  contentFiles: unknown;
+  embeddedReceipt: unknown;
+  baselineBundleId: string | null;
 }) {
   return {
     id: bundle.id,
@@ -47,19 +59,53 @@ function serializeBundle(bundle: {
     hasNativePackages: Array.isArray(bundle.nativePackages),
     encrypted: bundle.encryption !== null,
     createdAt: bundle.createdAt.toISOString(),
+    ...(bundle.platform !== 'cross'
+      ? {
+          framework: 'react-native',
+          platform: bundle.platform,
+          contentHash: bundle.contentHash,
+          contentFiles: bundle.contentFiles,
+          embeddedReceipt: bundle.embeddedReceipt,
+          baselineBundleId: bundle.baselineBundleId,
+          encryption: bundle.encryption,
+        }
+      : {}),
   };
 }
 
 export async function listBundles(input: {
   appId: string;
   version?: string;
+  platform?: string;
+  runtimeVersion?: string;
   limit?: number;
   offset?: number;
 }) {
   const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
   const offset = Math.max(0, input.offset ?? 0);
   const version = input.version?.trim();
-  const where = { appId: input.appId, ...(version ? { version } : {}) };
+  const where: Prisma.BundleWhereInput = { appId: input.appId, ...(version ? { version } : {}) };
+  if (input.platform !== undefined || input.runtimeVersion !== undefined) {
+    const app = await db.app.findUnique({
+      where: { id: input.appId },
+      select: { framework: true },
+    });
+    if (app?.framework === 'react_native') {
+      if (input.platform !== undefined) {
+        if (input.platform !== 'ios' && input.platform !== 'android')
+          throw new OtaKitServiceError('INVALID_INPUT', 'RN platform must be ios or android', 400);
+        where.platform = input.platform;
+      }
+      if (input.runtimeVersion !== undefined) {
+        try {
+          assertRuntime(input.runtimeVersion);
+        } catch {
+          throw new OtaKitServiceError('INVALID_INPUT', 'Invalid RN native runtime digest', 400);
+        }
+        where.runtimeVersion = input.runtimeVersion;
+      }
+    }
+  }
   const [bundles, total] = await Promise.all([
     db.bundle.findMany({
       where,
@@ -92,7 +138,7 @@ export async function deleteBundle(input: {
 }) {
   const bundle = await db.bundle.findUnique({
     where: { id: input.bundleId },
-    select: { id: true, appId: true, version: true, storageKey: true },
+    select: { id: true, appId: true, version: true, storageKey: true, platform: true },
   });
   if (!bundle || bundle.appId !== input.appId) {
     throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
@@ -110,7 +156,21 @@ export async function deleteBundle(input: {
     );
   }
 
-  await db.bundle.delete({ where: { id: bundle.id } });
+  try {
+    await db.bundle.delete({ where: { id: bundle.id } });
+  } catch (error) {
+    if (
+      (bundle.platform === 'ios' || bundle.platform === 'android') &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    )
+      throw new OtaKitServiceError(
+        'RN_BUNDLE_IN_USE',
+        'Cannot delete an RN bundle referenced by an upload, another bundle, or release history',
+        409,
+      );
+    throw error;
+  }
   await recordAuditLog({
     organizationId: input.access.organizationId,
     actor: await accessActor(input.access),

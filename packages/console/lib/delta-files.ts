@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 import { getMaxBundleSize } from '@/lib/storage';
+import { parseRNInventory } from '@/lib/rn-inventory';
 
 /**
  * Delta strategy file list: validation + canonical hash.
@@ -62,7 +63,14 @@ function isValidDeltaPath(path: string): boolean {
   return true;
 }
 
-export function parseDeltaFiles(raw: unknown): DeltaFilesParseResult {
+export function parseDeltaFiles(
+  raw: unknown,
+  framework: 'capacitor' | 'react_native' = 'capacitor',
+): DeltaFilesParseResult {
+  if (framework === 'react_native') {
+    const inventory = parseRNInventory(raw, getMaxBundleSize());
+    if (!inventory.ok) return inventory;
+  }
   if (!Array.isArray(raw) || raw.length === 0) {
     return { ok: false, error: 'files must be a non-empty array' };
   }
@@ -118,7 +126,7 @@ export function parseDeltaFiles(raw: unknown): DeltaFilesParseResult {
     files.push({ path, sha256: normalizedSha, size });
   }
 
-  if (!seenPaths.has('index.html')) {
+  if (framework === 'capacitor' && !seenPaths.has('index.html')) {
     return { ok: false, error: 'files must include index.html at the bundle root' };
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { listBundles } from '@/lib/services/bundles';
+import { serviceErrorResponse } from '@/lib/services/http';
 
 export const runtime = 'nodejs';
 
@@ -18,12 +19,18 @@ export async function GET(
   const searchParams = request.nextUrl.searchParams;
   const rawLimit = Number.parseInt(searchParams.get('limit') ?? '', 10);
   const rawOffset = Number.parseInt(searchParams.get('offset') ?? '', 10);
-  return NextResponse.json(
-    await listBundles({
-      appId,
-      version: searchParams.get('version') ?? undefined,
-      limit: Number.isInteger(rawLimit) ? rawLimit : undefined,
-      offset: Number.isInteger(rawOffset) ? rawOffset : undefined,
-    }),
-  );
+  try {
+    return NextResponse.json(
+      await listBundles({
+        appId,
+        version: searchParams.get('version') ?? undefined,
+        platform: searchParams.get('platform') ?? undefined,
+        runtimeVersion: searchParams.get('runtimeVersion') ?? undefined,
+        limit: Number.isInteger(rawLimit) ? rawLimit : undefined,
+        offset: Number.isInteger(rawOffset) ? rawOffset : undefined,
+      }),
+    );
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
 }

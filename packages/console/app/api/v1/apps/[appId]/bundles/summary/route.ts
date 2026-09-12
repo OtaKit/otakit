@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { EventCountSummary } from '@/app/components/dashboard-types';
 
 import { db } from '@/lib/db';
+import { getRNBundleSummaries } from '@/lib/services/rn-bundle-summaries';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { createEmptyEventCounts, getBundleEventCounts } from '@/lib/tinybird/events';
 
@@ -65,6 +66,10 @@ export async function GET(
   if (!access.success) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
+
+  const app = await db.app.findUnique({ where: { id: appId }, select: { framework: true } });
+  if (app?.framework === 'react_native')
+    return NextResponse.json(await getRNBundleSummaries(appId));
 
   const bundles = await db.bundle.findMany({
     where: { appId },

@@ -31,6 +31,7 @@ import {
 
 import { toast } from 'sonner';
 
+import { RNReleasesPanel } from '@/app/components/RNReleasesPanel';
 import { DashboardHeader } from '@/app/components/DashboardHeader';
 import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
@@ -1219,7 +1220,17 @@ export function ProductDashboard({
               ) : null}
 
               {/* Bundles */}
-              {selectedApp ? (
+              {selectedApp?.framework === 'react-native' ? (
+                <RNReleasesPanel
+                  key={selectedApp.id}
+                  appId={selectedApp.id}
+                  bundles={bundles}
+                  releases={releaseHistory}
+                  reload={() =>
+                    Promise.all([loadBundles(selectedApp.id), loadReleaseHistory(selectedApp.id)])
+                  }
+                />
+              ) : selectedApp ? (
                 <section className="">
                   <div className="mx-auto max-w-screen-xl bg-muted/30">
                     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-6 pb-5 pt-8">

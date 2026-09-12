@@ -389,6 +389,8 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     }>(
       `/api/v1/apps/${encodeURIComponent(appId)}/bundles${queryString({
         version: optionalString(input, 'version'),
+        platform: optionalString(input, 'platform'),
+        runtimeVersion: optionalString(input, 'runtimeVersion'),
         limit,
         offset,
       })}`,
@@ -458,6 +460,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       `/api/v1/apps/${encodeURIComponent(appId)}/release-state${queryString({
         channel: nullableString(input, 'channel'),
         runtimeVersion: nullableString(input, 'runtimeVersion'),
+        platform: optionalString(input, 'platform'),
       })}`,
     );
     return toolEnvelope(
@@ -529,6 +532,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         ...this.releaseOptions(input),
         expectedCurrentReleaseId: nullableString(input, 'expectedCurrentReleaseId'),
         idempotencyKey: stringInput(input, 'idempotencyKey'),
+        rnIntent: input.rnIntent,
         compatibilityDecision:
           (optionalString(input, 'compatibilityDecision') as
             | 'block'
@@ -545,7 +549,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     return toolEnvelope(
       pending
         ? `Release ${result.release.id} is recorded, but manifest synchronization is pending.`
-        : `Published release ${result.release.id}.`,
+        : result.currentRelease !== undefined && result.currentRelease?.id !== result.release.id
+          ? `Publication ${result.release.id} completed previously; the lane has since changed.`
+          : `Published release ${result.release.id}.`,
       json(result),
       {
         warnings: pending
@@ -644,6 +650,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         method: 'POST',
         headers: { 'Idempotency-Key': stringInput(input, 'idempotencyKey') },
         body: JSON.stringify({
+          rnIntent: input.rnIntent,
           expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
           forceImmediate: booleanInput(input, 'forceImmediate'),
         }),

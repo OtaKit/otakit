@@ -17,6 +17,8 @@ packages/capacitor-plugin/android/local.properties
 packages/capacitor-plugin/android/.cxx/
 packages/capacitor-plugin/.build/
 packages/capacitor-plugin/.swiftpm/
+packages/updater-core/.build/
+packages/updater-core/.swiftpm/
 
 examples/*/ios/App/Pods/
 examples/*/ios/App/App/public/

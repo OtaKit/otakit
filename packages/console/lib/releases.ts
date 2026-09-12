@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient, Release } from '@prisma/client';
 
 import { recordAuditLog, type AuditAction, type AuditActor } from './audit-log';
 import { db } from './db';
+import { OtaKitServiceError } from './services/errors';
+import { isReactNativeApp } from './services/rn-releases';
 import { syncManifestFileForLane } from './manifest-files';
 
 export async function createRelease(
@@ -18,10 +20,22 @@ export async function createRelease(
     promotedBy?: string;
   },
 ): Promise<Release> {
+  const bundle = await db.bundle.findUniqueOrThrow({
+    where: { id: input.bundleId },
+    select: { platform: true, runtimeVersion: true, app: { select: { framework: true } } },
+  });
+  if (bundle.app.framework === 'react_native')
+    throw new OtaKitServiceError(
+      'RN_INTENT_REQUIRED',
+      'RN publication must use the shared prepared release service',
+      400,
+    );
   return db.release.create({
     data: {
       appId: input.appId,
       bundleId: input.bundleId,
+      platform: bundle.platform,
+      runtimeVersion: bundle.runtimeVersion,
       previousBundleId: input.previousBundleId ?? null,
       channel: input.channel,
       forceImmediate: input.forceImmediate ?? false,
@@ -71,6 +85,12 @@ export async function revertCurrentRelease(input: {
   auditAction?: AuditAction;
   auditMetadata?: Record<string, unknown>;
 }): Promise<RevertOutcome> {
+  if (await isReactNativeApp(db, input.appId, input.organizationId))
+    throw new OtaKitServiceError(
+      'RN_INTENT_REQUIRED',
+      'RN reversion must use the shared prepared release service',
+      400,
+    );
   const targetRelease = await db.release.findFirst({
     where: { id: input.releaseId, appId: input.appId },
     include: releaseWithBundlesInclude,

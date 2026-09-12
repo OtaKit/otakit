@@ -99,6 +99,27 @@ describe('OtaKit MCP tool catalog', () => {
       false,
     );
   });
+
+  it('preserves optional RN intent fields through publication and revert schema parsing', () => {
+    const rnIntent = {
+      version: 1,
+      actorKey: 'key:original',
+      preparedAt: '2026-09-11T00:00:00.000Z',
+    };
+    for (const name of ['publish_release', 'revert_release']) {
+      const tool = OTAKIT_TOOL_CATALOG.find((tool) => tool.name === name)!;
+      const parsed = tool.inputSchema.parse({
+        appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+        bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+        releaseId: '0ee77672-f7de-4291-bcd2-fac9bda4b92b',
+        channel: null,
+        expectedCurrentReleaseId: '0ee77672-f7de-4291-bcd2-fac9bda4b92b',
+        idempotencyKey: 'original-operation',
+        rnIntent,
+      });
+      expect(parsed.rnIntent).toEqual(rnIntent);
+    }
+  });
 });
 
 describe('OtaKit MCP registry transport', () => {

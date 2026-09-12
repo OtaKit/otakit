@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   findRelease: vi.fn(),
   getReleaseHealthWindowCounts: vi.fn(),
   revertRelease: vi.fn(),
+  prepareRevert: vi.fn(),
+  isReleaseReliabilityEnabled: vi.fn(),
 }));
 
 vi.mock('./audit-log', () => ({ recordAuditLog: vi.fn() }));
@@ -19,9 +21,14 @@ vi.mock('./db', () => ({
   },
 }));
 vi.mock('./email', () => ({ sendAutoRevertEmail: vi.fn() }));
-vi.mock('./release-features', () => ({ isReleaseReliabilityEnabled: () => true }));
+vi.mock('./release-features', () => ({
+  isReleaseReliabilityEnabled: mocks.isReleaseReliabilityEnabled,
+}));
 vi.mock('./releases', () => ({ revertCurrentRelease: vi.fn() }));
-vi.mock('./services/releases', () => ({ revertRelease: mocks.revertRelease }));
+vi.mock('./services/releases', () => ({
+  revertRelease: mocks.revertRelease,
+  prepareRevert: mocks.prepareRevert,
+}));
 vi.mock('./tinybird/events', () => ({
   getReleaseHealthWindowCounts: mocks.getReleaseHealthWindowCounts,
 }));
@@ -32,6 +39,7 @@ import { OtaKitServiceError } from './services/errors';
 describe('auto-revert failure handling', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.isReleaseReliabilityEnabled.mockReturnValue(true);
     mocks.findReleases.mockResolvedValue([
       {
         id: 'release-1',
@@ -88,5 +96,56 @@ describe('auto-revert failure handling', () => {
         }),
       }),
     );
+  });
+
+  it('keeps RN auto-revert lanes separate and uses prepared durable reversion even with the legacy flag off', async () => {
+    mocks.isReleaseReliabilityEnabled.mockReturnValue(false);
+    mocks.findReleases.mockResolvedValue(
+      ['ios', 'android'].map((platform) => ({
+        id: `release-${platform}`,
+        appId: 'app-1',
+        channel: null,
+        autoRevertRatePercent: 20,
+        autoRevertMinSample: 10,
+        bundle: { version: '1.0.0', runtimeVersion: 'same-runtime', platform },
+        app: { slug: 'rn-app', organizationId: 'org-1', framework: 'react_native' },
+      })),
+    );
+    mocks.findRelease.mockReset();
+    mocks.findRelease.mockImplementation(async ({ where }) =>
+      where.revertedAt === null ? { id: `release-${where.platform}` } : null,
+    );
+    mocks.getReleaseHealthWindowCounts.mockResolvedValue(
+      new Map([
+        ['release-ios', { applied: 10, rollbacks: 10 }],
+        ['release-android', { applied: 10, rollbacks: 10 }],
+      ]),
+    );
+    const rnIntent = {
+      version: 1,
+      actorKey: 'system:auto-revert',
+      preparedAt: '2026-09-11T00:00:00.000Z',
+    };
+    mocks.prepareRevert.mockResolvedValue({ rnIntent });
+    mocks.revertRelease.mockResolvedValue({
+      operationId: 'operation',
+      publicationStatus: 'manifest_sync_pending',
+    });
+    await expect(runAutoRevertSweep()).resolves.toMatchObject({ releasesEvaluated: 2 });
+    expect(mocks.prepareRevert).toHaveBeenCalledTimes(2);
+    for (const platform of ['ios', 'android']) {
+      expect(mocks.findRelease).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ platform, runtimeVersion: 'same-runtime' }),
+        }),
+      );
+      expect(mocks.revertRelease).toHaveBeenCalledWith(
+        expect.objectContaining({
+          releaseId: `release-${platform}`,
+          expectedCurrentReleaseId: `release-${platform}`,
+          rnIntent,
+        }),
+      );
+    }
   });
 });

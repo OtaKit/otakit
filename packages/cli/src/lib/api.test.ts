@@ -62,6 +62,7 @@ describe('ApiClient release reliability contract', () => {
       autoRevertMinSample: 80,
     });
     expect(body).not.toHaveProperty('expectedCurrentReleaseId');
+    expect(body).not.toHaveProperty('rnIntent');
   });
 
   it('uses the reviewed state and idempotency key supplied by MCP without preparing again', async () => {
@@ -80,5 +81,24 @@ describe('ApiClient release reliability contract', () => {
       channel: 'staging',
       expectedCurrentReleaseId: null,
     });
+  });
+
+  it('forwards an RN intent unchanged without preparing or replacing its operation key', async () => {
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse(publishedResult()));
+    const api = new ApiClient(config);
+    const rnIntent = {
+      version: 1,
+      actorKey: 'key:original',
+      preparedAt: '2026-09-11T00:00:00.000Z',
+    };
+    await api.release('production', 'f32627ca-9e8c-4358-90d8-bde732400081', {
+      rnIntent,
+      expectedCurrentReleaseId: null,
+      idempotencyKey: 'original-operation',
+    });
+    expect(mocks.fetchCli).toHaveBeenCalledOnce();
+    const options = mocks.fetchCli.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(options.body)).rnIntent).toEqual(rnIntent);
+    expect(new Headers(options.headers).get('Idempotency-Key')).toBe('original-operation');
   });
 });

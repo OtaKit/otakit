@@ -1,0 +1,33 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'com.facebook.react'
+
+def corePackage = new File(providers.exec {
+    workingDir projectDir
+    commandLine 'node', '-p', "require.resolve('@otakit/updater-core/package.json')"
+}.standardOutput.asText.get().trim()).parentFile
+
+react {
+    jsRootDir = file('../src')
+    libraryName = 'OtaKitRNSpec'
+    codegenJavaPackageName = 'com.otakit.reactnative'
+}
+
+android {
+    namespace 'com.otakit.reactnative'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig { minSdk 24 }
+    sourceSets.main.java.srcDir new File(corePackage, 'android/src/main/java')
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    implementation 'com.facebook.react:react-android'
+    implementation 'net.lingala.zip4j:zip4j:2.11.6'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
+}

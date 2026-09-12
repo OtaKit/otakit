@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { recordAuditLog, type AuditActor } from './audit-log';
 import {
   AUTO_REVERT_REVERTED_BY,
@@ -9,7 +11,8 @@ import { db } from './db';
 import { isReleaseReliabilityEnabled } from './release-features';
 import { revertCurrentRelease } from './releases';
 import { isOtaKitServiceError } from './services/errors';
-import { revertRelease } from './services/releases';
+import { releaseLaneWhere } from './release-lanes';
+import { prepareRevert, revertRelease } from './services/releases';
 import { getReleaseHealthWindowCounts } from './tinybird/events';
 
 export const AUTO_REVERT_WINDOW_HOURS = 24;
@@ -34,8 +37,8 @@ type CandidateRelease = {
   channel: string | null;
   autoRevertRatePercent: number;
   autoRevertMinSample: number;
-  bundle: { version: string; runtimeVersion: string | null };
-  app: { slug: string; organizationId: string };
+  bundle: { version: string; runtimeVersion: string | null; platform: 'cross' | 'ios' | 'android' };
+  app: { slug: string; organizationId: string; framework: 'capacitor' | 'react_native' };
 };
 
 export function shouldAutoRevert(
@@ -118,8 +121,8 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       channel: true,
       autoRevertRatePercent: true,
       autoRevertMinSample: true,
-      bundle: { select: { version: true, runtimeVersion: true } },
-      app: { select: { slug: true, organizationId: true } },
+      bundle: { select: { version: true, runtimeVersion: true, platform: true } },
+      app: { select: { slug: true, organizationId: true, framework: true } },
     },
   })) satisfies CandidateRelease[];
 
@@ -139,10 +142,13 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
     for (const candidate of appCandidates) {
       const laneCurrent = await db.release.findFirst({
         where: {
-          appId,
-          channel: candidate.channel,
+          ...releaseLaneWhere(
+            appId,
+            candidate.channel,
+            candidate.bundle.runtimeVersion,
+            candidate.app.framework === 'react_native' ? candidate.bundle.platform : 'cross',
+          ),
           revertedAt: null,
-          bundle: { is: { runtimeVersion: candidate.bundle.runtimeVersion } },
         },
         orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
         select: { id: true },
@@ -184,10 +190,13 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       // must not walk the lane back release by release.
       const lastRevertedOnLane = await db.release.findFirst({
         where: {
-          appId,
-          channel: candidate.channel,
+          ...releaseLaneWhere(
+            appId,
+            candidate.channel,
+            candidate.bundle.runtimeVersion,
+            candidate.app.framework === 'react_native' ? candidate.bundle.platform : 'cross',
+          ),
           revertedAt: { not: null },
-          bundle: { is: { runtimeVersion: candidate.bundle.runtimeVersion } },
         },
         orderBy: { revertedAt: 'desc' },
         select: { revertedAt: true, revertedBy: true },
@@ -222,7 +231,8 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
         continue;
       }
 
-      if (!isReleaseReliabilityEnabled()) {
+      const rn = candidate.app.framework === 'react_native';
+      if (!rn && !isReleaseReliabilityEnabled()) {
         const legacyOutcome = await revertCurrentRelease({
           appId,
           releaseId: candidate.id,
@@ -245,14 +255,31 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
 
       let outcome;
       try {
+        // A committed revert marks this exact release as reverted in the same
+        // transaction. Later sweeps cannot select it; the mutation worker
+        // repairs its manifest without creating another revert operation.
+        const prepared = rn
+          ? await prepareRevert({
+              appId,
+              releaseId: candidate.id,
+              organizationId: candidate.app.organizationId,
+              actor: AUTO_REVERT_ACTOR,
+            })
+          : null;
         outcome = await revertRelease({
+          ...(prepared ? { rnIntent: prepared.rnIntent } : {}),
           appId,
           releaseId: candidate.id,
           revertedBy: AUTO_REVERT_REVERTED_BY,
           actor: AUTO_REVERT_ACTOR,
           organizationId: candidate.app.organizationId,
           expectedCurrentReleaseId: candidate.id,
-          idempotencyKey: `auto-revert:${candidate.id}`,
+          // Concurrent RN sweeps have independently prepared intents. Give
+          // each attempt its own key; the reviewed release ID/lane lock lets
+          // only one commit. Preserve the legacy Capacitor key unchanged.
+          idempotencyKey: rn
+            ? `auto-revert:${candidate.id}:${randomUUID()}`
+            : `auto-revert:${candidate.id}`,
           auditAction: 'release.auto_reverted',
           auditMetadata: healthMetadata,
           autoRevertAlertPayload: healthMetadata,
@@ -260,7 +287,9 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       } catch (error) {
         if (
           !isOtaKitServiceError(error) ||
-          (error.code !== 'STALE_RELEASE_STATE' && error.code !== 'RELEASE_NOT_CURRENT')
+          (error.code !== 'STALE_RELEASE_STATE' &&
+            error.code !== 'RELEASE_NOT_CURRENT' &&
+            error.code !== 'RN_BASELINE_REQUIRED')
         ) {
           throw error;
         }

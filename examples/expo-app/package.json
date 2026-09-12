@@ -1,0 +1,36 @@
+{
+  "name": "@otakit/expo-fixture",
+  "version": "0.0.1",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "prebuild": "expo prebuild"
+  },
+  "dependencies": {
+    "@otakit/react-native-updater": "workspace:*",
+    "expo": "57.0.17",
+    "expo-router": "57.0.17",
+    "expo-constants": "57.0.15",
+    "expo-asset": "57.0.15",
+    "expo-splash-screen": "57.0.8",
+    "@expo/dom-webview": "57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "0.21.2",
+    "react-native-webview": "13.16.1",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.26.0",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@expo/cli": "57.0.19",
+    "@react-native-community/cli": "20.1.0",
+    "@react-native-community/cli-platform-android": "20.1.0",
+    "@react-native-community/cli-platform-ios": "20.1.0",
+    "@babel/core": "^7.25.2",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.9.3"
+  }
+}

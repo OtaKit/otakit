@@ -1,0 +1,58 @@
+{
+  "name": "@otakit/react-native-updater",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "src",
+    "metro/index.cjs",
+    "android/build.gradle",
+    "android/src/main",
+    "ios",
+    "scripts/cocoapods.rb",
+    "OtaKitReactNativeUpdater.podspec",
+    "README.md",
+    "LICENSE"
+  ],
+  "description": "React Native host integration for OtaKit",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bootstrap": "./src/bootstrap.ts",
+    "./metro": "./metro/index.cjs",
+    "./scripts/cocoapods.rb": "./scripts/cocoapods.rb",
+    "./package.json": "./package.json",
+    "./expo-constants": "./src/expo/constants.ts",
+    "./expo-dom": "./src/expo/dom.ts"
+  },
+  "peerDependencies": {
+    "react-native": "0.86.3 || 0.87.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  },
+  "codegenConfig": {
+    "name": "OtaKitRNSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/specs",
+    "android": {
+      "javaPackageName": "com.otakit.reactnative"
+    }
+  },
+  "devDependencies": {
+    "react-native": "0.86.3",
+    "@types/react": "^19.2.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "test": "node --test metro/index.test.cjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@otakit/updater-core": "workspace:*"
+  }
+}

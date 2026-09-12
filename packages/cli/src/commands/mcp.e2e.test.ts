@@ -126,7 +126,10 @@ beforeAll(async () => {
     platform: 'node',
     format: 'esm',
     packages: 'external',
-    alias: { '@otakit/mcp-core': resolve(packageRoot, '../mcp-core/src/index.ts') },
+    alias: {
+      '@otakit/mcp-core': resolve(packageRoot, '../mcp-core/src/index.ts'),
+      '@otakit/rn-protocol': resolve(packageRoot, '../rn-protocol/src/index.ts'),
+    },
     outfile: cliBundle,
   });
 });

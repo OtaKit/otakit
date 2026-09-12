@@ -105,6 +105,17 @@ export const expectedCurrentReleaseIdSchema = releaseIdSchema
   .nullable()
   .describe('Release ID shown by prepare, or null when the lane had no release');
 
+export const rnIntentSchema = z
+  .object({
+    version: z.literal(1),
+    actorKey: z.string().min(1).max(300),
+    preparedAt: z.string().datetime(),
+  })
+  .optional()
+  .describe(
+    'RN only: unchanged intent returned by prepare; never refresh it to retry an uncertain operation',
+  );
+
 export const releaseOptionsShape = {
   forceImmediate: z
     .boolean()

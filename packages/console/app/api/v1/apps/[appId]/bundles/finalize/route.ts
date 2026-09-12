@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { db } from '@/lib/db';
+import { getUploadFramework, finalizeRNUpload, serializeRNUpload } from '@/lib/services/rn-uploads';
+import { serviceErrorResponse } from '@/lib/services/http';
 import { inspectUploadedObject, UploadedObjectNotFoundError } from '@/lib/storage';
 
 export const runtime = 'nodejs';
@@ -73,6 +75,32 @@ export async function POST(
 
   if (session.appId !== appId) {
     return NextResponse.json({ error: 'App ID mismatch' }, { status: 403 });
+  }
+
+  try {
+    const framework = await getUploadFramework(appId, session.platform);
+    if (framework === 'react_native') {
+      const { bundle, created } = await finalizeRNUpload(session, 'zip');
+      if (created)
+        await recordAuditLog({
+          organizationId: access.access.organizationId,
+          actor: await accessActor(access.access),
+          action: 'bundle.uploaded',
+          targetType: 'bundle',
+          targetId: bundle.id,
+          metadata: {
+            appId,
+            version: bundle.version,
+            platform: bundle.platform,
+            runtimeVersion: bundle.runtimeVersion,
+            size: bundle.size,
+            strategy: bundle.strategy,
+          },
+        });
+      return NextResponse.json(serializeRNUpload(bundle), { status: created ? 201 : 200 });
+    }
+  } catch (error) {
+    return serviceErrorResponse(error);
   }
 
   if (session.status === 'finalized') {
@@ -172,12 +200,11 @@ export async function POST(
     return NextResponse.json(serializeBundle(bundle), { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const existingBundle = await db.bundle.findUnique({
+      const existingBundle = await db.bundle.findFirst({
         where: {
-          appId_version: {
-            appId: session.appId,
-            version: session.version,
-          },
+          appId: session.appId,
+          version: session.version,
+          platform: 'cross',
         },
         select: {
           id: true,

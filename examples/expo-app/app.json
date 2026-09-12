@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "OtaKit Expo Fixture",
+    "slug": "otakit-expo-fixture",
+    "scheme": "otakit-expo-fixture",
+    "version": "1.0.0",
+    "ios": { "bundleIdentifier": "com.otakit.expofixture" },
+    "android": { "package": "com.otakit.expofixture" },
+    "plugins": ["expo-router", "expo-splash-screen"],
+    "extra": { "fixtureVersion": "embedded" }
+  }
+}

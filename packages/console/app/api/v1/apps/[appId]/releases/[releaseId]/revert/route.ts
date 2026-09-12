@@ -62,6 +62,7 @@ export async function POST(
       organizationId: access.access.organizationId,
       forceImmediate: rawForceImmediate,
       expectedCurrentReleaseId,
+      rnIntent: body.rnIntent,
       idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
     });
 

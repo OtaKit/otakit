@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { db } from '@/lib/db';
+import { createRelease } from '@/lib/releases';
 
 import {
   prepareRelease,
   prepareRevert,
   publishRelease,
+  publishReleaseLegacy,
   reconcilePendingReleaseMutations,
   revertRelease,
 } from './releases';
@@ -107,8 +109,92 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
     );
     await expect(db.release.count({ where: { appId } })).resolves.toBe(1);
     await expect(
+      db.release.findUniqueOrThrow({ where: { id: first.release.id } }),
+    ).resolves.toMatchObject({
+      platform: 'cross',
+      runtimeVersion: 'ios-1',
+    });
+    await expect(
       db.releaseMutation.count({ where: { organizationId, status: 'published' } }),
     ).resolves.toBe(1);
+    await expect(
+      db.releaseMutation.findUniqueOrThrow({ where: { id: first.operationId } }),
+    ).resolves.toMatchObject({
+      platform: 'cross',
+      runtimeVersion: 'ios-1',
+    });
+    expect(first.release).not.toHaveProperty('platform');
+    expect(first).not.toHaveProperty('rnIntent');
+  });
+
+  it.each([null, 'ios-1'])(
+    'copies runtime %s through the legacy publisher and release helper',
+    async (runtimeVersion) => {
+      await db.bundle.update({ where: { id: bundleIds[0] }, data: { runtimeVersion } });
+      const published = await publishReleaseLegacy(
+        {
+          organizationId,
+          actor,
+          appId,
+          bundleId: bundleIds[0],
+          channel: 'legacy',
+        },
+        { syncManifest: vi.fn().mockResolvedValue(undefined) },
+      );
+      const direct = await createRelease(db, {
+        appId,
+        bundleId: bundleIds[0],
+        channel: 'direct',
+      });
+      for (const id of [published.release.id, direct.id]) {
+        await expect(db.release.findUniqueOrThrow({ where: { id } })).resolves.toMatchObject({
+          platform: 'cross',
+          runtimeVersion,
+        });
+      }
+    },
+  );
+
+  it('preserves nullable Capacitor runtime publication and last-release revert', async () => {
+    await db.bundle.update({ where: { id: bundleIds[0] }, data: { runtimeVersion: null } });
+    const syncManifest = vi.fn().mockResolvedValue(undefined);
+    const published = await publishRelease(
+      {
+        organizationId,
+        actor,
+        appId,
+        bundleId: bundleIds[0],
+        channel: null,
+        expectedCurrentReleaseId: null,
+        idempotencyKey: randomUUID(),
+      },
+      { syncManifest },
+    );
+    const reverted = await revertRelease(
+      {
+        organizationId,
+        actor,
+        appId,
+        releaseId: published.release.id,
+        expectedCurrentReleaseId: published.release.id,
+        idempotencyKey: randomUUID(),
+      },
+      { syncManifest },
+    );
+    expect(reverted.currentRelease).toBeNull();
+    expect(reverted.publicationStatus).toBe('published');
+    await expect(
+      db.release.findUniqueOrThrow({ where: { id: published.release.id } }),
+    ).resolves.toMatchObject({
+      platform: 'cross',
+      runtimeVersion: null,
+    });
+    for (const id of [published.operationId, reverted.operationId]) {
+      await expect(db.releaseMutation.findUniqueOrThrow({ where: { id } })).resolves.toMatchObject({
+        platform: 'cross',
+        runtimeVersion: null,
+      });
+    }
   });
 
   it('rejects an idempotency key reused with different arguments', async () => {

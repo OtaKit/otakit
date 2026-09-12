@@ -1,0 +1,131 @@
+{
+  "description": "Synthetic bytecode for verification tests only; not executable Hermes code.",
+  "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeFxKgZXKHq4OFl+OROhkGOX48s6fWZ0qTxIGZDWu8mowgdNtUd2hQcA5uytBe1dTuUq8kVw5hMz1TEYdI7EZxA==",
+  "bundleKey": "N4kYxDwZub6nkUuvAIv4HNamGNJyISfgi5EKTyWzTmI=",
+  "contents": {
+    "index.bundle": "xh+8A8EDGR9gAAAAZml4dHVyZQ==",
+    "otakit-bundle.json": "eyJmb3JtYXQiOiJvdGFraXQtcm4iLCJmb3JtYXRWZXJzaW9uIjoxLCJmcmFtZXdvcmsiOiJyZWFjdC1uYXRpdmUiLCJwbGF0Zm9ybSI6ImlvcyIsInJ1bnRpbWVWZXJzaW9uIjoiQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQSIsInZlcnNpb24iOiJmaXh0dXJlLTEiLCJlbnRyeVBvaW50IjoiaW5kZXguYnVuZGxlIiwiZW5naW5lIjoiaGVybWVzIiwiYnVuZGxlRm9ybWF0IjoiaGVybWVzLWJ5dGVjb2RlIiwicmVhY3ROYXRpdmVWZXJzaW9uIjoiMC44Ni4zIiwiZXhwbyI6eyJjb25maWdGaWxlIjoiZXhwby1jb25maWcuanNvbiIsImRvbVJvb3QiOiJ3d3cuYnVuZGxlIn19",
+    "assets/café #1%.txt": "dW5pY29kZSBhc3NldA==",
+    "expo-config.json": "eyJuYW1lIjoiZml4dHVyZSJ9",
+    "www.bundle/index.html": "PGh0bWw+Zml4dHVyZTwvaHRtbD4="
+  },
+  "archive": "UEsDBBQAAAgIAAAIIQBaEBqzFQAAABMAAAAMAAAAaW5kZXguYnVuZGxlOya/h/kgs6R8AgMDQ1pmRUlpUSoAUEsDBBQAAAgIAAAIIQAfSshnxAAAAFYBAAASAAAAb3Rha2l0LWJ1bmRsZS5qc29ujZDBTsNADET/Zc6biAoJob1x6REhDr1vE6eYZu3KcZpUVf8dbULLFR/HmvEbX9Gp5eSIUE9H9soE4VfckQ2sgrgJ6CxlmtSOiDBKjVeSnM+EgFOfvBgQwTogwEZxzvSw4+3/g4Dzw9fx7KNRtUEAidvlQ1kKK0tLc70fpe1p2R1YCBFfZJkKwrra3ruterW/ODXaFsvS4X2p8Mf5VL++1M8lcD4p4hWNSseHLfclvIjVqtTfg5Y/tZo/VcuFaZruPLfbD1BLAwQUAAAICAAACCEAzApRtQ8AAAANAAAAFAAAAGFzc2V0cy9jYWbDqSAjMSUudHh0K83LTM5PSVVILC5OLQEAUEsDBBQAAAgIAAAIIQC7q1aOFAAAABIAAAAQAAAAZXhwby1jb25maWcuanNvbqtWykvMTVWyUkrLrCgpLUpVqgUAUEsDBBQAAAgIAAAIIQC7USIDEgAAABQAAAAVAAAAd3d3LmJ1bmRsZS9pbmRleC5odG1ss8koyc2xS8usKCktSrXRB/MAUEsBAj8DFAAACAgAAAghAFoQGrMVAAAAEwAAAAwAAAAAAAAAAAAAAKSBAAAAAGluZGV4LmJ1bmRsZVBLAQI/AxQAAAgIAAAIIQAfSshnxAAAAFYBAAASAAAAAAAAAAAAAACkgT8AAABvdGFraXQtYnVuZGxlLmpzb25QSwECPwMUAAAICAAACCEAzApRtQ8AAAANAAAAFAAAAAAAAAAAAAAApIEzAQAAYXNzZXRzL2NhZsOpICMxJS50eHRQSwECPwMUAAAICAAACCEAu6tWjhQAAAASAAAAEAAAAAAAAAAAAAAApIF0AQAAZXhwby1jb25maWcuanNvblBLAQI/AxQAAAgIAAAIIQC7USIDEgAAABQAAAAVAAAAAAAAAAAAAACkgbYBAAB3d3cuYnVuZGxlL2luZGV4Lmh0bWxQSwUGAAAAAAUABQA9AQAA+wEAAAAA",
+  "encryptedArchive": "sYIYVQJE2iEHMAMfl+a60Z8FB5oxqSMCGDpI3HV4d3bHcsS6KJnIpcRovRQsefZnOh9PEzBQ4Uy9TccKUJhk5qV5TbexYlGXs/mWefzSU4dfIMaQQYTdljgLX83E4W2c4mqlfI2x0c3zzEkqNacUrIlf0FxYIssvspnmDL0TODyNTd38fShFwHpIDJHfrKGAIo5QuwLmFHeDUtYx45UAoHqqISQfi/OBsGREEaMVGowU0vu4iAg6Sg3UeTe48QzikA4RtkzdPIJqpnznJGLRI5RxiEnywO6J6C+8PxdrN14VQhQz3hqaWUB5iE/AiWEr+XNNfuwQmQ6vQrtCLgvwV31YhzqS9CazJmWT2W2dLfyzSV/c+5opdHZOAwh6AeFG5vH+xSnxw6yOSYigI0P5+Lu/0BL50JJZF37eYtkL8x+u7wVqZrSwUcw3ebJ/UZJD2cESSAMPJzyeE2fpQkSTrwW0KpowkjmJUQI0b5woMKyGzqiAXiD34YqsDOLKOfvaiC6H4mwnPfzlgKdls9z0zWyykkO0OFxoBydAF2WQ+Qq834aRSt3vAtQi7tZkY6yrAIcH5qxm9lD3IM+huUL3iaL3K1nVE8TLwmk+VYeknENIek6mQ6LWzrnGe6MhZ85leBQl/rduDahPtuI1QzH2ziu5PNfh7MVhTXO9rTwVDv+0zr5Fw/aT4p8pzaAjjnGiylE5Tlcq1ugMDOgXl8wczFpO7VJnRmv65i0UD3WZgrMTmTTP0Si0PJ/DcZH7H+stmTuAWss4D30CkPOkxBC4Pr+4OidhNtukDfoLuz68Es0I71YL69KdmTgAEMnqwosi/r/rp4Yy8csky7bXvd3nbTsDUmyJUC6jAvh9w8pvpM3tNR/4WlpCCpPhjnZvG0q26KpbeNd00hxhg/Jae4RojsbBghECjnS2mRqsM9irG09lVk9UjZHAz10bbSk3rdzajaFz+Ztcc/rG4zZSZZTlOl1obN12yi6acaSUdFvVmtgqiN5bzAFJ2idrYDqI43iOOQ1Ph8qyeRL2861jwldjVeZiOdl4E2fRhWTmwSmo2eb3sfHV7GQB4+nj5vMkIHjMWDXj+rawHygrcVHW+S29tfm5J0LafYQQf6G/LzO05ILnFk4nWSe2H4dlhDBdWA==",
+  "cases": [
+    {
+      "manifest": {
+        "schemaVersion": 3,
+        "appId": "app-1",
+        "framework": "react-native",
+        "platform": "ios",
+        "channel": null,
+        "version": "fixture-1",
+        "sha256": "ef9adae2aaaf9fe2e7ebc5da1a4870b1cc0662a3a924d81f10b0ebedb790d01f",
+        "contentHash": "1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc",
+        "size": 846,
+        "runtimeVersion": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "strategy": "zip",
+        "forceImmediate": false,
+        "encryption": null,
+        "releaseId": "release-zip-plain",
+        "signature": {
+          "kid": "fixture",
+          "iat": 1000,
+          "exp": 31537000,
+          "sig": "MEYCIQCu2pJiUQmgmyJqHjoatdcgMIjckXHvB_NC8OT8lb-lrgIhAIRD-DMjsDaC47tmKzOwmDdt88eP0iHY3BVc7USHPLPu"
+        },
+        "url": "https://cdn.example/archive.zip"
+      },
+      "canonical": "MANIFEST:3\nappId:app-1\nframework:react-native\nplatform:ios\nchannel:null\nversion:fixture-1\nsha256:ef9adae2aaaf9fe2e7ebc5da1a4870b1cc0662a3a924d81f10b0ebedb790d01f\ncontentHash:1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc\nsize:846\nruntimeVersion:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nstrategy:zip\nforceImmediate:false\nencryption:null\nreleaseId:release-zip-plain\nkid:fixture\niat:1000\nexp:31537000"
+    },
+    {
+      "manifest": {
+        "schemaVersion": 3,
+        "appId": "app-1",
+        "framework": "react-native",
+        "platform": "ios",
+        "channel": null,
+        "version": "fixture-1",
+        "sha256": "4ac217bcdc44e1421558828a89dad1412cf668b1bd7ce521640a2ca613eb823d",
+        "contentHash": "1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc",
+        "size": 862,
+        "runtimeVersion": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "strategy": "zip",
+        "forceImmediate": false,
+        "encryption": {
+          "alg": "AES-256-GCM",
+          "kid": "04b3594f2da98912",
+          "wrapNonce": "mPwt706PYVoWwSpc",
+          "wrappedDek": "ouKrLKASApjWV0j8v33EWEuQkbI+jVbVyMiXwYRNUQMm67GRnwILGVO4c17Bp5AF",
+          "nonce": "cnucwVq9lphdXgCg"
+        },
+        "releaseId": "release-zip-encrypted",
+        "signature": {
+          "kid": "fixture",
+          "iat": 1000,
+          "exp": 31537000,
+          "sig": "MEYCIQDXx9cC1-P_EdX-hchar9pzP7jAgroaBJdOP_xqyl7GOgIhAKNyg1z733MmCnwRlXSxrOARBMsN2Zb7jO_junE_k5kG"
+        },
+        "url": "https://cdn.example/archive.zip"
+      },
+      "canonical": "MANIFEST:3\nappId:app-1\nframework:react-native\nplatform:ios\nchannel:null\nversion:fixture-1\nsha256:4ac217bcdc44e1421558828a89dad1412cf668b1bd7ce521640a2ca613eb823d\ncontentHash:1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc\nsize:862\nruntimeVersion:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nstrategy:zip\nforceImmediate:false\nencryption:AES-256-GCM|04b3594f2da98912|mPwt706PYVoWwSpc|ouKrLKASApjWV0j8v33EWEuQkbI+jVbVyMiXwYRNUQMm67GRnwILGVO4c17Bp5AF|cnucwVq9lphdXgCg\nreleaseId:release-zip-encrypted\nkid:fixture\niat:1000\nexp:31537000"
+    },
+    {
+      "manifest": {
+        "schemaVersion": 3,
+        "appId": "app-1",
+        "framework": "react-native",
+        "platform": "ios",
+        "channel": null,
+        "version": "fixture-1",
+        "sha256": "1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc",
+        "contentHash": "1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc",
+        "size": 412,
+        "runtimeVersion": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "strategy": "deltas",
+        "forceImmediate": false,
+        "encryption": null,
+        "releaseId": "release-deltas-plain",
+        "signature": {
+          "kid": "fixture",
+          "iat": 1000,
+          "exp": 31537000,
+          "sig": "MEUCIQCMw2JeOncDwwQKJu6O5VrNxFmkcpaRFVQ3fjaUGN0aagIgHCIfemt3AtvjqajtS9MTeupfCCNRte39r2MhqcQErMw"
+        },
+        "files": [
+          {
+            "path": "index.bundle",
+            "sha256": "3fbcc9bec555aafd9e0d415def1793a4a9a886347b1973385fe5007d28f47618",
+            "size": 19,
+            "url": "https://cdn.example/index.bundle"
+          },
+          {
+            "path": "otakit-bundle.json",
+            "sha256": "d6a9810161456f93de8a209da4e4d57f6fafade5e8275336795e0f2adccb0816",
+            "size": 342,
+            "url": "https://cdn.example/otakit-bundle.json"
+          },
+          {
+            "path": "assets/café #1%.txt",
+            "sha256": "d1acb7babcf9190dca4af54bd072d7051d01527622ef7dda72c6db05fab98281",
+            "size": 13,
+            "url": "https://cdn.example/assets%2Fcaf%C3%A9%20%231%25.txt"
+          },
+          {
+            "path": "expo-config.json",
+            "sha256": "c04ab18e6ea42f6580a0a9f8da5d560d5e5a5ee13c45d27263e242befa64671d",
+            "size": 18,
+            "url": "https://cdn.example/expo-config.json"
+          },
+          {
+            "path": "www.bundle/index.html",
+            "sha256": "3ec85d118c49f07362673b7837c60410d3f39e6fa73414a7c6fcd58094f87eb4",
+            "size": 20,
+            "url": "https://cdn.example/www.bundle%2Findex.html"
+          }
+        ]
+      },
+      "canonical": "MANIFEST:3\nappId:app-1\nframework:react-native\nplatform:ios\nchannel:null\nversion:fixture-1\nsha256:1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc\ncontentHash:1881a5be7f4958bf27c2a25edc20a0834c05ecde2fe4b35fb9a821e1a45830bc\nsize:412\nruntimeVersion:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nstrategy:deltas\nforceImmediate:false\nencryption:null\nreleaseId:release-deltas-plain\nkid:fixture\niat:1000\nexp:31537000"
+    }
+  ]
+}

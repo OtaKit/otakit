@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { accessActor } from '@/lib/audit-log';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { serviceErrorResponse } from '@/lib/services/http';
 import { prepareRevert } from '@/lib/services/releases';
@@ -20,6 +21,7 @@ export async function GET(
     return NextResponse.json(
       await prepareRevert({
         organizationId: access.access.organizationId,
+        actor: await accessActor(access.access),
         appId,
         releaseId,
       }),

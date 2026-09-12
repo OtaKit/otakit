@@ -6,6 +6,13 @@ import type { NativePackage } from './native-deps.js';
 import { CLI_VERSION, getCliUserAgent } from './version.js';
 
 export interface Bundle {
+  appId?: string;
+  framework?: 'react-native';
+  platform?: 'ios' | 'android';
+  contentHash?: string;
+  baselineBundleId?: string | null;
+  embeddedReceipt?: unknown;
+  encryption?: unknown;
   id: string;
   version: string;
   sha256: string;
@@ -52,7 +59,7 @@ export interface Release {
   autoRevertRatePercent?: number;
   autoRevertMinSample?: number;
   promotedAt: string;
-  promotedBy?: string;
+  promotedBy?: string | null;
   revertedAt?: string | null;
 }
 
@@ -62,6 +69,7 @@ export interface ReleaseResult {
   publicationStatus: 'published' | 'manifest_sync_pending';
   release: Release;
   previousRelease: Release | null;
+  currentRelease?: Release | null;
 }
 
 export class OtaKitApiError extends Error {
@@ -167,7 +175,38 @@ export class ApiClient {
     return `/api/v1/apps/${encodeURIComponent(this.appId)}${suffix}`;
   }
 
+  async prepareRNRelease(
+    bundleId: string,
+    channel: string | null,
+  ): Promise<{
+    rnIntent: { version: 1; actorKey: string; preparedAt: string };
+    platform: 'ios' | 'android';
+    runtimeVersion: string;
+    expectedCurrentReleaseId: string | null;
+    proposedBundle: { id: string; version: string; sha256: string };
+    baselineBundleId: string;
+  }> {
+    return this.request(this.appPath('/releases/prepare'), {
+      method: 'POST',
+      body: JSON.stringify({ bundleId, channel }),
+    });
+  }
+
+  async prepareBaselineAdoption(
+    declaration: unknown,
+  ): Promise<import('./react-native/baseline-adoption.js').BaselineAdoption> {
+    return this.request(this.appPath('/bundles/prepare-baseline-adoption'), {
+      method: 'POST',
+      body: JSON.stringify(declaration),
+    });
+  }
+
   async initiateUpload(options: {
+    platform?: 'ios' | 'android';
+    contentHash?: string;
+    files?: Array<{ path: string; sha256: string; size: number }>;
+    embeddedReceipt?: unknown;
+    baselineBundleId?: string;
     version: string;
     runtimeVersion?: string;
     size: number;
@@ -198,7 +237,20 @@ export class ApiClient {
     });
   }
 
+  async resumeRNZipUpload(
+    uploadId: string,
+  ): Promise<import('./react-native/upload.js').ResumeUpload> {
+    return this.request(this.appPath('/bundles/resume-upload'), {
+      method: 'POST',
+      body: JSON.stringify({ uploadId }),
+    });
+  }
+
   async initiateDeltaUpload(options: {
+    platform?: 'ios' | 'android';
+    contentHash?: string;
+    embeddedReceipt?: unknown;
+    baselineBundleId?: string;
     version: string;
     runtimeVersion?: string;
     files: DeltaFileDescriptor[];
@@ -220,10 +272,16 @@ export class ApiClient {
   async listBundles(options?: {
     limit?: number;
     offset?: number;
+    version?: string;
+    platform?: 'ios' | 'android';
+    runtimeVersion?: string;
   }): Promise<{ bundles: Bundle[]; total: number }> {
     const params = new URLSearchParams();
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.offset) params.set('offset', String(options.offset));
+    if (options?.version !== undefined) params.set('version', options.version);
+    if (options?.platform !== undefined) params.set('platform', options.platform);
+    if (options?.runtimeVersion !== undefined) params.set('runtimeVersion', options.runtimeVersion);
 
     const query = params.toString();
     return this.request(this.appPath(`/bundles${query ? `?${query}` : ''}`));
@@ -245,6 +303,7 @@ export class ApiClient {
       autoRevertMinSample?: number;
       expectedCurrentReleaseId?: string | null;
       idempotencyKey?: string;
+      rnIntent?: unknown;
       compatibilityDecision?: 'block' | 'proceed' | 'skip';
     },
   ): Promise<ReleaseResult> {
@@ -254,6 +313,7 @@ export class ApiClient {
       headers: { 'Idempotency-Key': options?.idempotencyKey ?? randomUUID() },
       body: JSON.stringify({
         bundleId,
+        rnIntent: options?.rnIntent,
         channel,
         ...(options && 'expectedCurrentReleaseId' in options
           ? { expectedCurrentReleaseId: options.expectedCurrentReleaseId }

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import type {
+  BundleTarget,
   Prisma,
   PrismaClient,
   ReleaseMutation,
@@ -10,6 +11,20 @@ import type {
 import { recordAuditLog, type AuditAction, type AuditActor } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
+import { releaseLaneLockKey as laneLockKey, releaseLaneWhere } from '@/lib/release-lanes';
+import {
+  assertFreshRNIntent,
+  assertRNReleaseTarget,
+  assertRNTarget,
+  databaseTime,
+  isReactNativeApp,
+  parseRNIntent,
+  prepareRNIntent,
+  RELEASE_IDEMPOTENCY_RETENTION_MS,
+  resolveRNBaseline,
+  rnArtifactSelect,
+  type RNIntent,
+} from './rn-releases';
 import { revertCurrentRelease } from '@/lib/releases';
 import {
   createEmptyEventCounts,
@@ -24,19 +39,21 @@ import {
   type NativeCompatibilityResult,
 } from './native-compatibility';
 
-const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const IDEMPOTENCY_RETENTION_MS = RELEASE_IDEMPOTENCY_RETENTION_MS;
 const RELEASE_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
 
 const releaseWithBundlesInclude = {
   bundle: {
     select: {
+      appId: true,
       version: true,
       runtimeVersion: true,
+      platform: true,
       sha256: true,
       nativePackages: true,
     },
   },
-  previousBundle: { select: { version: true } },
+  previousBundle: { select: { version: true, appId: true, platform: true, runtimeVersion: true } },
 } satisfies Prisma.ReleaseInclude;
 
 type ReleaseWithBundles = Prisma.ReleaseGetPayload<{
@@ -54,9 +71,11 @@ type ManifestSync = (
   channel: string | null,
   runtimeVersion: string | null,
   database?: PrismaClient | Prisma.TransactionClient,
+  platform?: BundleTarget,
 ) => Promise<void>;
 
 export type ReleaseSummary = {
+  platform?: 'ios' | 'android';
   id: string;
   channel: string | null;
   runtimeVersion: string | null;
@@ -82,6 +101,7 @@ export type PublishReleaseResult = {
   publicationStatus: PublicationStatus;
   release: ReleaseSummary;
   previousRelease: ReleaseSummary | null;
+  currentRelease?: ReleaseSummary | null;
   compatibility?: NativeCompatibilityResult;
 };
 
@@ -94,6 +114,9 @@ export type RevertReleaseResult = {
 };
 
 export type PrepareReleaseResult = {
+  rnIntent?: RNIntent;
+  baselineBundleId?: string;
+  platform?: 'ios' | 'android';
   appId: string;
   channel: string | null;
   runtimeVersion: string | null;
@@ -108,6 +131,8 @@ export type PrepareReleaseResult = {
 };
 
 export type PrepareRevertResult = {
+  rnIntent?: RNIntent;
+  platform?: 'ios' | 'android';
   appId: string;
   channel: string | null;
   runtimeVersion: string | null;
@@ -125,6 +150,7 @@ export type ListReleasesResult = {
 };
 
 export type PublishReleaseInput = {
+  rnIntent?: unknown;
   organizationId: string;
   actor: AuditActor;
   appId: string;
@@ -142,6 +168,7 @@ export type PublishReleaseInput = {
 };
 
 export type RevertReleaseInput = {
+  rnIntent?: unknown;
   organizationId: string;
   actor: AuditActor;
   appId: string;
@@ -183,10 +210,6 @@ function stableHash(value: Record<string, unknown>): string {
     .digest('hex');
 }
 
-function laneLockKey(appId: string, channel: string | null, runtimeVersion: string | null): string {
-  return `release-lane:${appId}:${channel ?? '__base__'}:${runtimeVersion ?? '__default__'}`;
-}
-
 async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promise<void> {
   // The PostgreSQL lock function returns the pseudo-type `void`, which Prisma
   // cannot deserialize through $queryRaw. Execute it without reading a result.
@@ -196,6 +219,7 @@ async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promi
 function toReleaseSummary(release: ReleaseForSummary): ReleaseSummary {
   return {
     id: release.id,
+    ...(release.platform !== 'cross' ? { platform: release.platform } : {}),
     channel: release.channel,
     runtimeVersion: release.bundle.runtimeVersion,
     bundleId: release.bundleId,
@@ -352,9 +376,19 @@ async function finishManifestSync<T extends PublishReleaseResult | RevertRelease
     await database.$transaction(async (tx) => {
       await lockTransaction(
         tx,
-        laneLockKey(mutation.appId, mutation.channel, mutation.runtimeVersion),
+        laneLockKey(mutation.appId, mutation.channel, mutation.runtimeVersion, mutation.platform),
       );
-      await syncManifest(mutation.appId, mutation.channel, mutation.runtimeVersion, tx);
+      if (mutation.platform === 'cross') {
+        await syncManifest(mutation.appId, mutation.channel, mutation.runtimeVersion, tx);
+      } else {
+        await syncManifest(
+          mutation.appId,
+          mutation.channel,
+          mutation.runtimeVersion,
+          tx,
+          mutation.platform,
+        );
+      }
       await tx.releaseMutation.update({
         where: { id: mutation.id },
         data: {
@@ -384,17 +418,31 @@ async function findCurrentRelease(
   appId: string,
   channel: string | null,
   runtimeVersion: string | null,
+  platform: BundleTarget = 'cross',
 ): Promise<ReleaseWithBundles | null> {
-  return database.release.findFirst({
-    where: {
-      appId,
-      channel,
-      revertedAt: null,
-      bundle: { is: { runtimeVersion } },
-    },
+  const release = await database.release.findFirst({
+    where: { ...releaseLaneWhere(appId, channel, runtimeVersion, platform), revertedAt: null },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
     include: releaseWithBundlesInclude,
   });
+  if (release && platform !== 'cross') assertRNReleaseTarget(release);
+  return release;
+}
+
+async function withRNCurrentRelease<T extends PublishReleaseResult | RevertReleaseResult>(
+  database: PrismaClient,
+  mutation: ReleaseMutation,
+  result: T,
+): Promise<T> {
+  if (mutation.platform === 'cross') return result;
+  const current = await findCurrentRelease(
+    database,
+    mutation.appId,
+    mutation.channel,
+    mutation.runtimeVersion,
+    mutation.platform,
+  );
+  return { ...result, currentRelease: current ? toReleaseSummary(current) : null };
 }
 
 export async function listReleases(input: {
@@ -451,7 +499,7 @@ export async function prepareRelease(
   input: Pick<
     PublishReleaseInput,
     'organizationId' | 'appId' | 'bundleId' | 'channel' | 'compatibilityDecision'
-  >,
+  > & { actor?: AuditActor },
   dependencies: Pick<ServiceDependencies, 'database'> = {},
 ): Promise<PrepareReleaseResult> {
   validateLane(input.channel);
@@ -463,10 +511,7 @@ export async function prepareRelease(
       app: { organizationId: input.organizationId },
     },
     select: {
-      id: true,
-      version: true,
-      sha256: true,
-      runtimeVersion: true,
+      ...rnArtifactSelect,
       nativePackages: true,
     },
   });
@@ -474,19 +519,31 @@ export async function prepareRelease(
     throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
   }
 
+  const rn = await isReactNativeApp(database, input.appId, input.organizationId);
+  const baseline = rn ? await resolveRNBaseline(database, bundle) : null;
   const currentRelease = await findCurrentRelease(
     database,
     input.appId,
     input.channel,
     bundle.runtimeVersion,
+    rn ? bundle.platform : 'cross',
   );
-  const compatibility = releaseCompatibility(
-    bundle.nativePackages,
-    currentRelease?.bundle.nativePackages ?? null,
-    input.compatibilityDecision,
-  );
+  const compatibility: NativeCompatibilityResult = rn
+    ? { status: 'compatible', findings: [] }
+    : releaseCompatibility(
+        bundle.nativePackages,
+        currentRelease?.bundle.nativePackages ?? null,
+        input.compatibilityDecision,
+      );
 
   return {
+    ...(rn
+      ? {
+          rnIntent: await prepareRNIntent(database, input.actor),
+          baselineBundleId: baseline!.id,
+          platform: bundle.platform as 'ios' | 'android',
+        }
+      : {}),
     appId: input.appId,
     channel: input.channel,
     runtimeVersion: bundle.runtimeVersion,
@@ -503,6 +560,7 @@ export async function getReleaseState(
     appId: string;
     channel: string | null;
     runtimeVersion: string | null;
+    platform?: unknown;
   },
   dependencies: Pick<ServiceDependencies, 'database'> = {},
 ) {
@@ -510,18 +568,23 @@ export async function getReleaseState(
   const database = dependencies.database ?? db;
   const app = await database.app.findFirst({
     where: { id: input.appId, organizationId: input.organizationId },
-    select: { id: true },
+    select: { id: true, framework: true },
   });
   if (!app) {
     throw new OtaKitServiceError('APP_NOT_FOUND', 'App not found', 404);
   }
+  const rn = app.framework === 'react_native';
+  if (rn) assertRNTarget(input.platform, input.runtimeVersion);
+  const platform = rn ? (input.platform as 'ios' | 'android') : 'cross';
   const release = await findCurrentRelease(
     database,
     input.appId,
     input.channel,
     input.runtimeVersion,
+    platform,
   );
   return {
+    ...(rn ? { platform } : {}),
     appId: input.appId,
     channel: input.channel,
     runtimeVersion: input.runtimeVersion,
@@ -536,9 +599,19 @@ export async function publishRelease(
   validateReleaseOptions(input);
   const database = dependencies.database ?? db;
   const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
+  const rn = await isReactNativeApp(database, input.appId, input.organizationId);
+  const rnIntent = rn
+    ? parseRNIntent(
+        input.rnIntent,
+        input.actor,
+        input.idempotencyKey,
+        input.expectedCurrentReleaseId,
+      )
+    : null;
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
   const operation: ReleaseMutationOperation = 'publish';
   const requestHash = stableHash({
+    ...(rnIntent ? { rnIntent } : {}),
     appId: input.appId,
     bundleId: input.bundleId,
     channel: input.channel,
@@ -568,7 +641,11 @@ export async function publishRelease(
         },
       },
     });
-    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
+    if (
+      existing &&
+      existing.expiresAt <= (rn ? await databaseTime(tx) : new Date()) &&
+      existing.status !== 'database_committed'
+    ) {
       await tx.releaseMutation.delete({ where: { id: existing.id } });
       existing = null;
     }
@@ -577,6 +654,8 @@ export async function publishRelease(
       return { mutation: existing, created: false };
     }
 
+    if (rnIntent) await assertFreshRNIntent(tx, rnIntent);
+
     const bundle = await tx.bundle.findFirst({
       where: {
         id: input.bundleId,
@@ -584,9 +663,7 @@ export async function publishRelease(
         app: { organizationId: input.organizationId },
       },
       select: {
-        id: true,
-        version: true,
-        runtimeVersion: true,
+        ...rnArtifactSelect,
         nativePackages: true,
       },
     });
@@ -594,19 +671,27 @@ export async function publishRelease(
       throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
     }
 
-    await lockTransaction(tx, laneLockKey(input.appId, input.channel, bundle.runtimeVersion));
-    const currentRelease = await findCurrentRelease(
+    const baseline = rn ? await resolveRNBaseline(tx, bundle) : null;
+    const platform = rn ? bundle.platform : 'cross';
+    await lockTransaction(
+      tx,
+      laneLockKey(input.appId, input.channel, bundle.runtimeVersion, platform),
+    );
+    let currentRelease = await findCurrentRelease(
       tx,
       input.appId,
       input.channel,
       bundle.runtimeVersion,
+      platform,
     );
     assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
-    const compatibility = releaseCompatibility(
-      bundle.nativePackages,
-      currentRelease?.bundle.nativePackages ?? null,
-      input.compatibilityDecision,
-    );
+    const compatibility: NativeCompatibilityResult = rn
+      ? { status: 'compatible', findings: [] }
+      : releaseCompatibility(
+          bundle.nativePackages,
+          currentRelease?.bundle.nativePackages ?? null,
+          input.compatibilityDecision,
+        );
     if (input.enforceCompatibility) {
       enforceReleaseCompatibility(compatibility, input.compatibilityDecision);
     }
@@ -619,10 +704,40 @@ export async function publishRelease(
       );
     }
 
+    let promotedAt: Date | undefined;
+    if (rn) {
+      const latest = await tx.release.findFirst({
+        where: releaseLaneWhere(input.appId, input.channel, bundle.runtimeVersion, platform),
+        orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+        select: { promotedAt: true },
+      });
+      promotedAt = new Date(
+        Math.max((await databaseTime(tx)).getTime(), (latest?.promotedAt.getTime() ?? 0) + 1),
+      );
+      if (!currentRelease && baseline!.id !== bundle.id) {
+        currentRelease = await tx.release.create({
+          data: {
+            appId: input.appId,
+            bundleId: baseline!.id,
+            platform,
+            runtimeVersion: bundle.runtimeVersion,
+            channel: input.channel,
+            promotedBy: input.actor.actorLabel,
+            promotedAt,
+          },
+          include: releaseWithBundlesInclude,
+        });
+        promotedAt = new Date(promotedAt.getTime() + 1);
+      }
+    }
+
     const release = await tx.release.create({
       data: {
         appId: input.appId,
+        ...(promotedAt ? { promotedAt } : {}),
         bundleId: bundle.id,
+        platform: bundle.platform,
+        runtimeVersion: bundle.runtimeVersion,
         previousBundleId: currentRelease?.bundleId ?? null,
         channel: input.channel,
         forceImmediate: input.forceImmediate ?? false,
@@ -654,10 +769,13 @@ export async function publishRelease(
         status: 'database_committed',
         appId: input.appId,
         releaseId: release.id,
+        platform: bundle.platform,
         channel: input.channel,
         runtimeVersion: bundle.runtimeVersion,
         result: jsonValue(initialResult),
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
+        expiresAt: new Date(
+          (rn ? (await databaseTime(tx)).getTime() : Date.now()) + IDEMPOTENCY_RETENTION_MS,
+        ),
       },
     });
     return { mutation, created: true };
@@ -665,7 +783,7 @@ export async function publishRelease(
 
   let result = storedResult<PublishReleaseResult>(transactionResult.mutation);
   if (transactionResult.mutation.status === 'published') {
-    return result;
+    return withRNCurrentRelease(database, transactionResult.mutation, result);
   }
 
   if (transactionResult.created) {
@@ -702,12 +820,12 @@ export async function publishRelease(
   }
 
   result = await finishManifestSync(database, transactionResult.mutation, result, syncManifest);
-  return result;
+  return withRNCurrentRelease(database, transactionResult.mutation, result);
 }
 
 /**
- * Schema-independent compatibility path used until an operator explicitly
- * enables the additive ReleaseMutation migration. This intentionally keeps
+ * Compatibility path used until an operator explicitly enables durable
+ * ReleaseMutation behavior. This intentionally keeps
  * the established production behavior while returning the superset response
  * shape understood by newer clients.
  */
@@ -717,6 +835,8 @@ export async function publishReleaseLegacy(
 ): Promise<PublishReleaseResult> {
   validateReleaseOptions(input);
   const database = dependencies.database ?? db;
+  if (await isReactNativeApp(database, input.appId, input.organizationId))
+    return publishRelease(input, dependencies);
   const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
   const bundle = await database.bundle.findFirst({
     where: {
@@ -724,7 +844,7 @@ export async function publishReleaseLegacy(
       appId: input.appId,
       app: { organizationId: input.organizationId },
     },
-    select: { id: true, runtimeVersion: true },
+    select: { id: true, runtimeVersion: true, platform: true },
   });
   if (!bundle) {
     throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
@@ -749,6 +869,8 @@ export async function publishReleaseLegacy(
     data: {
       appId: input.appId,
       bundleId: bundle.id,
+      platform: bundle.platform,
+      runtimeVersion: bundle.runtimeVersion,
       previousBundleId: currentRelease?.bundleId ?? null,
       channel: input.channel,
       forceImmediate: input.forceImmediate ?? false,
@@ -794,7 +916,9 @@ export async function publishReleaseLegacy(
 }
 
 export async function prepareRevert(
-  input: Pick<RevertReleaseInput, 'organizationId' | 'appId' | 'releaseId'>,
+  input: Pick<RevertReleaseInput, 'organizationId' | 'appId' | 'releaseId'> & {
+    actor?: AuditActor;
+  },
   dependencies: Pick<ServiceDependencies, 'database'> = {},
 ): Promise<PrepareRevertResult> {
   const database = dependencies.database ?? db;
@@ -813,11 +937,15 @@ export async function prepareRevert(
     throw new OtaKitServiceError('RELEASE_NOT_CURRENT', 'Release is already reverted', 409);
   }
 
+  const rn = await isReactNativeApp(database, input.appId, input.organizationId);
+  if (rn) assertRNReleaseTarget(release);
+  const platform = rn ? release.platform : 'cross';
   const currentRelease = await findCurrentRelease(
     database,
     input.appId,
     release.channel,
     release.bundle.runtimeVersion,
+    platform,
   );
   if (currentRelease?.id !== release.id) {
     throw new OtaKitServiceError(
@@ -829,17 +957,28 @@ export async function prepareRevert(
 
   const resultingRelease = await database.release.findFirst({
     where: {
-      appId: input.appId,
-      channel: release.channel,
+      ...releaseLaneWhere(input.appId, release.channel, release.bundle.runtimeVersion, platform),
       revertedAt: null,
       id: { not: release.id },
-      bundle: { is: { runtimeVersion: release.bundle.runtimeVersion } },
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
     include: releaseWithBundlesInclude,
   });
 
+  if (rn && !resultingRelease)
+    throw new OtaKitServiceError(
+      'RN_BASELINE_REQUIRED',
+      'Cannot revert the final RN baseline release',
+      409,
+    );
+  if (rn && resultingRelease) assertRNReleaseTarget(resultingRelease);
   return {
+    ...(rn
+      ? {
+          rnIntent: await prepareRNIntent(database, input.actor),
+          platform: release.platform as 'ios' | 'android',
+        }
+      : {}),
     appId: input.appId,
     channel: release.channel,
     runtimeVersion: release.bundle.runtimeVersion,
@@ -921,9 +1060,19 @@ export async function revertRelease(
 ): Promise<RevertReleaseResult> {
   const database = dependencies.database ?? db;
   const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
+  const rn = await isReactNativeApp(database, input.appId, input.organizationId);
+  const rnIntent = rn
+    ? parseRNIntent(
+        input.rnIntent,
+        input.actor,
+        input.idempotencyKey,
+        input.expectedCurrentReleaseId,
+      )
+    : null;
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
   const operation: ReleaseMutationOperation = 'revert';
   const requestHash = stableHash({
+    ...(rnIntent ? { rnIntent } : {}),
     appId: input.appId,
     releaseId: input.releaseId,
     forceImmediate: input.forceImmediate ?? null,
@@ -948,7 +1097,11 @@ export async function revertRelease(
         },
       },
     });
-    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
+    if (
+      existing &&
+      existing.expiresAt <= (rn ? await databaseTime(tx) : new Date()) &&
+      existing.status !== 'database_committed'
+    ) {
       await tx.releaseMutation.delete({ where: { id: existing.id } });
       existing = null;
     }
@@ -957,6 +1110,7 @@ export async function revertRelease(
       return { mutation: existing, created: false };
     }
 
+    if (rnIntent) await assertFreshRNIntent(tx, rnIntent);
     const release = await tx.release.findFirst({
       where: {
         id: input.releaseId,
@@ -969,15 +1123,18 @@ export async function revertRelease(
       throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
     }
 
+    if (rn) assertRNReleaseTarget(release);
+    const platform = rn ? release.platform : 'cross';
     await lockTransaction(
       tx,
-      laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
+      laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion, platform),
     );
     const currentRelease = await findCurrentRelease(
       tx,
       input.appId,
       release.channel,
       release.bundle.runtimeVersion,
+      platform,
     );
     assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
     if (release.revertedAt || currentRelease?.id !== release.id) {
@@ -990,6 +1147,29 @@ export async function revertRelease(
       );
     }
 
+    if (rn) {
+      const prior = await tx.release.findFirst({
+        where: {
+          ...releaseLaneWhere(
+            input.appId,
+            release.channel,
+            release.bundle.runtimeVersion,
+            platform,
+          ),
+          revertedAt: null,
+          id: { not: release.id },
+        },
+        orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+        include: releaseWithBundlesInclude,
+      });
+      if (!prior)
+        throw new OtaKitServiceError(
+          'RN_BASELINE_REQUIRED',
+          'Cannot revert the final RN baseline release',
+          409,
+        );
+      assertRNReleaseTarget(prior);
+    }
     const revertedAt = new Date();
     const revertedRelease = await tx.release.update({
       where: { id: release.id },
@@ -1007,6 +1187,7 @@ export async function revertRelease(
       input.appId,
       release.channel,
       release.bundle.runtimeVersion,
+      platform,
     );
     if (input.forceImmediate !== undefined && resultingRelease) {
       resultingRelease = await tx.release.update({
@@ -1035,10 +1216,13 @@ export async function revertRelease(
         status: 'database_committed',
         appId: input.appId,
         releaseId: release.id,
+        platform: release.bundle.platform,
         channel: release.channel,
         runtimeVersion: release.bundle.runtimeVersion,
         result: jsonValue(initialResult),
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
+        expiresAt: new Date(
+          (rn ? (await databaseTime(tx)).getTime() : Date.now()) + IDEMPOTENCY_RETENTION_MS,
+        ),
       },
     });
     return { mutation, created: true };
@@ -1046,7 +1230,7 @@ export async function revertRelease(
 
   let result = storedResult<RevertReleaseResult>(transactionResult.mutation);
   if (transactionResult.mutation.status === 'published') {
-    return result;
+    return withRNCurrentRelease(database, transactionResult.mutation, result);
   }
 
   if (transactionResult.created) {
@@ -1069,10 +1253,11 @@ export async function revertRelease(
   }
 
   result = await finishManifestSync(database, transactionResult.mutation, result, syncManifest);
-  return result;
+  return withRNCurrentRelease(database, transactionResult.mutation, result);
 }
 
 export async function revertReleaseLegacy(input: RevertReleaseInput): Promise<RevertReleaseResult> {
+  if (await isReactNativeApp(db, input.appId, input.organizationId)) return revertRelease(input);
   if (
     input.expectedCurrentReleaseId !== undefined &&
     input.expectedCurrentReleaseId !== input.releaseId
@@ -1152,7 +1337,16 @@ export async function reconcilePendingReleaseMutations(
   await database.releaseMutation.deleteMany({
     where: {
       status: 'published',
+      platform: 'cross',
       expiresAt: { lt: new Date() },
+    },
+  });
+
+  await database.releaseMutation.deleteMany({
+    where: {
+      status: 'published',
+      platform: { not: 'cross' },
+      expiresAt: { lt: await databaseTime(database) },
     },
   });
 

@@ -10,6 +10,7 @@ export type OrganizationMembership = {
 };
 
 export type AppSummary = {
+  framework?: 'react-native';
   id: string;
   slug: string;
   createdAt: string;
@@ -62,6 +63,7 @@ export type EventCountSummary = {
 };
 
 export type BundleSummaryItem = {
+  platform?: 'ios' | 'android';
   version: string;
   id: string;
   size: number;
@@ -81,6 +83,7 @@ export type BundleSummaryItem = {
 };
 
 export type ReleaseHistoryItem = {
+  platform?: 'ios' | 'android';
   id: string;
   channel: string | null;
   runtimeVersion: string | null;

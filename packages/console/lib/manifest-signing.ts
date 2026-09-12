@@ -35,6 +35,62 @@ export interface ManifestSignature {
   exp: number;
 }
 
+export interface RNManifestSignatureInput extends ManifestSignatureInput {
+  platform: 'ios' | 'android';
+  runtimeVersion: string;
+  contentHash: string;
+  releaseId: string;
+}
+
+/** RN v3 is a separate domain. Never change the Capacitor v2 canonicalizer. */
+export function buildRNCanonicalPayload(
+  fields: RNManifestSignatureInput,
+  kid: string,
+  iat: number,
+  exp: number,
+): string {
+  return [
+    'MANIFEST:3',
+    `appId:${fields.appId}`,
+    'framework:react-native',
+    `platform:${fields.platform}`,
+    `channel:${JSON.stringify(fields.channel)}`,
+    `version:${fields.version}`,
+    `sha256:${fields.sha256}`,
+    `contentHash:${fields.contentHash}`,
+    `size:${fields.size}`,
+    `runtimeVersion:${fields.runtimeVersion}`,
+    `strategy:${fields.strategy ?? 'zip'}`,
+    `forceImmediate:${fields.forceImmediate ? 'true' : 'false'}`,
+    `encryption:${encodeEncryptionForPayload(fields.encryption)}`,
+    `releaseId:${fields.releaseId}`,
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
+export function signRNManifest(fields: RNManifestSignatureInput): ManifestSignature {
+  const key = getSigningKey();
+  if (!key) throw new Error('RN manifests require signing; unsigned RN publication is disabled');
+  if (
+    key.privateKey.asymmetricKeyType !== 'ec' ||
+    key.privateKey.asymmetricKeyDetails?.namedCurve !== 'prime256v1'
+  ) {
+    throw new Error('RN manifest signing requires an ECDSA P-256 key');
+  }
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + DEFAULT_MANIFEST_TTL_SECONDS;
+  const sig = crypto
+    .sign(
+      'sha256',
+      Buffer.from(buildRNCanonicalPayload(fields, key.kid, iat, exp), 'utf8'),
+      key.privateKey,
+    )
+    .toString('base64url');
+  return { kid: key.kid, sig, iat, exp };
+}
+
 let cachedKey: { privateKey: crypto.KeyObject; kid: string } | null = null;
 let keyChecked = false;
 

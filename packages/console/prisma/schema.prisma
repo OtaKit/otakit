@@ -12,6 +12,17 @@ enum Platform {
   android
 }
 
+enum AppFramework {
+  capacitor
+  react_native @map("react-native")
+}
+
+enum BundleTarget {
+  cross
+  ios
+  android
+}
+
 enum MemberRole {
   owner
   admin
@@ -410,6 +421,7 @@ model App {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
   slug           String
+  framework      AppFramework    @default(capacitor)
   bundles        Bundle[]
   releases       Release[]
   uploadSessions UploadSession[]
@@ -425,6 +437,7 @@ model Bundle {
   app                App             @relation(fields: [appId], references: [id], onDelete: Cascade)
   appId              String
   version            String
+  platform           BundleTarget    @default(cross)
   sha256             String
   storageKey         String
   size               Int
@@ -435,29 +448,42 @@ model Bundle {
   metadata           Json?
   nativePackages     Json?
   encryption         Json?
+  // RN plaintext identity and archived baseline provenance. Unused for Capacitor.
+  contentHash        String?
+  contentFiles       Json?
+  embeddedReceipt    Json?
+  baselineBundleId   String?
+  baselineBundle     Bundle?         @relation("BundleBaseline", fields: [baselineBundleId], references: [id], onDelete: Restrict)
+  baselineForBundles Bundle[]        @relation("BundleBaseline")
+  baselineForUploads UploadSession[] @relation("UploadBaseline")
   createdAt          DateTime        @default(now())
   releases           Release[]       @relation("ReleaseBundle")
   previousInReleases Release[]       @relation("ReleasePreviousBundle")
   uploadSessions     UploadSession[]
 
-  @@unique([appId, version])
+  // Cross-only app/version uniqueness is enforced by a partial SQL index.
+  @@unique([appId, platform, runtimeVersion, version], map: "Bundle_target_version_key")
   @@index([appId, createdAt(sort: Desc)])
+  @@index([baselineBundleId])
 }
 
 model Release {
-  id                       String    @id @default(uuid())
-  app                      App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  id                       String       @id @default(uuid())
+  app                      App          @relation(fields: [appId], references: [id], onDelete: Cascade)
   appId                    String
-  bundle                   Bundle    @relation("ReleaseBundle", fields: [bundleId], references: [id], onDelete: Restrict)
+  bundle                   Bundle       @relation("ReleaseBundle", fields: [bundleId], references: [id], onDelete: Restrict)
   bundleId                 String
-  previousBundle           Bundle?   @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
+  // Copied from Bundle by new writers. Keep reads on Bundle during mixed deployment.
+  platform                 BundleTarget @default(cross)
+  runtimeVersion           String?
+  previousBundle           Bundle?      @relation("ReleasePreviousBundle", fields: [previousBundleId], references: [id], onDelete: SetNull)
   previousBundleId         String?
   channel                  String?
-  forceImmediate           Boolean   @default(false)
-  autoRevert               Boolean   @default(false)
-  autoRevertRatePercent    Int       @default(20)
-  autoRevertMinSample      Int       @default(50)
-  promotedAt               DateTime  @default(now())
+  forceImmediate           Boolean      @default(false)
+  autoRevert               Boolean      @default(false)
+  autoRevertRatePercent    Int          @default(20)
+  autoRevertMinSample      Int          @default(50)
+  promotedAt               DateTime     @default(now())
   promotedBy               String?
   revertedAt               DateTime?
   revertedBy               String?
@@ -466,6 +492,7 @@ model Release {
   autoRevertAlertedAt      DateTime?
 
   @@index([appId, channel, promotedAt(sort: Desc)])
+  @@index([appId, platform, channel, runtimeVersion, revertedAt, promotedAt(sort: Desc), id(sort: Desc)], map: "Release_current_lane_idx")
   @@index([bundleId, promotedAt(sort: Desc)])
   @@index([autoRevertAlertedAt, autoRevertAlertClaimedAt])
 }
@@ -480,6 +507,7 @@ model ReleaseMutation {
   requestHash    String
   status         ReleaseMutationStatus
   appId          String
+  platform       BundleTarget             @default(cross)
   releaseId      String?
   channel        String?
   runtimeVersion String?
@@ -495,34 +523,41 @@ model ReleaseMutation {
   @@unique([organizationId, actorKey, operation, idempotencyKey], map: "ReleaseMutation_organizationId_actorKey_operation_idempoten_key")
   @@index([status, updatedAt])
   @@index([appId, channel, runtimeVersion, createdAt(sort: Desc)])
+  @@index([appId, platform, channel, runtimeVersion, createdAt(sort: Desc)], map: "ReleaseMutation_target_lane_idx")
   @@index([expiresAt])
 }
 
 model UploadSession {
-  id             String              @id @default(uuid())
-  app            App                 @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId          String
-  version        String
-  expectedSha256 String
-  expectedSize   Int
-  actualSize     Int?
-  runtimeVersion String?
-  // 'zip' or 'deltas'; for deltas, files holds the validated
-  // [{ path, sha256, size }] list carried from initiate to finalize
-  strategy       String              @default("zip")
-  files          Json?
-  metadata       Json?
-  nativePackages Json?
-  encryption     Json?
-  storageKey     String
-  status         UploadSessionStatus @default(initiated)
-  bundle         Bundle?             @relation(fields: [bundleId], references: [id], onDelete: SetNull)
-  bundleId       String?
-  expiresAt      DateTime
-  finalizedAt    DateTime?
-  createdAt      DateTime            @default(now())
+  id               String              @id @default(uuid())
+  app              App                 @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId            String
+  version          String
+  platform         BundleTarget        @default(cross)
+  expectedSha256   String
+  expectedSize     Int
+  actualSize       Int?
+  runtimeVersion   String?
+  // 'zip' or 'deltas'; files holds the validated [{ path, sha256, size }]
+  // inventory for deltas and RN ZIPs, carried from initiate to finalize.
+  strategy         String              @default("zip")
+  files            Json?
+  metadata         Json?
+  nativePackages   Json?
+  encryption       Json?
+  contentHash      String?
+  embeddedReceipt  Json?
+  baselineBundleId String?
+  baselineBundle   Bundle?             @relation("UploadBaseline", fields: [baselineBundleId], references: [id], onDelete: Restrict)
+  storageKey       String
+  status           UploadSessionStatus @default(initiated)
+  bundle           Bundle?             @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  bundleId         String?
+  expiresAt        DateTime
+  finalizedAt      DateTime?
+  createdAt        DateTime            @default(now())
 
   @@index([appId, status, createdAt(sort: Desc)])
   @@index([expiresAt, status])
   @@index([bundleId])
+  @@index([baselineBundleId])
 }

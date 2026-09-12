@@ -19,6 +19,7 @@ import { logoutCommand } from './commands/logout.js';
 import { mcpCommand } from './commands/mcp.js';
 import { organizationCommand } from './commands/organization.js';
 import { CLI_VERSION } from './lib/version.js';
+import { reactNativeCommand } from './commands/react-native.js';
 
 const program = new Command();
 
@@ -43,5 +44,6 @@ program.addCommand(whoamiCommand);
 program.addCommand(logoutCommand);
 program.addCommand(mcpCommand);
 program.addCommand(organizationCommand);
+program.addCommand(reactNativeCommand);
 
 program.parse();

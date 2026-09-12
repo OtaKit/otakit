@@ -37,5 +37,10 @@
     "prettier": "^3.8.1",
     "prettier-plugin-java": "^2.8.1",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/cli@57.0.19>@expo/router-server": "57.0.8"
+    }
   }
 }

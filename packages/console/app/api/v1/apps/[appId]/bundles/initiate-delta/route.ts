@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { db } from '@/lib/db';
+import { getUploadFramework, prepareRNUpload } from '@/lib/services/rn-uploads';
+import { serviceErrorResponse } from '@/lib/services/http';
 import {
   computeFilesHash,
   parseDeltaFiles,
@@ -54,6 +56,13 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
+  let framework;
+  try {
+    framework = await getUploadFramework(appId, body.platform);
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
+
   const rawVersion = body.version;
   if (typeof rawVersion !== 'string' || rawVersion.trim().length === 0) {
     return NextResponse.json({ error: 'Missing version' }, { status: 400 });
@@ -85,7 +94,7 @@ export async function POST(
     );
   }
 
-  const parsed = parseDeltaFiles(body.files);
+  const parsed = parseDeltaFiles(body.files, framework);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
@@ -95,9 +104,28 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid nativePackages' }, { status: 400 });
   }
 
-  const existing = await db.bundle.findUnique({
+  let rnFields;
+  try {
+    rnFields =
+      framework === 'react_native'
+        ? await prepareRNUpload(appId, body, {
+            version,
+            sha256: computeFilesHash(files),
+            size: parsed.totalSize,
+            strategy: 'deltas',
+            encryption: body.encryption,
+          })
+        : undefined;
+  } catch (error) {
+    return serviceErrorResponse(error);
+  }
+
+  const existing = await db.bundle.findFirst({
     where: {
-      appId_version: { appId, version },
+      appId,
+      version,
+      platform: rnFields?.platform ?? 'cross',
+      ...(rnFields ? { runtimeVersion } : {}),
     },
     select: { id: true },
   });
@@ -154,6 +182,7 @@ export async function POST(
           : (body.nativePackages as Prisma.InputJsonValue),
       storageKey,
       expiresAt: sessionExpiresAt,
+      ...rnFields,
     },
   });
 

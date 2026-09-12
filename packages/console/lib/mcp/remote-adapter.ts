@@ -294,6 +294,8 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     const response = await listBundles({
       appId,
       version: optionalString(input, 'version'),
+      platform: optionalString(input, 'platform'),
+      runtimeVersion: optionalString(input, 'runtimeVersion'),
       limit,
       offset,
     });
@@ -378,6 +380,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       appId,
       channel: nullableString(input, 'channel'),
       runtimeVersion: nullableString(input, 'runtimeVersion'),
+      platform: input.platform,
     });
     return toolEnvelope(
       state.currentRelease
@@ -392,6 +395,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     await this.ensureApp(appId);
     const preview = await prepareRelease({
       organizationId: this.connection.access.organizationId,
+      actor: await accessActor(this.connection.access),
       appId,
       bundleId: stringInput(input, 'bundleId'),
       channel: nullableString(input, 'channel'),
@@ -426,6 +430,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       channel: nullableString(input, 'channel'),
       expectedCurrentReleaseId: nullableString(input, 'expectedCurrentReleaseId'),
       idempotencyKey: stringInput(input, 'idempotencyKey'),
+      rnIntent: input.rnIntent,
       compatibilityDecision:
         (optionalString(input, 'compatibilityDecision') as
           | 'block'
@@ -440,7 +445,9 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     return toolEnvelope(
       pending
         ? 'Release is recorded, but manifest synchronization is pending.'
-        : `Published release ${result.release.id}.`,
+        : result.currentRelease !== undefined && result.currentRelease?.id !== result.release.id
+          ? `Publication ${result.release.id} completed previously; the lane has since changed.`
+          : `Published release ${result.release.id}.`,
       json(result),
       {
         warnings: pending
@@ -518,6 +525,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     await this.ensureApp(appId);
     const preview = await prepareRevert({
       organizationId: this.connection.access.organizationId,
+      actor: await accessActor(this.connection.access),
       appId,
       releaseId: stringInput(input, 'releaseId'),
     });
@@ -538,6 +546,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       releaseId: stringInput(input, 'releaseId'),
       expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
       idempotencyKey: stringInput(input, 'idempotencyKey'),
+      rnIntent: input.rnIntent,
       forceImmediate: booleanInput(input, 'forceImmediate'),
       auditMetadata: invocationMetadata(this.connection),
     });

@@ -1,0 +1,4 @@
+# Generated receipts/payload cannot contribute to their own native runtime identity.
+ios/HelloWorld/OtaKitFixture/**
+
+android/app/src/main/assets/OtaKitFixture/**

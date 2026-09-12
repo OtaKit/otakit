@@ -207,6 +207,7 @@ export async function POST(
       autoRevertRatePercent,
       autoRevertMinSample,
       expectedCurrentReleaseId,
+      rnIntent: body.rnIntent,
       idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
       compatibilityDecision: rawCompatibilityDecision,
       enforceCompatibility: rawCompatibilityDecision !== undefined,
