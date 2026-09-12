@@ -262,6 +262,16 @@ export class ApiClient {
     });
   }
 
+  async resumeRNDeltaUpload(
+    uploadId: string,
+    files: DeltaFileDescriptor[],
+  ): Promise<import('./react-native/upload.js').ResumeDeltaUpload> {
+    return this.request(this.appPath('/bundles/resume-delta'), {
+      method: 'POST',
+      body: JSON.stringify({ uploadId, files }),
+    });
+  }
+
   async finalizeDeltaUpload(options: { uploadId: string }): Promise<Bundle> {
     return this.request(this.appPath('/bundles/finalize-delta'), {
       method: 'POST',

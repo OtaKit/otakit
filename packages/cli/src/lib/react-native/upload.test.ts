@@ -33,9 +33,13 @@ const api = {
   resumeRNZipUpload: vi.fn(),
   finalizeUpload: vi.fn(),
   prepareBaselineAdoption: vi.fn(),
+  initiateDeltaUpload: vi.fn(),
+  resumeRNDeltaUpload: vi.fn(),
+  finalizeDeltaUpload: vi.fn(),
 };
 const fetcher = vi.fn<typeof fetch>();
 const sessions = new Map<string, UploadDeclaration>();
+const uploadedFiles = new Set<string>();
 const options = () => ({ directory, scope, encryptionKey, api, fetcher });
 const saved = async () =>
   JSON.parse(await readFile(join(directory, 'upload.json'), 'utf8')) as RNUploadReceipt;
@@ -160,6 +164,7 @@ async function createExport(
 beforeEach(async () => {
   vi.resetAllMocks();
   sessions.clear();
+  uploadedFiles.clear();
   encryptionKey = null;
   root = await mkdtemp(join(tmpdir(), 'otakit-rn-upload-'));
   directory = join(root, 'upload');
@@ -191,12 +196,144 @@ beforeEach(async () => {
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   }));
   api.finalizeUpload.mockImplementation(async ({ uploadId }) => bundle(uploadId));
+  api.initiateDeltaUpload.mockImplementation(async (input) => {
+    const id = String(sessions.size + 1);
+    const files = input.files.map(({ md5: _md5, ...file }: { md5: string }) => {
+      expect(_md5).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+      return file;
+    });
+    sessions.set(id, {
+      ...input,
+      files,
+      appId: 'app',
+      framework: 'react-native',
+      strategy: 'deltas',
+      encryption: null,
+      embeddedReceipt: input.embeddedReceipt ?? null,
+      baselineBundleId: input.baselineBundleId ?? null,
+      sha256: input.contentHash,
+      size: input.files.reduce((sum: number, f: { size: number }) => sum + f.size, 0),
+    });
+    return { uploadId: id };
+  });
+  api.resumeRNDeltaUpload.mockImplementation(async (uploadId) => ({
+    state: 'pending',
+    uploadId,
+    declaration: sessions.get(uploadId),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    uploads: [...new Set(sessions.get(uploadId)!.files.map((f) => f.sha256))]
+      .filter((hash) => !uploadedFiles.has(hash))
+      .map((sha256) => ({ sha256, presignedUrl: `https://storage.example/${sha256}` })),
+  }));
+  api.finalizeDeltaUpload.mockImplementation(async ({ uploadId }) => {
+    for (const file of sessions.get(uploadId)!.files)
+      expect(uploadedFiles.has(file.sha256)).toBe(true);
+    return bundle(uploadId);
+  });
   fetcher.mockResolvedValue(new Response(null, { status: 200 }));
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
-const prepare = () => prepareRNUpload({ exportDirectory, directory, scope, encryptionKey });
+const prepare = (strategy: 'zip' | 'deltas' = 'zip') =>
+  prepareRNUpload({ exportDirectory, directory, scope, encryptionKey, strategy });
+
+function receiveDeltaFiles() {
+  fetcher.mockImplementation(async (url, init) => {
+    const bytes = Buffer.from(init!.body as Uint8Array);
+    const sha256 = hashBuffer(bytes);
+    expect(new URL(String(url)).pathname).toBe(`/${sha256}`);
+    const headers = new Headers(init?.headers);
+    expect(headers.get('Content-MD5')).toBe(createHash('md5').update(bytes).digest('base64'));
+    expect(headers.get('Content-Length')).toBe(String(bytes.length));
+    expect(headers.get('Content-Type')).toBe('application/octet-stream');
+    expect(headers.has('Authorization')).toBe(false);
+    expect(init?.redirect).toBe('error');
+    uploadedFiles.add(sha256);
+    return new Response(null, { status: 200 });
+  });
+}
+
+it('uploads verified delta files, deduplicates baseline/OTA content and replays without writes', async () => {
+  await prepare('deltas');
+  receiveDeltaFiles();
+  const receipt = await uploadRNReceipt(options());
+  expect(receipt.ota.bundle).toMatchObject({
+    strategy: 'deltas',
+    baselineBundleId: receipt.baseline.bundle!.id,
+  });
+  expect(fetcher).toHaveBeenCalledTimes(3); // Shared Hermes entry, two different descriptors.
+  expect(api.initiateUpload).not.toHaveBeenCalled();
+  await uploadRNReceipt(options());
+  expect(api.initiateDeltaUpload).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it('resumes only missing delta files after an interrupted PUT using the original session', async () => {
+  await prepare('deltas');
+  receiveDeltaFiles();
+  const receive = fetcher.getMockImplementation()!;
+  fetcher.mockImplementationOnce(async (...args) => {
+    await receive(...args);
+    throw new Error('response lost');
+  });
+  await expect(uploadRNReceipt(options())).rejects.toThrow('response lost');
+  expect((await saved()).baseline).toMatchObject({ state: 'uploading', uploadId: '1' });
+  await uploadRNReceipt(options());
+  expect(api.initiateDeltaUpload).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it('retries delta finalization without uploading files again', async () => {
+  await prepare('deltas');
+  receiveDeltaFiles();
+  api.finalizeDeltaUpload.mockRejectedValueOnce(new Error('finalize lost'));
+  await expect(uploadRNReceipt(options())).rejects.toThrow('finalize lost');
+  expect((await saved()).baseline.state).toBe('finalizing');
+  await uploadRNReceipt(options());
+  expect(api.finalizeDeltaUpload.mock.calls.slice(0, 2)).toEqual([
+    [{ uploadId: '1' }],
+    [{ uploadId: '1' }],
+  ]);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+
+it.each(['unknown', 'duplicate'] as const)(
+  'rejects %s delta objects before any PUT',
+  async (kind) => {
+    await prepare('deltas');
+    const resume = api.resumeRNDeltaUpload.getMockImplementation()!;
+    api.resumeRNDeltaUpload.mockImplementationOnce(async (...args) => {
+      const response = await resume(...args);
+      response.uploads.push(
+        kind === 'unknown'
+          ? { sha256: 'f'.repeat(64), presignedUrl: 'https://storage.example/unknown' }
+          : response.uploads[0],
+      );
+      return response;
+    });
+    await expect(uploadRNReceipt(options())).rejects.toThrow('invalid missing-file list');
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
+
+it('rechecks delta archives after receiving upload URLs', async () => {
+  await prepare('deltas');
+  const resume = api.resumeRNDeltaUpload.getMockImplementation()!;
+  api.resumeRNDeltaUpload.mockImplementationOnce(async (...args) => {
+    const response = await resume(...args);
+    await writeFile(join(directory, 'baseline.zip'), 'changed');
+    return response;
+  });
+  await expect(uploadRNReceipt(options())).rejects.toThrow();
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('rejects delta encryption before creating durable output', async () => {
+  encryptionKey = Buffer.alloc(32, 7);
+  await expect(prepare('deltas')).rejects.toThrow('use ZIP to preserve encryption');
+  await expect(readFile(join(directory, 'upload.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
 
 it('uploads baseline first, binds the OTA, saves no URL credentials and is a no-op after completion', async () => {
   await prepare();

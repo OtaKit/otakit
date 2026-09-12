@@ -189,7 +189,11 @@ export function decryptRNArchive(
 }
 
 /** Inspect ZIP contents without extracting paths or trusting archive declarations. */
-export async function verifyRNArchive(bytes: Buffer, expected: DeltaFileEntry[]): Promise<void> {
+export async function verifyRNArchive(
+  bytes: Buffer,
+  expected: DeltaFileEntry[],
+  collect?: (file: DeltaFileEntry, bytes: Buffer) => void,
+): Promise<void> {
   const parsed = parseRNInventory(expected, MAX_RN_PAYLOAD);
   if (!parsed.ok || bytes.length > MAX_RN_PAYLOAD)
     throw new Error('Invalid RN archive inventory or size');
@@ -229,16 +233,26 @@ export async function verifyRNArchive(bytes: Buffer, expected: DeltaFileEntry[])
               return;
             }
             const hash = createHash('sha256');
+            const chunks: Buffer[] = [];
             let size = 0;
             stream.on('error', fail);
             stream.on('data', (chunk: Buffer) => {
               size += chunk.length;
               if (size > declaredFile.size) stream.destroy(new Error('RN ZIP size exceeded'));
-              else hash.update(chunk);
+              else {
+                hash.update(chunk);
+                if (collect) chunks.push(chunk);
+              }
             });
             stream.on('end', () => {
               if (size !== declaredFile.size || hash.digest('hex') !== declaredFile.sha256) {
                 fail(new Error(`RN ZIP content mismatch: ${entry.fileName}`));
+                return;
+              }
+              try {
+                collect?.(declaredFile, Buffer.concat(chunks, size));
+              } catch (error) {
+                fail(error);
                 return;
               }
               zip.readEntry();
@@ -253,4 +267,10 @@ export async function verifyRNArchive(bytes: Buffer, expected: DeltaFileEntry[])
       },
     );
   });
+}
+
+export async function readRNArchive(bytes: Buffer, expected: DeltaFileEntry[]) {
+  const files = new Map<string, Buffer>();
+  await verifyRNArchive(bytes, expected, (file, content) => files.set(file.sha256, content));
+  return files;
 }

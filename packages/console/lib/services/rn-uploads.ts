@@ -2,11 +2,17 @@ import { isDeepStrictEqual } from 'node:util';
 import { Prisma, type Bundle, type UploadSession } from '@prisma/client';
 
 import { db } from '@/lib/db';
-import { computeFilesHash, uniqueHashes, type DeltaFileEntry } from '@/lib/delta-files';
+import {
+  computeFilesHash,
+  parseDeltaFiles,
+  uniqueHashes,
+  type DeltaFileEntry,
+} from '@/lib/delta-files';
 import { parseRNInventory } from '@/lib/rn-inventory';
 import {
   BUNDLE_CACHE_CONTROL,
   createPresignedUpload,
+  createPresignedFileUpload,
   buildFileObjectKey,
   getMaxBundleSize,
   inspectUploadedObject,
@@ -198,6 +204,74 @@ export async function resumeRNZipUpload(appId: string, uploadId: string) {
       sha256: session.expectedSha256,
       size: session.expectedSize,
       strategy: 'zip' as const,
+      files: session.files,
+      embeddedReceipt: session.embeddedReceipt,
+      baselineBundleId: session.baselineBundleId,
+      encryption: session.encryption,
+    },
+  };
+}
+
+/** Refresh only the original delta session's missing objects; never extend its lifetime. */
+export async function resumeRNDeltaUpload(appId: string, uploadId: string, files: unknown) {
+  if ((await getUploadFramework(appId)) !== 'react_native')
+    throw new OtaKitServiceError('INVALID_INPUT', 'Upload resume requires an RN app', 400);
+  const session = await db.uploadSession.findFirst({ where: { id: uploadId, appId } });
+  if (!session || session.platform === 'cross' || session.strategy !== 'deltas')
+    throw new OtaKitServiceError('INVALID_INPUT', 'RN delta upload session not found', 404);
+  const parsed = parseDeltaFiles(files, 'react_native');
+  if (!parsed.ok || !isDeepStrictEqual(parsed.files, session.files))
+    throw new OtaKitServiceError(
+      'RN_UPLOAD_CONFLICT',
+      'Delta inventory differs from the saved session',
+      409,
+    );
+  const artifact = sessionArtifact(session);
+  await resolveRNBaseline(db, artifact);
+  if (session.status === 'finalized') {
+    const { bundle } = await finalizeRNUpload(session, 'deltas');
+    return { state: 'finalized' as const, uploadId, bundle: serializeRNUpload(bundle) };
+  }
+  if (session.status !== 'initiated' || session.expiresAt.getTime() <= Date.now())
+    throw new OtaKitServiceError(
+      'INVALID_INPUT',
+      'Upload expired; reconcile the original session',
+      410,
+    );
+  const uploads: Array<{ sha256: string; presignedUrl: string }> = [];
+  let expiresAt = session.expiresAt.getTime();
+  const hashes = [...uniqueHashes(parsed.files)];
+  for (let index = 0; index < hashes.length; index += 50) {
+    const chunk = await Promise.all(
+      hashes.slice(index, index + 50).map(async ([sha256, size]) => {
+        const key = buildFileObjectKey(appId, sha256);
+        const stat = await statStorageObject(key);
+        if (stat?.size === size) return null;
+        const signed = await createPresignedFileUpload(key, size, parsed.md5ByHash.get(sha256)!);
+        return { sha256, presignedUrl: signed.presignedUrl, expiresAt: signed.expiresAt.getTime() };
+      }),
+    );
+    for (const entry of chunk)
+      if (entry) {
+        uploads.push({ sha256: entry.sha256, presignedUrl: entry.presignedUrl });
+        expiresAt = Math.min(expiresAt, entry.expiresAt);
+      }
+  }
+  return {
+    state: 'pending' as const,
+    uploadId,
+    uploads,
+    expiresAt: new Date(expiresAt).toISOString(),
+    declaration: {
+      appId,
+      framework: 'react-native' as const,
+      platform: session.platform,
+      runtimeVersion: session.runtimeVersion,
+      version: session.version,
+      contentHash: session.contentHash,
+      sha256: session.expectedSha256,
+      size: session.expectedSize,
+      strategy: 'deltas' as const,
       files: session.files,
       embeddedReceipt: session.embeddedReceipt,
       baselineBundleId: session.baselineBundleId,

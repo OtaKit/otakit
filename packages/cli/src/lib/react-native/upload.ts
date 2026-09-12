@@ -1,4 +1,5 @@
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import {
   canonicalJSON,
@@ -11,7 +12,7 @@ import type { ApiClient, Bundle } from '../api.js';
 import { deriveKid, encryptFile, type BundleEncryptionParams } from '../crypto.js';
 import { hashBuffer } from '../hash.js';
 import { adoptBaseline, baselineIdentity } from './baseline-adoption.js';
-import { decryptRNArchive, MAX_RN_PAYLOAD, verifyRNArchive } from './artifacts.js';
+import { decryptRNArchive, MAX_RN_PAYLOAD, readRNArchive, verifyRNArchive } from './artifacts.js';
 import { assertOutputOutside, type CompletedNativeBuild } from './completed-build.js';
 import type { OTAExportReceipt } from './export-receipt.js';
 import {
@@ -36,7 +37,7 @@ export interface UploadDeclaration {
   files: DeltaFileEntry[];
   sha256: string;
   size: number;
-  strategy: 'zip';
+  strategy: 'zip' | 'deltas';
   encryption: BundleEncryptionParams | null;
   embeddedReceipt: EmbeddedReceipt | null;
   baselineBundleId: string | null;
@@ -49,6 +50,15 @@ export type ResumeUpload =
       state: 'pending';
       uploadId: string;
       presignedUrl: string;
+      expiresAt: string;
+      declaration: UploadDeclaration;
+    }
+  | { state: 'finalized'; uploadId: string; bundle: UploadedArtifact };
+export type ResumeDeltaUpload =
+  | {
+      state: 'pending';
+      uploadId: string;
+      uploads: Array<{ sha256: string; presignedUrl: string }>;
       expiresAt: string;
       declaration: UploadDeclaration;
     }
@@ -71,7 +81,13 @@ export interface RNUploadReceipt {
 }
 type UploadAPI = Pick<
   ApiClient,
-  'initiateUpload' | 'resumeRNZipUpload' | 'finalizeUpload' | 'prepareBaselineAdoption'
+  | 'initiateUpload'
+  | 'resumeRNZipUpload'
+  | 'finalizeUpload'
+  | 'prepareBaselineAdoption'
+  | 'initiateDeltaUpload'
+  | 'resumeRNDeltaUpload'
+  | 'finalizeDeltaUpload'
 >;
 type ResumeOptions = {
   directory: string;
@@ -177,7 +193,12 @@ export async function prepareRNUpload(options: {
   directory: string;
   scope: UploadScope;
   encryptionKey: Buffer | null;
+  strategy?: 'zip' | 'deltas';
 }): Promise<RNUploadReceipt> {
+  const strategy = options.strategy ?? 'zip';
+  if (!['zip', 'deltas'].includes(strategy)) throw new Error('Unsupported RN upload strategy');
+  if (strategy === 'deltas' && options.encryptionKey)
+    throw new Error('RN delta uploads do not support encryption; use ZIP to preserve encryption');
   await assertOutputOutside(options.exportDirectory, options.directory);
   const exported = await readOTAUploadExport(options.exportDirectory);
   const selectedScope = normalizeUploadScope(options.scope);
@@ -216,9 +237,12 @@ export async function prepareRNUpload(options: {
           version: source.displayVersion,
           contentHash: source.contentHash,
           files: source.files,
-          sha256: hashBuffer(transport),
-          size: transport.length,
-          strategy: 'zip',
+          sha256: strategy === 'deltas' ? source.contentHash : hashBuffer(transport),
+          size:
+            strategy === 'deltas'
+              ? source.files.reduce((total, file) => total + file.size, 0)
+              : transport.length,
+          strategy,
           encryption,
           embeddedReceipt: role === 'baseline' ? exported.completed.baseline.embeddedReceipt : null,
           baselineBundleId: null,
@@ -271,7 +295,11 @@ async function readUpload(options: Omit<ResumeOptions, 'api'>) {
       (artifact.state === 'finalizing' && !artifact.uploadId) ||
       (artifact.state === 'finalized' && !artifact.adopted && !artifact.uploadId) ||
       declaration.framework !== 'react-native' ||
-      declaration.strategy !== 'zip' ||
+      !['zip', 'deltas'].includes(declaration.strategy) ||
+      (declaration.strategy === 'deltas' &&
+        (declaration.encryption !== null ||
+          declaration.sha256 !== declaration.contentHash ||
+          declaration.size !== expected.files.reduce((total, file) => total + file.size, 0))) ||
       declaration.appId !== expected.appId ||
       declaration.platform !== expected.platform ||
       declaration.runtimeVersion !== expected.runtimeVersion ||
@@ -297,8 +325,8 @@ async function readUpload(options: Omit<ResumeOptions, 'api'>) {
       throw new Error('RN upload declaration, state or encryption policy changed');
     const transport = await readUploadArchive(
       join(options.directory, `${role}.zip`),
-      declaration.sha256,
-      declaration.size,
+      declaration.strategy === 'deltas' ? expected.sha256 : declaration.sha256,
+      declaration.strategy === 'deltas' ? undefined : declaration.size,
     );
     const plain = declaration.encryption
       ? decryptRNArchive(transport, declaration.encryption, options.encryptionKey!)
@@ -317,7 +345,7 @@ async function readUpload(options: Omit<ResumeOptions, 'api'>) {
         !same(adoption.bundle.files, declaration.files) ||
         !same(adoption.bundle.embeddedReceipt, declaration.embeddedReceipt) ||
         adoption.bundle.contentHash !== declaration.contentHash ||
-        adoption.bundle.strategy !== 'zip' ||
+        adoption.bundle.strategy !== declaration.strategy ||
         (adoption.bundle.encryption?.kid ?? null) !== (declaration.encryption?.kid ?? null)
       )
         throw new Error('Adopted baseline no longer matches its verification receipt');
@@ -356,7 +384,7 @@ export async function inspectRNUpload(
   return withReceiptLock(join(options.directory, 'upload.json'), () => readUpload(options));
 }
 
-async function put(url: string, bytes: Buffer, fetcher: typeof fetch) {
+async function put(url: string, bytes: Buffer, fetcher: typeof fetch, md5?: string) {
   const parsed = new URL(url);
   if (
     parsed.username ||
@@ -373,7 +401,8 @@ async function put(url: string, bytes: Buffer, fetcher: typeof fetch) {
     redirect: 'error',
     signal: AbortSignal.timeout(300_000),
     headers: {
-      'Content-Type': 'application/zip',
+      'Content-Type': md5 ? 'application/octet-stream' : 'application/zip',
+      ...(md5 ? { 'Content-MD5': md5 } : {}),
       'Content-Length': String(bytes.length),
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
@@ -393,29 +422,53 @@ export async function uploadRNReceipt(options: ResumeOptions): Promise<RNUploadR
           throw new Error('Finalize or explicitly adopt the baseline first');
         artifact.declaration.baselineBundleId = receipt.baseline.bundle.id;
       }
+      const d = artifact.declaration;
+      const delta = d.strategy === 'deltas';
+      const archived = role === 'baseline' ? receipt.completedBuild.baseline : receipt.exported;
+      const readDelta = async () =>
+        readRNArchive(
+          await readUploadArchive(join(options.directory, `${role}.zip`), archived.sha256),
+          d.files,
+        );
+      const content = delta && artifact.state !== 'finalizing' ? await readDelta() : null;
+      const descriptors = content
+        ? d.files.map((file) => ({
+            ...file,
+            md5: createHash('md5').update(content.get(file.sha256)!).digest('base64'),
+          }))
+        : [];
       if (!artifact.uploadId) {
         artifact.state = 'uploading';
         await writeReceipt(path, receipt);
-        const d = artifact.declaration;
-        const initiated = await options.api.initiateUpload({
+        const common = {
           platform: d.platform,
           runtimeVersion: d.runtimeVersion,
           version: d.version,
-          sha256: d.sha256,
-          size: d.size,
           contentHash: d.contentHash,
-          files: d.files,
-          encryption: d.encryption ?? undefined,
           embeddedReceipt: d.embeddedReceipt ?? undefined,
           baselineBundleId: d.baselineBundleId ?? undefined,
-        });
+        };
+        const initiated = delta
+          ? await options.api.initiateDeltaUpload({
+              ...common,
+              files: descriptors,
+            })
+          : await options.api.initiateUpload({
+              ...common,
+              sha256: d.sha256,
+              size: d.size,
+              files: d.files,
+              encryption: d.encryption ?? undefined,
+            });
         if (!initiated || typeof initiated.uploadId !== 'string' || !initiated.uploadId)
           throw new Error('RN initiation returned no upload ID');
         artifact.uploadId = initiated.uploadId;
         await writeReceipt(path, receipt);
       }
       if (artifact.state !== 'finalizing') {
-        const resumed = await options.api.resumeRNZipUpload(artifact.uploadId);
+        const resumed = delta
+          ? await options.api.resumeRNDeltaUpload(artifact.uploadId, descriptors)
+          : await options.api.resumeRNZipUpload(artifact.uploadId);
         if (!resumed || resumed.uploadId !== artifact.uploadId)
           throw new Error('RN resume returned a different upload session');
         if (resumed.state === 'finalized') {
@@ -434,16 +487,45 @@ export async function uploadRNReceipt(options: ResumeOptions): Promise<RNUploadR
           throw new Error(
             'RN upload expired or the saved declaration changed; reconcile the session',
           );
-        const bytes = await readUploadArchive(
-          join(options.directory, `${role}.zip`),
-          artifact.declaration.sha256,
-          artifact.declaration.size,
-        );
-        await put(resumed.presignedUrl, bytes, options.fetcher ?? fetch);
+        if (delta) {
+          const verified = await readDelta();
+          if (!('uploads' in resumed) || !Array.isArray(resumed.uploads))
+            throw new Error('RN delta resume returned no missing-file list');
+          const seen = new Set<string>();
+          for (const entry of resumed.uploads) {
+            if (
+              !entry ||
+              !verified.has(entry.sha256) ||
+              seen.has(entry.sha256) ||
+              typeof entry.presignedUrl !== 'string'
+            )
+              throw new Error('RN delta resume returned an invalid missing-file list');
+            seen.add(entry.sha256);
+          }
+          for (const entry of resumed.uploads) {
+            const bytes = verified.get(entry.sha256)!;
+            await put(
+              entry.presignedUrl,
+              bytes,
+              options.fetcher ?? fetch,
+              createHash('md5').update(bytes).digest('base64'),
+            );
+          }
+        } else {
+          if (!('presignedUrl' in resumed)) throw new Error('RN ZIP resume returned no upload URL');
+          const bytes = await readUploadArchive(
+            join(options.directory, `${role}.zip`),
+            d.sha256,
+            d.size,
+          );
+          await put(resumed.presignedUrl, bytes, options.fetcher ?? fetch);
+        }
         artifact.state = 'finalizing';
         await writeReceipt(path, receipt);
       }
-      const finalized = await options.api.finalizeUpload({ uploadId: artifact.uploadId });
+      const finalized = delta
+        ? await options.api.finalizeDeltaUpload({ uploadId: artifact.uploadId })
+        : await options.api.finalizeUpload({ uploadId: artifact.uploadId });
       assertBundle(finalized, artifact.declaration);
       artifact.bundle = bundleIdentity(finalized);
       artifact.state = 'finalized';
@@ -474,14 +556,14 @@ export async function adoptRNUploadBaseline(options: ResumeOptions): Promise<RNU
       contentHash: d.contentHash,
       files: d.files,
       embeddedReceipt: d.embeddedReceipt,
-      strategy: 'zip',
+      strategy: d.strategy,
       encryptionKid: d.encryption?.kid ?? null,
     });
     const adopted = await adoptBaseline({
       stored,
       expected: d.embeddedReceipt!,
       files: d.files,
-      strategy: 'zip',
+      strategy: d.strategy,
       encryptionKey: options.encryptionKey,
       receiptPath: join(options.directory, 'adoption.json'),
       fetcher: options.fetcher,

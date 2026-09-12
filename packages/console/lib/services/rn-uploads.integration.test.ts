@@ -19,16 +19,14 @@ const storage = vi.hoisted(() => ({
   purge: vi.fn(),
   sizes: new Map<string, number>(),
   presign: vi.fn(),
+  filePresign: vi.fn(),
 }));
 vi.mock('@/lib/storage', () => ({
   BUNDLE_CACHE_CONTROL: 'public, max-age=31536000, immutable',
   getMaxBundleSize: () =>
     process.env.RUN_RN_UPLOAD_CLI_TESTS === '1' ? 100 * 1024 * 1024 : 100_000,
   createPresignedUpload: storage.presign,
-  createPresignedFileUpload: async (key: string) => ({
-    presignedUrl: `https://upload.example/${key}`,
-    expiresAt: new Date(Date.now() + 3600_000),
-  }),
+  createPresignedFileUpload: storage.filePresign,
   inspectUploadedObject: async (key: string) => ({ size: storage.sizes.get(key) ?? 0 }),
   statStorageObject: async (key: string) =>
     storage.sizes.has(key) ? { size: storage.sizes.get(key) } : null,
@@ -64,6 +62,7 @@ import { POST as initiateZIP } from '@/app/api/v1/apps/[appId]/bundles/initiate/
 import { POST as initiateDelta } from '@/app/api/v1/apps/[appId]/bundles/initiate-delta/route';
 import { POST as finalizeZIP } from '@/app/api/v1/apps/[appId]/bundles/finalize/route';
 import { POST as resumeZIP } from '@/app/api/v1/apps/[appId]/bundles/resume-upload/route';
+import { POST as resumeDelta } from '@/app/api/v1/apps/[appId]/bundles/resume-delta/route';
 import { POST as finalizeDelta } from '@/app/api/v1/apps/[appId]/bundles/finalize-delta/route';
 import { computeFilesHash } from '@/lib/delta-files';
 import { prepareRelease, publishRelease } from './releases';
@@ -116,9 +115,14 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
       presignedUrl: `https://upload.example/${id}`,
       expiresAt: new Date(Date.now() + 3600_000),
     }));
+    storage.filePresign.mockImplementation(async (key: string) => ({
+      presignedUrl: `https://upload.example/${key}`,
+      expiresAt: new Date(Date.now() + 3600_000),
+    }));
     storage.put.mockImplementation(
       async ({ storageKey, body }: { storageKey: string; body: string }) => {
         storage.objects.set(storageKey, body);
+        storage.sizes.set(storageKey, Buffer.byteLength(body));
       },
     );
     storage.purge.mockResolvedValue(undefined);
@@ -299,9 +303,9 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
     }
   });
 
-  it.skipIf(process.env.RUN_RN_UPLOAD_CLI_TESTS !== '1')(
-    'runs the compiled CLI against PostgreSQL with real archives, response loss and explicit encrypted adoption',
-    async () => {
+  it.skipIf(process.env.RUN_RN_UPLOAD_CLI_TESTS !== '1').each(['zip', 'deltas'] as const)(
+    'runs the compiled %s CLI against PostgreSQL with real archives, response loss and verified adoption',
+    async (strategy) => {
       if (!process.env.RN_OTA_EXPORT)
         throw new Error('Set RN_OTA_EXPORT to an archived OTA export');
       const exportDirectory = resolve(process.env.RN_OTA_EXPORT);
@@ -318,6 +322,9 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
         'resume-upload': resumeZIP,
         finalize: finalizeZIP,
         'prepare-baseline-adoption': prepareAdoption,
+        'initiate-delta': initiateDelta,
+        'resume-delta': resumeDelta,
+        'finalize-delta': finalizeDelta,
       };
       let loseFinalization = true;
       let putCount = 0;
@@ -325,6 +332,25 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
       const server = createServer(async (request, response) => {
         try {
           const url = new URL(request.url!, baseUrl);
+          if (url.pathname.startsWith('/files/')) {
+            expect(request.headers.authorization).toBeUndefined();
+            const key = url.pathname.slice(1);
+            if (request.method === 'PUT') {
+              putCount += 1;
+              const chunks: Buffer[] = [];
+              for await (const chunk of request) chunks.push(Buffer.from(chunk));
+              const bytes = Buffer.concat(chunks);
+              expect(createHash('sha256').update(bytes).digest('hex')).toBe(key.split('/').at(-1));
+              expect(createHash('md5').update(bytes).digest('base64')).toBe(
+                request.headers['content-md5'],
+              );
+              expect(request.headers['content-type']).toBe('application/octet-stream');
+              objects.set(key, bytes);
+              storage.sizes.set(key, bytes.length);
+              response.writeHead(200).end();
+            } else response.writeHead(objects.has(key) ? 200 : 404).end(objects.get(key));
+            return;
+          }
           if (url.pathname.startsWith('/objects/')) {
             expect(request.headers.authorization).toBeUndefined();
             const id = url.pathname.slice('/objects/'.length);
@@ -361,7 +387,7 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
           for await (const chunk of request) chunks.push(Buffer.from(chunk));
           const result = await call(routes[route], JSON.parse(Buffer.concat(chunks).toString()));
           const body = await result.json();
-          if (route === 'finalize' && result.ok && loseFinalization) {
+          if (['finalize', 'finalize-delta'].includes(route) && result.ok && loseFinalization) {
             loseFinalization = false;
             response.destroy();
             return;
@@ -373,6 +399,11 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
               .at(-1)!
               .replace(/\.zip$/, '');
             body.downloadUrl = `${baseUrl}/objects/${id}?rotating=adoption`;
+            if (body.fileUrls)
+              body.fileUrls = body.fileUrls.map((file: { sha256: string }) => ({
+                ...file,
+                url: `${baseUrl}/files/${appId}/${file.sha256}?rotating=adoption`,
+              }));
           }
           response
             .writeHead(result.status, { 'content-type': 'application/json' })
@@ -391,6 +422,10 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
           presignedUrl: `${baseUrl}/objects/${id}?rotating=upload`,
           expiresAt: new Date(Date.now() + 3600_000),
         }));
+        storage.filePresign.mockImplementation(async (key: string) => ({
+          presignedUrl: `${baseUrl}/${key}?rotating=upload`,
+          expiresAt: new Date(Date.now() + 3600_000),
+        }));
         const cli = resolve('../cli/dist/index.js');
         const command = (...args: string[]) =>
           run(process.execPath, [cli, 'rn', ...args, '--server', baseUrl], {
@@ -400,18 +435,28 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
             env: {
               ...process.env,
               OTAKIT_TOKEN: 'local-test-only',
-              OTAKIT_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+              OTAKIT_ENCRYPTION_KEY:
+                strategy === 'zip' ? Buffer.alloc(32, 7).toString('base64') : '',
             },
           });
         const first = join(root, 'first');
-        await command('prepare-upload', exportDirectory, '--receipt-dir', first, '--encrypt');
+        const transportOptions = strategy === 'zip' ? ['--encrypt'] : ['--strategy', 'deltas'];
+        await command(
+          'prepare-upload',
+          exportDirectory,
+          '--receipt-dir',
+          first,
+          ...transportOptions,
+        );
         expect(await database.uploadSession.count({ where: { appId } })).toBe(0);
         await expect(command('upload', first)).rejects.toThrow();
         const interrupted = JSON.parse(await readFile(join(first, 'upload.json'), 'utf8'));
         expect(interrupted.baseline.state).toBe('finalizing');
         expect(await database.bundle.count({ where: { appId } })).toBe(1);
         await command('upload', first);
+        const completedPuts = putCount;
         await command('upload', first);
+        expect(putCount).toBe(completedPuts);
         const finished = JSON.parse(await readFile(join(first, 'upload.json'), 'utf8'));
         expect(finished.ota.state).toBe('finalized');
         expect(finished.ota.bundle.baselineBundleId).toBe(finished.baseline.bundle.id);
@@ -419,12 +464,21 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
         expect(await database.bundle.count({ where: { appId } })).toBe(2);
         expect(await database.release.count({ where: { appId } })).toBe(0);
         const second = join(root, 'second');
-        await command('prepare-upload', exportDirectory, '--receipt-dir', second, '--encrypt');
-        await expect(command('upload', second)).rejects.toThrow();
+        await command(
+          'prepare-upload',
+          exportDirectory,
+          '--receipt-dir',
+          second,
+          ...transportOptions,
+        );
+        // Ciphertext differs for ZIP; plaintext deltas intentionally have the same transport identity.
+        if (strategy === 'zip') await expect(command('upload', second)).rejects.toThrow();
         await command('adopt-baseline', second);
         const adopted = JSON.parse(await readFile(join(second, 'upload.json'), 'utf8'));
         expect(adopted.baseline.bundle.id).toBe(finished.baseline.bundle.id);
-        expect(adopted.baseline.bundle.sha256).not.toBe(adopted.baseline.declaration.sha256);
+        if (strategy === 'zip')
+          expect(adopted.baseline.bundle.sha256).not.toBe(adopted.baseline.declaration.sha256);
+        else expect(adopted.baseline.bundle.sha256).toBe(adopted.baseline.declaration.sha256);
         expect(adopted.baseline.adopted).toBe(true);
         expect(await readFile(join(second, 'adoption.json'), 'utf8')).not.toContain('rotating=');
         if (process.env.RN_OTA_COLLECTION_EXPORT) {
@@ -435,16 +489,9 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
             resolve(process.env.RN_OTA_COLLECTION_EXPORT),
             '--receipt-dir',
             third,
-            '--encrypt',
+            ...transportOptions,
           );
-          await command(
-            'prepare-upload-collection',
-            first,
-            third,
-            '--receipt',
-            collection,
-            '--encrypt',
-          );
+          await command('prepare-upload-collection', first, third, '--receipt', collection);
           expect(await database.bundle.count({ where: { appId } })).toBe(2);
           const previousPuts = putCount;
           loseFinalization = true;
@@ -458,8 +505,11 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
             new Set(uploaded.targets.map((target: { platform: string }) => target.platform)),
           ).toEqual(new Set(['ios', 'android']));
           expect(uploaded.targets[0].otaBundleId).toBe(finished.ota.bundle.id);
+          const collectionPuts = putCount;
           await command('upload-collection', collection);
-          expect(putCount).toBe(previousPuts + 2);
+          expect(putCount).toBe(collectionPuts);
+          if (strategy === 'zip') expect(putCount).toBe(previousPuts + 2);
+          else expect(putCount).toBeGreaterThan(previousPuts);
           expect(await database.bundle.count({ where: { appId } })).toBe(4);
           expect(await database.release.count({ where: { appId } })).toBe(0);
         }
@@ -471,6 +521,68 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
     },
     180_000,
   );
+
+  it('resumes only missing delta objects without changing the session or its expiry', async () => {
+    const body = declaration('delta', 'deltas');
+    const session = await start(body, 'deltas');
+    storage.sizes.delete(`files/${appId}/${body.files[1].sha256}`);
+    storage.filePresign.mockClear();
+    const response = await call(resumeDelta, { uploadId: session.id, files: body.files });
+    expect(response.status).toBe(200);
+    const resumed = await response.json();
+    expect(resumed).toMatchObject({
+      state: 'pending',
+      uploadId: session.id,
+      declaration: { strategy: 'deltas', sha256: body.contentHash, size: 20 },
+      uploads: [{ sha256: body.files[1].sha256 }],
+    });
+    expect(storage.filePresign).toHaveBeenCalledTimes(1);
+    expect(storage.filePresign).toHaveBeenCalledWith(
+      `files/${appId}/${body.files[1].sha256}`,
+      10,
+      body.files[1].md5,
+    );
+    expect(Date.parse(resumed.expiresAt)).toBeLessThanOrEqual(session.expiresAt.getTime());
+    expect(await database.uploadSession.findUnique({ where: { id: session.id } })).toEqual(session);
+    storage.sizes.set(`files/${appId}/${body.files[1].sha256}`, 10);
+    const finalized = await (await call(finalizeDelta, { uploadId: session.id })).json();
+    await database.uploadSession.update({
+      where: { id: session.id },
+      data: { expiresAt: new Date(0) },
+    });
+    storage.filePresign.mockClear();
+    const replay = await call(resumeDelta, { uploadId: session.id, files: body.files });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ state: 'finalized', bundle: { id: finalized.id } });
+    expect(storage.filePresign).not.toHaveBeenCalled();
+  });
+
+  it('rejects changed, expired, foreign and Capacitor delta resume requests before issuing URLs', async () => {
+    const body = declaration('delta', 'deltas');
+    const session = await start(body, 'deltas');
+    storage.filePresign.mockClear();
+    expect(
+      (await call(resumeDelta, { uploadId: session.id, files: body.files.slice(1) })).status,
+    ).toBe(409);
+    expect(
+      (await call(resumeDelta, { uploadId: session.id, files: [{ ...body.files[0], md5: 'bad' }] }))
+        .status,
+    ).toBe(409);
+    expect((await call(resumeDelta, { uploadId: 'foreign', files: body.files })).status).toBe(404);
+    expect((await call(resumeDelta, {})).status).toBe(400);
+    const zip = await start(declaration('zip'));
+    expect((await call(resumeDelta, { uploadId: zip.id, files: body.files })).status).toBe(404);
+    await database.uploadSession.update({
+      where: { id: session.id },
+      data: { expiresAt: new Date(0) },
+    });
+    expect((await call(resumeDelta, { uploadId: session.id, files: body.files })).status).toBe(410);
+    storage.access.mockResolvedValueOnce({ success: false, status: 403, error: 'denied' });
+    expect((await call(resumeDelta, { uploadId: session.id, files: body.files })).status).toBe(403);
+    await database.app.update({ where: { id: appId }, data: { framework: 'capacitor' } });
+    expect((await call(resumeDelta, { uploadId: session.id, files: body.files })).status).toBe(400);
+    expect(storage.filePresign).not.toHaveBeenCalled();
+  });
 
   it('resumes the original RN ZIP declaration without creating a session or extending its lifetime', async () => {
     const body = declaration('baseline');

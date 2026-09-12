@@ -194,11 +194,10 @@ reactNativeCommand.addCommand(
 
 reactNativeCommand.addCommand(
   new Command('prepare-upload')
-    .description(
-      'Verify an archived OTA export and save both exact ZIP transports before uploading',
-    )
+    .description('Verify an archived OTA export and save durable upload sources before uploading')
     .argument('<export-directory>', 'Archived platform/runtime OTA export')
     .requiredOption('--receipt-dir <directory>', 'New private directory for durable upload files')
+    .option('--strategy <strategy>', 'Upload transport: zip or deltas (unencrypted only)', 'zip')
     .option('--server <url>', 'Server URL')
     .option(
       '--encrypt',
@@ -207,11 +206,22 @@ reactNativeCommand.addCommand(
     .action(
       async (
         exportDirectory: string,
-        options: { receiptDir: string; server?: string; encrypt?: boolean },
+        options: {
+          receiptDir: string;
+          server?: string;
+          encrypt?: boolean;
+          strategy: 'zip' | 'deltas';
+        },
       ) => {
         await runCommand(async () => {
           const exported = await readOTAUploadExport(exportDirectory);
           const encryptionKey = resolveEncryptionKey(options.encrypt);
+          if (!['zip', 'deltas'].includes(options.strategy))
+            throw new Error('Unsupported RN upload strategy');
+          if (options.strategy === 'deltas' && encryptionKey)
+            throw new Error(
+              'RN delta uploads do not support encryption; use ZIP to preserve encryption',
+            );
           const config = await requireConfig({
             appId: exported.receipt.appId,
             serverUrl: options.server,
@@ -220,6 +230,7 @@ reactNativeCommand.addCommand(
           await prepareRNUpload({
             exportDirectory,
             directory: options.receiptDir,
+            strategy: options.strategy,
             encryptionKey,
             scope: {
               serverUrl: config.serverUrl,
@@ -240,7 +251,7 @@ for (const name of ['upload', 'adopt-baseline'] as const) {
     new Command(name)
       .description(
         name === 'upload'
-          ? 'Upload or resume the saved baseline and OTA ZIPs without publishing'
+          ? 'Upload or resume the saved baseline and OTA artifacts without publishing'
           : 'Explicitly verify and adopt the stored baseline before uploading the OTA',
       )
       .argument('<receipt-directory>', 'Previously prepared private upload directory')

@@ -66,7 +66,7 @@ An OTA export requires a completed build receipt and its intact archived baselin
 
 The resulting receipt has `purpose: "ota"`; it does not declare the new version as embedded. The original baseline archive, export receipt and completed build receipt are preserved under `private/`, with a reference hash in the OTA receipt. The new public payload contains only the OTA descriptor, Hermes bundle and assets. Missing or changed baseline files stop export. Output cannot be placed inside the archived baseline.
 
-## Durable ZIP upload
+## Durable upload
 
 Prepare one platform/runtime OTA export for the selected account. `OTAKIT_OTA_DIR` below is the generated `platform-runtime` directory containing `export.json`, rather than its parent output directory.
 
@@ -93,9 +93,11 @@ otakit rn upload "$OTAKIT_UPLOAD_DIR" --server "$OTAKIT_SERVER"
 
 Adoption checks the exact embedded receipt, complete inventory, transport strategy and key identity. It downloads the stored ZIP, verifies its size and hash, authenticates/decrypts it when encrypted, and verifies every archived file before saving `adoption.json`. A corrupt object or changed encryption policy cannot be adopted. URL rotation does not change artifact identity. The unused local baseline transport remains available for audit; the OTA binds to the verified stored bundle. Adoption cannot replace a baseline after OTA upload has begun.
 
-These commands handle one ZIP variant and do not publish. Use the returned OTA bundle ID with `rn prepare-publication`, then `rn publish` with that reviewed receipt. Delta upload orchestration remains outstanding.
+ZIP is the default. For unencrypted file uploads, select `--strategy deltas` when preparing. The receipt retains the verified original archives as durable sources. Upload derives each file's SHA-256 and Content-MD5 from those archives and sends only missing objects; retries refresh capabilities for the same session without extending its expiry. Already received files and completed variants are skipped. A configured encryption key or `--encrypt` rejects delta preparation; select ZIP to preserve encryption.
 
-## Grouped ZIP upload
+Delta baseline adoption verifies every stored file against the archived inventory before binding the OTA. These commands handle one variant and do not publish. Use the returned OTA bundle ID with `rn prepare-publication`, then `rn publish` with that reviewed receipt.
+
+## Grouped upload
 
 Prepare each platform/runtime with `rn prepare-upload`, then bind those existing upload directories into one collection:
 
