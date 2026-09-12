@@ -1,11 +1,12 @@
 // Reproducible local device resources; this deliberately does not issue a completed-build receipt.
 import { execFile } from 'node:child_process';
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { prepareUpdates } from './prepare-updates.mjs';
 
 const run = promisify(execFile);
 const project = dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,8 @@ const require = createRequire(join(project, 'package.json'));
 const rnRequire = createRequire(require.resolve('react-native/package.json'));
 const cli = join(repository, 'packages/cli/dist/index.js');
 const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+const bundleKey = randomBytes(32);
+const bundleKeyId = createHash('sha256').update(bundleKey).digest('hex').slice(0, 16);
 const hostFile = join(output, 'host.json');
 await writeFile(
   hostFile,
@@ -29,7 +32,7 @@ await writeFile(
     publicKeys: {
       fixture: pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
     },
-    bundleKeys: {},
+    bundleKeys: { [bundleKeyId]: bundleKey.toString('base64') },
     allowLocalhost: true,
   }),
   { mode: 0o600 },
@@ -122,3 +125,4 @@ await writeFile(
   JSON.stringify({ assets, embeddedExport, receipt }, null, 2),
 );
 console.log(JSON.stringify({ assets, embeddedExport }, null, 2));
+await prepareUpdates(output);

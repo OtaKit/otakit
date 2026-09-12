@@ -7,11 +7,16 @@ export default function DOMFixture({
   onReady,
 }: {
   label: string;
-  onReady?: () => Promise<void>;
+  onReady?: (content: { version: string; htmlVersion: string }) => Promise<void>;
   dom?: DOMProps;
 }) {
   useEffect(() => {
-    void onReady?.();
+    void onReady?.({
+      version: 'OTAKIT_EXPO_DOM_EMBEDDED',
+      htmlVersion:
+        document.querySelector<HTMLMetaElement>('meta[name="otakit-fixture-version"]')?.content ??
+        'embedded',
+    });
   }, [onReady]);
   return (
     <main>
