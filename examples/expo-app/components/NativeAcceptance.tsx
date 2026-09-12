@@ -8,9 +8,11 @@ const nativeVersion = 'OTAKIT_EXPO_NATIVE_EMBEDDED';
 export default function NativeAcceptance({
   integration = 'native',
   onLocalReady,
+  navigationPath,
 }: {
   integration?: 'native' | 'router';
   onLocalReady?: () => Promise<void>;
+  navigationPath?: string;
 }) {
   const [status, setStatus] = useState('starting');
   const [dom, setDOM] = useState<{ version: string; htmlVersion: string } | null>(null);
@@ -34,21 +36,25 @@ export default function NativeAcceptance({
     async function report(phase: string) {
       const state = await updater.getState();
       setStatus(`${phase} ${state.generation}`);
-      const response = await fetch('http://127.0.0.1:9042/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          state,
-          context: updater.launchContext,
-          expoConfig: Constants.expoConfig,
-          domReady: true,
-          dom,
-          nativeVersion,
-          phase,
-          integration,
-          splashHideCompleted,
-        }),
-      });
+      const response = await fetch(
+        `http://127.0.0.1:9042/${navigationPath ? 'navigation' : 'report'}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            state,
+            context: updater.launchContext,
+            expoConfig: Constants.expoConfig,
+            domReady: true,
+            dom,
+            nativeVersion,
+            phase,
+            integration,
+            splashHideCompleted,
+            pathname: navigationPath,
+          }),
+        },
+      );
       if (!response.ok) throw new Error(`Report failed: ${response.status}`);
       return response.json();
     }
@@ -74,12 +80,16 @@ export default function NativeAcceptance({
         await updater.apply();
       }
     })().catch((error: Error) => setStatus(error.message));
-  }, [dom, integration, onLocalReady]);
+  }, [dom, integration, onLocalReady, navigationPath]);
   return (
     <View style={{ flex: 1, paddingTop: integration === 'router' ? 16 : 60 }}>
       <Text>Expo {Constants.expoConfig?.extra?.fixtureVersion}</Text>
       <Text>{status}</Text>
-      <DOMFixture label="native acceptance" onReady={onDOMReady} dom={{ style: { height: 240 } }} />
+      <DOMFixture
+        label={navigationPath ? 'router navigation' : 'native acceptance'}
+        onReady={onDOMReady}
+        dom={{ style: { height: 240 } }}
+      />
     </View>
   );
 }

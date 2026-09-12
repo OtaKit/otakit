@@ -163,6 +163,48 @@ const server = createServer(async (request, response) => {
     response.writeHead(500).end(String(error));
   }
 });
+async function openRouterLink() {
+  const url = 'otakit-expo-fixture://dom';
+  if (isAndroid)
+    await android([
+      'shell',
+      'am',
+      'start',
+      '-W',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      url,
+      '-p',
+      appId,
+    ]);
+  else {
+    await ios(['openurl', device, url]);
+    const args = [
+      'test-without-building',
+      '-xctestrun',
+      resolve(iosUITests),
+      '-destination',
+      `platform=iOS Simulator,id=${device}`,
+      '-parallel-testing-enabled',
+      'NO',
+      '-resultBundlePath',
+      join(directory, `ui-results-${Date.now()}.xcresult`),
+      '-only-testing:OtaKitFixtureUI/NativeLinkTests/testOpenFixtureLink',
+    ];
+    let result;
+    try {
+      result = await run('xcodebuild', args, { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+    } catch (error) {
+      await writeFile(
+        join(directory, `${device}-ui.log`),
+        `${error.stdout ?? ''}${error.stderr ?? ''}`,
+      );
+      throw error;
+    }
+    await writeFile(join(directory, `${device}-ui.log`), result.stdout + result.stderr);
+  }
+}
 async function waitReport(index) {
   const deadline = Date.now() + 45_000;
   while (reports.length <= index && Date.now() < deadline)
@@ -331,46 +373,7 @@ try {
   }
   if (integration === 'router') {
     const context = reports.at(-1).context;
-    const url = 'otakit-expo-fixture://dom';
-    if (isAndroid)
-      await android([
-        'shell',
-        'am',
-        'start',
-        '-W',
-        '-a',
-        'android.intent.action.VIEW',
-        '-d',
-        url,
-        '-p',
-        appId,
-      ]);
-    else {
-      await ios(['openurl', device, url]);
-      const args = [
-        'test-without-building',
-        '-xctestrun',
-        resolve(iosUITests),
-        '-destination',
-        `platform=iOS Simulator,id=${device}`,
-        '-parallel-testing-enabled',
-        'NO',
-        '-resultBundlePath',
-        join(directory, `ui-results-${Date.now()}.xcresult`),
-        '-only-testing:OtaKitFixtureUI/NativeLinkTests/testOpenFixtureLink',
-      ];
-      let result;
-      try {
-        result = await run('xcodebuild', args, { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
-      } catch (error) {
-        await writeFile(
-          join(directory, `${device}-ui.log`),
-          `${error.stdout ?? ''}${error.stderr ?? ''}`,
-        );
-        throw error;
-      }
-      await writeFile(join(directory, `${device}-ui.log`), result.stdout + result.stderr);
-    }
+    await openRouterLink();
     const deadline = Date.now() + 45_000;
     while (!navigation.length && Date.now() < deadline)
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -392,6 +395,27 @@ try {
       });
     }
     console.log('PASS Expo Router native deep link mounts DOM without changing the launch context');
+    const warmCount = navigation.length;
+    const homeCount = reports.length;
+    await stop();
+    await openRouterLink();
+    const coldDeadline = Date.now() + 45_000;
+    while (navigation.length <= warmCount && Date.now() < coldDeadline)
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.ok(navigation.length > warmCount, 'Cold Router link must initialize the DOM route');
+    assert.equal(
+      reports.length,
+      homeCount,
+      'Cold link readiness must not depend on the home route',
+    );
+    for (const observation of navigation.slice(warmCount)) {
+      assert.equal(observation.pathname, '/dom');
+      assertContent(observation, 'embedded');
+      assert.equal(observation.phase, 'ready');
+      assert.ok(BigInt(observation.context.generation) > BigInt(context.generation));
+      assert.equal(observation.state.trialGeneration, undefined);
+    }
+    console.log('PASS Expo Router cold deep link completes splash and local readiness');
   }
   if (isAndroid) {
     const screenshot = await run(adb, ['-s', device, 'exec-out', 'screencap', '-p'], {
