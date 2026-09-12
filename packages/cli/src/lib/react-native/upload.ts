@@ -79,12 +79,13 @@ type ResumeOptions = {
   encryptionKey: Buffer | null;
   api: UploadAPI;
   fetcher?: typeof fetch;
+  expectedIdentity?: string;
 };
 const roles = ['baseline', 'ota'] as const;
 const same = (a: unknown, b: unknown) =>
   a !== undefined && b !== undefined && canonicalJSON(a) === canonicalJSON(b);
 
-function scope(value: UploadScope): UploadScope {
+export function normalizeUploadScope(value: UploadScope): UploadScope {
   const url = new URL(value.serverUrl);
   if (
     url.username ||
@@ -179,7 +180,7 @@ export async function prepareRNUpload(options: {
 }): Promise<RNUploadReceipt> {
   await assertOutputOutside(options.exportDirectory, options.directory);
   const exported = await readOTAUploadExport(options.exportDirectory);
-  const selectedScope = scope(options.scope);
+  const selectedScope = normalizeUploadScope(options.scope);
   const directory = resolve(options.directory);
   return withReceiptLock(`${directory}.prepare`, async () => {
     // Exclusive directory creation also prevents silently re-encrypting a previous attempt.
@@ -253,7 +254,7 @@ async function readUpload(options: Omit<ResumeOptions, 'api'>) {
   if (
     receipt?.format !== 'otakit-rn-upload' ||
     receipt.version !== 1 ||
-    !same(receipt.scope, scope(options.scope))
+    !same(receipt.scope, normalizeUploadScope(options.scope))
   )
     throw new Error('RN_UPLOAD_SCOPE_LOST: preserve the original server, organization and actor');
   assertUploadProvenance(receipt.exported, receipt.completedBuild);
@@ -329,7 +330,30 @@ async function readUpload(options: Omit<ResumeOptions, 'api'>) {
     } else if (artifact.state === 'finalized') assertBundle(artifact.bundle!, declaration);
     else if (artifact.bundle) throw new Error('Unfinished RN upload contains a finalized result');
   }
+  if (options.expectedIdentity && uploadIdentity(receipt) !== options.expectedIdentity)
+    throw new Error('RN upload differs from the selected collection transport');
   return receipt;
+}
+
+/** Bind immutable content and transport; progress and a verified baseline binding may advance. */
+export function uploadIdentity(receipt: RNUploadReceipt): string {
+  return hashBuffer(
+    Buffer.from(
+      canonicalJSON({
+        scope: receipt.scope,
+        exported: receipt.exported,
+        completedBuild: receipt.completedBuild,
+        baseline: receipt.baseline.declaration,
+        ota: { ...receipt.ota.declaration, baselineBundleId: null },
+      }),
+    ),
+  );
+}
+
+export async function inspectRNUpload(
+  options: Omit<ResumeOptions, 'api'>,
+): Promise<RNUploadReceipt> {
+  return withReceiptLock(join(options.directory, 'upload.json'), () => readUpload(options));
 }
 
 async function put(url: string, bytes: Buffer, fetcher: typeof fetch) {

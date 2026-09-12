@@ -320,6 +320,7 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
         'prepare-baseline-adoption': prepareAdoption,
       };
       let loseFinalization = true;
+      let putCount = 0;
       let baseUrl: string;
       const server = createServer(async (request, response) => {
         try {
@@ -328,6 +329,7 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
             expect(request.headers.authorization).toBeUndefined();
             const id = url.pathname.slice('/objects/'.length);
             if (request.method === 'PUT') {
+              putCount += 1;
               const chunks: Buffer[] = [];
               for await (const chunk of request) chunks.push(Buffer.from(chunk));
               const bytes = Buffer.concat(chunks);
@@ -425,6 +427,42 @@ databaseDescribe('RN upload handlers (PostgreSQL)', () => {
         expect(adopted.baseline.bundle.sha256).not.toBe(adopted.baseline.declaration.sha256);
         expect(adopted.baseline.adopted).toBe(true);
         expect(await readFile(join(second, 'adoption.json'), 'utf8')).not.toContain('rotating=');
+        if (process.env.RN_OTA_COLLECTION_EXPORT) {
+          const third = join(root, 'other-platform');
+          const collection = join(root, 'upload-collection.json');
+          await command(
+            'prepare-upload',
+            resolve(process.env.RN_OTA_COLLECTION_EXPORT),
+            '--receipt-dir',
+            third,
+            '--encrypt',
+          );
+          await command(
+            'prepare-upload-collection',
+            first,
+            third,
+            '--receipt',
+            collection,
+            '--encrypt',
+          );
+          expect(await database.bundle.count({ where: { appId } })).toBe(2);
+          const previousPuts = putCount;
+          loseFinalization = true;
+          await expect(command('upload-collection', collection)).rejects.toThrow(
+            '1/2 targets finalized',
+          );
+          const pending = JSON.parse(await readFile(join(third, 'upload.json'), 'utf8'));
+          expect(pending.baseline.state).toBe('finalizing');
+          const uploaded = JSON.parse((await command('upload-collection', collection)).stdout);
+          expect(
+            new Set(uploaded.targets.map((target: { platform: string }) => target.platform)),
+          ).toEqual(new Set(['ios', 'android']));
+          expect(uploaded.targets[0].otaBundleId).toBe(finished.ota.bundle.id);
+          await command('upload-collection', collection);
+          expect(putCount).toBe(previousPuts + 2);
+          expect(await database.bundle.count({ where: { appId } })).toBe(4);
+          expect(await database.release.count({ where: { appId } })).toBe(0);
+        }
       } finally {
         server.closeAllConnections();
         await new Promise<void>((done) => server.close(() => done()));

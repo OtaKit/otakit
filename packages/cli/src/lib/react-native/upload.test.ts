@@ -17,6 +17,7 @@ import {
   type RNUploadReceipt,
   type UploadDeclaration,
 } from './upload.js';
+import { prepareRNUploadCollection, uploadRNCollection } from './upload-collection.js';
 
 let root: string;
 let directory: string;
@@ -44,16 +45,16 @@ const bundle = (id: string) => {
   return { ...declaration, id: `bundle-${id}` };
 };
 
-beforeEach(async () => {
-  vi.resetAllMocks();
-  sessions.clear();
-  encryptionKey = null;
-  root = await mkdtemp(join(tmpdir(), 'otakit-rn-upload-'));
-  directory = join(root, 'upload');
-  exportDirectory = join(root, 'export');
+async function createExport(
+  exportDirectory: string,
+  platform: 'ios' | 'android' = 'android',
+  appId = 'app',
+  displayVersion = 'ota-1',
+) {
+  const baselineDirectory = `${exportDirectory}-baseline`;
   const identity: NativeBuildRecord['identity'] = {
-    appId: 'app',
-    platform: 'android',
+    appId,
+    platform,
     nativeApplicationId: 'com.example.app',
     variant: 'release',
     reactNativeVersion: '0.86.3',
@@ -78,7 +79,7 @@ beforeEach(async () => {
       format: 'otakit-rn',
       formatVersion: 1,
       framework: 'react-native',
-      platform: 'android',
+      platform,
       runtimeVersion: nativeBuild.runtimeVersion,
       version,
       entryPoint: 'index.bundle',
@@ -96,8 +97,8 @@ beforeEach(async () => {
     return {
       format: 'otakit-rn-export' as const,
       version: 1 as const,
-      appId: 'app',
-      platform: 'android' as const,
+      appId,
+      platform,
       runtimeVersion: nativeBuild.runtimeVersion,
       displayVersion: version,
       ...verified,
@@ -108,11 +109,11 @@ beforeEach(async () => {
       mappingHash: 'c'.repeat(64),
     };
   }
-  const embedded = await payload(join(root, 'baseline'), 'embedded-1');
+  const embedded = await payload(baselineDirectory, 'embedded-1');
   const embeddedReceipt = {
-    appId: 'app',
+    appId,
     framework: 'react-native' as const,
-    platform: 'android' as const,
+    platform,
     runtimeVersion: nativeBuild.runtimeVersion,
     version: embedded.displayVersion,
     embeddedContentHash: embedded.contentHash,
@@ -129,13 +130,13 @@ beforeEach(async () => {
     nativeBuild,
     baseline,
     binary: {
-      format: 'android-apk',
+      format: platform === 'android' ? 'android-apk' : 'ios-app',
       nativeApplicationId: identity.nativeApplicationId,
       sha256: 'd'.repeat(64),
     },
   };
   const ota = {
-    ...(await payload(exportDirectory, 'ota-1')),
+    ...(await payload(exportDirectory, displayVersion)),
     purpose: 'ota',
     baseline: {
       embeddedReceipt,
@@ -146,7 +147,7 @@ beforeEach(async () => {
     },
   };
   await mkdir(join(exportDirectory, 'private'));
-  await cp(join(root, 'baseline/artifact.zip'), join(exportDirectory, 'private/baseline.zip'));
+  await cp(join(baselineDirectory, 'artifact.zip'), join(exportDirectory, 'private/baseline.zip'));
   for (const [path, value] of Object.entries({
     'export.json': ota,
     'private/completed-build.json': completed,
@@ -154,6 +155,16 @@ beforeEach(async () => {
     'private/baseline-export.json': baseline,
   }))
     await writeFile(join(exportDirectory, path), JSON.stringify(value));
+}
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  sessions.clear();
+  encryptionKey = null;
+  root = await mkdtemp(join(tmpdir(), 'otakit-rn-upload-'));
+  directory = join(root, 'upload');
+  exportDirectory = join(root, 'export');
+  await createExport(exportDirectory);
   api.initiateUpload.mockImplementation(async (input) => {
     const id = String(sessions.size + 1);
     sessions.set(id, {
@@ -353,4 +364,100 @@ it('rejects inconsistent embedded provenance and a corrupt source archive before
   await writeFile(path, JSON.stringify(completed));
   await expect(prepare()).rejects.toThrow('provenance');
   await expect(readFile(join(directory, 'upload.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+async function preparedCollection(appId = 'app', version = 'ota-1') {
+  await prepare();
+  const secondExport = join(root, 'ios-export');
+  const second = join(root, 'ios-upload');
+  await createExport(secondExport, 'ios', appId, version);
+  await prepareRNUpload({ exportDirectory: secondExport, directory: second, scope, encryptionKey });
+  const collectionOptions = { ...options(), receiptPath: join(root, 'upload-collection.json') };
+  await prepareRNUploadCollection({ ...collectionOptions, directories: [directory, second] });
+  return { second, secondExport, collectionOptions };
+}
+
+it('resumes an encrypted collection after lost finalization without resending completed variants', async () => {
+  encryptionKey = Buffer.alloc(32, 7);
+  const { second, collectionOptions } = await preparedCollection();
+  const parent = await readFile(collectionOptions.receiptPath);
+  const transport = await readFile(join(second, 'ota.zip'));
+  api.finalizeUpload
+    .mockImplementationOnce(async ({ uploadId }) => bundle(uploadId))
+    .mockImplementationOnce(async ({ uploadId }) => bundle(uploadId))
+    .mockImplementationOnce(async ({ uploadId }) => bundle(uploadId))
+    .mockRejectedValueOnce(new Error('lost second OTA finalization'));
+  await expect(uploadRNCollection(collectionOptions)).rejects.toThrow('1/2 targets finalized');
+  expect((await saved()).ota.state).toBe('finalized');
+  const result = await uploadRNCollection(collectionOptions);
+  expect(result.targets.map((target) => target.platform)).toEqual(['android', 'ios']);
+  expect(new Set(result.targets.map((target) => target.baselineBundleId)).size).toBe(2);
+  expect(api.initiateUpload).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(api.finalizeUpload).toHaveBeenCalledTimes(5);
+  await uploadRNCollection(collectionOptions);
+  expect(api.finalizeUpload).toHaveBeenCalledTimes(5);
+  expect(await readFile(join(second, 'ota.zip'))).toEqual(transport);
+  expect(await readFile(collectionOptions.receiptPath)).toEqual(parent);
+});
+
+it.each([
+  ['other-app', 'ota-1'],
+  ['app', 'other-version'],
+])(
+  'rejects collection target mismatch before saving or uploading: %s %s',
+  async (appId, version) => {
+    await expect(preparedCollection(appId, version)).rejects.toThrow('targeting changed');
+    await expect(readFile(join(root, 'upload-collection.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(api.initiateUpload).not.toHaveBeenCalled();
+  },
+);
+
+it('rejects duplicate upload lanes and refuses to replace an existing collection', async () => {
+  await prepare();
+  const collectionOptions = { ...options(), receiptPath: join(root, 'upload-collection.json') };
+  await expect(
+    prepareRNUploadCollection({ ...collectionOptions, directories: [directory, directory] }),
+  ).rejects.toThrow('Duplicate');
+  await prepareRNUploadCollection({ ...collectionOptions, directories: [directory] });
+  await expect(
+    prepareRNUploadCollection({ ...collectionOptions, directories: [directory] }),
+  ).rejects.toThrow('already exists');
+  expect(api.initiateUpload).not.toHaveBeenCalled();
+});
+
+it('verifies the last collection archive before sending the first target', async () => {
+  const { second, collectionOptions } = await preparedCollection();
+  await writeFile(join(second, 'ota.zip'), 'corrupt transport');
+  await expect(uploadRNCollection(collectionOptions)).rejects.toThrow();
+  expect(api.initiateUpload).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('binds the originally prepared ciphertext even if replacement receipts are independently valid', async () => {
+  encryptionKey = Buffer.alloc(32, 8);
+  const { second, secondExport, collectionOptions } = await preparedCollection();
+  const replacement = join(root, 'replacement');
+  await prepareRNUpload({
+    exportDirectory: secondExport,
+    directory: replacement,
+    scope,
+    encryptionKey,
+  });
+  for (const name of ['upload.json', 'baseline.zip', 'ota.zip'])
+    await cp(join(replacement, name), join(second, name));
+  await expect(uploadRNCollection(collectionOptions)).rejects.toThrow(
+    'selected collection transport',
+  );
+  expect(api.initiateUpload).not.toHaveBeenCalled();
+});
+
+it('rejects a collection account change before any upload', async () => {
+  const { collectionOptions } = await preparedCollection();
+  await expect(
+    uploadRNCollection({ ...collectionOptions, scope: { ...scope, actorKey: 'key:other' } }),
+  ).rejects.toThrow('RN_UPLOAD_SCOPE_LOST');
+  expect(api.initiateUpload).not.toHaveBeenCalled();
 });

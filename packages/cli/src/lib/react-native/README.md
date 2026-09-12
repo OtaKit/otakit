@@ -16,7 +16,7 @@ otakit rn export-embedded --project "$OTAKIT_PROJECT" \
 
 The command creates one `platform-runtime` directory. Preserve it with the build. `export.json` has `purpose: "embedded"`, the exact payload inventory and transport hash, an `embeddedReceipt`, and `nativeBuildId`. `private/native-build.json` records compatibility evidence; `private/native-inputs.json` preserves the supplied inputs. The composed source map stays private.
 
-Projects that declare Expo use the adapter for Expo 57.0.17 / CLI 57.0.19's embed exporter. Supply the original entry explicitly with `--entry`, including `expo-router/entry` for Router projects. The adapter preserves Expo's native initializer, config snapshot and DOM output, validates asset destinations before copying, and keeps all source maps private. Known native directories skipped by CNG/pnpm fingerprint rules receive supplemental content hashes; other missing evidence still fails. See the [Expo fixture](../../../../../examples/expo-app/README.md) for verified export coverage and the upstream Router icon collision currently blocking its full acceptance.
+Projects that declare Expo use the adapter for Expo 57.0.17 / CLI 57.0.19's embed exporter. Supply the original entry explicitly with `--entry`, including `expo-router/entry` for Router projects. The adapter preserves Expo's native initializer, config snapshot and DOM output, validates asset destinations before copying, and keeps all source maps private. Known native directories skipped by CNG/pnpm fingerprint rules receive supplemental content hashes; other missing evidence still fails. See the [Expo fixture](../../../../../examples/expo-app/README.md) for verified export coverage and the pinned Router asset patch and native acceptance limits.
 
 Expo capture and export initialize production mode and load the installed Expo CLI's production `.env` files before evaluating native evidence, Metro or public config. Leave `NODE_ENV` and `BABEL_ENV` unset or set them to `production`; conflicting modes fail before export. Environment files contribute file hashes to the native build record, so changes currently require a matching new binary. Their contents are not stored as dotenv values in receipts. Release export resets Metro's transform cache because SDK 57 can otherwise reuse JavaScript with stale inlined `EXPO_PUBLIC_*` values while exporting a newer config snapshot. Bare RN and Capacitor do not use this Expo setup.
 
@@ -93,7 +93,23 @@ otakit rn upload "$OTAKIT_UPLOAD_DIR" --server "$OTAKIT_SERVER"
 
 Adoption checks the exact embedded receipt, complete inventory, transport strategy and key identity. It downloads the stored ZIP, verifies its size and hash, authenticates/decrypts it when encrypted, and verifies every archived file before saving `adoption.json`. A corrupt object or changed encryption policy cannot be adopted. URL rotation does not change artifact identity. The unused local baseline transport remains available for audit; the OTA binds to the verified stored bundle. Adoption cannot replace a baseline after OTA upload has begun.
 
-These commands handle one ZIP variant and do not publish. Use the returned OTA bundle ID with `rn prepare-publication`, then `rn publish` with that reviewed receipt. Delta and collection upload orchestration remain outstanding.
+These commands handle one ZIP variant and do not publish. Use the returned OTA bundle ID with `rn prepare-publication`, then `rn publish` with that reviewed receipt. Delta upload orchestration remains outstanding.
+
+## Grouped ZIP upload
+
+Prepare each platform/runtime with `rn prepare-upload`, then bind those existing upload directories into one collection:
+
+```sh
+otakit rn prepare-upload-collection "$OTAKIT_IOS_UPLOAD" "$OTAKIT_ANDROID_UPLOAD" \
+  --receipt "$OTAKIT_UPLOAD_COLLECTION" --server "$OTAKIT_SERVER"
+otakit rn upload-collection "$OTAKIT_UPLOAD_COLLECTION" --server "$OTAKIT_SERVER"
+```
+
+Every target must have the same app, display version, account and encryption key policy, with a distinct platform/runtime. Preparation verifies all archives and binds their original content and ciphertext identities. It does not re-export, re-encrypt, upload or publish. Preserve the collection file and its per-variant upload directories at their recorded locations.
+
+Uploading verifies every selected archive and scope before sending the first target. Each variant retains the existing baseline-first upload/retry behavior. If one target fails or its response is lost, later targets stop; rerun the same collection to continue. Finalized targets do not repeat their network writes, and partially completed targets retain their upload IDs and exact transport bytes. The returned OTA bundle IDs can be passed to grouped publication below. Uploading a collection does not publish it.
+
+Baseline conflicts still require an explicit `rn adopt-baseline <target-upload-directory>`. The collection permits that verified binding to advance while keeping the original local transport intact; it never silently adopts another ciphertext. Replacing a target with a newly prepared upload is rejected even if it represents the same plaintext export.
 
 ## Grouped publication
 

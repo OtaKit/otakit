@@ -27,6 +27,11 @@ import {
   uploadRNReceipt,
   type RNUploadReceipt,
 } from '../lib/react-native/upload.js';
+import {
+  prepareRNUploadCollection,
+  uploadRNCollection,
+  type UploadCollection,
+} from '../lib/react-native/upload-collection.js';
 
 type Context = {
   organization: { id: string };
@@ -290,6 +295,104 @@ for (const name of ['upload', 'adopt-baseline'] as const) {
       }),
   );
 }
+
+reactNativeCommand.addCommand(
+  new Command('prepare-upload-collection')
+    .description('Bind prepared RN variants of one version without uploading or publishing')
+    .argument('<receipt-directories...>', 'Previously prepared per-variant upload directories')
+    .requiredOption('--receipt <path>', 'New durable upload collection receipt')
+    .option('--server <url>', 'Server URL (must match every saved scope)')
+    .option('--encrypt', 'Require the original OTAKIT_ENCRYPTION_KEY')
+    .action(
+      async (
+        directories: string[],
+        options: { receipt: string; server?: string; encrypt?: boolean },
+      ) => {
+        await runCommand(async () => {
+          const first = JSON.parse(
+            await readFile(join(directories[0], 'upload.json'), 'utf8'),
+          ) as RNUploadReceipt;
+          if (
+            first?.format !== 'otakit-rn-upload' ||
+            first.version !== 1 ||
+            typeof first.exported?.appId !== 'string'
+          )
+            throw new CliError('Invalid RN upload receipt.');
+          const config = await requireConfig({
+            appId: first.exported.appId,
+            serverUrl: options.server,
+          });
+          if (new URL(config.serverUrl).toString().replace(/\/$/, '') !== first.scope?.serverUrl)
+            throw new CliError(
+              'RN_UPLOAD_SCOPE_LOST: selected server differs from the saved upload.',
+            );
+          const selected = await context(new ApiClient(config), config.appId);
+          const result = await prepareRNUploadCollection({
+            directories,
+            receiptPath: options.receipt,
+            encryptionKey: resolveEncryptionKey(options.encrypt),
+            scope: {
+              serverUrl: config.serverUrl,
+              organizationId: selected.organization.id,
+              actorKey: `${selected.actor.type}:${selected.actor.id}`,
+            },
+          });
+          console.log(
+            JSON.stringify(
+              {
+                receipt: options.receipt,
+                appId: result.appId,
+                version: result.displayVersion,
+                targets: result.targets.length,
+                state: 'prepared',
+              },
+              null,
+              2,
+            ),
+          );
+        });
+      },
+    ),
+);
+
+reactNativeCommand.addCommand(
+  new Command('upload-collection')
+    .description(
+      'Resume prepared RN variants using their original upload receipts without publishing',
+    )
+    .argument('<receipt>', 'Prepared upload collection receipt')
+    .option('--server <url>', 'Server URL (must match the saved scope)')
+    .option('--encrypt', 'Require the original OTAKIT_ENCRYPTION_KEY')
+    .action(async (receiptPath: string, options: { server?: string; encrypt?: boolean }) => {
+      await runCommand(async () => {
+        const receipt = JSON.parse(await readFile(receiptPath, 'utf8')) as UploadCollection;
+        if (
+          receipt?.format !== 'otakit-rn-upload-collection' ||
+          receipt.version !== 1 ||
+          typeof receipt.appId !== 'string'
+        )
+          throw new CliError('Invalid RN upload collection.');
+        const config = await requireConfig({ appId: receipt.appId, serverUrl: options.server });
+        if (new URL(config.serverUrl).toString().replace(/\/$/, '') !== receipt.scope?.serverUrl)
+          throw new CliError(
+            'RN_UPLOAD_SCOPE_LOST: selected server differs from the saved collection.',
+          );
+        const api = new ApiClient(config);
+        const selected = await context(api, config.appId);
+        const result = await uploadRNCollection({
+          receiptPath,
+          api,
+          encryptionKey: resolveEncryptionKey(options.encrypt),
+          scope: {
+            serverUrl: config.serverUrl,
+            organizationId: selected.organization.id,
+            actorKey: `${selected.actor.type}:${selected.actor.id}`,
+          },
+        });
+        console.log(JSON.stringify(result, null, 2));
+      });
+    }),
+);
 
 reactNativeCommand.addCommand(
   new Command('export-embedded')
