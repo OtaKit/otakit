@@ -21,6 +21,11 @@ const { receipt, integration = 'native' } = JSON.parse(
 );
 const isAndroid = device.startsWith('emulator-');
 assert.equal(receipt.platform, isAndroid ? 'android' : 'ios');
+const iosUITests = process.env.OTAKIT_IOS_UI_TEST_RUN;
+if (!isAndroid && integration === 'router' && !iosUITests)
+  throw new Error(
+    'Prepare the standalone UI tests and set OTAKIT_IOS_UI_TEST_RUN for iOS Router acceptance',
+  );
 const adb = process.env.ANDROID_HOME ? join(process.env.ANDROID_HOME, 'platform-tools/adb') : 'adb';
 const android = (args) => run(adb, ['-s', device, ...args], { timeout: 60_000 });
 const appId = 'com.otakit.expofixture';
@@ -340,23 +345,52 @@ try {
         '-p',
         appId,
       ]);
-    else await ios(['openurl', device, url]);
+    else {
+      await ios(['openurl', device, url]);
+      const args = [
+        'test-without-building',
+        '-xctestrun',
+        resolve(iosUITests),
+        '-destination',
+        `platform=iOS Simulator,id=${device}`,
+        '-parallel-testing-enabled',
+        'NO',
+        '-resultBundlePath',
+        join(directory, `ui-results-${Date.now()}.xcresult`),
+        '-only-testing:OtaKitFixtureUI/NativeLinkTests/testOpenFixtureLink',
+      ];
+      let result;
+      try {
+        result = await run('xcodebuild', args, { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 });
+      } catch (error) {
+        await writeFile(
+          join(directory, `${device}-ui.log`),
+          `${error.stdout ?? ''}${error.stderr ?? ''}`,
+        );
+        throw error;
+      }
+      await writeFile(join(directory, `${device}-ui.log`), result.stdout + result.stderr);
+    }
     const deadline = Date.now() + 45_000;
     while (!navigation.length && Date.now() < deadline)
       await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.equal(navigation.length, 1, 'Router must mount and report the linked DOM screen once');
-    assert.equal(navigation[0].pathname, '/dom');
-    assert.deepEqual(
-      navigation[0].context,
-      context,
-      'Navigation must preserve the running instance',
-    );
-    assert.equal(navigation[0].state.current.contentHash, context.contentHash);
-    assert.equal(navigation[0].expoConfig.extra.fixtureVersion, 'embedded');
-    assert.deepEqual(navigation[0].dom, {
-      version: 'OTAKIT_EXPO_DOM_EMBEDDED',
-      htmlVersion: 'embedded',
-    });
+    assert.ok(navigation.length > 0, 'Router must mount and report the linked DOM screen');
+    // DOM bridge callbacks can repeat after WebView focus changes. Validate every
+    // observation; callback count is not a navigation or native generation count.
+    for (const observation of navigation) {
+      assert.equal(observation.pathname, '/dom');
+      assert.deepEqual(
+        observation.context,
+        context,
+        'Navigation must preserve the running instance',
+      );
+      assert.equal(observation.state.current.contentHash, context.contentHash);
+      assert.equal(observation.expoConfig.extra.fixtureVersion, 'embedded');
+      assert.deepEqual(observation.dom, {
+        version: 'OTAKIT_EXPO_DOM_EMBEDDED',
+        htmlVersion: 'embedded',
+      });
+    }
     console.log('PASS Expo Router native deep link mounts DOM without changing the launch context');
   }
   if (isAndroid) {
@@ -370,6 +404,12 @@ try {
   console.log(
     `PASS ${device}: verified native DOM resources, Expo Constants, DOM readiness, process restart generations`,
   );
+} catch (error) {
+  if (!isAndroid)
+    await ios(['io', device, 'screenshot', join(directory, `${device}-failure.png`)]).catch(
+      () => {},
+    );
+  throw error;
 } finally {
   try {
     await writeFile(join(directory, `${device}-reports.json`), JSON.stringify(reports, null, 2));

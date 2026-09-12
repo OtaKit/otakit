@@ -64,6 +64,7 @@ export async function prepareNative(platform, directory, option) {
           ? [
               hostFile,
               'android-fixture.gradle',
+              'android-build-fixture.gradle',
               'android/build.gradle',
               'android/app/build.gradle',
               'android/app/src/main/AndroidManifest.xml',

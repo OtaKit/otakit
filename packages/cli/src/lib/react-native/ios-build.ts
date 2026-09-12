@@ -4,7 +4,7 @@ import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm } from 
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { canonicalJSON } from '@otakit/rn-protocol';
+import { assertDescriptor, canonicalJSON } from '@otakit/rn-protocol';
 import { hashFile } from '../hash.js';
 import {
   assertSameNativeBuild,
@@ -17,6 +17,7 @@ import { exportRN } from './export.js';
 import { prepareExpoEnvironment } from './expo-environment.js';
 import { stageEmbedded } from './stage-embedded.js';
 import { withReceiptLock, writeReceipt } from './receipts.js';
+import { readIOSVersions, type IOSVersions } from './ios-versions.js';
 
 type Settings = Record<string, string>;
 const application = 'com.apple.product-type.application';
@@ -108,10 +109,11 @@ function validateSettings(settings: Settings): void {
     throw new Error('Unsupported iOS application resource layout');
 }
 
-function identitySettings(settings: Settings): Record<string, unknown> {
+function identitySettings(settings: Settings, versions: IOSVersions): Record<string, unknown> {
   return {
     format: 'otakit-rn-xcode-build',
-    version: 1,
+    version: 2,
+    bundleVersions: versions,
     ...Object.fromEntries(recordedSettings.map((key) => [key, settings[key] ?? ''])),
   };
 }
@@ -255,8 +257,10 @@ export async function buildIOS(options: IOSBuildOptions) {
   const lock = await readFile(join(settings.PROJECT_DIR, 'Podfile.lock'));
   if (!lock.equals(await readFile(join(settings.PODS_ROOT, 'Manifest.lock'))))
     throw new Error('CocoaPods lockfiles differ; run pod install before building');
+  const plist = await readIOSVersions(settings);
   const nativeFiles = [
     ...inputs.nativeFiles,
+    plist.file,
     hook,
     join(rnDirectory, 'scripts/xcode/with-environment.sh'),
     join(settings.PROJECT_FILE_PATH, 'project.pbxproj'),
@@ -278,7 +282,10 @@ export async function buildIOS(options: IOSBuildOptions) {
   const nativeInputs: NativeBuildInputs = {
     ...inputs,
     nativeFiles: [...new Set(nativeFiles)],
-    nativeConfiguration: { ...inputs.nativeConfiguration, iosBuild: identitySettings(settings) },
+    nativeConfiguration: {
+      ...inputs.nativeConfiguration,
+      iosBuild: identitySettings(settings, plist.versions),
+    },
   };
   const compiler =
     settings.HERMES_CLI_PATH || join(settings.PODS_ROOT, 'hermes-engine/destroot/bin/hermesc');
@@ -399,7 +406,7 @@ export async function stageIOSBuild(requestPath: string, env = process.env): Pro
       throw new Error(`Xcode build setting changed after preflight: ${key}`);
   }
   if (
-    canonicalJSON(identitySettings(settings)) !==
+    canonicalJSON(identitySettings(settings, (await readIOSVersions(settings)).versions)) !==
     canonicalJSON(request.nativeInputs.nativeConfiguration.iosBuild)
   )
     throw new Error('Xcode request differs from recorded native configuration');
@@ -444,13 +451,38 @@ export async function stageIOSBuild(requestPath: string, env = process.env): Pro
     )
   )
     throw new Error('Existing resource destination contains files not owned by OtaKit');
+  const descriptor = JSON.parse(await readFile(join(staged, 'payload/otakit-bundle.json'), 'utf8'));
+  assertDescriptor(descriptor);
+  const domDestination = join(product, 'www.bundle');
+  if (descriptor.expo) {
+    const existingDOM = await lstat(domDestination).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    if (existingDOM && (!existingDOM.isDirectory() || existingDOM.isSymbolicLink()))
+      throw new Error('Unsafe existing Expo DOM resource destination');
+  }
   const temporary = join(product, `.otakit-${request.runId}`);
+  const temporaryDOM = join(product, `.otakit-dom-${request.runId}`);
   try {
     await cp(staged, temporary, { recursive: true, errorOnExist: true, force: false });
+    if (descriptor.expo?.domRoot)
+      await cp(join(staged, 'payload/www.bundle'), temporaryDOM, {
+        recursive: true,
+        errorOnExist: true,
+        force: false,
+      });
     await rm(destination, { recursive: true, force: true });
     await rename(temporary, destination);
+    if (descriptor.expo) {
+      // Expo's original embedded resolver owns this SDK namespace in the built app.
+      // Remove its previous output even when the new export no longer contains DOM.
+      await rm(domDestination, { recursive: true, force: true });
+      if (descriptor.expo.domRoot) await rename(temporaryDOM, domDestination);
+    }
   } finally {
     await rm(temporary, { recursive: true, force: true });
+    await rm(temporaryDOM, { recursive: true, force: true });
   }
   await writeReceipt(join(output, 'phase.json'), {
     runId: request.runId,

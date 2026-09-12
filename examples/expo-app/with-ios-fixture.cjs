@@ -35,6 +35,15 @@ module.exports = function withIOSFixture(config) {
     const project = config.modResults;
     const name = 'Stage OtaKit Expo fixture';
     const phases = Object.values(project.hash.project.objects.PBXShellScriptBuildPhase ?? {});
+    const bundlers = phases.filter(
+      (phase) => phase?.name === '"Bundle React Native code and images"',
+    );
+    if (bundlers.length !== 1) throw new Error('Expected one Expo bundling phase');
+    const bundler = bundlers[0];
+    const guard = 'if [ -z "${OTAKIT_BUILD_REQUEST:-}" ]; then\n';
+    const original = JSON.parse(bundler.shellScript);
+    if (!original.startsWith(guard))
+      bundler.shellScript = JSON.stringify(guard + original + '\nfi\n');
     const matching = phases.filter((phase) => phase?.name === `"${name}"`);
     if (matching.length > 1) throw new Error('Duplicate Expo fixture resource phases');
     const script = '/bin/sh "$PROJECT_DIR/../ios-fixture.sh"\n';

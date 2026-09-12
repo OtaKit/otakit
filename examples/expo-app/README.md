@@ -71,6 +71,50 @@ The shared device runner checks every packaged payload file and the separate emb
 
 Use `node examples/expo-app/prepare-android.mjs <new-directory> --router` (or `prepare-ios.mjs`) and build/run as above. The Router root prevents automatic splash hiding; its home route waits for DOM readiness, completes `hideAsync()`, and then confirms OtaKit readiness. Unconfirmed and fatal test variants still withhold readiness. Debug routes avoid importing the updater API.
 
-The shared runner checks the Router path through the same update scenarios, then opens `otakit-expo-fixture://dom` through the native linking API. The DOM route must mount once, preserve the current launch context, and report matching config/DOM content. Packaged payload and embedded DOM trees must exactly match the receipt, including absence of stale files.
+The shared runner checks the Router path through the same update scenarios, then opens `otakit-expo-fixture://dom` through the native linking API. The DOM route must report matching config/DOM content and preserve the current launch context. DOM bridge callbacks can repeat after focus changes; every report must agree. Packaged payload and embedded DOM trees must exactly match the receipt, including absence of stale files.
 
-Android API 36 passed the Router encrypted update, cold restart, timeout rollback, fatal crash recovery, embedded restoration, splash API completion and native deep-link scenarios. Router export passed on both platforms; iOS Router device acceptance is still in progress.
+Android API 36 and iOS 26.5 passed the Router encrypted update, cold restart, timeout rollback, fatal crash recovery, embedded restoration, splash API completion and warm native deep-link scenarios. Cold deep-link startup and development-device acceptance remain outstanding.
+
+For iOS Router runs, prepare the standalone UI helper using Ruby with CocoaPods' `xcodeproj` gem available. This creates a separate test project outside the repository and does not change the application's native identity:
+
+```sh
+ruby examples/expo-app/prepare-ui-tests.rb /tmp/otakit-expo-ui-tests
+xcodebuild -project /tmp/otakit-expo-ui-tests/OtaKitFixtureUI.xcodeproj \
+  -scheme OtaKitFixtureUI -configuration Debug -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=<UDID>' \
+  -derivedDataPath /tmp/otakit-expo-ui-tests/DerivedData \
+  CODE_SIGNING_ALLOWED=NO -jobs 2 build-for-testing
+```
+
+Set `OTAKIT_IOS_UI_TEST_RUN` to the resulting `.xctestrun` file under `DerivedData/Build/Products` when running `run-ios.mjs`. The helper accepts only this fixture's URL confirmation and requires the prompt to close. iOS can remember prior confirmation and show no prompt; the runner still requires the linked screen's report. UI results, console logs, reports and failure screenshots are retained in the fixture output.
+
+## Completed-build hook acceptance
+
+The private native host now also exercises the shipped Gradle/Xcode hooks. Both hooks build fresh baseline exports, stage Expo's separate embedded DOM resources and verify their exact packaged inventories before issuing receipts. The sealer rejects missing, modified or stale DOM files. Android only accepts Expo's installed CLI and the matching RN Hermes compiler; custom bundler/compiler configurations remain rejected. iOS version records resolve the source Info.plist's literal values or ordinary build-setting references, instead of assuming `MARKETING_VERSION` controls a literal Expo plist. Existing version-1 receipts retain their earlier verification.
+
+With a prepared fixture's keys and native inputs, run the Android hook:
+
+```sh
+cd examples/expo-app/android
+NODE_ENV=production ./gradlew :app:assembleRelease -I ../android-build-fixture.gradle \
+  -PotakitFixtureNativeInputs=/tmp/otakit-expo-acceptance/inputs.json \
+  -PreactNativeArchitectures=arm64-v8a --max-workers=2 \
+  '-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g'
+```
+
+The hook prints its retained directory under `android/app/build/otakit/release`. To exercise the iOS hook from the repository root:
+
+```sh
+NODE_ENV=production node packages/cli/dist/index.js rn build-ios \
+  --project examples/expo-app --workspace ios/OtaKitExpoFixture.xcworkspace \
+  --scheme OtaKitExpoFixture --sdk iphonesimulator \
+  --destination 'platform=iOS Simulator,id=<UDID>' \
+  --derived-data /tmp/otakit-expo-derived-data \
+  --native-inputs /tmp/otakit-expo-ios-acceptance/inputs.json \
+  --version embedded --entry expo-router/entry \
+  --output /tmp/otakit-expo-completed-ios --no-code-signing
+```
+
+Use a native project generated with the current private config plugin. It skips Expo's ordinary bundling phase only for an OtaKit build request and invokes the public staging hook. Ordinary builds keep their previous behavior. Do not set `SKIP_BUNDLING` for this wrapper.
+
+`node examples/expo-app/prepare-completed.mjs <new-device-directory> <prepared-fixture-directory> <completed-build-directory>` derives local signed fault fixtures from the sealed baseline and matching test keys. Run the usual device runner against the archived `application.apk` or `.app`, passing that new directory and `--updates`. Both platforms passed these full Router scenarios with hook-built archives. These private fixtures still do not constitute a public Expo installer, store-signing or physical-device acceptance.

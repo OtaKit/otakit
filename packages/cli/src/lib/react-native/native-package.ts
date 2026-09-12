@@ -3,7 +3,12 @@ import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
 import yauzl from 'yauzl';
-import { canonicalJSON, rnCaseFoldingJSON, type DeltaFileEntry } from '@otakit/rn-protocol';
+import {
+  assertDescriptor,
+  canonicalJSON,
+  rnCaseFoldingJSON,
+  type DeltaFileEntry,
+} from '@otakit/rn-protocol';
 import { createHash } from 'node:crypto';
 import { hashBuffer, hashFile } from '../hash.js';
 import { embeddedBuildId, type EmbeddedExportReceipt } from './export-receipt.js';
@@ -95,7 +100,8 @@ async function inspectAPK(path: string, resourceRoot: string) {
           const retain =
             entry.fileName === `${resourceRoot}/otakit-embedded.json` ||
             entry.fileName === `${resourceRoot}/configuration.json` ||
-            entry.fileName === `${resourceRoot}/case-folding.json`;
+            entry.fileName === `${resourceRoot}/case-folding.json` ||
+            entry.fileName === `${resourceRoot}/payload/otakit-bundle.json`;
           if (retain && entry.uncompressedSize > MAX_RESOURCE_JSON) {
             fail(new Error('Native receipt/configuration exceeds limit'));
             return;
@@ -221,6 +227,11 @@ export async function verifyNativePackage(options: {
         iosBuild[setting] !== plist[key]
       )
         throw new Error(`Packaged iOS ${key} differs from the Xcode build record`);
+      if (iosBuild?.format === 'otakit-rn-xcode-build' && iosBuild.version === 2) {
+        const versions = iosBuild.bundleVersions as Record<string, unknown> | undefined;
+        if (typeof versions?.[key] !== 'string' || !versions[key] || versions[key] !== plist[key])
+          throw new Error(`Packaged iOS ${key} differs from the resolved Info.plist version`);
+      }
     }
   }
   if (nativeApplicationId !== nativeBuild.identity.nativeApplicationId)
@@ -242,6 +253,23 @@ export async function verifyNativePackage(options: {
     values.slice().sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
   if (canonicalJSON(sorted(actualPayload)) !== canonicalJSON(sorted(baseline.files)))
     throw new Error('Packaged embedded payload differs from its archived baseline');
+  const descriptor = JSON.parse(
+    (await readResource('payload/otakit-bundle.json')).toString('utf8'),
+  );
+  assertDescriptor(descriptor);
+  if (descriptor.expo) {
+    // Embedded Expo DOM uses its original native resolver, outside the OtaKit payload.
+    // Seal that second copy too, including absence of stale files after DOM is removed.
+    const nativePrefix = android ? 'assets/' : '';
+    const actualDOM = [...files]
+      .filter(([path]) => path.startsWith(`${nativePrefix}www.bundle/`))
+      .map(([path, value]) => ({ path: path.slice(nativePrefix.length), ...value }));
+    const expectedDOM = descriptor.expo.domRoot
+      ? baseline.files.filter((file) => file.path.startsWith('www.bundle/'))
+      : [];
+    if (canonicalJSON(sorted(actualDOM)) !== canonicalJSON(sorted(expectedDOM)))
+      throw new Error('Packaged Expo DOM resources differ from the archived baseline');
+  }
   const embedded = JSON.parse((await readResource('otakit-embedded.json')).toString('utf8'));
   const config = JSON.parse((await readResource('configuration.json')).toString('utf8'));
   const folding = JSON.parse((await readResource('case-folding.json')).toString('utf8'));

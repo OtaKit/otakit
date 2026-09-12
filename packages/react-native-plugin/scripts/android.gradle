@@ -24,6 +24,17 @@ abstract class OtaKitBuildTask extends DefaultTask {
         }.assertNormalExitValue()
     }
 
+    String readNode(List<String> command, File directory) {
+        def output = new ByteArrayOutputStream()
+        execOperations.exec {
+            workingDir directory
+            commandLine command
+            environment 'NODE_PATH', ''
+            standardOutput = output
+        }.assertNormalExitValue()
+        return output.toString('UTF-8').trim()
+    }
+
     @TaskAction void executeBuildStep() { operation.call() }
 }
 
@@ -72,8 +83,9 @@ components.onVariants(components.selector().all()) { variant ->
             !reactExtension.enableHermesOnlyInVariants.get().contains(variant.name))) {
         throw new GradleException("OtaKit requires a non-debuggable Hermes variant: ${variant.name}")
     }
-    if (reactExtension.bundleCommand.get() != 'bundle' || reactExtension.bundleConfig.isPresent() ||
-        !reactExtension.extraPackagerArgs.get().empty || !reactExtension.hermesCommand.get().empty ||
+    def expoBundle = reactExtension.bundleCommand.get() == 'export:embed'
+    if ((!expoBundle && reactExtension.bundleCommand.get() != 'bundle') || reactExtension.bundleConfig.isPresent() ||
+        !reactExtension.extraPackagerArgs.get().empty || (!expoBundle && !reactExtension.hermesCommand.get().empty) ||
         reactExtension.hermesFlags.get() != ['-O', '-output-source-map'] ||
         reactExtension.root.get().asFile.canonicalFile != projectRoot ||
         reactExtension.reactNativeDir.get().asFile.canonicalFile != new File(projectRoot, 'node_modules/react-native').canonicalFile) {
@@ -101,6 +113,34 @@ components.onVariants(components.selector().all()) { variant ->
         notCompatibleWithConfigurationCache('Collects resolved Android variant evidence at execution time')
         operation = {
             def input = new JsonSlurper().parse(nativeInputsFile)
+            def expoEvidence = []
+            if (expoBundle) {
+                // Accept only Expo's installed CLI and RN's matching compiler. Custom
+                // commands still need a dedicated exporter, even when named export:embed.
+                def resolved = new JsonSlurper().parseText(task.readNode(nodeCommand + ['-e', '''
+                    const {createRequire} = require('node:module');
+                    const {dirname, join} = require('node:path');
+                    const app = createRequire(join(process.cwd(), 'package.json'));
+                    const expo = createRequire(app.resolve('expo/package.json'));
+                    const rn = createRequire(app.resolve('react-native/package.json'));
+                    const compiler = dirname(rn.resolve('hermes-compiler/package.json'));
+                    const os = {darwin:'osx-bin', linux:'linux64-bin', win32:'win64-bin'}[process.platform];
+                    if (!os) throw new Error('Unsupported Hermes host');
+                    console.log(JSON.stringify({
+                        cli: expo.resolve('@expo/cli'),
+                        template: join(compiler, 'hermesc/%OS-BIN%/hermesc'),
+                        compiler: join(compiler, 'hermesc', os, 'hermesc' + (process.platform === 'win32' ? '.exe' : '')),
+                    }));
+                '''], projectRoot))
+                def selectedCompiler = new File(input.hermesCompiler.toString())
+                if (!selectedCompiler.isAbsolute()) selectedCompiler = new File(projectRoot, input.hermesCompiler.toString())
+                if (reactExtension.cliFile.get().asFile.canonicalFile != new File(resolved.cli).canonicalFile ||
+                    new File(reactExtension.hermesCommand.get()).canonicalFile != new File(resolved.template).canonicalFile ||
+                    selectedCompiler.canonicalFile != new File(resolved.compiler).canonicalFile) {
+                    throw new GradleException('Expo requires its installed CLI and the selected RN Hermes compiler')
+                }
+                expoEvidence = [resolved.cli]
+            }
             if (input.platform != 'android' || input.nativeApplicationId != variant.applicationId.get() ||
                 !variant.name.equalsIgnoreCase(input.variant?.toString())) {
                 throw new GradleException('Native inputs must match the selected Android variant and application ID')
@@ -117,7 +157,7 @@ components.onVariants(components.selector().all()) { variant ->
             def artifacts = externalArtifacts.artifacts.toList().sort { a, b ->
                 a.id.displayName <=> b.id.displayName
             }
-            input.nativeFiles = (input.nativeFiles + [hookFile.absolutePath] +
+            input.nativeFiles = (input.nativeFiles + [hookFile.absolutePath] + expoEvidence +
                 artifacts.collect { it.file.absolutePath } +
                 components.sdkComponents.bootClasspath.get().collect { it.asFile.absolutePath }).unique()
             input.nativeConfiguration.androidBuild = [
@@ -153,6 +193,15 @@ components.onVariants(components.selector().all()) { variant ->
             task.runCLI(cliCommand + ['stage-embedded', '--embedded-export', exports[0].absolutePath,
                 '--configuration', hostFile.absolutePath,
                 '--output', new File(task.assetsDirectory.get().asFile, resource).absolutePath], projectRoot)
+            def payload = new File(task.assetsDirectory.get().asFile, "${resource}/payload")
+            def descriptor = new JsonSlurper().parse(new File(payload, 'otakit-bundle.json'))
+            if (descriptor.expo?.domRoot) {
+                project.copy {
+                    from new File(payload, 'www.bundle')
+                    into new File(task.assetsDirectory.get().asFile, 'www.bundle')
+                    includeEmptyDirs = false
+                }
+            }
         }
     }
     variant.sources.assets.addGeneratedSourceDirectory(prepare) { it.assetsDirectory }

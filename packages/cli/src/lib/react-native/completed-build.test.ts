@@ -1,10 +1,15 @@
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import yazl from 'yazl';
-import { canonicalJSON, rnCaseFoldingJSON, type RNDescriptor } from '@otakit/rn-protocol';
+import {
+  canonicalJSON,
+  hashInventory,
+  rnCaseFoldingJSON,
+  type RNDescriptor,
+} from '@otakit/rn-protocol';
 import { archiveRNDirectory, verifyRNDirectory } from './artifacts.js';
 import { hashBuffer } from '../hash.js';
 import { type NativeBuildInputs, type NativeBuildRecord } from './build-record.js';
@@ -316,14 +321,17 @@ it('rejects native package changes while the platform manifest is being inspecte
   ).rejects.toThrow('changed during verification');
 });
 
-it.each([false, true])(
+it.each([0, 1, 2])(
   'verifies iOS resources with Xcode provenance=%s and preserves legacy checks',
   async (xcodeBuild) => {
     build.identity.platform = 'ios';
     build.identity.nativeConfiguration.iosBuild = {
-      ...(xcodeBuild ? { format: 'otakit-rn-xcode-build', version: 1 } : {}),
+      ...(xcodeBuild ? { format: 'otakit-rn-xcode-build', version: xcodeBuild } : {}),
+      ...(xcodeBuild === 2
+        ? { bundleVersions: { CFBundleVersion: '7', CFBundleShortVersionString: '1.2' } }
+        : {}),
       CURRENT_PROJECT_VERSION: '7',
-      MARKETING_VERSION: '1.2',
+      MARKETING_VERSION: xcodeBuild === 2 ? '1.0' : '1.2',
     };
     build.runtimeVersion = createHash('sha256')
       .update(canonicalJSON(build.identity))
@@ -394,6 +402,100 @@ it.each([false, true])(
     await rm(join(resources, 'payload/index.bundle'));
     await symlink(join(directory, 'payload/index.bundle'), join(resources, 'payload/index.bundle'));
     await expect(verifyNativePackage(options)).rejects.toThrow('unsupported link');
+  },
+);
+
+it.each(['android', 'ios'] as const)(
+  'seals the exact separate Expo DOM copy on %s',
+  async (platform) => {
+    build.identity.platform = platform;
+    build.runtimeVersion = createHash('sha256')
+      .update(canonicalJSON(build.identity))
+      .digest('base64url');
+    const descriptor = JSON.parse(
+      entries.get('assets/OtaKit/payload/otakit-bundle.json')!.toString(),
+    );
+    Object.assign(descriptor, {
+      platform,
+      runtimeVersion: build.runtimeVersion,
+      expo: { configFile: 'expo-config.json', domRoot: 'www.bundle' },
+    });
+    entries.set(
+      'assets/OtaKit/payload/otakit-bundle.json',
+      Buffer.from(JSON.stringify(descriptor)),
+    );
+    entries.set('assets/OtaKit/payload/expo-config.json', Buffer.from('{}'));
+    const html = Buffer.from('<h1>Verified DOM</h1>');
+    entries.set('assets/OtaKit/payload/www.bundle/index.html', html);
+    receipt.platform = platform;
+    receipt.runtimeVersion = build.runtimeVersion;
+    receipt.files = [...entries]
+      .filter(([path]) => path.startsWith('assets/OtaKit/payload/'))
+      .map(([path, bytes]) => ({
+        path: path.slice('assets/OtaKit/payload/'.length),
+        size: bytes.length,
+        sha256: hashBuffer(bytes),
+      }));
+    receipt.contentHash = hashInventory(receipt.files);
+    receipt.embeddedReceipt = {
+      ...receipt.embeddedReceipt,
+      platform,
+      runtimeVersion: build.runtimeVersion,
+      embeddedContentHash: receipt.contentHash,
+    };
+    entries.set(
+      'assets/OtaKit/otakit-embedded.json',
+      Buffer.from(JSON.stringify(receipt.embeddedReceipt)),
+    );
+    entries.set(
+      'assets/OtaKit/configuration.json',
+      Buffer.from(
+        JSON.stringify({
+          ...hostSettings,
+          embeddedReceipt: receipt.embeddedReceipt,
+          nativeBuildId: embeddedBuildId(receipt.embeddedReceipt),
+          reactNativeVersion: '0.86.3',
+          hermesBytecodeVersion: 98,
+        }),
+      ),
+    );
+    async function verify() {
+      let binary;
+      if (platform === 'android') binary = await apk();
+      else {
+        binary = join(root, 'Expo.app');
+        await rm(binary, { recursive: true, force: true });
+        await mkdir(binary);
+        for (const [path, bytes] of entries) {
+          if (!path.startsWith('assets/')) continue;
+          const output = join(binary, path.slice('assets/'.length));
+          await mkdir(dirname(output), { recursive: true });
+          await writeFile(output, bytes);
+        }
+        const plist = {
+          CFBundleIdentifier: 'com.example.app',
+          CFBundlePackageType: 'APPL',
+          CFBundleExecutable: 'Expo',
+        };
+        await writeFile(join(binary, 'Info.plist'), JSON.stringify(plist));
+        await writeFile(join(binary, 'Expo'), Buffer.alloc(64, 1));
+        mock.exec.mockResolvedValue({ stdout: JSON.stringify(plist) });
+      }
+      return verifyNativePackage({
+        binary,
+        nativeBuild: build,
+        baseline: receipt,
+        aapt2: '/installed/aapt2',
+      });
+    }
+    await expect(verify()).rejects.toThrow('Expo DOM resources differ');
+    entries.set('assets/www.bundle/index.html', html);
+    await expect(verify()).resolves.toMatchObject({ nativeApplicationId: 'com.example.app' });
+    entries.set('assets/www.bundle/index.html', Buffer.from('<h1>Stale DOM</h1>'));
+    await expect(verify()).rejects.toThrow('Expo DOM resources differ');
+    entries.set('assets/www.bundle/index.html', html);
+    entries.set('assets/www.bundle/previous-build.js', Buffer.from('stale'));
+    await expect(verify()).rejects.toThrow('Expo DOM resources differ');
   },
 );
 

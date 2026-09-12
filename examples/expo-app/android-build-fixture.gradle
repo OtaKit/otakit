@@ -1,0 +1,18 @@
+// Exercise the shipped single-APK build hook with the private Expo host.
+gradle.beforeProject { app ->
+  if (app.path != ':app') return
+  app.plugins.withId('com.facebook.react') {
+    def inputs = app.findProperty('otakitFixtureNativeInputs')
+    if (inputs == null) throw new GradleException('Pass -PotakitFixtureNativeInputs=<inputs.json>')
+    app.ext.otakitBuild = [
+      variants: ['release'],
+      nativeInputsFile: inputs,
+      cliFile: app.file('../../../../packages/cli/dist/index.js'),
+      embeddedVersion: 'embedded',
+      entry: 'expo-router/entry',
+    ]
+    app.android.compileOptions.coreLibraryDesugaringEnabled = true
+    app.dependencies.add('coreLibraryDesugaring', 'com.android.tools:desugar_jdk_libs_nio:2.1.5')
+    app.apply from: app.file('../../../../packages/react-native-plugin/scripts/android.gradle')
+  }
+}
