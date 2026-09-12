@@ -11,7 +11,8 @@ import { prepareUpdates } from './prepare-updates.mjs';
 const run = promisify(execFile);
 const project = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(project, '../..');
-export async function prepareNative(platform, directory) {
+export async function prepareNative(platform, directory, option) {
+  if (option !== undefined && option !== '--router') throw new Error('Unknown fixture option');
   if (!['ios', 'android'].includes(platform)) throw new Error('Unknown fixture platform');
   const output = directory && resolve(directory);
   if (!output)
@@ -109,7 +110,7 @@ export async function prepareNative(platform, directory) {
       '--native-inputs',
       inputsFile,
       '--entry',
-      'native-entry.tsx',
+      option === '--router' ? 'expo-router/entry' : 'native-entry.tsx',
       '--version',
       'embedded',
       '--output',
@@ -142,7 +143,11 @@ export async function prepareNative(platform, directory) {
   const receipt = JSON.parse(await readFile(join(embeddedExport, 'export.json'), 'utf8'));
   await writeFile(
     join(output, 'fixture.json'),
-    JSON.stringify({ assets, embeddedExport, receipt }, null, 2),
+    JSON.stringify(
+      { assets, embeddedExport, receipt, integration: option === '--router' ? 'router' : 'native' },
+      null,
+      2,
+    ),
   );
   console.log(JSON.stringify({ assets, embeddedExport }, null, 2));
   await prepareUpdates(output);

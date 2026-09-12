@@ -6,17 +6,17 @@ The fixture includes Router, splash, Constants and a DOM component for that late
 
 The CLI has an adapter for Expo 57.0.17 / CLI 57.0.19's embed exporter. `export-entry.tsx` is the independent Expo/Constants/DOM export fixture. Its iOS and Android exports contain real Hermes bytecode, an authenticated config snapshot and the complete DOM output; native and DOM source maps stay private. The adapter validates native asset destinations before copying and supplements native source evidence skipped by upstream CNG/pnpm fingerprint rules.
 
-Run `pnpm --filter @otakit/cli build`, then `RUN_EXPO_EXPORT_TESTS=1 pnpm --filter @otakit/cli test -- src/lib/react-native/expo-export.integration.test.ts`. This exercises the built CLI on both platforms, verifies the complete archive and checks rejection of the Router collision. It does not build or run an Expo native app.
+Run `pnpm --filter @otakit/cli build`, then `RUN_EXPO_EXPORT_TESTS=1 pnpm --filter @otakit/cli test -- src/lib/react-native/expo-export.integration.test.ts`. This exercises the built CLI on both platforms, verifies the complete archive and checks the patched Router archive and icon densities. It does not build or run an Expo native app.
 
 The test temporarily creates `.env.production.local` and removes only its own file afterward. It refuses to replace an existing file. `app.config.cjs` and the JS entry read the same public fixture value so the test can detect stale environment inlining after a second export. It also checks production-mode validation, private-value exclusion, environment-file hashes and refusal to seal after those files change. Production export loads Expo's environment before native capture/config/bundling and resets Metro's transform cache; environment-file changes remain conservative native compatibility changes.
 
-Router export is currently blocked by an upstream asset collision. Published Router 57.0.17 and 57.0.21 contain both `clear-icon.png` (64×64) and `clear-icon@1x.png` (16×16), with different bytes but the same Android destination. `close-icon` has the same ambiguity. The shared mapping verifier rejects the export before writing its payload. Resolving this dependency issue is required before Router/splash/device acceptance can finish.
+The pinned Router dependency uses an explicit [asset patch](../../patches/README.md). Published Router 57.0.17 contains redundant unscaled `clear-icon.png` and `close-icon.png` files identical to their `@4x` variants, but conflicting with different `@1x` files. The patch removes only those two redundant files and retains all four density variants. The exporter still rejects ambiguous destinations. Both platform export tests verify complete archives and the expected icon dimensions. This workspace patch is not shipped by the CLI; other Expo projects still need compatible, unambiguous dependencies.
 
 ## Android native acceptance
 
 The local Expo module in `modules/otakit-host` retains `ExpoReactHostFactory` and the generated Application/Activity. Its release-only handlers attach OtaKit to the existing host, select the bundle on RN's background executor, and defer Expo's surface until storage preparation completes. Application Activity callbacks record real foreground transitions even while surface creation waits. Each process materializes and verifies the embedded APK payload before selection. This fixture copy routine is not the production installer.
 
-Debug builds leave host selection and surface creation to Expo, and the Metro configuration enables the bootstrap/facades only for production exports. `native-entry.tsx` waits for a DOM-to-native readiness callback before notifying OtaKit and reporting identity/Constants to localhost. The independent entry avoids the Router collision; it does not establish Router acceptance. Reanimated 4.5.1 and Gesture Handler 2.32.0 are pinned to the installed Expo SDK's native dependency recommendations; unconstrained Router peers had selected incompatible versions.
+Debug builds leave host selection and surface creation to Expo, and the Metro configuration enables the bootstrap/facades only for production exports. `native-entry.tsx` waits for a DOM-to-native readiness callback before notifying OtaKit and reporting identity/Constants to localhost. The independent entry isolates host integration from Router. Pass `--router` to either preparation script to export the actual Router entry and run the shared acceptance component inside its home route. Reanimated 4.5.1 and Gesture Handler 2.32.0 are pinned to the installed Expo SDK's native dependency recommendations; unconstrained Router peers had selected incompatible versions.
 
 After configuring JDK 21 and the Android SDK, run from the repository root:
 
@@ -66,3 +66,11 @@ node examples/expo-app/run-ios.mjs <UDID> \
 ```
 
 The shared device runner checks every packaged payload file and the separate embedded DOM copy against the export inventory. iOS 26.5 passed embedded cold starts, AES-GCM OTA activation, confirmed OTA cold restart, timeout rollback, real fatal JS exception/process termination with cold-start recovery, and baseline restoration without an archive request. Sixteen reports covered generations 1–12. Native JS, config, DOM script and HTML identities were checked at each transition; the post-build native fingerprint matched its export. These checks use the independent native entry, not Router. iOS console logs, reports and a screenshot are retained beside the fixture artifacts.
+
+## Router acceptance
+
+Use `node examples/expo-app/prepare-android.mjs <new-directory> --router` (or `prepare-ios.mjs`) and build/run as above. The Router root prevents automatic splash hiding; its home route waits for DOM readiness, completes `hideAsync()`, and then confirms OtaKit readiness. Unconfirmed and fatal test variants still withhold readiness. Debug routes avoid importing the updater API.
+
+The shared runner checks the Router path through the same update scenarios, then opens `otakit-expo-fixture://dom` through the native linking API. The DOM route must mount once, preserve the current launch context, and report matching config/DOM content. Packaged payload and embedded DOM trees must exactly match the receipt, including absence of stale files.
+
+Android API 36 passed the Router encrypted update, cold restart, timeout rollback, fatal crash recovery, embedded restoration, splash API completion and native deep-link scenarios. Router export passed on both platforms; iOS Router device acceptance is still in progress.

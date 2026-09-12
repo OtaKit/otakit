@@ -3,7 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -16,7 +16,9 @@ if (!device || !apkArgument || !directoryArgument)
   );
 const apk = resolve(apkArgument);
 const directory = resolve(directoryArgument);
-const { receipt } = JSON.parse(await readFile(join(directory, 'fixture.json'), 'utf8'));
+const { receipt, integration = 'native' } = JSON.parse(
+  await readFile(join(directory, 'fixture.json'), 'utf8'),
+);
 const isAndroid = device.startsWith('emulator-');
 assert.equal(receipt.platform, isAndroid ? 'android' : 'ios');
 const adb = process.env.ANDROID_HOME ? join(process.env.ANDROID_HOME, 'platform-tools/adb') : 'adb';
@@ -65,6 +67,39 @@ async function packagedBytes(path) {
       ).stdout
     : readFile(join(apk, path));
 }
+const apkFiles = isAndroid
+  ? (await run('unzip', ['-Z1', apk], { maxBuffer: 8 * 1024 * 1024 })).stdout.split('\n')
+  : null;
+async function packagedPaths(prefix) {
+  if (apkFiles)
+    return apkFiles
+      .filter((path) => path.startsWith(`assets/${prefix}/`) && !path.endsWith('/'))
+      .map((path) => path.slice(`assets/${prefix}/`.length));
+  const paths = [];
+  async function visit(relative) {
+    for (const entry of await readdir(join(apk, prefix, relative), { withFileTypes: true })) {
+      const path = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await visit(path);
+      else {
+        assert.ok(entry.isFile(), 'Packaged fixture payload cannot contain links');
+        paths.push(path);
+      }
+    }
+  }
+  await visit('');
+  return paths;
+}
+assert.deepEqual(
+  (await packagedPaths('OtaKitFixture/payload')).sort(),
+  receipt.files.map((file) => file.path).sort(),
+);
+assert.deepEqual(
+  (await packagedPaths('www.bundle')).sort(),
+  receipt.files
+    .filter((file) => file.path.startsWith('www.bundle/'))
+    .map((file) => file.path.slice('www.bundle/'.length))
+    .sort(),
+);
 // Check the bundle actually installed, including Expo's second embedded DOM copy.
 for (const file of receipt.files) {
   const payload = await packagedBytes(`OtaKitFixture/payload/${file.path}`);
@@ -76,6 +111,7 @@ for (const file of receipt.files) {
   assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256);
 }
 const reports = [];
+const navigation = [];
 const server = createServer(async (request, response) => {
   try {
     if (cases && request.url?.startsWith('/manifests/') && selected) {
@@ -98,7 +134,7 @@ const server = createServer(async (request, response) => {
       else response.end(await readFile(join(directory, 'updates', request.url.slice(1))));
       return;
     }
-    if (request.url !== '/report' || request.method !== 'POST') {
+    if (!['/report', '/navigation'].includes(request.url) || request.method !== 'POST') {
       response.writeHead(404).end();
       return;
     }
@@ -108,6 +144,11 @@ const server = createServer(async (request, response) => {
       assert.ok(body.length < 1024 * 1024);
     }
     const report = JSON.parse(body);
+    if (request.url === '/navigation') {
+      navigation.push(report);
+      response.end('{}');
+      return;
+    }
     reports.push(report);
     const update = requestUpdate && report.phase === 'ready';
     if (update) requestUpdate = false;
@@ -125,6 +166,10 @@ async function waitReport(index) {
   return reports[index];
 }
 function assertContent(report, version) {
+  if (integration === 'router') {
+    assert.equal(report.integration, 'router');
+    assert.equal(report.splashHideCompleted, true);
+  }
   assert.equal(report.nativeVersion, `OTAKIT_EXPO_NATIVE_${version.toUpperCase()}`);
   assert.equal(report.dom.version, `OTAKIT_EXPO_DOM_${version.toUpperCase()}`);
   assert.equal(report.dom.htmlVersion, version);
@@ -279,6 +324,41 @@ try {
       'PASS Expo embedded baseline restores original Constants/DOM without an archive request',
     );
   }
+  if (integration === 'router') {
+    const context = reports.at(-1).context;
+    const url = 'otakit-expo-fixture://dom';
+    if (isAndroid)
+      await android([
+        'shell',
+        'am',
+        'start',
+        '-W',
+        '-a',
+        'android.intent.action.VIEW',
+        '-d',
+        url,
+        '-p',
+        appId,
+      ]);
+    else await ios(['openurl', device, url]);
+    const deadline = Date.now() + 45_000;
+    while (!navigation.length && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.equal(navigation.length, 1, 'Router must mount and report the linked DOM screen once');
+    assert.equal(navigation[0].pathname, '/dom');
+    assert.deepEqual(
+      navigation[0].context,
+      context,
+      'Navigation must preserve the running instance',
+    );
+    assert.equal(navigation[0].state.current.contentHash, context.contentHash);
+    assert.equal(navigation[0].expoConfig.extra.fixtureVersion, 'embedded');
+    assert.deepEqual(navigation[0].dom, {
+      version: 'OTAKIT_EXPO_DOM_EMBEDDED',
+      htmlVersion: 'embedded',
+    });
+    console.log('PASS Expo Router native deep link mounts DOM without changing the launch context');
+  }
   if (isAndroid) {
     const screenshot = await run(adb, ['-s', device, 'exec-out', 'screencap', '-p'], {
       encoding: 'buffer',
@@ -293,13 +373,17 @@ try {
 } finally {
   try {
     await writeFile(join(directory, `${device}-reports.json`), JSON.stringify(reports, null, 2));
+    await writeFile(
+      join(directory, `${device}-navigation.json`),
+      JSON.stringify(navigation, null, 2),
+    );
   } finally {
     await stop().catch(() => {});
     if (isAndroid) await android(['reverse', '--remove', 'tcp:9042']).catch(() => {});
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+    for (const console of iosLaunches) if (!console.closed) console.child.kill();
     for (const [index, console] of iosLaunches.entries()) {
-      if (!console.closed) console.child.kill();
       await writeFile(join(directory, `${device}-launch-${index + 1}.log`), console.output);
     }
   }

@@ -68,7 +68,7 @@ expoDescribe('installed SDK 57 Expo embed adapter', () => {
     }
   });
   it.each(['ios', 'android'] as const)(
-    'exports %s bytecode, public config and DOM assets with private maps; rejects Router asset collisions',
+    'exports %s bytecode, public config, DOM and patched Router assets with private maps',
     async (platform) => {
       const project = fileURLToPath(new URL('../../../../../examples/expo-app/', import.meta.url));
       const require = createRequire(join(project, 'package.json'));
@@ -102,6 +102,9 @@ expoDescribe('installed SDK 57 Expo embed adapter', () => {
               platform === 'ios'
                 ? [
                     'ios/Podfile',
+                    ...((await readdir(join(project, 'ios'))).includes('Podfile.lock')
+                      ? ['ios/Podfile.lock']
+                      : []),
                     'ios/Podfile.properties.json',
                     'ios/OtaKitExpoFixture.xcodeproj/project.pbxproj',
                     'ios/OtaKitExpoFixture/AppDelegate.swift',
@@ -249,9 +252,35 @@ expoDescribe('installed SDK 57 Expo embed adapter', () => {
           (await readFile(join(changedExport, 'private/index.js'), 'utf8')).includes(changedValue),
           'A second export must not reuse stale Babel environment inlining',
         ).toBe(true);
-        const rejected = join(directory, 'router');
-        await expect(run('expo-router/entry', rejected)).rejects.toThrow('collides:');
-        await expect(readdir(rejected)).rejects.toMatchObject({ code: 'ENOENT' });
+        const routerOutput = join(directory, 'router');
+        await run('expo-router/entry', routerOutput);
+        const routerExport = join(routerOutput, (await readdir(routerOutput))[0]);
+        const routerReceipt: RNExportReceipt = JSON.parse(
+          await readFile(join(routerExport, 'export.json'), 'utf8'),
+        );
+        await verifyRNArchive(
+          await readFile(join(routerExport, 'artifact.zip')),
+          routerReceipt.files,
+        );
+        for (const [icon, size] of [
+          ['clear', 16],
+          ['close', 24],
+        ] as const) {
+          const files = routerReceipt.files.filter((file) =>
+            new RegExp(`${icon}-?icon(?:@\\dx)?\\.png$`).test(file.path),
+          );
+          const dimensions = await Promise.all(
+            files.map(async (file) => {
+              const png = await readFile(join(routerExport, 'payload', file.path));
+              const width = png.readUInt32BE(16);
+              expect(png.readUInt32BE(20)).toBe(width);
+              return width;
+            }),
+          );
+          expect(dimensions.sort((a, b) => a - b)).toEqual(
+            (platform === 'ios' ? [1, 2, 3] : [1, 2, 3, 4]).map((scale) => size * scale),
+          );
+        }
         // Even an environment-file change that leaves evaluated config unchanged must
         // not disappear from native evidence between preparation and package sealing.
         await writeFile(

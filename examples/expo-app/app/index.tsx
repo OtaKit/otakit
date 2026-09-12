@@ -1,13 +1,14 @@
 import { Link } from 'expo-router';
-import Constants from 'expo-constants';
-import { Text, View } from 'react-native';
-import { launchContext } from '@otakit/react-native-updater';
+import * as SplashScreen from 'expo-splash-screen';
+import { View } from 'react-native';
+import NativeAcceptance from '../components/NativeAcceptance';
+
+const hideSplash = () => SplashScreen.hideAsync();
 
 export default function Home() {
   return (
-    <View style={{ padding: 24, gap: 16 }}>
-      <Text>OtaKit Expo fixture: {Constants.expoConfig?.extra?.fixtureVersion}</Text>
-      <Text>{JSON.stringify(launchContext)}</Text>
+    <View style={{ flex: 1, padding: 24, gap: 16 }}>
+      <NativeAcceptance integration="router" onLocalReady={hideSplash} />
       <Link href="/dom">Open DOM fixture</Link>
     </View>
   );

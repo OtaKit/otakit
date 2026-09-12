@@ -35,10 +35,14 @@ module.exports = function withIOSFixture(config) {
     const project = config.modResults;
     const name = 'Stage OtaKit Expo fixture';
     const phases = Object.values(project.hash.project.objects.PBXShellScriptBuildPhase ?? {});
-    if (!phases.some((phase) => typeof phase === 'object' && phase.name === `"${name}"`)) {
+    const matching = phases.filter((phase) => phase?.name === `"${name}"`);
+    if (matching.length > 1) throw new Error('Duplicate Expo fixture resource phases');
+    const script = '/bin/sh "$PROJECT_DIR/../ios-fixture.sh"\n';
+    if (matching.length) matching[0].shellScript = JSON.stringify(script);
+    else {
       project.addBuildPhase([], 'PBXShellScriptBuildPhase', name, project.getFirstTarget().uuid, {
         shellPath: '/bin/sh',
-        shellScript: '/bin/sh "$PROJECT_DIR/../ios-fixture.sh"\n',
+        shellScript: script,
       });
     }
     return config;
