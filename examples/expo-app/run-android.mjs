@@ -50,7 +50,9 @@ const server = createServer(async (request, response) => {
     }
     if (
       cases &&
-      ['/good.zip', '/bad.zip', '/must-not-download-baseline.zip'].includes(request.url)
+      ['/good.zip', '/bad.zip', '/crash.zip', '/must-not-download-baseline.zip'].includes(
+        request.url,
+      )
     ) {
       downloads.push(request.url);
       if (request.url === '/must-not-download-baseline.zip') response.writeHead(500).end();
@@ -178,11 +180,47 @@ try {
     assert.equal(rollbacks[0].artifact.contentHash, cases.bad.contentHash);
     console.log('PASS Expo unconfirmed update rolls back native JS, config and DOM together');
 
+    await android(['logcat', '-c']);
+    const { applied: crash, index: crashIndex } = await updateFromColdStart('crash', 'good');
+    assertContent(crash, 'crash');
+    assert.equal(crash.phase, 'unconfirmed');
+    // Default release error handling must still receive the uncaught JS exception.
+    const fatalDeadline = Date.now() + 15_000;
+    let fatalLog = '';
+    while (Date.now() < fatalDeadline) {
+      fatalLog = (await android(['logcat', '-d', '-s', 'AndroidRuntime:E', 'ReactNativeJS:E']))
+        .stdout;
+      if (
+        fatalLog.includes('FATAL EXCEPTION') &&
+        fatalLog.includes('OTAKIT_EXPO_INTENTIONAL_FATAL')
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    await writeFile(join(directory, `${device}-fatal.log`), fatalLog);
+    assert.ok(fatalLog.includes('FATAL EXCEPTION'), 'Expo must preserve the default fatal handler');
+    assert.ok(fatalLog.includes('OTAKIT_EXPO_INTENTIONAL_FATAL'));
+    await android(['shell', 'am', 'force-stop', appId]);
+    await android(['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
+    const crashRecovered = await waitReport(crashIndex + 3);
+    assertContent(crashRecovered, 'good');
+    assert.equal(crashRecovered.phase, 'ready');
+    assert.ok(crashRecovered.state.generation > crash.state.generation);
+    assert.ok(crashRecovered.state.failed.includes(cases.crash.contentHash));
+    const crashRollbacks = crashRecovered.state.events.filter(
+      (event) =>
+        event.type === 'rollback' && event.artifact.contentHash === cases.crash.contentHash,
+    );
+    assert.equal(crashRollbacks.length, 1);
+    console.log(
+      'PASS Expo fatal JS error reaches RN handler and cold restart restores confirmed OTA',
+    );
+
     const { applied: embedded } = await updateFromColdStart('baseline', 'good');
     assertContent(embedded, 'embedded');
     assert.equal(embedded.state.current.releaseId, 'expo-baseline');
     assert.equal(embedded.state.lastGood.contentHash, receipt.embeddedReceipt.embeddedContentHash);
-    assert.deepEqual(downloads, ['/good.zip', '/bad.zip']);
+    assert.deepEqual(downloads, ['/good.zip', '/bad.zip', '/crash.zip']);
     console.log(
       'PASS Expo embedded baseline restores original Constants/DOM without an archive request',
     );

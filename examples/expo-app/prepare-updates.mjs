@@ -65,7 +65,7 @@ export async function prepareUpdates(directory) {
     );
     return manifest;
   }
-  for (const version of ['good', 'bad']) {
+  for (const version of ['good', 'bad', 'crash']) {
     const files = new Map(baseline);
     const javascript = replaceOnce(
       original,

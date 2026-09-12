@@ -45,9 +45,17 @@ function NativeFixture() {
     }
     void (async () => {
       // The signed bad fixture intentionally never confirms its trial generation.
-      const unconfirmed = nativeVersion.endsWith('_BAD');
+      const fatal = nativeVersion.endsWith('_CRASH');
+      const unconfirmed = nativeVersion.endsWith('_BAD') || fatal;
       if (!unconfirmed) await updater.notifyAppReady();
       const action = await report(unconfirmed ? 'unconfirmed' : 'ready');
+      if (fatal) {
+        // Escape the async report's catch: exercise RN's real fatal exception handler.
+        setTimeout(() => {
+          throw new Error('OTAKIT_EXPO_INTENTIONAL_FATAL');
+        }, 250);
+        return;
+      }
       if (action.update) {
         await updater.check();
         await updater.download();
