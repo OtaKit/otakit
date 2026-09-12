@@ -11,6 +11,8 @@ import type { PublicationReceipt } from '../lib/react-native/receipts.js';
 import { captureNativeBuild, type NativeBuildInputs } from '../lib/react-native/build-record.js';
 import { sealNativeBuild, type CompletedNativeBuild } from '../lib/react-native/completed-build.js';
 import { exportRN } from '../lib/react-native/export.js';
+import { stageEmbedded } from '../lib/react-native/stage-embedded.js';
+import { buildIOS, stageIOSBuild, type IOSBuildOptions } from '../lib/react-native/ios-build.js';
 import { resolveEncryptionKey } from '../lib/upload-workflow.js';
 import { readOTAUploadExport } from '../lib/react-native/upload-artifact.js';
 import {
@@ -45,6 +47,59 @@ async function context(api: ApiClient, appId: string): Promise<Context> {
 
 export const reactNativeCommand = new Command('rn').description(
   'Export, verify native builds, and resume React Native uploads and publications',
+);
+
+reactNativeCommand.addCommand(
+  new Command('build-ios')
+    .description('Build an iOS app through Xcode, archive it, and verify its embedded baseline')
+    .option('--project <directory>', 'React Native project', '.')
+    .requiredOption('--workspace <path>', 'Xcode workspace, relative to the React Native project')
+    .requiredOption('--scheme <name>', 'Xcode scheme')
+    .option('--configuration <name>', 'Non-Debug build configuration', 'Release')
+    .option('--sdk <name>', 'Xcode SDK, such as iphonesimulator')
+    .option('--destination <specifier>', 'Xcode destination')
+    .requiredOption('--derived-data <directory>', 'Dedicated Xcode build directory')
+    .option('--app-target <name>', 'App target when the scheme contains multiple apps')
+    .requiredOption('--native-inputs <path>', 'Recorded iOS native input configuration')
+    .requiredOption('--version <version>', 'Embedded bundle version')
+    .requiredOption(
+      '--output <directory>',
+      'New private archive directory outside the project/build',
+    )
+    .option('--entry <path>', 'JS entry; defaults to the Xcode/RN entry selection')
+    .option('--no-code-signing', 'Explicitly disable Xcode signing for local simulator acceptance')
+    .action(async (options: Omit<IOSBuildOptions, 'cli'>) => {
+      await runCommand(async () => {
+        console.log(JSON.stringify(await buildIOS({ ...options, cli: process.argv[1] }), null, 2));
+      });
+    }),
+);
+
+reactNativeCommand.addCommand(
+  new Command('stage-ios-build')
+    .description('Internal Xcode phase invoked by the installed OtaKit hook')
+    .requiredOption('--request <path>', 'Fresh build request created by build-ios')
+    .action(async (options: { request: string }) => {
+      await runCommand(() => stageIOSBuild(options.request));
+    }),
+);
+
+reactNativeCommand.addCommand(
+  new Command('stage-embedded')
+    .description(
+      'Verify and stage an embedded export and recorded host settings for native packaging',
+    )
+    .requiredOption('--embedded-export <directory>', 'Archived platform/runtime embedded export')
+    .requiredOption(
+      '--configuration <path>',
+      'Host settings recorded by otakitHostConfigurationFile',
+    )
+    .requiredOption('--output <directory>', 'Resource folder matching otakitResourceDirectory')
+    .action(async (options: { embeddedExport: string; configuration: string; output: string }) => {
+      await runCommand(async () => {
+        console.log(JSON.stringify(await stageEmbedded(options), null, 2));
+      });
+    }),
 );
 
 reactNativeCommand.addCommand(

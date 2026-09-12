@@ -33,6 +33,8 @@ const [core, plugin] = archives;
 for (const archive of [core, plugin]) {
   const files = (await run('tar', ['-tzf', archive])).stdout.trim().split('\n');
   assert.ok(files.includes('package/LICENSE'));
+  if (archive === plugin) assert.ok(files.includes('package/scripts/android.gradle'));
+  if (archive === plugin) assert.ok(files.includes('package/scripts/xcode.sh'));
   assert.ok(
     files.every(
       (file) =>

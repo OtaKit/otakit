@@ -2,6 +2,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { withOtaKitMetro } = require('./index.cjs');
 
+test('disabled integration leaves the development host and Expo modules untouched', () => {
+  const original = {
+    serializer: { getModulesRunBeforeMainModule: () => ['expo-development-entry'] },
+    resolver: { resolveRequest: () => ({ type: 'sourceFile', filePath: '/expo/constants.js' }) },
+  };
+  assert.equal(withOtaKitMetro(original, { enabled: false }), original);
+});
+
 test('preserves existing Metro initialization and resolver behavior', () => {
   const calls = [];
   const original = {

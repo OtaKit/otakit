@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import type { RNDescriptor, RNPlatform } from '@otakit/rn-protocol';
 import type { SourceMapping } from './artifacts.js';
+import { prepareExpoEnvironment } from './expo-environment.js';
 
 interface ExpoAsset {
   files: string[];
@@ -21,12 +22,12 @@ export async function exportExpoGraph(options: {
   filterScales: (platform: string, scales: number[]) => number[];
 }): Promise<{ mappings: SourceMapping[]; expo: NonNullable<RNDescriptor['expo']> }> {
   const { project, platform, privateFiles } = options;
+  prepareExpoEnvironment(project);
   const require = createRequire(join(project, 'package.json'));
-  const cliRoot = dirname(require.resolve('@expo/cli/package.json'));
+  const cliRoot = dirname(
+    createRequire(require.resolve('expo/package.json')).resolve('@expo/cli/package.json'),
+  );
   const cliRequire = createRequire(join(cliRoot, 'package.json'));
-  const expoVersion = require('expo/package.json').version;
-  if (expoVersion !== '57.0.17' || cliRequire('./package.json').version !== '57.0.19')
-    throw new Error('Expo export adapter requires the accepted Expo 57.0.17 / CLI 57.0.19 pair');
   const { getConfig } = cliRequire('@expo/config');
   const { exp } = getConfig(project, { isPublicConfig: true });
   if (exp.experiments?.reactServerFunctions || exp.experiments?.reactServerComponentRoutes)
@@ -58,6 +59,9 @@ export async function exportExpoGraph(options: {
     sourcemapOutput: options.map,
     skipServer: true,
     maxWorkers: 2,
+    // SDK 57 can reuse a Babel transform with stale inlined EXPO_PUBLIC values
+    // after .env changes. A release export must rebuild that graph from its inputs.
+    resetCache: true,
   });
   if (
     typeof result.bundle.code !== 'string' ||

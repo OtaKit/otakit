@@ -152,6 +152,43 @@ object OtaKitRuntime {
       }
   }
 
+  /** Resume a host's deferred surface creation on main after storage preparation completes. */
+  fun whenPrepared(completion: (Result<Unit>) -> Unit) {
+    check(::preparation.isInitialized) { "OtaKit host is not configured" }
+    stateExecutor.execute {
+      val result = runCatching {
+        engine()
+        Unit
+      }
+      main.post { completion(result) }
+    }
+  }
+
+  /** Dynamic bundle provider for hosts owned by another framework, including Expo. */
+  fun selectedBundleFile(): String {
+    check(Looper.myLooper() != Looper.getMainLooper()) {
+      "Bundle selection must run on the RN background executor"
+    }
+    val engine = engine()
+    engine.store.beginLaunch(uiIntent, true, SystemClock.elapsedRealtime())
+    engine.store.setForeground(foreground, SystemClock.elapsedRealtime())
+    return engine.store.state().getJSONObject("current").getString("bundlePath")
+  }
+
+  /** Attach without replacing the framework's packages, delegate or lifecycle integration. */
+  @Synchronized
+  fun attachHost(created: ReactHost) {
+    check(host == null) { "OtaKit host already exists" }
+    host = created
+    created.addReactInstanceEventListener(
+      object : com.facebook.react.ReactInstanceEventListener {
+        override fun onReactContextInitialized(context: ReactContext) {
+          hostReady(context)
+        }
+      }
+    )
+  }
+
   /**
    * Wrap the application's original delegate so packages, bindings and exception handling survive.
    */
@@ -166,30 +203,11 @@ object OtaKitRuntime {
     val delegate =
       object : ReactHostDelegate by original {
         override val jsBundleLoader: JSBundleLoader
-          get() {
-            check(Looper.myLooper() != Looper.getMainLooper()) {
-              "Bundle selection must run on the RN background executor"
-            }
-            val engine = engine()
-            engine.store.beginLaunch(uiIntent, true, SystemClock.elapsedRealtime())
-            engine.store.setForeground(foreground, SystemClock.elapsedRealtime())
-            return JSBundleLoader.createFileLoader(
-              engine.store.state().getJSONObject("current").getString("bundlePath")
-            )
-          }
+          get() = JSBundleLoader.createFileLoader(selectedBundleFile())
       }
     // This host always runs verified embedded/OTA bundles. Metro remains a separate development
     // host.
-    return ReactHostImpl(application, delegate, componentFactory, false, false).also { created ->
-      host = created
-      created.addReactInstanceEventListener(
-        object : com.facebook.react.ReactInstanceEventListener {
-          override fun onReactContextInitialized(context: ReactContext) {
-            hostReady(context)
-          }
-        }
-      )
-    }
+    return ReactHostImpl(application, delegate, componentFactory, false, false).also(::attachHost)
   }
 
   private fun hostReady(context: ReactContext) {

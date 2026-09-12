@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.otakit.expofixture'
+version = '0.0.1'
+
+android {
+  namespace 'com.otakit.expofixture.host'
+  defaultConfig {
+    versionCode 1
+    versionName '0.0.1'
+  }
+}
+
+dependencies {
+  implementation project(':otakit_react-native-updater')
+  implementation 'com.facebook.react:react-android'
+}

@@ -4,6 +4,10 @@ import { join, relative, sep } from 'node:path';
 import { canonicalJSON } from '@otakit/rn-protocol';
 import { hashFile } from '../hash.js';
 
+// Kotlin session markers disappear when Gradle exits. They are generated compiler state,
+// just like the .gradle/.cxx directories already excluded by the upstream fingerprint.
+export const RN_FINGERPRINT_IGNORES = ['**/android/.kotlin/**/*', '**/android/app/.kotlin/**/*'];
+
 /** Supplement explicit native sources skipped by upstream CNG/pnpm ignore rules. */
 export async function hashResolvedNativeSource(
   project: string,

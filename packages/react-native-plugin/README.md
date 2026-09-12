@@ -27,9 +27,67 @@ end
 
 Run `pod install` afterward. The helper uses CocoaPods' supported [local pod path](https://guides.cocoapods.org/syntax/podfile#pod) declaration, resolving the native core through the installed updater's dependencies. The updater pod pins that core version. Both npm archives include their license and native sources; generated builds, fixture keys, tests and source maps are excluded.
 
-The host configuration contains the embedded receipt, a native build ID, RN/Hermes versions, trusted public signing keys, optional bundle decryption keys, CDN URL and channel. Test fixtures generate this configuration locally. Use the embedded export's `embeddedReceipt` and `nativeBuildId`; the CLI's [package sealing step](../cli/src/lib/react-native/README.md) checks them against the actual built package. Production build hooks and complete resolved-input collection remain outstanding; copying a runtime string into configuration is not a supported substitute.
+The host configuration contains the embedded receipt, a native build ID, RN/Hermes versions, trusted public signing keys, optional bundle decryption keys, CDN URL and channel. Test fixtures generate this configuration locally. Use the embedded export's `embeddedReceipt` and `nativeBuildId`; the CLI's [package sealing step](../cli/src/lib/react-native/README.md) checks them against the actual built package. Complete resolved-input collection remains outstanding; copying a runtime string into configuration is not a supported substitute.
 
 Wrap the existing Metro configuration with `withOtaKitMetro` from `@otakit/react-native-updater/metro`. This retains the existing initializer/resolver and installs the native instance bootstrap before the app entrypoint. The bootstrap establishes an immutable context for that JS instance.
+
+For a separate Metro development host, pass `{ enabled: false }` as the second argument; this returns the original configuration, including Expo's original resolvers. Match this to the native host selection and avoid importing the updater API in that development entry. The default remains enabled. The private [Expo fixture](../../examples/expo-app/README.md) exercises Android's `whenPrepared`, `selectedBundleFile` and `attachHost` hooks while retaining Expo's factory; automatic Expo installation is still unfinished.
+
+## Android APK build hook
+
+The optional `scripts/android.gradle` hook owns export and Hermes compilation for explicitly selected, non-debuggable variants. Configure it **after** the application's `react { ... }` block in `android/app/build.gradle`:
+
+```groovy
+ext.otakitBuild = [
+    variants: ['release'],
+    projectRoot: file('../..'),
+    nativeInputsFile: file('../../otakit-native-inputs.json'),
+    cliFile: file('../../node_modules/@otakit/cli/dist/index.js'),
+    embeddedVersion: 'embedded-42',
+    // entry: 'index.js',
+    // nodeCommand: ['node'],
+]
+apply from: new File(providers.exec {
+    commandLine 'node', '-p', "require.resolve('@otakit/react-native-updater/scripts/android.gradle')"
+}.standardOutput.asText.get().trim())
+```
+
+Supply the native inputs and recorded host settings described in the [CLI build workflow](../cli/src/lib/react-native/README.md). The hook requires the actual Android application ID and variant to match those inputs. It adds resolved external runtime artifacts, the Android boot classpath and its own script to file evidence, plus evaluated SDK, version, namespace, ABI, manifest-placeholder and BuildConfig settings. Project dependency sources still rely on the existing fingerprint/autolinking evidence; custom generators, compiler flags and the complete native toolchain need further acceptance. Custom RN bundle commands/config paths, packager arguments, Hermes commands/flags and alternate RN installations are rejected rather than silently ignored. Entry selection preserves `ENTRY_FILE`, the configured RN entry, and `index.android.js`/`index.js` fallback; an explicit `otakitBuild.entry` takes precedence.
+
+Run the normal `:app:assembleRelease` (or the selected variant's assemble task). The generated-assets dependency runs verified export/staging before asset merging. The hook disables RN's separate bundling task only for selected variants, archives the completed single APK after packaging, and runs `seal-build` before assemble succeeds. Install tasks also depend on sealing. Task failure stops dependent packaging/sealing; no failure finalizer can certify an older APK. Remove manually copied OtaKit resources from that variant's ordinary asset sources when adopting the hook.
+
+Each invocation writes a separate directory under `android/app/build/otakit/<variant>/<id>/`, containing resolved `native-inputs.json`, the archived export, generated assets, `application.apk`, and `completed-build.json`. Preserve that directory before `gradlew clean`; use its resolved inputs, completed receipt and `export/android-<runtime>` directory for later OTA exports. A new invocation collects and verifies again. Gradle up-to-date/build-cache reuse and configuration-cache support are deliberately unavailable until the complete native input closure has been accepted.
+
+This hook handles one unfiltered APK output. Split APKs, AAB sealing, store signing acceptance and Expo native integration remain outstanding. Applying the hook does not enable RN app creation or send anything to a server.
+
+## iOS Xcode build hook
+
+Add this conditional at the start of the application's existing **Bundle React Native code and images** phase, after `set -e`. Keep the ordinary React Native script below it for builds outside this workflow:
+
+```sh
+if [ -n "$OTAKIT_BUILD_REQUEST" ] && [ "$TARGET_NAME" = "$OTAKIT_XCODE_TARGET" ]; then
+  /bin/bash "$OTAKIT_XCODE_HOOK"
+  exit $?
+fi
+```
+
+Keep this phase after Copy Bundle Resources and before signing, and disable its **Based on dependency analysis** checkbox so every invocation stages fresh resources. The optional hook selects its installed script and Node executable through the CLI. It loads React Native's `.xcode.env`/`.xcode.env.local` environment and rejects unsupported bundler overrides or settings that differ from preflight. If those files select `ENTRY_FILE`, pass the same entry with `--entry`; the CLI's Node executable owns export even when a local file changes `NODE_BINARY`.
+
+After `pod install`, run a non-Debug Hermes build using native inputs and recorded host settings from the [CLI workflow](../cli/src/lib/react-native/README.md):
+
+```sh
+otakit rn build-ios --project . --workspace ios/MyApp.xcworkspace \
+  --scheme MyApp --configuration Release \
+  --native-inputs otakit-native-inputs.json --version embedded-42 \
+  --derived-data /private/tmp/my-app-derived-data \
+  --output /private/tmp/my-app-build-42
+```
+
+Use `--sdk iphonesimulator --destination 'platform=iOS Simulator,id=<UDID>' --no-code-signing` for local simulator acceptance. Signing otherwise retains the project's configuration. `--app-target` disambiguates schemes containing multiple application targets. Entry selection uses `--entry`, Xcode/process `ENTRY_FILE`, then `index.ios.js` or `index.js`.
+
+The CLI checks CocoaPods lock agreement, records generated pod configuration files, the project/workspace, installed hook/environment scripts, selected Hermes compiler and evaluated native build settings. It checks those inputs before build, during export and after packaging. Custom native generators and the full compiler/dependency closure still need acceptance. Keep the archive outside the project and DerivedData, and use a dedicated DerivedData directory without concurrent ordinary Xcode builds; wrapper invocations sharing it are locked.
+
+The phase replaces only the configured OtaKit resource folder in the built `.app`. Existing unrelated files or links in that destination cause an error. The CLI waits for successful `xcodebuild` completion, then archives the finished `.app` and seals its bytes, host settings, baseline and app version fields. Failed builds and skipped/stale phases cannot produce a completed receipt. Every invocation requires a new archive directory; partial failures remain available for diagnosis. Use the returned `native-inputs.json`, `completed-build.json` and `export/ios-<runtime>` for subsequent OTA exports. `.xcarchive`/IPA orchestration, distribution signing and Expo native integration remain outstanding.
 
 ## JavaScript API
 

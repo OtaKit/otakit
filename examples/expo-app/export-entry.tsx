@@ -8,6 +8,7 @@ function ExportFixture() {
   return (
     <View>
       <Text>Expo {Constants.expoConfig?.extra?.fixtureVersion}</Text>
+      <Text>{process.env.EXPO_PUBLIC_OTAKIT_EXPORT_FIXTURE}</Text>
       <DOMFixture label="export acceptance" />
     </View>
   );

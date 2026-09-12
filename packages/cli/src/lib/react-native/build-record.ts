@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { prepareExpoEnvironment } from './expo-environment.js';
 import { join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { canonicalJSON, type RNPlatform } from '@otakit/rn-protocol';
 import { hashFile } from '../hash.js';
-import { hashResolvedNativeSource } from './native-sources.js';
+import { hashResolvedNativeSource, RN_FINGERPRINT_IGNORES } from './native-sources.js';
+import { hostConfigurationHash, parseHostConfiguration } from './host-configuration.js';
 
 export interface NativeBuildInputs {
   appId: string;
@@ -38,6 +40,7 @@ export interface NativeBuildRecord {
     hermesCompiler: { path: string; sha256: string; bytecodeVersion: number };
     nativeFiles: Array<{ path: string; sha256: string }>;
     nativeConfiguration: Record<string, unknown>;
+    hostConfigurationHash?: string;
   };
 }
 
@@ -46,6 +49,9 @@ export async function captureNativeBuild(
   input: NativeBuildInputs,
 ): Promise<NativeBuildRecord> {
   const projectRoot = await realpath(project);
+  const expoEnvironmentFiles = prepareExpoEnvironment(projectRoot).map((file) =>
+    relative(projectRoot, file),
+  );
   const require = createRequire(join(projectRoot, 'package.json'));
   const rnPackage = require.resolve('react-native/package.json');
   const rnRequire = createRequire(rnPackage);
@@ -119,10 +125,10 @@ export async function captureNativeBuild(
     [
       '--no-global-search-paths',
       '-e',
-      'require(process.argv[1]).createFingerprintAsync(process.argv[2], { platforms: [process.argv[3]] }).then(value => process.stdout.write(JSON.stringify(value))).catch(error => { console.error(error); process.exitCode = 1; });',
+      'require(process.argv[1]).createFingerprintAsync(process.argv[2], JSON.parse(process.argv[3])).then(value => process.stdout.write(JSON.stringify(value))).catch(error => { console.error(error); process.exitCode = 1; });',
       fingerprintModule,
       projectRoot,
-      input.platform,
+      JSON.stringify({ platforms: [input.platform], ignorePaths: RN_FINGERPRINT_IGNORES }),
     ],
     {
       cwd: projectRoot,
@@ -162,18 +168,37 @@ export async function captureNativeBuild(
     );
   }
   const nativeFiles = await Promise.all(
-    [...new Set([...input.nativeFiles, ...coreFiles])].sort().map(async (path) => {
-      const absolute = await realpath(resolve(projectRoot, path));
-      if (!(await stat(absolute)).isFile()) throw new Error(`Native input is not a file: ${path}`);
-      if (/otakit-(embedded|native-build)\.json$/.test(path))
-        throw new Error('Generated receipts cannot enter their own runtime hash');
-      return {
-        path: relative(projectRoot, absolute).split(sep).join('/'),
-        sha256: await hashFile(absolute),
-      };
-    }),
+    [...new Set([...input.nativeFiles, ...coreFiles, ...expoEnvironmentFiles])]
+      .sort()
+      .map(async (path) => {
+        const absolute = await realpath(resolve(projectRoot, path));
+        if (!(await stat(absolute)).isFile())
+          throw new Error(`Native input is not a file: ${path}`);
+        if (/otakit-(embedded|native-build)\.json$/.test(path))
+          throw new Error('Generated receipts cannot enter their own runtime hash');
+        return {
+          path: relative(projectRoot, absolute).split(sep).join('/'),
+          sha256: await hashFile(absolute),
+        };
+      }),
   );
   const compiler = await realpath(resolve(projectRoot, input.hermesCompiler));
+  const hostFile = input.nativeConfiguration.otakitHostConfigurationFile;
+  let hostHash: string | undefined;
+  if (hostFile !== undefined) {
+    if (typeof hostFile !== 'string' || !input.nativeFiles.includes(hostFile))
+      throw new Error('otakitHostConfigurationFile must name an explicit nativeFiles input');
+    const bytes = await readFile(resolve(projectRoot, hostFile));
+    hostHash = hostConfigurationHash(parseHostConfiguration(bytes));
+    const path = relative(projectRoot, await realpath(resolve(projectRoot, hostFile)))
+      .split(sep)
+      .join('/');
+    if (
+      nativeFiles.find((file) => file.path === path)?.sha256 !==
+      createHash('sha256').update(bytes).digest('hex')
+    )
+      throw new Error('Host configuration changed while capturing native inputs');
+  }
   const compilerRelative = relative(projectRoot, compiler);
   const compilerRoots = [await realpath(join(require.resolve('react-native/package.json'), '..'))];
   if (input.platform === 'ios') {
@@ -220,6 +245,7 @@ export async function captureNativeBuild(
     },
     nativeFiles,
     nativeConfiguration: input.nativeConfiguration,
+    ...(hostHash ? { hostConfigurationHash: hostHash } : {}),
   };
   // Normalize absolute project paths in collected evidence; CI checkout locations are not native identity.
   const portable = JSON.parse(

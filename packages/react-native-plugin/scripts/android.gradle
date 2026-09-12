@@ -1,0 +1,193 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
+import java.nio.file.Files
+
+// Apply explicitly in an RN application after configuring ext.otakitBuild.
+// APK acceptance only. This script never uploads, publishes, or invokes a database command.
+abstract class OtaKitBuildTask extends DefaultTask {
+    @Internal Closure operation
+    @Inject abstract ExecOperations getExecOperations()
+
+    void runCLI(List<String> command, File directory) {
+        execOperations.exec {
+            workingDir directory
+            commandLine command
+            environment 'NODE_PATH', ''
+            standardOutput = OutputStream.nullOutputStream()
+        }.assertNormalExitValue()
+    }
+
+    @TaskAction void executeBuildStep() { operation.call() }
+}
+
+abstract class OtaKitAssetsTask extends OtaKitBuildTask {
+    @OutputDirectory abstract DirectoryProperty getAssetsDirectory()
+}
+
+if (!plugins.hasPlugin('com.android.application') || !plugins.hasPlugin('com.facebook.react')) {
+    throw new GradleException('Apply OtaKit after the Android application and React Native plugins')
+}
+def options = project.ext.has('otakitBuild') ? project.ext.otakitBuild : null
+if (!(options instanceof Map) || !(options.variants instanceof List) || options.variants.empty ||
+    !options.nativeInputsFile || !options.cliFile || !options.embeddedVersion) {
+    throw new GradleException('otakitBuild requires variants, nativeInputsFile, cliFile, and embeddedVersion')
+}
+def selected = options.variants.collect { it.toString() }.toSet()
+def projectRoot = file(options.projectRoot ?: '../..').canonicalFile
+def nativeInputsFile = file(options.nativeInputsFile)
+def cliFile = file(options.cliFile)
+def nodeCommand = options.nodeCommand ?: ['node']
+if (!(nodeCommand instanceof List) || nodeCommand.empty || nodeCommand.any { !(it instanceof String) }) {
+    throw new GradleException('otakitBuild.nodeCommand must be a nonempty list of command arguments')
+}
+def cliCommand = nodeCommand + [cliFile.absolutePath, 'rn']
+def version = options.embeddedVersion.toString()
+def hookFile = buildscript.sourceFile.canonicalFile
+def reactExtension = extensions.getByName('react')
+// RN uses this list only to skip its bundler; the Android variant must still be non-debuggable.
+reactExtension.debuggableVariants.addAll(selected)
+def components = extensions.getByName('androidComponents')
+// Applied scripts have a separate compilation classpath. Resolve the artifact token from
+// the already installed AGP rather than adding a second Android plugin dependency.
+def apkArtifact = components.class.classLoader.loadClass('com.android.build.api.artifact.SingleArtifact$APK')
+    .getField('INSTANCE').get(null)
+def androidExtension = extensions.getByName('android')
+def found = [] as Set
+
+components.onVariants(components.selector().all()) { variant ->
+    if (!selected.contains(variant.name)) return
+    found.add(variant.name)
+    def legacyReact = project.ext.has('react') && project.ext.react instanceof Map ? project.ext.react : [:]
+    def hermes = project.hasProperty('hermesEnabled') ? project.property('hermesEnabled') :
+        (project.hasProperty('react.hermesEnabled') ? project.property('react.hermesEnabled') : legacyReact.get('enableHermes', true))
+    if (variant.debuggable || hermes.toString().equalsIgnoreCase('false') ||
+        (!reactExtension.enableHermesOnlyInVariants.get().empty &&
+            !reactExtension.enableHermesOnlyInVariants.get().contains(variant.name))) {
+        throw new GradleException("OtaKit requires a non-debuggable Hermes variant: ${variant.name}")
+    }
+    if (reactExtension.bundleCommand.get() != 'bundle' || reactExtension.bundleConfig.isPresent() ||
+        !reactExtension.extraPackagerArgs.get().empty || !reactExtension.hermesCommand.get().empty ||
+        reactExtension.hermesFlags.get() != ['-O', '-output-source-map'] ||
+        reactExtension.root.get().asFile.canonicalFile != projectRoot ||
+        reactExtension.reactNativeDir.get().asFile.canonicalFile != new File(projectRoot, 'node_modules/react-native').canonicalFile) {
+        throw new GradleException('Custom RN bundler/compiler configuration needs explicit OtaKit exporter support')
+    }
+    def entry = (options.entry ?: providers.environmentVariable('ENTRY_FILE').orNull ?:
+        reactExtension.entryFile.orNull?.asFile?.absolutePath ?:
+        (new File(projectRoot, 'index.android.js').isFile() ? 'index.android.js' : 'index.js')).toString()
+    def name = variant.name.capitalize()
+    // Each invocation retains its own export, APK, and completed receipt until Gradle clean.
+    def runDirectory = layout.buildDirectory.dir("otakit/${variant.name}/${UUID.randomUUID()}").get().asFile
+    def generatedInputs = new File(runDirectory, 'native-inputs.json')
+    def exportRoot = new File(runDirectory, 'export')
+    def externalArtifacts = variant.runtimeConfiguration.incoming.artifactView {
+        componentFilter { it instanceof ModuleComponentIdentifier }
+    }.artifacts
+    def prepare = tasks.register("prepareOtaKit${name}", OtaKitAssetsTask) { task ->
+        group = 'otakit'
+        description = "Export and verify embedded OtaKit assets for ${variant.name}"
+        assetsDirectory.set(new File(runDirectory, 'assets'))
+        inputs.file(nativeInputsFile)
+        inputs.file(cliFile)
+        inputs.files(externalArtifacts.artifactFiles)
+        outputs.upToDateWhen { false }
+        notCompatibleWithConfigurationCache('Collects resolved Android variant evidence at execution time')
+        operation = {
+            def input = new JsonSlurper().parse(nativeInputsFile)
+            if (input.platform != 'android' || input.nativeApplicationId != variant.applicationId.get() ||
+                !variant.name.equalsIgnoreCase(input.variant?.toString())) {
+                throw new GradleException('Native inputs must match the selected Android variant and application ID')
+            }
+            def hostPath = input.nativeConfiguration?.otakitHostConfigurationFile
+            if (!(hostPath instanceof String) || !(input.nativeFiles instanceof List) ||
+                !input.nativeFiles.contains(hostPath)) {
+                throw new GradleException('Record otakitHostConfigurationFile in nativeFiles before building')
+            }
+            def enabled = variant.outputs.findAll { it.enabled.get() }
+            if (enabled.size() != 1 || !enabled[0].filters.empty) {
+                throw new GradleException('OtaKit APK sealing currently requires one unfiltered APK output')
+            }
+            def artifacts = externalArtifacts.artifacts.toList().sort { a, b ->
+                a.id.displayName <=> b.id.displayName
+            }
+            input.nativeFiles = (input.nativeFiles + [hookFile.absolutePath] +
+                artifacts.collect { it.file.absolutePath } +
+                components.sdkComponents.bootClasspath.get().collect { it.asFile.absolutePath }).unique()
+            input.nativeConfiguration.androidBuild = [
+                gradleVersion: gradle.gradleVersion,
+                androidPluginVersion: components.pluginVersion.toString(),
+                namespace: variant.namespace.get(),
+                hermesEnabled: true,
+                debuggable: false,
+                minSdk: variant.minSdk.apiLevel,
+                targetSdk: variant.targetSdkVersion.apiLevel,
+                compileSdk: androidExtension.compileSdk,
+                buildToolsVersion: androidExtension.buildToolsVersion,
+                ndkVersion: androidExtension.ndkVersion,
+                versionCode: enabled[0].versionCode.get(),
+                versionName: enabled[0].versionName.get(),
+                architectures: providers.gradleProperty('reactNativeArchitectures').getOrElse('armeabi-v7a,arm64-v8a,x86,x86_64'),
+                manifestPlaceholders: variant.manifestPlaceholders.get(),
+                buildConfigFields: variant.buildConfigFields.get().collectEntries { key, value ->
+                    [(key): [type: value.type, value: value.value]]
+                },
+                runtimeArtifacts: artifacts.collect { [id: it.id.displayName, file: it.file.name] },
+            ]
+            runDirectory.mkdirs()
+            generatedInputs.text = JsonOutput.prettyPrint(JsonOutput.toJson(input)) + '\n'
+            task.runCLI(cliCommand + ['export-embedded', '--project', projectRoot.absolutePath,
+                '--native-inputs', generatedInputs.absolutePath, '--version', version,
+                '--entry', entry, '--output', exportRoot.absolutePath], projectRoot)
+            def exports = exportRoot.listFiles().findAll { it.isDirectory() }
+            if (exports.size() != 1) throw new GradleException('Expected exactly one Android embedded export')
+            def resource = input.nativeConfiguration.otakitResourceDirectory
+            def hostFile = new File(hostPath)
+            if (!hostFile.isAbsolute()) hostFile = new File(projectRoot, hostPath)
+            task.runCLI(cliCommand + ['stage-embedded', '--embedded-export', exports[0].absolutePath,
+                '--configuration', hostFile.absolutePath,
+                '--output', new File(task.assetsDirectory.get().asFile, resource).absolutePath], projectRoot)
+        }
+    }
+    variant.sources.assets.addGeneratedSourceDirectory(prepare) { it.assetsDirectory }
+    def apkDirectory = variant.artifacts.get(apkArtifact)
+    def loader = variant.artifacts.getBuiltArtifactsLoader()
+    def seal = tasks.register("sealOtaKit${name}", OtaKitBuildTask) { task ->
+        group = 'otakit'
+        description = "Verify and archive the completed ${variant.name} OtaKit APK"
+        dependsOn(prepare)
+        inputs.dir(apkDirectory)
+        notCompatibleWithConfigurationCache('Reads Android APK metadata after packaging')
+        operation = {
+            def built = loader.load(apkDirectory.get())
+            if (built == null || built.applicationId != variant.applicationId.get() ||
+                built.variantName != variant.name || built.elements.size() != 1 ||
+                !built.elements[0].filters.empty) {
+                throw new GradleException('Missing or ambiguous completed Android APK metadata')
+            }
+            def archivedAPK = new File(runDirectory, 'application.apk')
+            Files.copy(new File(built.elements[0].outputFile).toPath(), archivedAPK.toPath())
+            def baseline = exportRoot.listFiles().findAll { it.isDirectory() }
+            if (baseline.size() != 1) throw new GradleException('Missing archived embedded export')
+            def aapt2 = new File(components.sdkComponents.sdkDirectory.get().asFile,
+                "build-tools/${androidExtension.buildToolsVersion}/aapt2${System.getProperty('os.name').startsWith('Windows') ? '.exe' : ''}")
+            task.runCLI(cliCommand + ['seal-build', '--project', projectRoot.absolutePath,
+                '--native-inputs', generatedInputs.absolutePath, '--embedded-export', baseline[0].absolutePath,
+                '--binary', archivedAPK.absolutePath, '--receipt', new File(runDirectory, 'completed-build.json').absolutePath,
+                '--aapt2', aapt2.absolutePath], projectRoot)
+            logger.lifecycle("OtaKit completed build: ${runDirectory}")
+        }
+    }
+    // Use dependencies, not finalizers: a failed package task must never seal yesterday's APK.
+    tasks.matching { it.name == "assemble${name}" }.configureEach { dependsOn(seal) }
+    variant.lifecycleTasks.registerPreInstallation(seal)
+}
+afterEvaluate {
+    if (found != selected) throw new GradleException("Unknown or disabled OtaKit variants: ${selected - found}")
+}

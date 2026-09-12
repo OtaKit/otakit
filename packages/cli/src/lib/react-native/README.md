@@ -1,10 +1,12 @@
 # React Native build and export workflow
 
-Export and build-sealing commands operate locally without server credentials. Upload commands authenticate to the selected server; publication is a separate action. RN creation remains gated. Automatic Gradle/Xcode integration and complete resolved-input collection are still required before release acceptance.
+Export and build-sealing commands operate locally without server credentials. Upload commands authenticate to the selected server; publication is a separate action. RN creation remains gated. Opt-in [Android APK](../../../../react-native-plugin/README.md#android-apk-build-hook) and [iOS Xcode](../../../../react-native-plugin/README.md#ios-xcode-build-hook) hooks wire export, staging and completed-package sealing into native builds. Complete resolved-input collection and distribution acceptance are still required before release acceptance.
 
 ## Embedded export
 
 The native build supplies a `NativeBuildInputs` JSON file after resolving dependencies. It declares the app ID, platform, native application ID, variant, installed Hermes compiler and bytecode version, native file inputs and evaluated native configuration. `nativeConfiguration.otakitResourceDirectory` names one folder, such as `OtaKit`, that the host actually loads. Include native dependencies, lockfiles, generated configuration and hooks in the build evidence. A manually abbreviated file list is not a substitute for that collection.
+
+Fingerprinting excludes generated Android `.kotlin` compiler caches alongside the existing Gradle/CMake build-output exclusions. Kotlin session markers can exist during compilation and disappear at Gradle exit; they must not change compatibility between package sealing and a later OTA export. Native source and configuration files remain included.
 
 ```sh
 otakit rn export-embedded --project "$OTAKIT_PROJECT" \
@@ -16,7 +18,21 @@ The command creates one `platform-runtime` directory. Preserve it with the build
 
 Projects that declare Expo use the adapter for Expo 57.0.17 / CLI 57.0.19's embed exporter. Supply the original entry explicitly with `--entry`, including `expo-router/entry` for Router projects. The adapter preserves Expo's native initializer, config snapshot and DOM output, validates asset destinations before copying, and keeps all source maps private. Known native directories skipped by CNG/pnpm fingerprint rules receive supplemental content hashes; other missing evidence still fails. See the [Expo fixture](../../../../../examples/expo-app/README.md) for verified export coverage and the upstream Router icon collision currently blocking its full acceptance.
 
-Before packaging, copy only `payload/` and `otakit-embedded.json` into the declared resource folder. Place the host's `configuration.json` and Unicode `case-folding.json` alongside them. The host configuration must use the exported `embeddedReceipt` and `nativeBuildId`, and the recorded RN/Hermes versions. Preserve trusted signing keys and application-specific host settings in native configuration. Never copy the export's `private/` directory into the app or OTA payload.
+Expo capture and export initialize production mode and load the installed Expo CLI's production `.env` files before evaluating native evidence, Metro or public config. Leave `NODE_ENV` and `BABEL_ENV` unset or set them to `production`; conflicting modes fail before export. Environment files contribute file hashes to the native build record, so changes currently require a matching new binary. Their contents are not stored as dotenv values in receipts. Release export resets Metro's transform cache because SDK 57 can otherwise reuse JavaScript with stale inlined `EXPO_PUBLIC_*` values while exporting a newer config snapshot. Bare RN and Capacitor do not use this Expo setup.
+
+For verified resource staging, create a host settings JSON file before exporting. Include its path in `nativeFiles` and set `nativeConfiguration.otakitHostConfigurationFile` to that same path. Capture records its file hash and a canonical settings hash; settings changes therefore require a new native build. The settings contain `cdnURL`, `publicKeys` (key IDs to base64 P-256 SPKI DER), `bundleKeys` (key IDs to base64 32-byte encryption keys, or `{}`), and optional `channel`, `ingestURL`, and `allowLocalhost`. Local HTTP requires explicit `allowLocalhost: true`; otherwise URLs must use HTTPS. Omit build-specific receipt/version fields: staging generates them from the verified export. These are native host settings, not CLI authentication credentials.
+
+After export and before the platform resource-copy task, run:
+
+```sh
+otakit rn stage-embedded --embedded-export "$OTAKIT_BASELINE_DIR" \
+  --configuration "$OTAKIT_HOST_SETTINGS" \
+  --output "$OTAKIT_GENERATED_RESOURCES/OtaKit"
+```
+
+The output folder name must match `otakitResourceDirectory`. Staging verifies the archived ZIP and payload, checks the host settings against the recorded inputs, and creates the complete resource folder: `payload/`, `otakit-embedded.json`, `configuration.json`, and the exporter's Unicode `case-folding.json`. Private export files are excluded. It prepares a temporary sibling folder and renames it into place only when complete. An identical rerun verifies and reuses the output; differing, incomplete, linked or extra files cause an error without replacing it. Use a new generated output path for each build, and have Gradle/Xcode copy that folder into the package. Avoid concurrent builds consuming the same generated path. The Android hook registers a generated asset task. The iOS wrapper stages inside the app’s RN build phase and seals only after Xcode succeeds, including signing. Full resolved-input collection remains outstanding.
+
+Earlier exports without a recorded host settings file still support manual resource preparation and package sealing, but cannot use `stage-embedded`. Re-export with recorded settings to adopt the staging workflow. Manual preparation must copy only the public resources listed above and populate the build-specific configuration from the embedded receipt; never copy `private/` into the app.
 
 On iOS the resource folder is directly inside the built `.app`. On Android it is inside APK `assets/`. The host must load that same folder. Build the native application using this exact payload, with one owner of Hermes compilation.
 
@@ -33,7 +49,7 @@ otakit rn seal-build --project "$OTAKIT_PROJECT" \
 
 Omit `--aapt2` for iOS. Android currently accepts APKs; iOS accepts built `.app` directories, including apps inside an Xcode archive. AAB/IPA inspection and signing/distribution acceptance remain outstanding.
 
-Sealing rechecks the native inputs, verifies the archived payload and ZIP, reads the actual package identity, and compares every packaged payload file, embedded receipt and relevant configuration field. It rejects missing, additional, changed or linked payload files and private files in the resource folder. Android identity comes from the installed [AAPT2 manifest parser](https://developer.android.com/tools/aapt2); iOS identity comes from the built `Info.plist` and its [executable entry](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleexecutable).
+Sealing rechecks the native inputs, verifies the archived payload and ZIP, reads the actual package identity, and compares every packaged payload file, embedded receipt and generated configuration field. It requires the matching Unicode table, and compares all host settings when their hash is recorded. Older build records without that hash retain their existing configuration checks. It rejects missing, additional, changed or linked payload files and private files in the resource folder. Android identity comes from the installed [AAPT2 manifest parser](https://developer.android.com/tools/aapt2); iOS identity comes from the built `Info.plist` and its [executable entry](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleexecutable).
 
 The completed receipt pins the entire APK hash, or a canonical path/size/hash inventory of the iOS app's regular files. It is local CI provenance, not signature verification, store attestation or evidence of device installation. Archive the exact native output and baseline alongside it. An identical retry verifies again and returns the existing receipt. A different binary or baseline cannot overwrite it. Receipt output must be outside the native package, including through symlinks.
 

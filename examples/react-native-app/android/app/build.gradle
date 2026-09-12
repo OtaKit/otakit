@@ -2,6 +2,23 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Optional local acceptance of the installed build hook. Ordinary fixture builds retain their resources.
+if (providers.gradleProperty('otakitNativeInputs').isPresent()) {
+    ext.otakitBuild = [
+        variants: ['release'],
+        projectRoot: file('../..'),
+        nativeInputsFile: file(providers.gradleProperty('otakitNativeInputs').get()),
+        cliFile: file(providers.gradleProperty('otakitCLIFile').getOrElse('../../../../packages/cli/dist/index.js')),
+        embeddedVersion: providers.gradleProperty('otakitEmbeddedVersion').getOrElse('embedded'),
+    ]
+    apply from: new File(providers.exec {
+        commandLine 'node', '-p', "require.resolve('@otakit/react-native-updater/scripts/android.gradle')"
+    }.standardOutput.asText.get().trim())
+    // The generated source directory is registered by the hook, not this manual-fixture source set.
+    android.sourceSets.main.assets.exclude('OtaKitFixture/**')
+    android.sourceSets.debug.assets.srcDir('src/main/assets')
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.

@@ -1,0 +1,17 @@
+// Local acceptance only: consume a separately verified embedded export. This does not seal a
+// native build receipt and must not be used to produce a release for users.
+gradle.beforeProject { app ->
+  if (app.path != ':app') return // Init scripts also run in Gradle's included plugin builds.
+  app.plugins.withId('com.android.application') {
+    def resources = app.findProperty('otakitFixtureAssets')
+    if (resources == null || !new File(resources, 'OtaKitFixture/configuration.json').isFile()) {
+      throw new GradleException('Pass -PotakitFixtureAssets=<prepared fixture assets directory>')
+    }
+    app.android.sourceSets.release.assets.srcDir(resources)
+    app.android.compileOptions.coreLibraryDesugaringEnabled = true
+    app.dependencies.add('coreLibraryDesugaring', 'com.android.tools:desugar_jdk_libs_nio:2.1.5')
+    app.tasks.configureEach { task ->
+      if (task.name == 'createBundleReleaseJsAndAssets') task.enabled = false
+    }
+  }
+}

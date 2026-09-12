@@ -5,6 +5,9 @@ export interface DeltaFileEntry {
 }
 import folding from './unicode/case-folding-15.0.0.json';
 
+/** The native verifier must use the same Unicode table as the exporter. */
+export const rnCaseFoldingJSON = JSON.stringify(folding);
+
 const caseFolding: Record<string, string> = folding;
 const RESERVED_ROOTS = new Set(['bundle.json', 'otakit_files.json', 'otakit-embedded.json']);
 

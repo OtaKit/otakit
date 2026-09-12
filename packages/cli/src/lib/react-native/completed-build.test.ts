@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import yazl from 'yazl';
-import { canonicalJSON, type RNDescriptor } from '@otakit/rn-protocol';
+import { canonicalJSON, rnCaseFoldingJSON, type RNDescriptor } from '@otakit/rn-protocol';
 import { archiveRNDirectory, verifyRNDirectory } from './artifacts.js';
 import { hashBuffer } from '../hash.js';
 import { type NativeBuildInputs, type NativeBuildRecord } from './build-record.js';
@@ -21,6 +21,20 @@ import {
 } from './completed-build.js';
 import { verifyNativePackage } from './native-package.js';
 import { exportRN } from './export.js';
+import { stageEmbedded } from './stage-embedded.js';
+import { hostConfigurationHash, parseHostConfiguration } from './host-configuration.js';
+
+const hostSettings = {
+  cdnURL: 'https://cdn.example.test',
+  ingestURL: 'https://ingest.example.test/v1',
+  channel: null,
+  publicKeys: {
+    test: generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+      .publicKey.export({ type: 'spki', format: 'der' })
+      .toString('base64'),
+  },
+  bundleKeys: {},
+};
 
 const mock = vi.hoisted(() => ({ capture: vi.fn(), exec: vi.fn() }));
 vi.mock('./build-record.js', async (original) => ({
@@ -57,6 +71,7 @@ beforeEach(async () => {
     hermesCompiler: { path: 'hermesc', sha256: 'a'.repeat(64), bytecodeVersion: 98 },
     nativeFiles: [{ path: 'native.gradle', sha256: 'b'.repeat(64) }],
     nativeConfiguration: { otakitResourceDirectory: 'OtaKit' },
+    hostConfigurationHash: hostConfigurationHash(hostSettings),
   };
   build = {
     format: 'otakit-rn-native-build',
@@ -116,16 +131,19 @@ beforeEach(async () => {
   await writeFile(join(directory, 'export.json'), JSON.stringify(receipt));
   await writeFile(join(directory, 'otakit-embedded.json'), JSON.stringify(receipt.embeddedReceipt));
   await writeFile(join(directory, 'private/native-build.json'), JSON.stringify(build));
+  await writeFile(join(root, 'host.json'), JSON.stringify(hostSettings));
   entries = new Map([
     ['classes.dex', Buffer.from('compiled fixture')],
     ['lib/arm64-v8a/libhermesvm.so', Buffer.from('native fixture')],
     ['assets/OtaKit/payload/index.bundle', bytecode],
     ['assets/OtaKit/payload/otakit-bundle.json', Buffer.from(JSON.stringify(descriptor))],
     ['assets/OtaKit/otakit-embedded.json', Buffer.from(JSON.stringify(receipt.embeddedReceipt))],
+    ['assets/OtaKit/case-folding.json', Buffer.from(rnCaseFoldingJSON)],
     [
       'assets/OtaKit/configuration.json',
       Buffer.from(
         JSON.stringify({
+          ...hostSettings,
           nativeBuildId: embeddedBuildId(receipt.embeddedReceipt),
           embeddedReceipt: receipt.embeddedReceipt,
           reactNativeVersion: '0.86.3',
@@ -186,6 +204,9 @@ it.each([
   'configuration',
   'private-file',
   'missing-receipt',
+  'missing-unicode',
+  'changed-unicode',
+  'host-settings',
 ])('rejects packaged %s changes before creating a completed receipt', async (change) => {
   if (change === 'payload')
     entries.set('assets/OtaKit/payload/index.bundle', Buffer.from('changed'));
@@ -197,6 +218,14 @@ it.each([
   if (change === 'private-file')
     entries.set('assets/OtaKit/private/index.map', Buffer.from('private'));
   if (change === 'missing-receipt') entries.delete('assets/OtaKit/otakit-embedded.json');
+  if (change === 'missing-unicode') entries.delete('assets/OtaKit/case-folding.json');
+  if (change === 'changed-unicode')
+    entries.set('assets/OtaKit/case-folding.json', Buffer.from('{}'));
+  if (change === 'host-settings') {
+    const config = JSON.parse(entries.get('assets/OtaKit/configuration.json')!.toString());
+    config.publicKeys = { another: hostSettings.publicKeys.test };
+    entries.set('assets/OtaKit/configuration.json', Buffer.from(JSON.stringify(config)));
+  }
   await expect(seal(await apk())).rejects.toThrow();
   await expect(readFile(join(root, 'completed.json'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
@@ -287,63 +316,151 @@ it('rejects native package changes while the platform manifest is being inspecte
   ).rejects.toThrow('changed during verification');
 });
 
-it('verifies the iOS app tree and rejects changed payloads and resource symlinks', async () => {
-  build.identity.platform = 'ios';
-  build.runtimeVersion = createHash('sha256')
-    .update(canonicalJSON(build.identity))
-    .digest('base64url');
-  const descriptor = JSON.parse(
-    await readFile(join(directory, 'payload/otakit-bundle.json'), 'utf8'),
-  );
-  descriptor.platform = 'ios';
-  descriptor.runtimeVersion = build.runtimeVersion;
-  await writeFile(join(directory, 'payload/otakit-bundle.json'), JSON.stringify(descriptor));
-  const verified = await verifyRNDirectory(join(directory, 'payload'), descriptor, 98);
-  receipt = {
-    ...receipt,
-    platform: 'ios',
-    runtimeVersion: build.runtimeVersion,
-    ...verified,
-    embeddedReceipt: {
-      ...receipt.embeddedReceipt,
+it.each([false, true])(
+  'verifies iOS resources with Xcode provenance=%s and preserves legacy checks',
+  async (xcodeBuild) => {
+    build.identity.platform = 'ios';
+    build.identity.nativeConfiguration.iosBuild = {
+      ...(xcodeBuild ? { format: 'otakit-rn-xcode-build', version: 1 } : {}),
+      CURRENT_PROJECT_VERSION: '7',
+      MARKETING_VERSION: '1.2',
+    };
+    build.runtimeVersion = createHash('sha256')
+      .update(canonicalJSON(build.identity))
+      .digest('base64url');
+    const descriptor = JSON.parse(
+      await readFile(join(directory, 'payload/otakit-bundle.json'), 'utf8'),
+    );
+    descriptor.platform = 'ios';
+    descriptor.runtimeVersion = build.runtimeVersion;
+    await writeFile(join(directory, 'payload/otakit-bundle.json'), JSON.stringify(descriptor));
+    const verified = await verifyRNDirectory(join(directory, 'payload'), descriptor, 98);
+    receipt = {
+      ...receipt,
       platform: 'ios',
       runtimeVersion: build.runtimeVersion,
-      embeddedContentHash: verified.contentHash,
-    },
-  };
-  const app = join(root, 'Application.app');
-  receipt.nativeBuildId = embeddedBuildId(receipt.embeddedReceipt);
-  const resources = join(app, 'OtaKit');
-  await mkdir(resources, { recursive: true });
-  await cp(join(directory, 'payload'), join(resources, 'payload'), { recursive: true });
-  await writeFile(join(resources, 'otakit-embedded.json'), JSON.stringify(receipt.embeddedReceipt));
-  await writeFile(
-    join(resources, 'configuration.json'),
-    JSON.stringify({
-      embeddedReceipt: receipt.embeddedReceipt,
-      nativeBuildId: embeddedBuildId(receipt.embeddedReceipt),
-      reactNativeVersion: '0.86.3',
-      hermesBytecodeVersion: 98,
-    }),
-  );
-  await writeFile(join(app, 'Application'), Buffer.alloc(64, 1));
-  const plist = {
-    CFBundleIdentifier: 'com.example.app',
-    CFBundlePackageType: 'APPL',
-    CFBundleExecutable: 'Application',
-  };
-  await writeFile(join(app, 'Info.plist'), JSON.stringify(plist));
-  mock.exec.mockResolvedValue({ stdout: JSON.stringify(plist) });
-  const options = { binary: app, nativeBuild: build, baseline: receipt };
-  const verifiedApp = await verifyNativePackage(options);
-  expect(verifiedApp).toMatchObject({
-    format: 'ios-app',
-    nativeApplicationId: 'com.example.app',
-    sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      ...verified,
+      embeddedReceipt: {
+        ...receipt.embeddedReceipt,
+        platform: 'ios',
+        runtimeVersion: build.runtimeVersion,
+        embeddedContentHash: verified.contentHash,
+      },
+    };
+    const app = join(root, 'Application.app');
+    receipt.nativeBuildId = embeddedBuildId(receipt.embeddedReceipt);
+    const resources = join(app, 'OtaKit');
+    await mkdir(resources, { recursive: true });
+    await cp(join(directory, 'payload'), join(resources, 'payload'), { recursive: true });
+    await writeFile(
+      join(resources, 'otakit-embedded.json'),
+      JSON.stringify(receipt.embeddedReceipt),
+    );
+    await writeFile(
+      join(resources, 'configuration.json'),
+      JSON.stringify({
+        ...hostSettings,
+        embeddedReceipt: receipt.embeddedReceipt,
+        nativeBuildId: embeddedBuildId(receipt.embeddedReceipt),
+        reactNativeVersion: '0.86.3',
+        hermesBytecodeVersion: 98,
+      }),
+    );
+    await writeFile(join(resources, 'case-folding.json'), rnCaseFoldingJSON);
+    await writeFile(join(app, 'Application'), Buffer.alloc(64, 1));
+    const plist = {
+      CFBundleIdentifier: 'com.example.app',
+      CFBundlePackageType: 'APPL',
+      CFBundleExecutable: 'Application',
+      CFBundleVersion: '7',
+      CFBundleShortVersionString: '1.2',
+    };
+    await writeFile(join(app, 'Info.plist'), JSON.stringify(plist));
+    mock.exec.mockResolvedValue({ stdout: JSON.stringify(plist) });
+    const options = { binary: app, nativeBuild: build, baseline: receipt };
+    const verifiedApp = await verifyNativePackage(options);
+    expect(verifiedApp).toMatchObject({
+      format: 'ios-app',
+      nativeApplicationId: 'com.example.app',
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    mock.exec.mockResolvedValue({ stdout: JSON.stringify({ ...plist, CFBundleVersion: '6' }) });
+    if (xcodeBuild)
+      await expect(verifyNativePackage(options)).rejects.toThrow('CFBundleVersion differs');
+    else await expect(verifyNativePackage(options)).resolves.toMatchObject({ format: 'ios-app' });
+    mock.exec.mockResolvedValue({ stdout: JSON.stringify(plist) });
+    await writeFile(join(resources, 'payload/index.bundle'), 'tampered');
+    await expect(verifyNativePackage(options)).rejects.toThrow('payload differs');
+    await rm(join(resources, 'payload/index.bundle'));
+    await symlink(join(directory, 'payload/index.bundle'), join(resources, 'payload/index.bundle'));
+    await expect(verifyNativePackage(options)).rejects.toThrow('unsupported link');
+  },
+);
+
+it('stages only verified public resources, reuses an exact output and seals the staged APK', async () => {
+  const output = join(root, 'generated/OtaKit');
+  const options = { embeddedExport: directory, configuration: join(root, 'host.json'), output };
+  const staged = await stageEmbedded(options);
+  await expect(stageEmbedded(options)).resolves.toEqual(staged);
+  await expect(readFile(join(output, 'private/index.map'))).rejects.toMatchObject({
+    code: 'ENOENT',
   });
-  await writeFile(join(resources, 'payload/index.bundle'), 'tampered');
-  await expect(verifyNativePackage(options)).rejects.toThrow('payload differs');
-  await rm(join(resources, 'payload/index.bundle'));
-  await symlink(join(directory, 'payload/index.bundle'), join(resources, 'payload/index.bundle'));
-  await expect(verifyNativePackage(options)).rejects.toThrow('unsupported link');
+  expect(JSON.parse(await readFile(join(output, 'configuration.json'), 'utf8'))).toEqual({
+    ...hostSettings,
+    embeddedReceipt: receipt.embeddedReceipt,
+    nativeBuildId: receipt.nativeBuildId,
+    reactNativeVersion: '0.86.3',
+    hermesBytecodeVersion: 98,
+  });
+  for (const path of entries.keys()) {
+    if (path.startsWith('assets/OtaKit/'))
+      entries.set(path, await readFile(join(output, path.slice('assets/OtaKit/'.length))));
+  }
+  await expect(seal(await apk())).resolves.toMatchObject({ baseline: receipt });
+  await writeFile(join(output, 'payload/stale.png'), 'old asset');
+  await expect(stageEmbedded(options)).rejects.toThrow('differ');
+  expect(await readFile(join(output, 'payload/stale.png'), 'utf8')).toBe('old asset');
+});
+
+it('refuses unbound settings, mismatched folder names and corrupt exports without publishing resources', async () => {
+  const output = join(root, 'generated/OtaKit');
+  const options = { embeddedExport: directory, configuration: join(root, 'host.json'), output };
+  await writeFile(options.configuration, JSON.stringify({ ...hostSettings, channel: 'other' }));
+  await expect(stageEmbedded(options)).rejects.toThrow('recorded');
+  await writeFile(options.configuration, JSON.stringify(hostSettings));
+  await expect(stageEmbedded({ ...options, output: join(root, 'Wrong') })).rejects.toThrow(
+    'folder',
+  );
+  await writeFile(join(directory, 'artifact.zip'), 'corrupt');
+  await expect(stageEmbedded(options)).rejects.toThrow('transport hash');
+  await expect(readFile(join(output, 'configuration.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+});
+
+it('rejects resource symlinks and output paths inside the archived export', async () => {
+  const output = join(root, 'generated/OtaKit');
+  const options = { embeddedExport: directory, configuration: join(root, 'host.json'), output };
+  await stageEmbedded(options);
+  await rm(join(output, 'case-folding.json'));
+  await symlink(join(root, 'host.json'), join(output, 'case-folding.json'));
+  await expect(stageEmbedded(options)).rejects.toThrow('differ');
+  await expect(stageEmbedded({ ...options, output: join(directory, 'OtaKit') })).rejects.toThrow(
+    'outside',
+  );
+});
+
+it('validates native host settings before generating resources', () => {
+  const parse = (extra: object) =>
+    parseHostConfiguration(Buffer.from(JSON.stringify({ ...hostSettings, ...extra })));
+  expect(parse({})).toEqual(hostSettings);
+  expect(() => parse({ embeddedReceipt: {} })).toThrow('generated');
+  expect(() => parse({ cdnURL: 'http://example.test' })).toThrow('cdnURL');
+  expect(() => parse({ ingestURL: 'https://example.test/v1?token=secret' })).toThrow('ingestURL');
+  expect(() => parse({ publicKeys: {} })).toThrow('trusted key');
+  expect(() => parse({ bundleKeys: { key: 'eA==' } })).toThrow('32 bytes');
+  expect(parse({ cdnURL: 'http://127.0.0.1:9042', allowLocalhost: true })).toHaveProperty(
+    'allowLocalhost',
+    true,
+  );
 });

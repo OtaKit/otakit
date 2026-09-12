@@ -1,6 +1,7 @@
 const path = require('node:path');
 
-function withOtaKitMetro(config) {
+function withOtaKitMetro(config, { enabled = true } = {}) {
+  if (!enabled) return config;
   const previousModules = config.serializer?.getModulesRunBeforeMainModule;
   const previousResolve = config.resolver?.resolveRequest;
   const bootstrap = path.resolve(__dirname, '../src/bootstrap.ts');

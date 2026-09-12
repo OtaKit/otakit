@@ -3,11 +3,16 @@ import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
 import yauzl from 'yauzl';
-import { canonicalJSON, type DeltaFileEntry } from '@otakit/rn-protocol';
+import { canonicalJSON, rnCaseFoldingJSON, type DeltaFileEntry } from '@otakit/rn-protocol';
 import { createHash } from 'node:crypto';
 import { hashBuffer, hashFile } from '../hash.js';
 import { embeddedBuildId, type EmbeddedExportReceipt } from './export-receipt.js';
 import type { NativeBuildRecord } from './build-record.js';
+import {
+  generatedHostFields,
+  hostConfigurationHash,
+  parseHostConfiguration,
+} from './host-configuration.js';
 
 export interface NativePackageIdentity {
   format: 'android-apk' | 'ios-app';
@@ -89,7 +94,8 @@ async function inspectAPK(path: string, resourceRoot: string) {
           // Hash all entries, not just OtaKit assets. The whole APK is separately pinned as well.
           const retain =
             entry.fileName === `${resourceRoot}/otakit-embedded.json` ||
-            entry.fileName === `${resourceRoot}/configuration.json`;
+            entry.fileName === `${resourceRoot}/configuration.json` ||
+            entry.fileName === `${resourceRoot}/case-folding.json`;
           if (retain && entry.uncompressedSize > MAX_RESOURCE_JSON) {
             fail(new Error('Native receipt/configuration exceeds limit'));
             return;
@@ -201,6 +207,21 @@ export async function verifyNativePackage(options: {
     const executable = files.get(plist.CFBundleExecutable);
     if (plist.CFBundlePackageType !== 'APPL' || !executable || executable.size < 32)
       throw new Error('Missing compiled iOS app executable');
+    const iosBuild = nativeBuild.identity.nativeConfiguration.iosBuild as
+      | Record<string, unknown>
+      | undefined;
+    for (const [setting, key] of [
+      ['CURRENT_PROJECT_VERSION', 'CFBundleVersion'],
+      ['MARKETING_VERSION', 'CFBundleShortVersionString'],
+    ]) {
+      if (
+        iosBuild?.format === 'otakit-rn-xcode-build' &&
+        iosBuild.version === 1 &&
+        iosBuild[setting] &&
+        iosBuild[setting] !== plist[key]
+      )
+        throw new Error(`Packaged iOS ${key} differs from the Xcode build record`);
+    }
   }
   if (nativeApplicationId !== nativeBuild.identity.nativeApplicationId)
     throw new Error('Packaged native application ID differs from the build record');
@@ -223,6 +244,9 @@ export async function verifyNativePackage(options: {
     throw new Error('Packaged embedded payload differs from its archived baseline');
   const embedded = JSON.parse((await readResource('otakit-embedded.json')).toString('utf8'));
   const config = JSON.parse((await readResource('configuration.json')).toString('utf8'));
+  const folding = JSON.parse((await readResource('case-folding.json')).toString('utf8'));
+  if (canonicalJSON(folding) !== canonicalJSON(JSON.parse(rnCaseFoldingJSON)))
+    throw new Error('Packaged Unicode table differs from the exporter');
   if (
     canonicalJSON(embedded) !== canonicalJSON(baseline.embeddedReceipt) ||
     canonicalJSON(config.embeddedReceipt) !== canonicalJSON(embedded) ||
@@ -231,6 +255,13 @@ export async function verifyNativePackage(options: {
     config.hermesBytecodeVersion !== nativeBuild.identity.hermesCompiler.bytecodeVersion
   )
     throw new Error('Packaged native receipt/configuration differs from the completed export');
+  if (nativeBuild.identity.hostConfigurationHash) {
+    const settings = { ...config };
+    for (const field of generatedHostFields) delete settings[field];
+    parseHostConfiguration(Buffer.from(JSON.stringify(settings)));
+    if (hostConfigurationHash(settings) !== nativeBuild.identity.hostConfigurationHash)
+      throw new Error('Packaged host settings differ from the recorded native inputs');
+  }
   const after = android ? await hashFile(binary) : appHash(await snapshotApp(binary));
   if (after !== sha256) throw new Error('Native package changed during verification');
   return { format: android ? 'android-apk' : 'ios-app', sha256, nativeApplicationId };

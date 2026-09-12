@@ -10,6 +10,8 @@
     "android/src/main",
     "ios",
     "scripts/cocoapods.rb",
+    "scripts/android.gradle",
+    "scripts/xcode.sh",
     "OtaKitReactNativeUpdater.podspec",
     "README.md",
     "LICENSE"
@@ -23,6 +25,8 @@
     "./bootstrap": "./src/bootstrap.ts",
     "./metro": "./metro/index.cjs",
     "./scripts/cocoapods.rb": "./scripts/cocoapods.rb",
+    "./scripts/android.gradle": "./scripts/android.gradle",
+    "./scripts/xcode.sh": "./scripts/xcode.sh",
     "./package.json": "./package.json",
     "./expo-constants": "./src/expo/constants.ts",
     "./expo-dom": "./src/expo/dom.ts"

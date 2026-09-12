@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hashResolvedNativeSource } from './native-sources.js';
+import { createFingerprintAsync } from '@expo/fingerprint';
+import { hashResolvedNativeSource, RN_FINGERPRINT_IGNORES } from './native-sources.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -20,6 +21,41 @@ async function fixture() {
   return { project, native };
 }
 describe('resolved native source evidence', () => {
+  it('keeps the upstream Android fingerprint stable across Kotlin session cleanup without ignoring native edits', async () => {
+    const { project, native } = await fixture();
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({ name: 'native-fixture', version: '1.0.0' }),
+    );
+    await writeFile(join(native, 'app/build.gradle'), 'plugins {}');
+    await writeFile(
+      join(native, 'app/src/main/AndroidManifest.xml'),
+      '<manifest package="test.native" />',
+    );
+    const fingerprint = async (ignorePaths: string[]) => {
+      const value = await createFingerprintAsync(project, {
+        platforms: ['android'],
+        ignorePaths,
+        silent: true,
+      });
+      const source = value.sources.find(
+        (item) => 'filePath' in item && item.filePath === 'android',
+      );
+      expect(source?.hash).toBeTruthy();
+      return source!.hash;
+    };
+    const original = await fingerprint(RN_FINGERPRINT_IGNORES);
+    const session = join(native, '.kotlin/sessions');
+    await mkdir(session, { recursive: true });
+    await writeFile(join(session, 'kotlin-compiler-123.salive'), '');
+    expect(await fingerprint([])).not.toBe(original); // Reproduces the upstream failure.
+    expect(await fingerprint(RN_FINGERPRINT_IGNORES)).toBe(original);
+    await rm(session, { recursive: true });
+    expect(await fingerprint(RN_FINGERPRINT_IGNORES)).toBe(original);
+    await writeFile(join(native, 'app/src/main/Application.kt'), 'changed native implementation');
+    expect(await fingerprint(RN_FINGERPRINT_IGNORES)).not.toBe(original);
+  }, 15_000);
+
   it('includes generated native projects and source edits but excludes package build outputs and its own receipts', async () => {
     const { project, native } = await fixture();
     const original = await hashResolvedNativeSource(project, native, 'OtaKitFixture');
