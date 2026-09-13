@@ -54,6 +54,24 @@ final class LaunchStoreTests: XCTestCase {
     XCTAssertThrowsError(try engine.stage(artifact("bad")))
     XCTAssertEqual(try store().state().events.count, 1)
   }
+  func testBootstrapSnapshotRetainsItsArtifactAcrossTimeoutRecovery() throws {
+    let engine = try store()
+    try engine.stage(artifact("candidate"))
+    let trial = try engine.beginLaunch(foreground: true, activateStaged: true, now: 0)
+    let captured = try engine.bindLaunch(generation: trial)
+    XCTAssertTrue(try engine.checkTimeout(now: 11))
+    let recovered = engine.state().generation
+    XCTAssertGreaterThan(recovered, trial)
+    XCTAssertEqual(captured.generation, trial)
+    XCTAssertEqual(captured.current.contentHash, "candidate")
+    XCTAssertEqual(captured.current.bundlePath, "/owned/candidate/index.bundle")
+    XCTAssertThrowsError(try engine.bindLaunch(generation: trial))
+    XCTAssertThrowsError(try engine.notifyReady(from: trial))
+    let recovery = try engine.bindLaunch(generation: recovered)
+    XCTAssertEqual(recovery.current.contentHash, "builtin")
+    XCTAssertEqual(recovery.events.map(\.type), ["rollback"])
+    XCTAssertNil(recovery.trialGeneration)
+  }
   func testReadinessClockPausesInBackgroundAndGuardKeepsCandidate() throws {
     let engine = try store()
     try engine.stage(artifact("candidate"))

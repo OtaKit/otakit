@@ -140,3 +140,11 @@ The retained cold-link APK was exercised on a fresh Android API 36 Google APIs e
 Evidence remains in `/tmp/otakit-expo-cold-android-device`, including separate full-suite reports, with logs `/tmp/otakit-expo-cold-android-final.log` and `/tmp/otakit-expo-cold-android-link-only.log`. The iOS cold-link acceptance above remains valid. No app timeout or production logic was relaxed to accommodate the emulator.
 
 The emulator was stopped. Its task-created AVD, isolated Android home and API 36 image were removed (about 6 GiB); rebuildable NDK/CMake/emulator tools were also removed (about 3.7 GiB). Recent APK/app archives, matching exports, receipts, keys and diagnostics remain. Minimal SDK command/build/platform tools remain for package inspection; native builds must reinstall their pinned compiler/emulator prerequisites. Final compiled CLI/PostgreSQL verification passed all 26 cases, including rejecting a fresh receipt's attempt to implicitly adopt an existing ordinary OTA version after explicit baseline adoption.
+
+## Atomic bootstrap capture (2026-09-13)
+
+Review of the stalled Android reload confirmed that a stale bootstrap exception reached RN's fatal handler after timeout recovery started. That device failure remains unresolved. The review also found a separate race in both adapters: validating bootstrap and then reading the current artifact used separate store operations. A recovery between them could return a retired generation paired with the replacement artifact's path/configuration.
+
+Both cores now provide `bindLaunch`, which validates, binds and returns one snapshot under the existing store lock. The native adapters build their immutable JS context from that snapshot. The existing `bindBootstrap` entry point remains available; late binds and late readiness still reject retired generations. No timeout, exception propagation, activation policy or Capacitor code changed.
+
+All 22 Swift core tests and the Java core suite passed, including snapshot identity across timeout recovery, rejection of late callbacks, and Java snapshot mutation isolation. Native app/device rebuild acceptance remains pending; the retained APK/app archives predate this fix. These core checks use small temporary build directories and do not recreate an emulator or Gradle environment.

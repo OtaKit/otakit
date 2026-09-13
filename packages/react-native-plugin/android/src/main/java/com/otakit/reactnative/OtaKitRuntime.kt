@@ -237,8 +237,7 @@ object OtaKitRuntime {
 
   internal fun bind(generation: Long): String {
     val store = engine().store
-    store.bindBootstrap(generation)
-    val artifact = store.state().getJSONObject("current")
+    val artifact = store.bindLaunch(generation).getJSONObject("current")
     val context = JSONObject().put("generation", generation.toString())
     for (key in
       listOf("appId", "platform", "runtimeVersion", "contentHash", "releaseId", "channel")) context

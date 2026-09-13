@@ -116,8 +116,7 @@ public final class OtaKitRuntime: NSObject {
   @objc public func bind(_ generation: String) throws -> String {
     let engine = try configuredStore()
     guard let value = UInt64(generation) else { throw LaunchError.staleInstance }
-    try engine.bindBootstrap(generation: value)
-    let artifact = engine.state().current
+    let artifact = try engine.bindLaunch(generation: value).current
     var context: [String: Any] = [
       "generation": generation, "appId": artifact.appId, "platform": artifact.platform,
       "runtimeVersion": artifact.runtimeVersion, "contentHash": artifact.contentHash,

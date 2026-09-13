@@ -206,9 +206,15 @@ public final class LaunchStore {
   }
 
   public func bindBootstrap(generation: UInt64) throws {
+    _ = try bindLaunch(generation: generation)
+  }
+
+  /// Capture the same launch that was validated, even if recovery advances immediately afterward.
+  public func bindLaunch(generation: UInt64) throws -> LaunchSnapshot {
     try queue.sync {
       guard generation == snapshot.generation else { throw LaunchError.staleInstance }
       bootstrapGeneration = generation
+      return snapshot
     }
   }
 

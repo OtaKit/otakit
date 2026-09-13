@@ -201,10 +201,50 @@ public final class CoreTests {
     );
   }
 
+  static void testBootstrapSnapshot(Path directory) throws Exception {
+    LaunchStore store = new LaunchStore(
+      directory.resolve("bootstrap.json").toFile(),
+      "build",
+      artifact("builtin")
+    );
+    store.stage(artifact("candidate").put("bundlePath", "/owned/candidate/index.bundle"));
+    long trial = store.beginLaunch(true, true, 0);
+    JSONObject captured = store.bindLaunch(trial);
+    JSONObject modified = store.bindLaunch(trial);
+    modified.getJSONObject("current").put("contentHash", "external-mutation");
+    check(
+      store.state().getJSONObject("current").getString("contentHash").equals("candidate"),
+      "Bootstrap snapshot shares mutable launch state"
+    );
+    check(store.checkTimeout(11_000, 10_000), "Trial did not time out");
+    long recovered = store.state().getLong("generation");
+    check(recovered > trial, "Recovery did not advance the generation");
+    check(
+      captured.getLong("generation") == trial &&
+        captured.getJSONObject("current").getString("contentHash").equals("candidate") &&
+        captured
+          .getJSONObject("current")
+          .getString("bundlePath")
+          .equals("/owned/candidate/index.bundle"),
+      "Recovery changed the captured bootstrap identity"
+    );
+    rejects(() -> store.bindLaunch(trial));
+    rejects(() -> store.notifyReady(trial));
+    JSONObject recovery = store.bindLaunch(recovered);
+    check(
+      recovery.getJSONObject("current").getString("contentHash").equals("builtin") &&
+        !recovery.has("trialGeneration") &&
+        recovery.getJSONArray("events").length() == 1 &&
+        recovery.getJSONArray("events").getJSONObject(0).getString("type").equals("rollback"),
+      "New bootstrap did not bind the recovered launch"
+    );
+  }
+
   public static void main(String[] args) throws Exception {
     Path directory = Files.createTempDirectory("otakit-java-core-");
     try {
       testEventDelivery(directory);
+      testBootstrapSnapshot(directory);
       File file = directory.resolve("state.json").toFile();
       LaunchStore store = new LaunchStore(file, "build", artifact("builtin"));
       store.stage(artifact("candidate"));

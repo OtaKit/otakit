@@ -233,8 +233,14 @@ public final class LaunchStore {
   }
 
   public synchronized void bindBootstrap(long generation) throws Exception {
+    bindLaunch(generation);
+  }
+
+  /** Capture the validated launch before recovery can advance to another artifact. */
+  public synchronized JSONObject bindLaunch(long generation) throws Exception {
     if (generation != state.getLong("generation")) throw new Exception("STALE_INSTANCE");
     bootstrap = generation;
+    return copy(state);
   }
 
   public synchronized void hostReady(long generation) throws Exception {
