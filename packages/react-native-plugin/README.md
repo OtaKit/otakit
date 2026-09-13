@@ -33,6 +33,22 @@ Wrap the existing Metro configuration with `withOtaKitMetro` from `@otakit/react
 
 For a separate Metro development host, pass `{ enabled: false }` as the second argument; this returns the original configuration, including Expo's original resolvers. Match this to the native host selection and avoid importing the updater API in that development entry. The default remains enabled. The private [Expo fixture](../../examples/expo-app/README.md) exercises Android's `whenPrepared`, `selectedBundleFile` and `attachHost` hooks while retaining Expo's factory; automatic Expo installation is still unfinished.
 
+## Failure diagnostics
+
+The existing named methods are also available on the exported `OtaKit` object:
+
+```ts
+import { OtaKit } from '@otakit/react-native-updater';
+
+const failure = await OtaKit.getLastFailure();
+```
+
+This returns the most recent rolled-back bundle for the installed native build, or `null`. The typed result includes `framework`, platform, runtime, plaintext `contentHash`, version, `status: 'error'`, and known release/channel attribution. Its `id` is the content hash; no transport hash is invented. Internal cache paths are excluded.
+
+Failure metadata is committed with rollback and survives event delivery, event expiry, process restart and later successful updates. Download/verification failures do not replace rollback diagnostics, matching the Capacitor method's semantics. A new native build starts fresh diagnostics. Older saved state can recover the last rollback from its remaining event queue; already delivered historical failures cannot be reconstructed. Updater storage errors still reject the call.
+
+This does not complete native event subscriptions, channel overrides or the automatic policy API.
+
 ## Android APK build hook
 
 The optional `scripts/android.gradle` hook owns export and Hermes compilation for explicitly selected, non-debuggable variants. Configure it **after** the application's `react { ... }` block in `android/app/build.gradle`:

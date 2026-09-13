@@ -31,6 +31,7 @@ public final class CoreTests {
       .put("appId", "app")
       .put("platform", "android")
       .put("runtimeVersion", "runtime")
+      .put("version", hash)
       .put("contentHash", hash);
   }
 
@@ -240,11 +241,94 @@ public final class CoreTests {
     );
   }
 
+  static void testLastFailure(Path directory) throws Exception {
+    File file = directory.resolve("last-failure.json").toFile();
+    LaunchStore store = new LaunchStore(file, "build", artifact("builtin"));
+    check(!store.state().has("lastFailure"), "Fresh build has a failure");
+    store.stage(artifact("bad"));
+    long trial = store.beginLaunch(true, true, 0);
+    check(store.fail(trial), "Trial did not fail");
+    JSONObject failure = store.state().getJSONObject("lastFailure");
+    check(failure.getString("contentHash").equals("bad"), "Wrong failed artifact");
+    store.acknowledgeEvents(
+      java.util.Set.of(store.state().getJSONArray("events").getJSONObject(0).getString("id"))
+    );
+    check(store.state().getJSONArray("events").isEmpty(), "Delivered event remains queued");
+    check(
+      new LaunchStore(file, "build", artifact("builtin"))
+        .state()
+        .getJSONObject("lastFailure")
+        .similar(failure),
+      "Delivery or restart lost failure diagnostics"
+    );
+    store.recordDownloadFailure(
+      artifact("download").put("releaseId", "release"),
+      "verification failed"
+    );
+    check(
+      store.state().getJSONObject("lastFailure").similar(failure),
+      "Download error replaced rollback diagnostics"
+    );
+    long recovered = store.state().getLong("generation");
+    store.bindBootstrap(recovered);
+    store.hostReady(recovered);
+    store.stage(artifact("good"));
+    long good = store.apply(recovered, 1);
+    store.bindBootstrap(good);
+    store.notifyReady(good);
+    check(
+      new LaunchStore(file, "build", artifact("builtin"))
+        .state()
+        .getJSONObject("lastFailure")
+        .similar(failure),
+      "Later success cleared failure diagnostics"
+    );
+    check(
+      !new LaunchStore(file, "new-binary", artifact("builtin")).state().has("lastFailure"),
+      "New native build retained old failure"
+    );
+
+    File legacyFile = directory.resolve("legacy-failure.json").toFile();
+    LaunchStore legacy = new LaunchStore(legacyFile, "build", artifact("builtin"));
+    legacy.stage(artifact("bad"));
+    long selected = legacy.beginLaunch(true, true, 0);
+    check(legacy.fail(selected), "Legacy trial did not fail");
+    JSONObject saved = legacy.state();
+    saved.remove("lastFailure");
+    saved.getJSONArray("events").getJSONObject(0).put("createdAt", 0);
+    Files.writeString(legacyFile.toPath(), saved.toString());
+    LaunchStore restored = new LaunchStore(legacyFile, "build", artifact("builtin"));
+    check(restored.state().getJSONArray("events").isEmpty(), "Expired event retained");
+    check(
+      restored.state().getJSONObject("lastFailure").getString("contentHash").equals("bad"),
+      "Legacy failure was not recovered before retention cleanup"
+    );
+    check(
+      new LaunchStore(legacyFile, "build", artifact("builtin"))
+        .state()
+        .getJSONObject("lastFailure")
+        .getString("contentHash")
+        .equals("bad"),
+      "Legacy backfill was not durable"
+    );
+    saved = restored.state();
+    saved.put("lastFailure", new JSONObject().put("contentHash", JSONObject.NULL));
+    Files.writeString(legacyFile.toPath(), saved.toString());
+    JSONObject checked = new LaunchStore(legacyFile, "build", artifact("builtin")).state();
+    check(
+      checked.getLong("generation") == saved.getLong("generation") &&
+        checked.getJSONObject("current").similar(saved.getJSONObject("current")) &&
+        !checked.has("lastFailure"),
+      "Malformed diagnostics discarded valid launch state"
+    );
+  }
+
   public static void main(String[] args) throws Exception {
     Path directory = Files.createTempDirectory("otakit-java-core-");
     try {
       testEventDelivery(directory);
       testBootstrapSnapshot(directory);
+      testLastFailure(directory);
       File file = directory.resolve("state.json").toFile();
       LaunchStore store = new LaunchStore(file, "build", artifact("builtin"));
       store.stage(artifact("candidate"));

@@ -53,7 +53,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "test": "node --test metro/index.test.cjs",
+    "test": "node --test metro/index.test.cjs tests/api.test.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

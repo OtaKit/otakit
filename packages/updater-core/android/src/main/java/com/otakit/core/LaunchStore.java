@@ -87,6 +87,7 @@ public final class LaunchStore {
         /* Corrupt state selects the embedded application. */
       }
     }
+    restoreLastFailure();
     JSONObject checked = copy(state);
     for (String key : new String[] { "current", "lastGood", "staged", "previousGood" }) {
       if (!checked.has(key)) continue;
@@ -120,6 +121,37 @@ public final class LaunchStore {
 
   public synchronized JSONObject state() throws Exception {
     return copy(state);
+  }
+
+  // Older state has only the delivery outbox. Recover diagnostics before its retention cleanup.
+  private void restoreLastFailure() throws Exception {
+    JSONObject failure = state.optJSONObject("lastFailure");
+    if (!validFailure(failure)) {
+      failure = null;
+      JSONArray events = state.getJSONArray("events");
+      for (int index = 0; index < events.length(); index++) {
+        JSONObject event = events.optJSONObject(index);
+        if (event == null || !"rollback".equals(event.optString("type"))) continue;
+        JSONObject candidate = event.optJSONObject("artifact");
+        if (validFailure(candidate)) failure = candidate;
+      }
+    }
+    if (failure == null) state.remove("lastFailure");
+    else state.put("lastFailure", copy(failure));
+  }
+
+  private boolean validFailure(JSONObject artifact) {
+    try {
+      return (
+        artifact != null &&
+        compatible(artifact) &&
+        artifact.opt("version") instanceof String &&
+        (artifact.isNull("channel") || artifact.opt("channel") instanceof String) &&
+        (artifact.isNull("releaseId") || artifact.opt("releaseId") instanceof String)
+      );
+    } catch (Exception malformed) {
+      return false;
+    }
   }
 
   public synchronized void stage(JSONObject artifact) throws Exception {
@@ -360,6 +392,7 @@ public final class LaunchStore {
 
   private static void failTrial(JSONObject state) throws Exception {
     if (!state.has("trialGeneration")) return;
+    state.put("lastFailure", copy(state.getJSONObject("current")));
     state.getJSONArray("failed").put(state.getJSONObject("current").getString("contentHash"));
     event(state, "rollback");
     state.put("current", copy(state.getJSONObject("lastGood")));

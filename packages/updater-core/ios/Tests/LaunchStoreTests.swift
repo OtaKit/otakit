@@ -90,6 +90,58 @@ final class LaunchStoreTests: XCTestCase {
     XCTAssertTrue(try engine.checkTimeout(now: 1006))
     XCTAssertEqual(engine.state().events.map(\.type), ["rollback"])
   }
+  func testLastFailureSurvivesDeliveryRestartAndLaterSuccess() throws {
+    let engine = try store()
+    XCTAssertNil(engine.state().lastFailure)
+    try engine.stage(artifact("bad"))
+    let trial = try engine.beginLaunch(foreground: true, activateStaged: true, now: 0)
+    XCTAssertTrue(try engine.fail(from: trial))
+    let failure = engine.state().lastFailure
+    XCTAssertEqual(failure?.contentHash, "bad")
+    try engine.acknowledgeEvents(Set(engine.state().events.map(\.id)))
+    XCTAssertTrue(engine.state().events.isEmpty)
+    XCTAssertEqual(try store().state().lastFailure, failure)
+    try engine.recordDownloadFailure(
+      Artifact(
+        appId: "app", platform: "ios", runtimeVersion: "runtime",
+        contentHash: "download", version: "download", releaseId: "release",
+        bundlePath: "/owned/download/index.bundle"), detail: "verification failed")
+    XCTAssertEqual(engine.state().lastFailure, failure)
+    let recovered = engine.state().generation
+    try engine.bindBootstrap(generation: recovered)
+    engine.hostReady(generation: recovered)
+    try engine.stage(artifact("good"))
+    let good = try engine.apply(from: recovered, now: 1)
+    try engine.bindBootstrap(generation: good)
+    try engine.notifyReady(from: good)
+    XCTAssertEqual(try store().state().lastFailure, failure)
+    XCTAssertNil(try store(build: "new-binary").state().lastFailure)
+  }
+
+  func testLegacyRollbackBackfillsLastFailureBeforeOutboxExpiry() throws {
+    let engine = try store()
+    try engine.stage(artifact("bad"))
+    let trial = try engine.beginLaunch(foreground: true, activateStaged: true, now: 0)
+    XCTAssertTrue(try engine.fail(from: trial))
+    let file = directory.appendingPathComponent("state.json")
+    var saved = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+    saved.removeValue(forKey: "lastFailure")
+    var events = saved["events"] as! [[String: Any]]
+    events[0]["createdAt"] = 0
+    saved["events"] = events
+    try JSONSerialization.data(withJSONObject: saved).write(to: file)
+    let restored = try store()
+    XCTAssertEqual(restored.state().lastFailure?.contentHash, "bad")
+    XCTAssertNil(try restored.eventForDelivery())
+    XCTAssertEqual(try store().state().lastFailure?.contentHash, "bad")
+    saved = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+    saved["lastFailure"] = ["contentHash": NSNull()]
+    try JSONSerialization.data(withJSONObject: saved).write(to: file)
+    let checked = try store()
+    XCTAssertEqual(checked.state().generation, restored.state().generation)
+    XCTAssertEqual(checked.state().current, restored.state().current)
+    XCTAssertNil(checked.state().lastFailure)
+  }
   func testNativeBuildChangeAndCorruptStateSelectEmbedded() throws {
     let engine = try store()
     try engine.stage(artifact("candidate"))

@@ -50,6 +50,7 @@ public struct LaunchSnapshot: Codable {
   public var events: [TrialEvent] = []
   public var droppedEvents: Int?
   public var lastEventError: String?
+  public var lastFailure: Artifact?
 }
 
 extension LaunchSnapshot {
@@ -81,6 +82,9 @@ extension LaunchSnapshot {
       droppedEvents = max(0, droppedEvents ?? 0) + invalid
       lastEventError = "Invalid saved event payload"
     }
+    lastFailure =
+      (try? fields.decodeIfPresent(Artifact.self, forKey: .lastFailure))
+      ?? events.last(where: { $0.type == "rollback" })?.artifact
   }
 }
 
@@ -130,6 +134,9 @@ public final class LaunchStore {
     } catch let error as CocoaError where error.code == .fileReadNoPermission {
       throw LaunchError.storageUnavailable
     } catch is DecodingError { snapshot = initial } catch { throw LaunchError.storageUnavailable }
+    if let failure = snapshot.lastFailure, !Self.compatible(failure, builtin) {
+      snapshot.lastFailure = nil
+    }
     // A prior process died before readiness. Resolve once before selecting any code.
     if snapshot.trialGeneration != nil {
       var recovered = snapshot
@@ -402,6 +409,7 @@ public final class LaunchStore {
 
   private static func failTrial(_ state: inout LaunchSnapshot) {
     guard state.trialGeneration != nil else { return }
+    state.lastFailure = state.current
     state.failed.insert(state.current.contentHash)
     state.events.append(
       TrialEvent(id: UUID().uuidString, type: "rollback", artifact: state.current))
