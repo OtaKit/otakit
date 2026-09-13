@@ -5,6 +5,7 @@ import {
   check,
   download,
   getState,
+  getLastFailure,
   launchContext,
   notifyAppReady,
 } from '@otakit/react-native-updater';
@@ -19,7 +20,7 @@ async function applyWhenHostSettles() {
       return;
     } catch (error) {
       if (!String(error).includes('ACTIVATION_DEFERRED') || Date.now() >= deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
   }
 }
@@ -29,11 +30,13 @@ export default function App({ otaTestScenario }: { otaTestScenario?: string }) {
   useEffect(() => {
     if (otaTestScenario) {
       void (async () => {
-        const report = async (value: unknown) =>
+        const report = async (value: Record<string, unknown>) =>
           fetch('http://127.0.0.1:9042/report', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(value),
+            body: JSON.stringify(
+              'error' in value ? value : { ...value, lastFailure: await getLastFailure() },
+            ),
           });
         try {
           const state = await getState();
@@ -70,7 +73,7 @@ export default function App({ otaTestScenario }: { otaTestScenario?: string }) {
             const deadline = Date.now() + 10_000;
             while (!backgroundWork.started) {
               if (Date.now() >= deadline) throw new Error('Native headless task did not start');
-              await new Promise((resolve) => setTimeout(resolve, 100));
+              await new Promise<void>((resolve) => setTimeout(resolve, 100));
             }
             await download();
             try {

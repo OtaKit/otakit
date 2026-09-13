@@ -141,6 +141,7 @@ try {
   const boot = await launch('boot');
   assert.equal(boot.fixtureVersion, 'embedded');
   assert.equal(boot.error, undefined);
+  assert.equal(boot.lastFailure, null);
   const updated = await launch('update');
   assert.equal(updated.error, undefined);
   assert.equal(updated.fixtureVersion, 'good');
@@ -159,6 +160,10 @@ try {
   assert.equal(rollback.error, undefined);
   assert.ok(rollback.state.failed.includes(cases.bad.contentHash));
   assert.equal(rollback.state.events.filter((event) => event.type === 'rollback').length, 1);
+  assert.equal(rollback.lastFailure.contentHash, cases.bad.contentHash);
+  assert.equal(rollback.lastFailure.framework, 'react-native');
+  assert.equal(rollback.lastFailure.status, 'error');
+  assert.equal(rollback.lastFailure.platform, android ? 'android' : 'ios');
   console.log('PASS foreground timeout rollback and quarantine');
   const reboot = await launch('boot');
   assert.equal(reboot.fixtureVersion, 'delta');
@@ -271,7 +276,10 @@ try {
     assert.deepEqual(eventErrors, []);
     assert.equal(lostResponseRetried, true, 'Lost acceptance response was not retried');
     assert.deepEqual([...acceptedEvents.keys()].sort(), pending.map((event) => event.id).sort());
-    assert.equal((await launch('boot')).state.events.length, 0);
+    const delivered = await launch('boot');
+    assert.equal(delivered.state.events.length, 0);
+    assert.equal(delivered.lastFailure.contentHash, cases.crash.contentHash);
+    assert.equal(delivered.lastFailure.runtimeVersion, cases.crash.runtimeVersion);
     console.log(
       'PASS native event delivery, stable retry identity, server deduplication and durable acknowledgement',
     );
