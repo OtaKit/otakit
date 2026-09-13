@@ -90,6 +90,71 @@ final class LaunchStoreTests: XCTestCase {
     XCTAssertTrue(try engine.checkTimeout(now: 1006))
     XCTAssertEqual(engine.state().events.map(\.type), ["rollback"])
   }
+  func testBackgroundDuringPreparationKeepsStagedWithoutLatchingHeadlessDeferral() throws {
+    let engine = try store()
+    try engine.stage(artifact("candidate"))
+    var now: TimeInterval = 0
+    let lifecycle = LaunchLifecycle(state: .active, clock: { now })
+    lifecycle.update(.inactive)
+    lifecycle.update(.background)
+    now = 100
+    try lifecycle.start(engine, foregroundUIIntent: true)
+    XCTAssertEqual(engine.state().current.contentHash, "builtin")
+    XCTAssertEqual(engine.state().staged?.contentHash, "candidate")
+    let generation = engine.state().generation
+    try engine.bindBootstrap(generation: generation)
+    engine.hostReady(generation: generation)
+    XCTAssertThrowsError(try engine.apply(from: generation, now: now))
+    now = 200
+    lifecycle.update(.active)
+    _ = try engine.apply(from: generation, now: now)
+    XCTAssertEqual(engine.state().current.contentHash, "candidate")
+  }
+  func testInactiveStartupDoesNotConsumeReadinessBudget() throws {
+    let engine = try store()
+    try engine.stage(artifact("candidate"))
+    var now: TimeInterval = 0
+    let lifecycle = LaunchLifecycle(state: .inactive, clock: { now })
+    now = 100
+    try lifecycle.start(engine, foregroundUIIntent: true)
+    XCTAssertEqual(engine.state().current.contentHash, "candidate")
+    XCTAssertFalse(try engine.checkTimeout(now: 200))
+    now = 200
+    lifecycle.update(.active)
+    XCTAssertFalse(try engine.checkTimeout(now: 209))
+    XCTAssertTrue(try engine.checkTimeout(now: 210))
+  }
+  func testLifecycleObservesBackgroundBeforeHostCompletion() throws {
+    let engine = try store()
+    try engine.stage(artifact("candidate"))
+    var now: TimeInterval = 100
+    let lifecycle = LaunchLifecycle(state: .active, clock: { now })
+    try lifecycle.start(engine, foregroundUIIntent: true)
+    now = 104
+    lifecycle.update(.inactive)
+    lifecycle.update(.background)
+    XCTAssertFalse(try engine.checkTimeout(now: 1000))
+    now = 1000
+    lifecycle.update(.inactive)
+    XCTAssertFalse(try engine.checkTimeout(now: 2000))
+    now = 2000
+    lifecycle.update(.active)
+    XCTAssertFalse(try engine.checkTimeout(now: 2005))
+    XCTAssertTrue(try engine.checkTimeout(now: 2006))
+  }
+  func testLifecycleDoesNotTurnHeadlessStartupIntoAnEligibleUIHost() throws {
+    let engine = try store()
+    try engine.stage(artifact("candidate"))
+    let lifecycle = LaunchLifecycle(state: .active, clock: { 0 })
+    try lifecycle.start(engine, foregroundUIIntent: false)
+    let generation = engine.state().generation
+    try engine.bindBootstrap(generation: generation)
+    engine.hostReady(generation: generation)
+    lifecycle.update(.active)
+    XCTAssertThrowsError(try engine.apply(from: generation, now: 1))
+    XCTAssertEqual(engine.state().current.contentHash, "builtin")
+    XCTAssertEqual(engine.state().staged?.contentHash, "candidate")
+  }
   func testLastFailureSurvivesDeliveryRestartAndLaterSuccess() throws {
     let engine = try store()
     XCTAssertNil(engine.state().lastFailure)

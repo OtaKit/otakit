@@ -27,6 +27,28 @@ public final class OtaKitRuntime: NSObject {
     }
     preparationStarted = true
     self.reload = reload
+    let state: LaunchLifecycle.State
+    switch UIApplication.shared.applicationState {
+    case .active: state = .active
+    case .background: state = .background
+    default: state = .inactive
+    }
+    let lifecycle = LaunchLifecycle(state: state)
+    // Observe before asynchronous preparation so inactive/background transitions cannot be lost.
+    self.observers = [
+      NotificationCenter.default.addObserver(
+        forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+      ) { _ in lifecycle.update(.active) },
+      NotificationCenter.default.addObserver(
+        forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+      ) { _ in lifecycle.update(.inactive) },
+      NotificationCenter.default.addObserver(
+        forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+      ) { _ in lifecycle.update(.background) },
+      NotificationCenter.default.addObserver(
+        forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+      ) { _ in lifecycle.update(.inactive) },
+    ]
     DispatchQueue.global(qos: .userInitiated).async {
       do {
         let config = try JSONDecoder().decode(RNTransport.Configuration.self, from: configuration)
@@ -74,20 +96,10 @@ public final class OtaKitRuntime: NSObject {
             }
           }
         }
-        _ = try engine.beginLaunch(
-          foreground: foregroundUIIntent, activateStaged: true,
-          now: ProcessInfo.processInfo.systemUptime)
+        try lifecycle.start(engine, foregroundUIIntent: foregroundUIIntent)
         DispatchQueue.main.async {
           self.store = engine
           self.transport = transport
-          self.observers = [
-            NotificationCenter.default.addObserver(
-              forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
-            ) { _ in engine.setForeground(true, now: ProcessInfo.processInfo.systemUptime) },
-            NotificationCenter.default.addObserver(
-              forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
-            ) { _ in engine.setForeground(false, now: ProcessInfo.processInfo.systemUptime) },
-          ]
           self.timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             do {
               if try engine.checkTimeout(now: ProcessInfo.processInfo.systemUptime) {
@@ -99,7 +111,13 @@ public final class OtaKitRuntime: NSObject {
           }
           completion(nil)
         }
-      } catch { DispatchQueue.main.async { completion(error) } }
+      } catch {
+        DispatchQueue.main.async {
+          self.observers.forEach(NotificationCenter.default.removeObserver)
+          self.observers = []
+          completion(error)
+        }
+      }
     }
   }
 
