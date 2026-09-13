@@ -73,7 +73,7 @@ Use `node examples/expo-app/prepare-android.mjs <new-directory> --router` (or `p
 
 The shared runner checks the Router path through the same update scenarios, then opens `otakit-expo-fixture://dom` through the native linking API. The DOM route must report matching config/DOM content and preserve the current launch context. DOM bridge callbacks can repeat after focus changes; every report must agree. Packaged payload and embedded DOM trees must exactly match the receipt, including absence of stale files.
 
-Android API 36 and iOS 26.5 passed the Router encrypted update, cold restart, timeout rollback, fatal crash recovery, embedded restoration, splash API completion and warm native deep-link scenarios. Cold deep-link startup and development-device acceptance remain outstanding.
+Android API 36 and iOS 26.5 passed the Router encrypted update, cold restart, timeout rollback, fatal crash recovery, embedded restoration, splash API completion and warm/cold native deep-link scenarios on the retained Expo builds. Development-device acceptance remains outstanding. These Expo archives predate the latest atomic bootstrap capture and durable failure diagnostics; those changes have fresh bare RN device coverage, with Expo rebuild acceptance still pending.
 
 For iOS Router runs, prepare the standalone UI helper using Ruby with CocoaPods' `xcodeproj` gem available. This creates a separate test project outside the repository and does not change the application's native identity:
 
