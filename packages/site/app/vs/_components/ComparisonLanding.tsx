@@ -27,6 +27,7 @@ import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { FounderSection } from '@/components/landing/FounderSection';
 import { GlobalDeliverySection } from '@/components/landing/GlobalDeliverySection';
+import { HeroIconCloud } from '@/components/landing/HeroIconCloud';
 import { ScaleToFit } from '@/components/ScaleToFit';
 import { site } from '@/lib/site';
 
@@ -48,47 +49,6 @@ export type ComparisonCopy = {
   ctaSub: string;
   faq: { q: string; a: React.ReactNode }[];
 };
-
-type HeroIconCloudItem = {
-  src: string;
-  top: string;
-  left?: string;
-  right?: string;
-  size: number;
-  opacity: number;
-  rotate: number;
-};
-
-const HERO_ICON_CLOUD: HeroIconCloudItem[] = [
-  {
-    src: '/app-icons/time-tracking.svg',
-    top: '9%',
-    left: '6%',
-    size: 54,
-    opacity: 0.12,
-    rotate: -18,
-  },
-  { src: '/app-icons/ai-chat.svg', top: '16%', left: '27%', size: 72, opacity: 0.09, rotate: 14 },
-  {
-    src: '/app-icons/calorie-tracking.svg',
-    top: '10%',
-    right: '16%',
-    size: 64,
-    opacity: 0.1,
-    rotate: -8,
-  },
-  { src: '/app-icons/recording.svg', top: '28%', left: '72%', size: 46, opacity: 0.08, rotate: 22 },
-  { src: '/app-icons/fitness.svg', top: '52%', right: '8%', size: 94, opacity: 0.06, rotate: -20 },
-  { src: '/app-icons/budget.svg', top: '70%', left: '58%', size: 52, opacity: 0.09, rotate: -10 },
-  {
-    src: '/app-icons/habit-tracker.svg',
-    top: '78%',
-    right: '22%',
-    size: 78,
-    opacity: 0.06,
-    rotate: 12,
-  },
-];
 
 const STATS: { value: string; label: string }[] = [
   { value: '1,000+', label: 'Apps registered' },
@@ -166,25 +126,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
           aria-hidden="true"
         />
         {/* App icon cloud */}
-        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          {HERO_ICON_CLOUD.map((icon, index) => (
-            <Image
-              key={index}
-              src={icon.src}
-              alt=""
-              width={icon.size}
-              height={icon.size}
-              className="absolute select-none rounded-[22%]"
-              style={{
-                top: icon.top,
-                left: icon.left,
-                right: icon.right,
-                opacity: icon.opacity,
-                transform: `rotate(${icon.rotate}deg)`,
-              }}
-            />
-          ))}
-        </div>
+        <HeroIconCloud />
         {/* Top fade */}
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background to-transparent"

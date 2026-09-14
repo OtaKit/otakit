@@ -130,3 +130,51 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Landing hero app icons (HeroIconCloud): a gentle drift plus an opacity pulse
+   on a different cycle, so the combined motion never visibly repeats. The drift
+   matches the console login page. Both stop under prefers-reduced-motion. */
+@keyframes hero-icon-drift {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  25% {
+    transform: translate(var(--dx), 0px) rotate(var(--dr));
+  }
+  50% {
+    transform: translate(var(--dx), var(--dy)) rotate(0deg);
+  }
+  75% {
+    transform: translate(0px, var(--dy)) rotate(calc(var(--dr) * -1));
+  }
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+
+@keyframes hero-icon-pulse {
+  0%,
+  100% {
+    opacity: 0.77;
+  }
+  35% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.55;
+  }
+}
+
+.hero-icon {
+  opacity: 0.77;
+  animation-name: hero-icon-drift, hero-icon-pulse;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-icon {
+    animation: none;
+  }
+}
