@@ -524,9 +524,9 @@ export default function LandingPage() {
                 description="Free forever for early usage."
                 allowance="5,000 updates / month"
                 features={[
-                  'Unlimited releases',
-                  'Unlimited apps',
+                  'Unlimited apps & releases',
                   'Channel-based deploys',
+                  'Automatic rollbacks',
                   'Dashboard + CLI + API',
                   'MCP server + Agent Skills',
                   'Real-time analytics',
