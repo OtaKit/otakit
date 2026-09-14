@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/accordion';
 import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
+import { FounderSection } from '@/components/landing/FounderSection';
+import { GlobalDeliverySection } from '@/components/landing/GlobalDeliverySection';
 import { ScaleToFit } from '@/components/ScaleToFit';
 import { site } from '@/lib/site';
 
@@ -277,6 +279,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
 
       <Separator className="" />
 
+      <GlobalDeliverySection />
+
+      <Separator className="" />
+
       {/* Dashboard */}
       <section className="border-x border-border mx-auto max-w-screen-xl">
         <div className="">
@@ -486,6 +492,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
           </div>
         </div>
       </section>
+
+      <Separator className="" />
+
+      <FounderSection />
 
       <Separator className="" />
 
