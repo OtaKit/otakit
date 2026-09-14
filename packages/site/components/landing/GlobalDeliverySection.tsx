@@ -1,74 +1,30 @@
 import { UpdateGlobe } from './UpdateGlobe';
 
-const DELIVERY_STEPS = [
-  {
-    number: '01',
-    title: 'Release',
-    description:
-      'Publish from the CLI, the dashboard, or your AI agent. Every bundle is signed before it ships.',
-  },
-  {
-    number: '02',
-    title: 'Distribute',
-    description:
-      'Cloudflare serves the release from its edge network in 300+ cities. No single origin region to slow down or go offline.',
-  },
-  {
-    number: '03',
-    title: 'Update',
-    description:
-      'Each device downloads only the changed files from the nearest location, verifies them, and applies the update.',
-  },
-];
-
 export function GlobalDeliverySection() {
   return (
     <section className="border-x border-border mx-auto max-w-screen-xl">
-      <div className="overflow-hidden">
-        <div className="border-b border-border px-8 py-10 pt-30">
+      <div className="grid md:grid-cols-2">
+        <div className="flex flex-col justify-center px-8 py-12 md:py-16">
           <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Global delivery
           </p>
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-            Delivered from the edge, worldwide
+            Every update, served from the nearest edge
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground">
-            Updates reach devices from a data center near them, not from our servers. Fast in every
-            region, and reliable on Cloudflare&rsquo;s global network.
+          <p className="mt-4 max-w-md text-muted-foreground">
+            Releases are distributed through Cloudflare&rsquo;s network in more than 300 cities.
+            Each device downloads from the location closest to it, so updates arrive quickly in
+            every region and never depend on a single origin server.
           </p>
         </div>
-        <div className="grid gap-px bg-border lg:grid-cols-[3fr_2fr]">
-          <div className="relative overflow-hidden bg-background px-6 py-10 sm:px-10">
-            <div
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-[size:22px_22px] opacity-50 [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]"
-              aria-hidden="true"
-            />
-            <UpdateGlobe className="relative mx-auto max-w-[520px]" />
-            <div className="relative mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <span className="size-2 rounded-full border border-foreground/60" />
-                Release published
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-emerald-500" />
-                Served from the nearest edge
-              </span>
-            </div>
-          </div>
-          <div className="grid gap-px bg-border">
-            {DELIVERY_STEPS.map((step) => (
-              <div
-                key={step.number}
-                className="flex flex-col justify-center bg-background p-8 sm:p-10"
-              >
-                <span className="font-mono text-sm text-muted-foreground/50">{step.number}</span>
-                <h3 className="mt-3 text-lg font-semibold">{step.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {step.description}
-                </p>
-              </div>
-            ))}
-          </div>
+        {/* The globe is larger than its panel on purpose: the lower half is
+            clipped so it sinks under the next section. */}
+        <div className="relative h-[300px] overflow-hidden border-t border-border md:h-auto md:min-h-[360px] md:border-t-0 md:border-l lg:min-h-[400px]">
+          <div
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-[size:22px_22px] opacity-50 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]"
+            aria-hidden="true"
+          />
+          <UpdateGlobe className="absolute left-1/2 -top-3 w-[440px] -translate-x-1/2 md:-top-4 md:w-[520px] lg:-top-6 lg:w-[640px]" />
         </div>
       </div>
     </section>
