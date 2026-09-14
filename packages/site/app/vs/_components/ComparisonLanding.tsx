@@ -381,7 +381,8 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                   'Unlimited releases',
                   'Unlimited apps',
                   'Channel-based deploys',
-                  'Dashboard + CLI',
+                  'Dashboard + CLI + API',
+                  'MCP server + Agent Skills',
                   'Real-time analytics',
                 ]}
                 cta="Get started free"
