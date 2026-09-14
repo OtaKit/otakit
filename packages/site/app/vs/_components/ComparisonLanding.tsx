@@ -381,6 +381,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                   'Unlimited apps & releases',
                   'Channel-based deploys',
                   'Automatic rollbacks',
+                  'Delta updates + E2E encryption',
                   'Dashboard + CLI + API',
                   'MCP server + Agent Skills',
                   'Real-time analytics',
