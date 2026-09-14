@@ -12,9 +12,8 @@ export function GlobalDeliverySection() {
             Every update, served from the nearest edge
           </h2>
           <p className="mt-4 max-w-md text-muted-foreground">
-            Releases are distributed through Cloudflare&rsquo;s network in more than 300 cities.
-            Each device downloads from the location closest to it, so updates arrive quickly in
-            every region and never depend on a single origin server.
+            Releases are served from Cloudflare&rsquo;s network in 300+ cities. Every device
+            downloads from a location close by, never from a single origin server.
           </p>
         </div>
         {/* The globe is larger than its panel on purpose: the lower half is
@@ -24,7 +23,7 @@ export function GlobalDeliverySection() {
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-[size:22px_22px] opacity-50 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]"
             aria-hidden="true"
           />
-          <UpdateGlobe className="absolute left-1/2 -top-3 w-[440px] -translate-x-1/2 md:-top-4 md:w-[520px] lg:-top-6 lg:w-[640px]" />
+          <UpdateGlobe className="absolute left-1/2 -top-2 w-[380px] -translate-x-1/2 md:-top-3 md:w-[460px] lg:-top-4 lg:w-[560px]" />
         </div>
       </div>
     </section>
