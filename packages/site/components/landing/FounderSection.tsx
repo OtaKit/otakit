@@ -12,11 +12,12 @@ export function FounderSection() {
           <FounderAvatar size={44} className="mt-0.5" />
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Talk directly to the founder</h2>
-            <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
-              When you email, you reach me directly, not a support queue. I&rsquo;m happy to help
-              you get set up, plan a move from Capgo, Capawesome, or Appflow, or review your
-              channels and rollback setup before your first release goes out.
-            </p>
+            <blockquote className="mt-2 text-base italic leading-relaxed text-foreground/75">
+              &ldquo;I ship my own app with OtaKit, so if something is confusing or broken, I want
+              to hear about it. Stuck on setup, moving over from Capgo, or unsure about a release?
+              Just email me. You&rsquo;ll get a real answer from the person who wrote the
+              code.&rdquo;
+            </blockquote>
             <p className="mt-2 text-sm text-muted-foreground">
               <a
                 href={founder.linkedin}
