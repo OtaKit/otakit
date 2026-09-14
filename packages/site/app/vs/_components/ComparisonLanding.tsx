@@ -170,9 +170,6 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             </div>
           </div>
         </div>
-        <div className="absolute bottom-1 left-1 text-muted-foreground/60 text-xs">
-          Fully compliant with Apple App Store and Google Play policies.
-        </div>
       </section>
 
       <Separator className="" />
@@ -335,7 +332,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
               <FeatureCard
                 icon={Globe}
                 title="Open source"
-                description="Fully open-source core. Self-host on your own infrastructure or use our managed service."
+                description="Fully open source. Self-host on your own infrastructure or use our managed service."
               />
             </div>
           </div>
@@ -385,8 +382,8 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 Simple, value-aligned pricing
               </h2>
               <p className="mt-4 max-w-3xl text-muted-foreground">
-                Pricing is based on live updates delivered — no seat fees, end-user tracking,
-                bandwidth, or storage.
+                Pay for updates delivered. No MAU limits, seat fees, bandwidth charges, or storage
+                fees.
               </p>
             </div>
             <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
