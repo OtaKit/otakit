@@ -1,5 +1,8 @@
 node_modules/
 .expo/
-/android/
-/ios/
+# TODO(check later): native projects are prebuild output but committed for now
+# so the acceptance-test setup survives branch switches. Decide whether to
+# re-ignore them and regenerate with `expo prebuild` instead.
+# /android/
+# /ios/
 dist/

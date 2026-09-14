@@ -1,0 +1,8 @@
+{
+  "appId": "local-rn-fixture",
+  "framework": "react-native",
+  "platform": "ios",
+  "runtimeVersion": "x62Sf0uZVNzYAfJT_9MeJ4sH3oPC-dCMFPSm9IZsmXg",
+  "version": "embedded",
+  "embeddedContentHash": "ee9361f9f72423ce809c5a30f92824303eefde44e3ca56f3069b54273c231a8c"
+}
