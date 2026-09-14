@@ -641,10 +641,6 @@ export default function LandingPage() {
 
       <Separator className="" />
 
-      <FounderSection />
-
-      <Separator className="" />
-
       {/* CTA */}
       <section className="relative overflow-hidden border-x border-border mx-auto max-w-screen-xl py-32 px-10 bg-muted">
         {/* Checked grid background */}
@@ -697,6 +693,10 @@ export default function LandingPage() {
           ))}
         </div>
       </section>
+
+      <Separator className="" />
+
+      <FounderSection />
 
       <Separator className="" />
 
