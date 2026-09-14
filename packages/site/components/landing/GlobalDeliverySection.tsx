@@ -18,7 +18,7 @@ export function GlobalDeliverySection() {
         </div>
         {/* The globe is larger than its panel on purpose: the lower half is
             clipped so it sinks under the next section. */}
-        <div className="relative h-[300px] overflow-hidden border-t border-border md:h-auto md:min-h-[360px] md:border-t-0 md:border-l lg:min-h-[400px]">
+        <div className="relative h-[300px] overflow-hidden md:h-auto md:min-h-[360px] lg:min-h-[400px]">
           <div
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-[size:22px_22px] opacity-50 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]"
             aria-hidden="true"
