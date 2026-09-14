@@ -300,7 +300,7 @@ export default function LandingPage() {
         />
 
         <div className="relative mx-auto max-w-screen-xl p-10">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl xl:max-w-4xl">
             <Link
               href="/docs/agents"
               className="group mb-8 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/[0.12] sm:gap-2 sm:text-sm"
@@ -311,14 +311,14 @@ export default function LandingPage() {
               <span className="font-medium">MCP &amp; Agent Skills</span>
               <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>
-            <h1 className="text-6xl font-bold">
+            <h1 className="text-6xl font-bold xl:text-[4.25rem]">
               Ship app updates instantly
               {/* <br />
               <span className="bg-gradient-to-b from-foreground to-foreground/40 bg-clip-text text-transparent">
                 not app store reviews
               </span> */}
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl xl:max-w-[39.5rem] xl:text-[1.375rem]">
               Push over-the-air (OTA) updates directly to your Capacitor app without app store
               reviews.
             </p>

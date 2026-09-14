@@ -139,9 +139,11 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
         />
 
         <div className="relative mx-auto max-w-screen-xl p-10">
-          <div className="max-w-3xl">
-            <h1 className="text-6xl font-bold max-w-3xl">{copy.heroTitle}</h1>
-            <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl">
+          <div className="max-w-3xl xl:max-w-4xl">
+            <h1 className="text-6xl font-bold max-w-3xl xl:max-w-4xl xl:text-[4.25rem]">
+              {copy.heroTitle}
+            </h1>
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground sm:text-xl xl:text-[1.375rem]">
               {copy.heroSub}
             </p>
             <div className="mt-20 flex flex-col items-start gap-4 sm:flex-row">
