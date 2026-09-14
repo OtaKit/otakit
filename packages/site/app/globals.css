@@ -178,3 +178,50 @@ body {
     animation: none;
   }
 }
+
+/* Blur-in reveal for section titles (BlurRevealObserver sets the state). Hidden
+   has no transition, so blocks hide instantly off-screen; shown animates in
+   with each child staggered slightly. */
+[data-blur-reveal='hidden'] > * {
+  opacity: 0;
+  filter: blur(12px);
+  transform: translateY(14px);
+}
+
+[data-blur-reveal='shown'] > * {
+  transition:
+    opacity 0.5s ease-out,
+    filter 0.5s ease-out,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-blur-reveal='shown'] > :nth-child(2) {
+  transition-delay: 0.06s;
+}
+
+[data-blur-reveal='shown'] > :nth-child(3) {
+  transition-delay: 0.12s;
+}
+
+/* Dashboard preview: tilted back as it scrolls into view, settling flat once it
+   reaches the upper part of the viewport. Scroll-driven, no JS.
+   Browsers without view timelines (and reduced motion) keep the static 7deg
+   tilt from the element's own transform. */
+@keyframes dashboard-tilt {
+  from {
+    transform: rotateX(22deg);
+  }
+  to {
+    transform: rotateX(0deg);
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .dashboard-tilt {
+      animation: dashboard-tilt linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 45%;
+    }
+  }
+}

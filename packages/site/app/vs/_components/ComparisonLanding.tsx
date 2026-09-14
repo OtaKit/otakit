@@ -25,6 +25,8 @@ import {
 } from '@/components/ui/accordion';
 import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
+import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
+import { CountUp } from '@/components/landing/CountUp';
 import { FounderSection } from '@/components/landing/FounderSection';
 import { GlobalDeliverySection } from '@/components/landing/GlobalDeliverySection';
 import { HeroIconCloud } from '@/components/landing/HeroIconCloud';
@@ -50,10 +52,10 @@ export type ComparisonCopy = {
   faq: { q: string; a: React.ReactNode }[];
 };
 
-const STATS: { value: string; label: string }[] = [
-  { value: '1,000+', label: 'Apps registered' },
-  { value: '10,000,000+', label: 'Updates delivered' },
-  { value: '99.99%', label: 'Delivery uptime' },
+const STATS: { value: number; decimals?: number; suffix: string; label: string }[] = [
+  { value: 500, suffix: '+', label: 'Apps registered' },
+  { value: 10_000_000, suffix: '+', label: 'Updates delivered' },
+  { value: 99.99, decimals: 2, suffix: '%', label: 'Delivery uptime' },
 ];
 
 // Inline code style for use inside FAQ answers.
@@ -68,6 +70,7 @@ export function Code({ children }: { children: React.ReactNode }) {
 export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-foreground m-3 border border-border">
+      <BlurRevealObserver />
       {/* Nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/60 backdrop-blur-2xl">
         <div className="mx-auto flex h-16 max-w-screen-xl items-center gap-6 px-6">
@@ -186,7 +189,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
         )}
         <div className="">
           <div className="overflow-hidden">
-            <div className="border-b border-border px-8 py-10 pt-30">
+            <div
+              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              data-blur-reveal
+            >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
                 How it works
               </p>
@@ -230,9 +236,14 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
       {/* Dashboard */}
       <section className="border-x border-border mx-auto max-w-screen-xl">
         <div className="">
-          <div className="overflow-hidden">
+          {/* overflow-clip (not hidden) so the dashboard's scroll-driven tilt
+              tracks the page scroll instead of this non-scrolling box. */}
+          <div className="overflow-clip">
             {/* Header */}
-            <div className="border-b border-border px-8 py-10 pt-30">
+            <div
+              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              data-blur-reveal
+            >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
                 Dashboard
               </p>
@@ -245,8 +256,8 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             </div>
             {/* Dashboard mockup — tilted back in 3D, with its flat bottom edge
                 clipped so it slides under the next section (no rounded bottom). */}
-            <div className="overflow-hidden bg-[linear-gradient(180deg,rgba(245,245,240,0.9)_0%,rgba(250,250,248,0.98)_54%,rgba(255,255,255,1)_100%)] px-6 pt-8 [perspective:2200px] dark:bg-[linear-gradient(180deg,rgba(18,18,16,0.96)_0%,rgba(12,12,11,0.98)_54%,rgba(10,10,9,1)_100%)]">
-              <div className="relative mx-auto max-w-6xl origin-top [transform:rotateX(7deg)]">
+            <div className="overflow-clip bg-[linear-gradient(180deg,rgba(245,245,240,0.9)_0%,rgba(250,250,248,0.98)_54%,rgba(255,255,255,1)_100%)] px-6 pt-8 [perspective:2200px] dark:bg-[linear-gradient(180deg,rgba(18,18,16,0.96)_0%,rgba(12,12,11,0.98)_54%,rgba(10,10,9,1)_100%)]">
+              <div className="dashboard-tilt relative mx-auto max-w-6xl origin-top [transform:rotateX(7deg)]">
                 <div className="pointer-events-none absolute inset-x-[10%] top-4 h-24 rounded-full bg-foreground/10 opacity-20 blur-3xl" />
                 <ScaleToFit
                   designWidth={1152}
@@ -268,7 +279,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
       <section id="features" className="border-x border-border mx-auto max-w-screen-xl">
         <div className="">
           <div className="overflow-hidden">
-            <div className="border-b border-border px-8 py-10 pt-30">
+            <div
+              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              data-blur-reveal
+            >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
                 Features
               </p>
@@ -360,7 +374,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
         )}
         <div className="">
           <div className="overflow-hidden">
-            <div className="border-b border-border px-8 py-10 pt-30">
+            <div
+              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              data-blur-reveal
+            >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
                 Pricing
               </p>
@@ -372,7 +389,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 bandwidth, or storage.
               </p>
             </div>
-            <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-4">
               <PricingCard
                 name="Free"
                 price="$0"
@@ -442,7 +459,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
       <Separator className="" />
 
       {/* CTA */}
-      <section className="relative overflow-hidden border-x border-border mx-auto max-w-screen-xl py-32 px-10 bg-muted">
+      <section className="relative overflow-hidden border-x border-border mx-auto max-w-screen-xl py-32 px-10 bg-muted sm:py-40">
         {/* Checked grid background */}
         <div
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] bg-[size:40px_40px] opacity-50"
@@ -458,7 +475,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
           className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent"
           aria-hidden="true"
         />
-        <div className="relative">
+        <div className="relative" data-blur-reveal>
           <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">{copy.ctaTitle}</h2>
           <p className="mt-4 text-lg text-muted-foreground">{copy.ctaSub}</p>
           <div className="mt-20 flex flex-col gap-4 sm:flex-row">
@@ -484,8 +501,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
       <section className="border-x border-border mx-auto max-w-screen-xl">
         <div className="grid gap-px bg-border sm:grid-cols-3">
           {STATS.map((s) => (
-            <div key={s.label} className="bg-background px-8 py-16 text-center">
-              <div className="text-4xl font-bold tracking-tight sm:text-5xl">{s.value}</div>
+            <div key={s.label} className="bg-background px-8 py-16 text-center sm:py-20">
+              <div className="text-4xl font-bold tracking-tight sm:text-5xl">
+                <CountUp value={s.value} decimals={s.decimals} suffix={s.suffix} />
+              </div>
               <div className="mt-3 text-sm text-muted-foreground">{s.label}</div>
             </div>
           ))}
@@ -501,7 +520,10 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
       {/* FAQ */}
       <section id="faq" className="border-x border-border mx-auto max-w-screen-xl">
         <div className="overflow-hidden">
-          <div className="border-b border-border px-8 py-10 pt-30">
+          <div
+            className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+            data-blur-reveal
+          >
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
               FAQ
             </p>
@@ -509,7 +531,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
               Questions, answered
             </h2>
           </div>
-          <div className="px-8 py-6">
+          <div className="px-8 pb-10 pt-6 sm:pb-16">
             <Accordion type="single" collapsible className="w-full">
               {copy.faq.map((item, i) => (
                 <AccordionItem key={i} value={`faq-${i}`}>
@@ -677,7 +699,7 @@ function StepCard({
   code: string;
 }) {
   return (
-    <div className="bg-background p-8 sm:p-10">
+    <div className="bg-background p-8 sm:p-12">
       <span className="font-mono text-sm text-muted-foreground/50">{number}</span>
       <h3 className="mt-3 text-lg font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
@@ -699,7 +721,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="group bg-background p-8 transition-colors hover:bg-muted/95 sm:p-10">
+    <div className="group bg-background p-8 transition-colors hover:bg-muted/95 sm:p-12">
       <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-muted">
         <Icon className="size-5 text-muted-foreground" />
       </div>
@@ -734,7 +756,7 @@ function PricingCard({
 }) {
   return (
     <div
-      className={`relative flex flex-col p-8 transition-colors ${
+      className={`relative flex flex-col p-8 transition-colors sm:py-10 ${
         highlighted ? 'bg-emerald-50' : 'bg-background'
       }`}
     >

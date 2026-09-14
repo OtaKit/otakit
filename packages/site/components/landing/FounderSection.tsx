@@ -7,7 +7,7 @@ import { FounderAvatar } from './FounderAvatar';
 export function FounderSection() {
   return (
     <section id="support" className="border-x border-border mx-auto max-w-screen-xl">
-      <div className="flex flex-col gap-6 px-8 py-12 sm:px-10 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-6 px-8 py-12 sm:px-10 sm:py-16 md:flex-row md:items-center md:justify-between">
         <div className="flex max-w-2xl items-start gap-4">
           <FounderAvatar size={44} className="mt-0.5" />
           <div>
