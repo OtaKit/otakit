@@ -26,7 +26,6 @@ import {
 import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
-import { CountUp } from '@/components/landing/CountUp';
 // import { FounderSection } from '@/components/landing/FounderSection';
 import { GlobalDeliverySection } from '@/components/landing/GlobalDeliverySection';
 import { HeroIconCloud } from '@/components/landing/HeroIconCloud';
@@ -41,12 +40,6 @@ export const metadata = {
     'scrolllaunch-verify': 'ff8cefdd08904be04dcd7dfddc0dbdc8',
   },
 };
-
-const STATS: { value: number; decimals?: number; suffix: string; label: string }[] = [
-  { value: 500, suffix: '+', label: 'Apps registered' },
-  { value: 10_000_000, suffix: '+', label: 'Updates delivered' },
-  { value: 99.99, decimals: 2, suffix: '%', label: 'Delivery uptime' },
-];
 
 // Inline code style for use inside FAQ answers.
 function Code({ children }: { children: React.ReactNode }) {
@@ -394,10 +387,6 @@ export default function LandingPage() {
 
       <Separator className="" />
 
-      <GlobalDeliverySection />
-
-      <Separator className="" />
-
       {/* Dashboard */}
       <section className="border-x border-border mx-auto max-w-screen-xl">
         <div className="">
@@ -640,19 +629,7 @@ export default function LandingPage() {
 
       <Separator className="" />
 
-      {/* Stats */}
-      <section className="border-x border-border mx-auto max-w-screen-xl">
-        <div className="grid gap-px bg-border sm:grid-cols-3">
-          {STATS.map((s) => (
-            <div key={s.label} className="bg-background px-8 py-16 text-center sm:py-20">
-              <div className="text-4xl font-bold tracking-tight sm:text-5xl">
-                <CountUp value={s.value} decimals={s.decimals} suffix={s.suffix} />
-              </div>
-              <div className="mt-3 text-sm text-muted-foreground">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <GlobalDeliverySection />
 
       <Separator className="" />
 
