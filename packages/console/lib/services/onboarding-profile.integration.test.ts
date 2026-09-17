@@ -38,7 +38,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     const profile = await updateOnboardingProfile(ctx, { action: 'complete', answers });
     expect(profile).toMatchObject({
       answers,
-      step: 'plans',
+      step: 'source',
       completedAt: expect.any(String),
       skippedAt: null,
     });
@@ -56,7 +56,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     ).toBe(0);
   });
 
-  it('completes without requiring an audience or update-frequency estimate', async () => {
+  it('completes with the retired usage estimate absent', async () => {
     const unknownUsage = { ...answers };
     delete unknownUsage.activeUsers;
     delete unknownUsage.updatesPerMonth;
@@ -72,15 +72,15 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
 
   it('resumes an unfinished questionnaire and preserves skip across later draft saves', async () => {
     expect(await getOnboardingProfile(ctx.organizationId)).toBeNull();
-    await updateOnboardingProfile(ctx, { action: 'save', answers, step: 'audience' });
+    await updateOnboardingProfile(ctx, { action: 'save', answers, step: 'updates' });
     const draft = await getOnboardingProfile(ctx.organizationId);
-    expect(draft).toMatchObject({ answers, step: 'audience', completedAt: null, skippedAt: null });
+    expect(draft).toMatchObject({ answers, step: 'updates', completedAt: null, skippedAt: null });
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: draft })).toBe(true);
     const skipped = await updateOnboardingProfile(ctx, { action: 'skip' });
     const lateDraft = await updateOnboardingProfile(ctx, {
       action: 'save',
       answers,
-      step: 'audience',
+      step: 'updates',
     });
     expect(lateDraft.skippedAt).toBe(skipped.skippedAt);
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: lateDraft })).toBe(false);
@@ -88,7 +88,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     expect(completed).toMatchObject({
       skippedAt: null,
       completedAt: expect.any(String),
-      step: 'plans',
+      step: 'source',
     });
   });
 
@@ -107,7 +107,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     const lateSave = await updateOnboardingProfile(ctx, {
       action: 'save',
       answers: {},
-      step: 'app',
+      step: 'stage',
     });
     const lateSkip = await updateOnboardingProfile(ctx, { action: 'skip', answers: {} });
     expect(lateSave).toEqual(profiles[0]);
@@ -143,7 +143,7 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     }
   });
 
-  it('records a platform OtaKit cannot update as information, not a rejection', async () => {
+  it('round-trips answers from the retired stack question without rejecting them', async () => {
     const profile = await updateOnboardingProfile(ctx, {
       action: 'complete',
       answers: { ...answers, technologies: ['capacitor', 'flutter'] },
@@ -156,31 +156,30 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
   });
 
-  it('still needs the rest of the questions, whatever the stack says', async () => {
-    await expect(
-      updateOnboardingProfile(ctx, {
-        action: 'complete',
-        answers: { technologies: ['capacitor', 'flutter'] },
-      }),
-    ).rejects.toMatchObject({ status: 400 });
+  it('finishes with nothing answered, because no question is required', async () => {
+    const profile = await updateOnboardingProfile(ctx, { action: 'complete', answers: {} });
+    expect(profile).toMatchObject({
+      answers: {},
+      step: 'source',
+      completedAt: expect.any(String),
+      skippedAt: null,
+    });
+    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
   });
 
-  it('rejects members and unfinished answers without creating a profile', async () => {
+  it('finishes with only some questions answered', async () => {
+    const partial = { otaProvider: 'capgo' } as const;
+    const profile = await updateOnboardingProfile(ctx, { action: 'complete', answers: partial });
+    expect(profile).toMatchObject({ answers: partial, completedAt: expect.any(String) });
+  });
+
+  it('rejects members without creating a profile', async () => {
     await expect(
       updateOnboardingProfile(
         { ...ctx, role: 'member' },
-        { action: 'save', answers, step: 'audience' },
+        { action: 'save', answers, step: 'updates' },
       ),
     ).rejects.toMatchObject({ status: 403 });
-    await expect(
-      updateOnboardingProfile(ctx, { action: 'complete', answers: {} }),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      updateOnboardingProfile(ctx, {
-        action: 'complete',
-        answers: { ...answers, otaProvider: undefined },
-      }),
-    ).rejects.toMatchObject({ status: 400 });
     expect(await getOnboardingProfile(ctx.organizationId)).toBeNull();
   });
 

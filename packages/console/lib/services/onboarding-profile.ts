@@ -4,9 +4,8 @@ import { db } from '@/lib/db';
 import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 import type { SessionContext } from '@/lib/session';
 import {
-  ONBOARDING_QUESTIONS,
+  LAST_QUESTION,
   onboardingAnswersSchema,
-  onboardingStepError,
   resumeOnboardingStep,
   type OnboardingProfile,
   type OnboardingRequest,
@@ -16,10 +15,11 @@ import { OtaKitServiceError } from './errors';
 function serialize(row: OrganizationOnboarding): OnboardingProfile {
   const parsed = onboardingAnswersSchema.safeParse(row.answers);
   const answers = parsed.success ? parsed.data : {};
-  const question = ONBOARDING_QUESTIONS.find((step) => step === row.step) ?? 'app';
   return {
     answers,
-    step: row.completedAt ? 'plans' : resumeOnboardingStep(answers, question),
+    // A finished questionnaire opens on its last question, so coming back to
+    // /onboarding shows the answers instead of restarting the flow.
+    step: row.completedAt ? LAST_QUESTION : resumeOnboardingStep(row.step),
     completedAt: row.completedAt?.toISOString() ?? null,
     skippedAt: row.skippedAt?.toISOString() ?? null,
   };
@@ -43,13 +43,8 @@ export async function updateOnboardingProfile(
       403,
     );
   }
-  if (input.action === 'complete') {
-    for (const question of ONBOARDING_QUESTIONS) {
-      const error = onboardingStepError(input.answers, question);
-      if (error) throw new OtaKitServiceError('INVALID_INPUT', error, 400);
-    }
-  }
-
+  // No question is required, so there is nothing to validate before finishing:
+  // an unanswered questionnaire is a complete one.
   const result = await db.$transaction(async (tx) => {
     // A delayed save from another tab must not reopen completed onboarding.
     await tx.$executeRaw`INSERT INTO "OrganizationOnboarding" ("organizationId", "updatedAt")
@@ -68,13 +63,13 @@ export async function updateOnboardingProfile(
     } else {
       data.answers = input.answers;
       if (input.action === 'save') {
-        data.step = resumeOnboardingStep(input.answers, input.step);
+        data.step = input.step;
         // An explicit return can resume a skipped questionnaire, but saving a
         // draft must not make dashboard visits mandatory again.
       } else {
         data.completedAt = new Date();
         data.skippedAt = null;
-        data.step = 'plans';
+        data.step = LAST_QUESTION;
       }
     }
     const row = await tx.organizationOnboarding.update({

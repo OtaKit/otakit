@@ -33,7 +33,7 @@ describe('onboarding profile route', () => {
     vi.clearAllMocks();
     mocks.getSessionContext.mockResolvedValue(ctx);
     mocks.getOnboardingProfile.mockResolvedValue(null);
-    mocks.updateOnboardingProfile.mockResolvedValue({ step: 'app' });
+    mocks.updateOnboardingProfile.mockResolvedValue({ step: 'stage' });
   });
   it('requires a valid session for reads and writes', async () => {
     mocks.getSessionContext.mockResolvedValue(null);
@@ -45,11 +45,11 @@ describe('onboarding profile route', () => {
   it('reads only the active workspace and passes the resolved identity to writes', async () => {
     await GET();
     expect(mocks.getOnboardingProfile).toHaveBeenCalledWith('org-1');
-    await POST(request({ action: 'save', step: 'app', answers: { technology: 'capacitor' } }));
+    await POST(request({ action: 'save', step: 'stage', answers: { appStage: 'live' } }));
     expect(mocks.updateOnboardingProfile).toHaveBeenCalledWith(ctx, {
       action: 'save',
-      step: 'app',
-      answers: { technology: 'capacitor' },
+      step: 'stage',
+      answers: { appStage: 'live' },
     });
   });
   it('rejects a stale workspace instead of connecting the app to a different organization', async () => {
@@ -59,7 +59,9 @@ describe('onboarding profile route', () => {
   it('rejects malformed answers and caller-supplied organization IDs', async () => {
     for (const body of [
       null,
-      { action: 'save', step: 'audience', answers: { activeUsers: -1 } },
+      { action: 'save', step: 'updates', answers: { activeUsers: -1 } },
+      { action: 'save', step: 'audience', answers: {} },
+      { action: 'save', step: 'app', answers: {} },
       { action: 'skip', answers: { activeUsers: -1 } },
       { action: 'skip', organizationId: 'org-2' },
       { action: 'complete', answers: {}, slug: 'my-app' },

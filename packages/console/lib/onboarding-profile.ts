@@ -1,9 +1,16 @@
 import { z } from 'zod';
 
-export const ONBOARDING_QUESTIONS = ['app', 'stage', 'updates', 'audience', 'source'] as const;
+/**
+ * The questionnaire, in order. Every question is a single click and none of
+ * them is required: the answers are product research, so they must never stand
+ * between a new workspace and its first app. Anything that needs typing, or
+ * that asks for a decision the reader cannot make yet, belongs somewhere else.
+ */
+export const ONBOARDING_QUESTIONS = ['stage', 'updates', 'source'] as const;
 export type OnboardingQuestion = (typeof ONBOARDING_QUESTIONS)[number];
-export const ONBOARDING_STEPS = [...ONBOARDING_QUESTIONS, 'plans'] as const;
-export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+export const FIRST_QUESTION = ONBOARDING_QUESTIONS[0];
+export const LAST_QUESTION = ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
 
 const technologySchema = z.enum([
   'capacitor',
@@ -14,19 +21,12 @@ const technologySchema = z.enum([
   'not_sure',
 ]);
 
-export type Technology = z.infer<typeof technologySchema>;
-
-/** What OtaKit updates, so it is part of every answer and cannot be cleared. */
-export const LOCKED_TECHNOLOGY = 'capacitor' as const;
-
-// `framework`, `goal`, `otherProvider` and `sourceDetail` are no longer asked:
-// they made the questionnaire longer without telling us anything the remaining
-// answers don't. They stay in the schema because the parse is strict, and
-// dropping them would make every stored answer fail and read back as empty.
+// Only `appStage`, `otaProvider` and `source` are still asked. The rest are
+// answers from earlier versions of the questionnaire, kept because the parse is
+// strict: dropping a field would make every row that still carries it fail and
+// read back as empty, losing the research already collected.
 export const onboardingAnswersSchema = z
   .object({
-    // `technology` was a single choice before the question became "everything
-    // in your stack". Stored rows still carry it, so it stays readable.
     technology: technologySchema.optional(),
     technologies: z.array(technologySchema).max(6).optional(),
     framework: z.enum(['react', 'vue', 'angular', 'svelte', 'other', 'not_sure']).optional(),
@@ -49,59 +49,18 @@ export type OnboardingAnswers = z.infer<typeof onboardingAnswersSchema>;
 
 export type OnboardingProfile = {
   answers: OnboardingAnswers;
-  step: OnboardingStep;
+  step: OnboardingQuestion;
   completedAt: string | null;
   skippedAt: string | null;
 };
 
 /**
- * The stack as a list, with Capacitor first whatever else is ticked, and the
- * old single-choice answer folded in so returning to a saved draft does not
- * lose what was picked before the question changed.
+ * The question to open on. Rows written by earlier versions of the flow can
+ * carry a step that no longer exists (`app`, `audience`, `plans`), so anything
+ * unrecognised restarts at the first question instead of leaving a blank card.
  */
-export function technologiesOf(answers: OnboardingAnswers): Technology[] {
-  const chosen = answers.technologies ?? (answers.technology ? [answers.technology] : []);
-  return [LOCKED_TECHNOLOGY, ...chosen.filter((item) => item !== LOCKED_TECHNOLOGY)];
-}
-
-export function onboardingStepError(
-  answers: OnboardingAnswers,
-  step: OnboardingStep,
-): string | null {
-  // The stack question always has Capacitor ticked, so it cannot be unanswered.
-  if (step === 'stage' && !answers.appStage) return 'Choose where your app is today.';
-  if (step === 'updates' && !answers.otaProvider) return 'Choose your current update setup.';
-  if (step === 'audience') return onboardingUsageError(answers)?.message ?? null;
-  return null;
-}
-
-export function onboardingUsageError(answers: OnboardingAnswers): {
-  field: 'activeUsers' | 'updatesPerMonth';
-  message: string;
-} | null {
-  for (const [field, label, max] of [
-    ['activeUsers', 'Monthly active users', 1_000_000_000],
-    ['updatesPerMonth', 'Monthly OTA updates', 1_000],
-  ] as const) {
-    const value = answers[field];
-    if (value != null && (!Number.isInteger(value) || value < 0 || value > max)) {
-      return {
-        field,
-        message: `${label} must be a whole number from 0 to ${max.toLocaleString('en-US')}. You can leave it blank if you’re not sure.`,
-      };
-    }
-  }
-  return null;
-}
-
-export function resumeOnboardingStep(
-  answers: OnboardingAnswers,
-  saved: OnboardingQuestion,
-): OnboardingQuestion {
-  for (const step of ONBOARDING_QUESTIONS) {
-    if (step === saved || onboardingStepError(answers, step)) return step;
-  }
-  return ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
+export function resumeOnboardingStep(saved: string): OnboardingQuestion {
+  return ONBOARDING_QUESTIONS.find((question) => question === saved) ?? FIRST_QUESTION;
 }
 
 export function shouldShowOnboarding(input: {
@@ -115,11 +74,6 @@ export function shouldShowOnboarding(input: {
     !input.profile?.completedAt &&
     !input.profile?.skippedAt
   );
-}
-
-export function estimateMonthlyDownloads(answers: OnboardingAnswers): number | null {
-  if (answers.activeUsers == null || answers.updatesPerMonth == null) return null;
-  return answers.activeUsers * answers.updatesPerMonth;
 }
 
 export function appIdentifierError(value: string): string | null {
@@ -149,29 +103,3 @@ export const onboardingRequestSchema = z.discriminatedUnion('action', [
 ]);
 
 export type OnboardingRequest = z.infer<typeof onboardingRequestSchema>;
-
-/**
- * Included monthly downloads on the paid tiers, kept next to the recommendation
- * so the onboarding plan list and the plan it suggests cannot drift apart.
- * The Free allowance is per-workspace and is passed in.
- */
-export const STARTER_DOWNLOADS = 100_000;
-export const PRO_DOWNLOADS = 1_000_000;
-
-export type RecommendablePlan = 'free' | 'starter' | 'pro' | 'enterprise';
-
-/**
- * The cheapest plan whose included volume covers the estimate. Answers null
- * when the estimate is unknown — suggesting a plan on a guess is worse than
- * letting someone read the list themselves.
- */
-export function recommendedPlan(
-  estimatedDownloads: number | null,
-  freeDownloads: number,
-): RecommendablePlan | null {
-  if (estimatedDownloads === null) return null;
-  if (estimatedDownloads <= freeDownloads) return 'free';
-  if (estimatedDownloads <= STARTER_DOWNLOADS) return 'starter';
-  if (estimatedDownloads <= PRO_DOWNLOADS) return 'pro';
-  return 'enterprise';
-}

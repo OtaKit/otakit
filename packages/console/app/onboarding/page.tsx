@@ -2,9 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { getDashboardInitialData } from '@/app/dashboard/data';
 import { SignupTracker } from '@/app/components/SignupTracker';
-import { db } from '@/lib/db';
 import { getOnboardingProfile } from '@/lib/services/onboarding-profile';
-import { getPlanLimits } from '@/lib/billing/config';
 import { OnboardingFlow } from './OnboardingFlow';
 
 export const dynamic = 'force-dynamic';
@@ -15,13 +13,7 @@ export default async function OnboardingPage() {
   if (data.activeOrganization.role !== 'owner' && data.activeOrganization.role !== 'admin') {
     redirect('/dashboard');
   }
-  const [profile, organization] = await Promise.all([
-    getOnboardingProfile(data.activeOrganization.id),
-    db.organization.findUniqueOrThrow({
-      where: { id: data.activeOrganization.id },
-      select: { planKey: true, isActive: true, freeDownloadsLimit: true },
-    }),
-  ]);
+  const profile = await getOnboardingProfile(data.activeOrganization.id);
   if (data.apps.length > 0) {
     redirect('/dashboard');
   }
@@ -34,10 +26,6 @@ export default async function OnboardingPage() {
         organizationId={data.activeOrganization.id}
         organizationName={data.activeOrganization.name}
         initialProfile={profile}
-        billingEnabled={data.billingEnabled}
-        currentPlan={organization.planKey}
-        hasSubscription={organization.isActive || organization.planKey === 'enterprise'}
-        freeDownloads={getPlanLimits('free', organization.freeDownloadsLimit).downloads}
       />
     </>
   );

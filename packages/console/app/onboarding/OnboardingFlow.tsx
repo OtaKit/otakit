@@ -2,43 +2,21 @@
 
 import Image from 'next/image';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Building2,
-  CircleAlert,
-  Leaf,
-  LoaderCircle,
-  Rocket,
-  Star,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleAlert, LoaderCircle } from 'lucide-react';
 
-import { InfoHint } from '@/app/components/InfoHint';
-import { PlanCard, type PlanKey } from '@/app/components/PricingDialog';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { SUPPORT_MAILTO } from '@/lib/support';
 import { cn } from '@/lib/utils';
 import {
+  LAST_QUESTION,
   ONBOARDING_QUESTIONS,
-  ONBOARDING_STEPS,
-  PRO_DOWNLOADS,
-  STARTER_DOWNLOADS,
-  estimateMonthlyDownloads,
-  LOCKED_TECHNOLOGY,
   onboardingAnswersSchema,
-  onboardingStepError,
-  onboardingUsageError,
-  technologiesOf,
-  recommendedPlan,
   type OnboardingAnswers,
   type OnboardingProfile,
+  type OnboardingQuestion,
   type OnboardingRequest,
-  type OnboardingStep,
-  type Technology,
 } from '@/lib/onboarding-profile';
 
 /**
@@ -46,81 +24,43 @@ import {
  * line under it says why we are asking, which is the only reason a screen gets
  * a second sentence at all.
  */
-const SCREENS: Record<OnboardingStep, { title: string; lead: string }> = {
-  app: {
-    title: 'What do you build with?',
-    lead: 'OtaKit currently supports Capacitor apps. Tick anything else in your stack.',
-  },
+const SCREENS: Record<OnboardingQuestion, { title: string; lead: string }> = {
   stage: {
     title: 'Where is your app today?',
-    lead: 'It decides whether we point you at a test device or a store release first.',
+    lead: 'Live with users, or still building? It tells us who is picking OtaKit up.',
   },
   updates: {
     title: 'Are you shipping OTA updates today?',
-    lead: 'So we know whether to set you up from scratch or help you move across.',
-  },
-  audience: {
-    title: 'How much traffic do you expect?',
-    lead: 'A rough estimate is enough — it only decides which plan we suggest.',
+    lead: 'If you are moving across from another provider, we would like to know which one.',
   },
   source: {
     title: 'How did you hear about us?',
     lead: 'It is how we know which channels are worth keeping.',
   },
-  plans: {
-    title: 'Pick a starting plan',
-    lead: 'Every plan includes unlimited apps and updates. Usage counts update downloads — one device taking one update.',
-  },
 };
-
-const PLAN_NAMES: Record<PlanKey, string> = {
-  free: 'Free',
-  starter: 'Starter',
-  pro: 'Pro',
-  enterprise: 'Enterprise',
-};
-
-const number = (value: number) => value.toLocaleString('en-US');
-
-/** How long the card takes to change width. Kept in step with the class below. */
-const RESIZE_MS = 280;
 
 export function OnboardingFlow({
   organizationId,
   organizationName,
   initialProfile,
-  billingEnabled,
-  currentPlan,
-  hasSubscription,
-  freeDownloads,
 }: {
   organizationId: string;
   organizationName: string;
   initialProfile: OnboardingProfile | null;
-  billingEnabled: boolean;
-  currentPlan: PlanKey;
-  hasSubscription: boolean;
-  freeDownloads: number;
 }) {
-  const [answers, setAnswers] = useState<OnboardingAnswers>(() => {
-    const saved = initialProfile?.answers ?? {};
-    return { ...saved, technologies: technologiesOf(saved) };
-  });
-  const [step, setStep] = useState<OnboardingStep>(initialProfile?.step ?? 'app');
-  const [completed, setCompleted] = useState(Boolean(initialProfile?.completedAt));
+  const [answers, setAnswers] = useState<OnboardingAnswers>(() => initialProfile?.answers ?? {});
+  const [step, setStep] = useState<OnboardingQuestion>(
+    initialProfile?.step ?? ONBOARDING_QUESTIONS[0],
+  );
   const [busy, setBusy] = useState(false);
-  const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
-  const [invalidField, setInvalidField] = useState<'activeUsers' | 'updatesPerMonth' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const busyRef = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const landed = useRef(false);
-  const index = ONBOARDING_STEPS.indexOf(step);
-  const lastQuestion = ONBOARDING_QUESTIONS[ONBOARDING_QUESTIONS.length - 1];
-  const estimatedDownloads = estimateMonthlyDownloads(answers);
-  const suggested = recommendedPlan(estimatedDownloads, freeDownloads);
+  const index = ONBOARDING_QUESTIONS.indexOf(step);
+  const last = step === LAST_QUESTION;
 
   // Moving to another step re-reads the card from the top. Focus goes to the
   // new question without scrolling on its own, so the two never fight and the
@@ -146,7 +86,6 @@ export function OnboardingFlow({
   function update(patch: Partial<OnboardingAnswers>) {
     setAnswers((current) => ({ ...current, ...patch }));
     setError(null);
-    setInvalidField(null);
   }
   async function save(input: OnboardingRequest) {
     const response = await fetch('/api/v1/organization/onboarding/profile', {
@@ -183,87 +122,36 @@ export function OnboardingFlow({
       setBusy(false);
     }
   }
-  async function checkout(plan: 'starter' | 'pro', interval: 'month' | 'year') {
-    setCheckingOut(plan);
-    try {
-      const response = await fetch('/api/v1/organization/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-otakit-organization-id': organizationId },
-        body: JSON.stringify({ planKey: plan, interval, returnTo: 'dashboard' }),
-      });
-      const data = (await response.json().catch(() => null)) as {
-        checkoutUrl?: string;
-        error?: string;
-      } | null;
-      if (response.status === 401) setSessionExpired(true);
-      if (!response.ok || !data?.checkoutUrl)
-        throw new Error(
-          `${data?.error ?? 'Checkout couldn’t start.'} Your answers are saved. Try again or continue to the dashboard on your current plan.`,
-        );
-      window.location.assign(data.checkoutUrl);
-    } finally {
-      setCheckingOut(null);
-    }
-  }
   function next() {
-    if (step === 'plans') return;
-    const validation = onboardingStepError(answers, step);
-    if (validation) {
-      setInvalidField(step === 'audience' ? (onboardingUsageError(answers)?.field ?? null) : null);
-      setError(validation);
-      return;
-    }
     void run(async () => {
+      // Driven by the question list, so adding or splitting a screen cannot
+      // leave the questionnaire finishing one screen early.
       const profile = await save(
-        // Driven by the question list, so adding or splitting a screen cannot
-        // leave the questionnaire finishing one screen early.
-        step === lastQuestion
+        last
           ? { action: 'complete', answers }
           : { action: 'save', answers, step: ONBOARDING_QUESTIONS[index + 1] },
       );
+      // The last answer is the end of the flow: there is no closing screen to
+      // sit on, so finishing goes straight to the dashboard.
+      if (last) {
+        goToDashboard();
+        return;
+      }
       setAnswers(profile.answers);
       setStep(profile.step);
-      setCompleted(Boolean(profile.completedAt));
-      // An unsupported platform stops here on its own screen rather than being
-      // dropped on the dashboard with no idea why the questions ended.
     });
   }
   function skip() {
-    if (step === 'plans') {
-      goToDashboard();
-      return;
-    }
     void run(async () => {
-      // Skipping must work even when the current draft contains an invalid number.
-      // Keep valid draft answers in the same request; otherwise retain the last save.
+      // Keep whatever has been answered so far — a skipped questionnaire is
+      // still worth the answers it already has.
       const draft = onboardingAnswersSchema.safeParse(answers);
       await save({ action: 'skip', ...(draft.success ? { answers: draft.data } : {}) });
       goToDashboard();
     });
   }
 
-  const finishing = step === 'plans' && !billingEnabled;
-  const wide = step === 'plans' && !finishing;
-
-  // Only the plan table needs the extra room, so the card changes width exactly
-  // once. Reflowing four columns of prices live through that change is what
-  // looked broken, so the content sits out the resize and fades back once the
-  // width has settled: the frame glides, the text never re-wraps on screen.
-  const [resizing, setResizing] = useState(false);
-  const wasWide = useRef(wide);
-  useEffect(() => {
-    if (wasWide.current === wide) return;
-    wasWide.current = wide;
-    setResizing(true);
-    const timer = setTimeout(() => setResizing(false), RESIZE_MS);
-    return () => clearTimeout(timer);
-  }, [wide]);
-  const headline = finishing
-    ? {
-        title: 'You’re all set',
-        lead: 'Your answers are saved. The dashboard walks you through connecting your app.',
-      }
-    : SCREENS[step];
+  const screen = SCREENS[step];
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip bg-background text-foreground">
@@ -282,28 +170,12 @@ export function OnboardingFlow({
           <span className="hidden min-w-0 border-l border-border pl-3 text-sm text-muted-foreground sm:block">
             <span className="block truncate">{organizationName}</span>
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto text-muted-foreground"
-            disabled={busy}
-            onClick={completed ? goToDashboard : skip}
-          >
-            {completed ? 'Go to dashboard' : 'Skip for now'}
-            <ArrowRight className="size-3.5" />
-          </Button>
         </div>
       </header>
 
-      <main
-        className={cn(
-          // Fills whatever is left under the header, so the page never ends in a
-          // short card floating over empty background.
-          'relative mx-auto flex w-full flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14',
-          'transition-[max-width] duration-[280ms] ease-out motion-reduce:transition-none',
-          wide ? 'max-w-6xl' : 'max-w-2xl',
-        )}
-      >
+      {/* Fills whatever is left under the header, so the page never ends in a
+          short card floating over empty background. */}
+      <main className="relative mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14">
         {/* The card takes the height the page has, which is what puts Back and
             Continue on the bottom edge instead of halfway up the screen. */}
         <div className="relative flex flex-1 flex-col bg-card">
@@ -315,23 +187,13 @@ export function OnboardingFlow({
           <div
             aria-hidden
             className="absolute inset-x-0 top-0 z-20 h-px bg-foreground transition-[width] duration-500 ease-out motion-reduce:transition-none"
-            style={{ width: `${((index + 1) / ONBOARDING_STEPS.length) * 100}%` }}
+            style={{ width: `${((index + 1) / ONBOARDING_QUESTIONS.length) * 100}%` }}
           />
 
-          {/* Hidden outright while the width moves — no transition class, so it
-              goes at once — then eased back in against a card that has stopped
-              moving. */}
-          <div
-            className={cn(
-              'flex flex-1 flex-col',
-              resizing
-                ? 'opacity-0'
-                : 'opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none',
-            )}
-          >
+          <div className="flex flex-1 flex-col">
             <div className="px-6 py-8 sm:px-8">
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                Step {index + 1} of {ONBOARDING_STEPS.length}
+                Step {index + 1} of {ONBOARDING_QUESTIONS.length} · Optional
               </p>
               <h1
                 ref={heading}
@@ -339,11 +201,9 @@ export function OnboardingFlow({
                 id="onboarding-title"
                 className="mt-2 text-xl font-semibold tracking-tight outline-none sm:text-2xl"
               >
-                {headline.title}
+                {screen.title}
               </h1>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                {headline.lead}
-              </p>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">{screen.lead}</p>
             </div>
 
             <form
@@ -355,20 +215,6 @@ export function OnboardingFlow({
               }}
             >
               <fieldset className="flex-1" disabled={busy}>
-                {step === 'app' && (
-                  <Stack
-                    value={answers.technologies ?? []}
-                    onChange={(technologies) => update({ technologies })}
-                    options={[
-                      ['capacitor', 'Capacitor / Ionic'],
-                      ['web', 'A web app'],
-                      ['react_native', 'React Native / Expo'],
-                      ['flutter', 'Flutter'],
-                      ['native', 'Native iOS / Android'],
-                    ]}
-                  />
-                )}
-
                 {step === 'stage' && (
                   <Choices
                     id="app-stage"
@@ -404,44 +250,6 @@ export function OnboardingFlow({
                   />
                 )}
 
-                {step === 'audience' && (
-                  <>
-                    <Section>
-                      <div className="grid gap-6 sm:grid-cols-2">
-                        <UsageInput
-                          id="active-users"
-                          label="Monthly active users"
-                          hint="People who open your app in a typical month. Enter 0 if you haven’t launched, or leave it blank if you’re not sure."
-                          placeholder="1000"
-                          value={answers.activeUsers}
-                          max={1_000_000_000}
-                          invalid={invalidField === 'activeUsers'}
-                          onChange={(value) => update({ activeUsers: value })}
-                        />
-                        <UsageInput
-                          id="updates-month"
-                          label="Updates per month"
-                          hint="How often you expect to ship an OTA update. A rough number is enough."
-                          placeholder="4"
-                          value={answers.updatesPerMonth}
-                          max={1_000}
-                          invalid={invalidField === 'updatesPerMonth'}
-                          onChange={(value) => update({ updatesPerMonth: value })}
-                        />
-                      </div>
-                    </Section>
-                    {estimatedDownloads !== null && (
-                      <Section className="bg-muted/20">
-                        <Readout
-                          label="Estimated downloads"
-                          value={`${number(estimatedDownloads)} / month`}
-                          caption={`${number(answers.activeUsers!)} active users × ${number(answers.updatesPerMonth!)} updates.`}
-                        />
-                      </Section>
-                    )}
-                  </>
-                )}
-
                 {step === 'source' && (
                   <Choices
                     id="source"
@@ -458,137 +266,6 @@ export function OnboardingFlow({
                     ]}
                   />
                 )}
-
-                {step === 'plans' &&
-                  (finishing ? (
-                    <Section>
-                      <Button type="button" onClick={goToDashboard}>
-                        Go to dashboard
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </Section>
-                  ) : hasSubscription ? (
-                    <Section>
-                      <p className="text-sm">
-                        This workspace is already on{' '}
-                        <span className="font-medium">{PLAN_NAMES[currentPlan]}</span>. You can
-                        change it later from Billing in Settings.
-                      </p>
-                      <Button type="button" className="mt-4" onClick={goToDashboard}>
-                        Continue on {PLAN_NAMES[currentPlan]}
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </Section>
-                  ) : (
-                    <Section>
-                      {estimatedDownloads !== null && (
-                        <p className="mb-5 text-sm text-muted-foreground">
-                          Your estimate is{' '}
-                          <span className="font-medium text-foreground">
-                            {number(estimatedDownloads)} downloads a month
-                          </span>
-                          {suggested ? `, which ${PLAN_NAMES[suggested]} covers.` : '.'}
-                        </p>
-                      )}
-                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <PlanCard
-                          name="Free"
-                          price="$0"
-                          priceNote="No card required"
-                          subtitle={`${number(freeDownloads)} downloads / month`}
-                          features={[
-                            'Unlimited apps and updates',
-                            'Dashboard + CLI',
-                            'Single-member workspace',
-                            'Hard cap — no overage',
-                          ]}
-                          current={false}
-                          actionLabel="Continue with Free"
-                          actionIcon={Leaf}
-                          disabled={busy}
-                          onAction={goToDashboard}
-                          tag={suggested === 'free' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'free'}
-                        />
-                        <PlanCard
-                          name="Starter"
-                          price="$10"
-                          priceNote="Billed monthly"
-                          subtitle={`${number(STARTER_DOWNLOADS)} downloads / month`}
-                          features={[
-                            'Unlimited apps and updates',
-                            'Dashboard + CLI',
-                            'Single-member workspace',
-                            'Hard cap — no overage',
-                          ]}
-                          current={false}
-                          actionLabel={
-                            freeDownloads >= STARTER_DOWNLOADS
-                              ? 'Included in Free'
-                              : 'Choose Starter'
-                          }
-                          actionIcon={Rocket}
-                          disabled={busy || freeDownloads >= STARTER_DOWNLOADS}
-                          loading={checkingOut === 'starter'}
-                          onAction={() => void run(() => checkout('starter', 'month'))}
-                          tag={suggested === 'starter' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'starter'}
-                        />
-                        <PlanCard
-                          name="Pro"
-                          price="$25"
-                          priceNote="Billed $300/year, or $50 monthly"
-                          subtitle={`${number(PRO_DOWNLOADS)} downloads / month`}
-                          features={[
-                            'Everything in Free',
-                            'Team members and roles',
-                            `Optional overage: $50 / extra ${number(PRO_DOWNLOADS)}`,
-                            'Priority support',
-                          ]}
-                          current={false}
-                          actionLabel="Choose Pro"
-                          actionIcon={Star}
-                          disabled={busy}
-                          loading={checkingOut === 'pro'}
-                          actionItems={[
-                            {
-                              label: 'Yearly',
-                              description: '$300/year · $25/month',
-                              onSelect: () => void run(() => checkout('pro', 'year')),
-                            },
-                            {
-                              label: 'Monthly',
-                              description: '$50/month',
-                              onSelect: () => void run(() => checkout('pro', 'month')),
-                            },
-                          ]}
-                          tag={suggested === 'pro' ? 'Fits your estimate' : undefined}
-                          highlighted={suggested === 'pro'}
-                        />
-                        <PlanCard
-                          name="Enterprise"
-                          price="Custom"
-                          priceNote="Tailored to your volume"
-                          subtitle="Custom download volume"
-                          features={[
-                            'Everything in Pro',
-                            'Custom limits and contract',
-                            'SSO and priority SLAs',
-                            'Dedicated support',
-                          ]}
-                          current={false}
-                          actionLabel="Contact sales"
-                          actionIcon={Building2}
-                          disabled={busy}
-                          onAction={() => {
-                            window.location.href = `${SUPPORT_MAILTO}?subject=OtaKit%20Enterprise`;
-                          }}
-                          tag={suggested === 'enterprise' ? 'Discuss your volume' : undefined}
-                          highlighted={suggested === 'enterprise'}
-                        />
-                      </div>
-                    </Section>
-                  ))}
               </fieldset>
 
               {error && (
@@ -611,6 +288,8 @@ export function OnboardingFlow({
                 </div>
               )}
 
+              {/* Skip sits beside Continue, where the decision is actually made.
+                  In the header it read as chrome and went unseen. */}
               <div className="mt-auto flex items-center gap-3 border-t border-border px-6 py-4 sm:px-8">
                 {index > 0 && (
                   <Button
@@ -621,21 +300,28 @@ export function OnboardingFlow({
                     disabled={busy}
                     onClick={() => {
                       setError(null);
-                      setInvalidField(null);
-                      setStep(ONBOARDING_STEPS[index - 1]);
+                      setStep(ONBOARDING_QUESTIONS[index - 1]);
                     }}
                   >
                     <ArrowLeft className="size-3.5" />
                     Back
                   </Button>
                 )}
-                {step !== 'plans' && (
-                  <Button type="submit" className="ml-auto" disabled={busy}>
-                    {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
-                    {step === lastQuestion ? 'Finish' : 'Continue'}
-                    {busy ? null : <ArrowRight className="size-4" />}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-muted-foreground"
+                  disabled={busy}
+                  onClick={skip}
+                >
+                  Skip, go to dashboard
+                </Button>
+                <Button type="submit" disabled={busy}>
+                  {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                  {last ? 'Finish' : 'Continue'}
+                  {busy ? null : <ArrowRight className="size-4" />}
+                </Button>
               </div>
             </form>
           </div>
@@ -695,108 +381,14 @@ function Section({ children, className }: { children: ReactNode; className?: str
   );
 }
 
-function FieldLabel({
-  id,
-  htmlFor,
-  optional,
-  hint,
-  children,
-}: {
-  id?: string;
-  htmlFor?: string;
-  optional?: boolean;
-  hint?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    // The ⓘ sits beside the label, never inside it: a button within a label
-    // steals the click that should be putting the caret in the field.
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      {htmlFor ? (
-        <Label htmlFor={htmlFor}>{children}</Label>
-      ) : (
-        <span id={id} className="text-sm font-medium leading-none">
-          {children}
-        </span>
-      )}
-      {hint ? <InfoHint label={`About ${String(children).toLowerCase()}`}>{hint}</InfoHint> : null}
-      {optional ? <span className="text-xs text-muted-foreground">Optional</span> : null}
-    </div>
-  );
-}
-
-/** A number the reader gave us, read back to them. */
-function Readout({ label, value, caption }: { label: string; value: string; caption?: string }) {
-  return (
-    <>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-sm tabular-nums">{value}</span>
-      </div>
-      {caption ? (
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{caption}</p>
-      ) : null}
-    </>
-  );
-}
-
 /**
  * One line per option, whatever the control. A hint on some options and not
  * others made the tiles read as two different controls sharing a grid.
  */
-function tile(selected: boolean, locked = false) {
+function tile(selected: boolean) {
   return cn(
-    'items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors',
-    locked ? 'cursor-default' : 'cursor-pointer',
+    'cursor-pointer items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors',
     selected ? 'border-foreground/30 bg-muted/60' : 'border-border hover:bg-muted/30',
-  );
-}
-
-/**
- * The stack question, which is a list rather than a choice: people ship a
- * Capacitor app and a native one, and saying so should not mean picking the
- * lesser truth. Capacitor is ticked and fixed because it is the thing OtaKit
- * updates — the screen says as much rather than warning anyone off afterwards.
- */
-function Stack({
-  value,
-  options,
-  onChange,
-}: {
-  value: Technology[];
-  options: Array<[Technology, string]>;
-  onChange: (value: Technology[]) => void;
-}) {
-  return (
-    <Section>
-      <div role="group" aria-labelledby="onboarding-title" className="grid gap-2 sm:grid-cols-2">
-        {options.map(([option, title]) => {
-          const locked = option === LOCKED_TECHNOLOGY;
-          const checked = locked || value.includes(option);
-          return (
-            <Label key={option} htmlFor={`stack-${option}`} className={tile(checked, locked)}>
-              <Checkbox
-                id={`stack-${option}`}
-                checked={checked}
-                disabled={locked}
-                // Locked, not greyed out: it is a true answer, not one that is
-                // unavailable, and washing it out reads as an error.
-                className={locked ? 'disabled:cursor-default disabled:opacity-100' : undefined}
-                onCheckedChange={(next) =>
-                  onChange(
-                    next === true ? [...value, option] : value.filter((item) => item !== option),
-                  )
-                }
-              />
-              <span className="text-sm font-medium leading-snug">{title}</span>
-              {locked ? (
-                <span className="ml-auto text-[11px] text-muted-foreground">Required</span>
-              ) : null}
-            </Label>
-          );
-        })}
-      </div>
-    </Section>
   );
 }
 
@@ -830,55 +422,5 @@ function Choices({
         ))}
       </RadioGroup>
     </Section>
-  );
-}
-
-function UsageInput({
-  id,
-  label,
-  hint,
-  placeholder,
-  value,
-  max,
-  invalid,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  hint: string;
-  placeholder: string;
-  value: number | null | undefined;
-  max: number;
-  invalid: boolean;
-  onChange: (value: number | null | undefined) => void;
-}) {
-  return (
-    <div>
-      <FieldLabel htmlFor={id} hint={hint} optional>
-        {label}
-      </FieldLabel>
-      <Input
-        id={id}
-        className="mt-3"
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={max}
-        step={1}
-        placeholder={placeholder}
-        value={value == null || Number.isNaN(value) ? '' : value}
-        aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? 'onboarding-error' : undefined}
-        onChange={(event) =>
-          onChange(
-            event.target.validity.badInput
-              ? NaN
-              : event.target.value === ''
-                ? undefined
-                : Number(event.target.value),
-          )
-        }
-      />
-    </div>
   );
 }
