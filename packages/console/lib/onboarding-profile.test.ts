@@ -8,7 +8,6 @@ import {
   onboardingAnswersSchema,
   onboardingRequestSchema,
   resumeOnboardingStep,
-  shouldShowOnboarding,
   type OnboardingAnswers,
 } from './onboarding-profile';
 import { isValidAppSlug } from './validation';
@@ -110,19 +109,5 @@ describe('guided onboarding validation', () => {
     'x'.repeat(121),
   ])('uses the existing app identifier rules for %s', (slug) => {
     expect(appIdentifierError(slug) === null).toBe(isValidAppSlug(slug));
-  });
-
-  it('only intercepts owners with an empty workspace and unfinished onboarding', () => {
-    const input = { appCount: 0, role: 'owner', profile: null };
-    expect(shouldShowOnboarding(input)).toBe(true);
-    expect(shouldShowOnboarding({ ...input, appCount: 1 })).toBe(false);
-    expect(shouldShowOnboarding({ ...input, role: 'member' })).toBe(false);
-    expect(shouldShowOnboarding({ ...input, role: 'admin' })).toBe(false);
-    expect(
-      shouldShowOnboarding({ ...input, profile: { skippedAt: '2026-09-07', completedAt: null } }),
-    ).toBe(false);
-    expect(
-      shouldShowOnboarding({ ...input, profile: { skippedAt: null, completedAt: '2026-09-07' } }),
-    ).toBe(false);
   });
 });

@@ -36,6 +36,21 @@ type SocialProvider = 'google' | 'apple' | 'github';
 const RESEND_COOLDOWN_SECONDS = 30;
 const OTP_LENGTH = 6;
 
+/**
+ * Whether a code just signed someone up rather than back in. The account is
+ * written during the same request, so its age is measured in seconds, while a
+ * returning account's is days. The window is generous because being wrong the
+ * safe way costs a new account one extra screen, and a returning one nothing.
+ */
+const SIGNUP_WINDOW_MS = 60 * 1000;
+
+function isBrandNew(createdAt: Date | string | undefined) {
+  if (!createdAt) return false;
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return Date.now() - created < SIGNUP_WINDOW_MS;
+}
+
 type LoginIcon = {
   src: string;
   top: string;
@@ -212,10 +227,12 @@ export function LoginPageClient({
     try {
       const { data, error: signInError } = await authClient.signIn.social({
         provider,
-        // MCP authorization takes priority. Otherwise the dashboard resumes
-        // onboarding only for owners of an unfinished, empty workspace.
+        // MCP authorization takes priority. Otherwise the questions are shown
+        // to brand-new accounts and to nobody else: better-auth picks the new
+        // user URL only on the sign-in that creates the account, so signing in
+        // again never returns to them, whether or not they were answered.
         callbackURL: authorizationPath ?? '/dashboard',
-        newUserCallbackURL: authorizationPath ?? '/dashboard',
+        newUserCallbackURL: authorizationPath ?? '/onboarding',
         errorCallbackURL: '/login',
         disableRedirect: true,
       });
@@ -303,8 +320,11 @@ export function LoginPageClient({
           return;
         }
 
-        // The dashboard checks workspace progress and resumes onboarding when needed.
-        window.location.href = '/dashboard';
+        // The account row is written by this very request, so a createdAt from
+        // seconds ago means the code just signed someone up rather than back
+        // in. That is the only moment the questions are shown; there is no
+        // stored flag, so signing in again always lands on the dashboard.
+        window.location.href = isBrandNew(data?.user?.createdAt) ? '/onboarding' : '/dashboard';
       } catch (cause) {
         submittedCode.current = null;
         setError(cause instanceof Error ? cause.message : 'Invalid code');

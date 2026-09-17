@@ -63,19 +63,6 @@ export function resumeOnboardingStep(saved: string): OnboardingQuestion {
   return ONBOARDING_QUESTIONS.find((question) => question === saved) ?? FIRST_QUESTION;
 }
 
-export function shouldShowOnboarding(input: {
-  appCount: number;
-  role: string;
-  profile: Pick<OnboardingProfile, 'completedAt' | 'skippedAt'> | null;
-}) {
-  return (
-    input.appCount === 0 &&
-    input.role === 'owner' &&
-    !input.profile?.completedAt &&
-    !input.profile?.skippedAt
-  );
-}
-
 export function appIdentifierError(value: string): string | null {
   const slug = value.trim();
   if (!slug) return 'Give your app an identifier, such as my-app.';

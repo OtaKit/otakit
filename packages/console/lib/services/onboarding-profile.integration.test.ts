@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { db } from '@/lib/db';
 import type { SessionContext } from '@/lib/session';
-import { shouldShowOnboarding, type OnboardingAnswers } from '@/lib/onboarding-profile';
+import type { OnboardingAnswers } from '@/lib/onboarding-profile';
 import { getOnboardingProfile, updateOnboardingProfile } from './onboarding-profile';
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
@@ -44,7 +44,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     });
     const appCount = await db.app.count({ where: { organizationId: ctx.organizationId } });
     expect(appCount).toBe(0);
-    expect(shouldShowOnboarding({ appCount, role: ctx.role, profile })).toBe(false);
     expect(await db.organization.findUnique({ where: { id: ctx.organizationId } })).toMatchObject({
       planKey: 'free',
       isActive: false,
@@ -67,7 +66,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     expect(profile.completedAt).toEqual(expect.any(String));
     expect(profile.answers.activeUsers).toBeUndefined();
     expect(profile.answers.updatesPerMonth).toBeUndefined();
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
   });
 
   it('resumes an unfinished questionnaire and preserves skip across later draft saves', async () => {
@@ -75,7 +73,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     await updateOnboardingProfile(ctx, { action: 'save', answers, step: 'updates' });
     const draft = await getOnboardingProfile(ctx.organizationId);
     expect(draft).toMatchObject({ answers, step: 'updates', completedAt: null, skippedAt: null });
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: draft })).toBe(true);
     const skipped = await updateOnboardingProfile(ctx, { action: 'skip' });
     const lateDraft = await updateOnboardingProfile(ctx, {
       action: 'save',
@@ -83,7 +80,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
       step: 'updates',
     });
     expect(lateDraft.skippedAt).toBe(skipped.skippedAt);
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: lateDraft })).toBe(false);
     const completed = await updateOnboardingProfile(ctx, { action: 'complete', answers });
     expect(completed).toMatchObject({
       skippedAt: null,
@@ -112,7 +108,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     const lateSkip = await updateOnboardingProfile(ctx, { action: 'skip', answers: {} });
     expect(lateSave).toEqual(profiles[0]);
     expect(lateSkip).toEqual(profiles[0]);
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: lateSave })).toBe(false);
     expect(await db.app.count({ where: { organizationId: ctx.organizationId } })).toBe(0);
   });
 
@@ -124,7 +119,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
       skippedAt: expect.any(String),
       completedAt: null,
     });
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: skipped })).toBe(false);
     expect(await updateOnboardingProfile(ctx, { action: 'skip' })).toEqual(skipped);
     // A skip creates the row and never updates it again, so this is the one
     // path that can leave the column's own default behind. It must be a
@@ -160,7 +154,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
       answers: { technologies: ['capacitor', 'flutter'] },
     });
     expect(await db.app.count({ where: { organizationId: ctx.organizationId } })).toBe(0);
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
   });
 
   it('finishes with nothing answered, because no question is required', async () => {
@@ -171,7 +164,6 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
       completedAt: expect.any(String),
       skippedAt: null,
     });
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile })).toBe(false);
   });
 
   it('finishes with only some questions answered', async () => {
@@ -198,6 +190,5 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     await db.app.delete({ where: { id: app.id } });
     const saved = await getOnboardingProfile(ctx.organizationId);
     expect(saved).toEqual(profile);
-    expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: saved })).toBe(false);
   });
 });
