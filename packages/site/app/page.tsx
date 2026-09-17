@@ -27,7 +27,7 @@ import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
 import { CountUp } from '@/components/landing/CountUp';
-import { FounderSection } from '@/components/landing/FounderSection';
+// import { FounderSection } from '@/components/landing/FounderSection';
 import { GlobalDeliverySection } from '@/components/landing/GlobalDeliverySection';
 import { HeroIconCloud } from '@/components/landing/HeroIconCloud';
 import { ScaleToFit } from '@/components/ScaleToFit';
@@ -656,9 +656,11 @@ export default function LandingPage() {
 
       <Separator className="" />
 
+      {/* Temporarily hidden — signups dropped to zero after this was added.
       <FounderSection />
 
       <Separator className="" />
+      */}
 
       {/* FAQ */}
       <section id="faq" className="border-x border-border mx-auto max-w-screen-xl">
