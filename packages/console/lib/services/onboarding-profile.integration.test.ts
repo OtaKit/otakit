@@ -126,6 +126,13 @@ databaseDescribe('business onboarding (PostgreSQL integration)', () => {
     });
     expect(shouldShowOnboarding({ appCount: 0, role: ctx.role, profile: skipped })).toBe(false);
     expect(await updateOnboardingProfile(ctx, { action: 'skip' })).toEqual(skipped);
+    // A skip creates the row and never updates it again, so this is the one
+    // path that can leave the column's own default behind. It must be a
+    // question that still exists, in the database and not just on read.
+    const row = await db.organizationOnboarding.findUniqueOrThrow({
+      where: { organizationId: ctx.organizationId },
+    });
+    expect(row.step).toBe('stage');
   });
 
   it('keeps survey answers isolated between workspaces', async () => {

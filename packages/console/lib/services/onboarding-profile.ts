@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { recordAuditLog, sessionActor } from '@/lib/audit-log';
 import type { SessionContext } from '@/lib/session';
 import {
+  FIRST_QUESTION,
   LAST_QUESTION,
   onboardingAnswersSchema,
   resumeOnboardingStep,
@@ -47,8 +48,11 @@ export async function updateOnboardingProfile(
   // an unanswered questionnaire is a complete one.
   const result = await db.$transaction(async (tx) => {
     // A delayed save from another tab must not reopen completed onboarding.
-    await tx.$executeRaw`INSERT INTO "OrganizationOnboarding" ("organizationId", "updatedAt")
-      VALUES (${ctx.organizationId}, NOW()) ON CONFLICT ("organizationId") DO NOTHING`;
+    // `step` is named explicitly because the column default is still 'app', a
+    // question that no longer exists: a row created by a skip is never updated
+    // again, so letting the default stand would store a retired step forever.
+    await tx.$executeRaw`INSERT INTO "OrganizationOnboarding" ("organizationId", "step", "updatedAt")
+      VALUES (${ctx.organizationId}, ${FIRST_QUESTION}, NOW()) ON CONFLICT ("organizationId") DO NOTHING`;
     await tx.$queryRaw`SELECT "organizationId" FROM "OrganizationOnboarding"
       WHERE "organizationId" = ${ctx.organizationId} FOR UPDATE`;
     const existing = await tx.organizationOnboarding.findUniqueOrThrow({
