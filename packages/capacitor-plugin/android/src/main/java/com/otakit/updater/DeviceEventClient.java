@@ -9,15 +9,91 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
 final class DeviceEventClient {
 
-  private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+  private static final ScheduledExecutorService executor =
+    Executors.newSingleThreadScheduledExecutor();
+  private static EventOutbox outbox;
+  private static ScheduledFuture<?> scheduled;
+  private static boolean sending;
 
   private DeviceEventClient() {}
+
+  static synchronized void resume(java.io.File directory) {
+    try {
+      if (outbox == null) outbox = new EventOutbox(directory);
+      schedule();
+    } catch (Exception error) {
+      android.util.Log.w("OtaKit", "Cannot open device event outbox");
+    }
+  }
+
+  private static synchronized void schedule() {
+    if (sending || outbox == null) return;
+    if (scheduled != null) scheduled.cancel(false);
+    Long delay = outbox.waitMilliseconds(System.currentTimeMillis());
+    scheduled =
+      delay == null
+        ? null
+        : executor.schedule(DeviceEventClient::drain, delay, TimeUnit.MILLISECONDS);
+  }
+
+  private static void drain() {
+    synchronized (DeviceEventClient.class) {
+      if (sending) return;
+      sending = true;
+      if (scheduled != null) scheduled.cancel(false);
+      scheduled = null;
+    }
+    boolean storageFailed = false;
+    try {
+      EventOutbox.Entry entry = outbox.ready(System.currentTimeMillis());
+      if (entry == null) return;
+      int status = 0;
+      String retryAfter = null;
+      HttpURLConnection connection = null;
+      try {
+        connection = (HttpURLConnection) new URL(entry.url).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("X-App-Id", entry.appId);
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(10_000);
+        connection.setDoOutput(true);
+        try (OutputStream output = connection.getOutputStream()) {
+          output.write(entry.body.getBytes(StandardCharsets.UTF_8));
+        }
+        status = connection.getResponseCode();
+        retryAfter = connection.getHeaderField("Retry-After");
+      } catch (Exception ignored) {
+        // Retain the original ID and body after a lost response or offline failure.
+      } finally {
+        if (connection != null) connection.disconnect();
+      }
+      outbox.complete(entry.id, status, retryAfter, System.currentTimeMillis(), Math.random());
+    } catch (Exception error) {
+      storageFailed = true;
+      android.util.Log.w("OtaKit", "Cannot persist device event delivery state");
+    } finally {
+      synchronized (DeviceEventClient.class) {
+        sending = false;
+        // A broken disk must not create a zero-delay retry loop.
+        if (storageFailed) scheduled = executor.schedule(
+          DeviceEventClient::drain,
+          60,
+          TimeUnit.SECONDS
+        );
+        else schedule();
+      }
+    }
+  }
 
   static void send(
     String ingestUrl,
@@ -31,8 +107,7 @@ final class DeviceEventClient {
     String nativeBuild,
     String detail
   ) {
-    executor.execute(() -> {
-      HttpURLConnection connection = null;
+    synchronized (DeviceEventClient.class) {
       try {
         String base = ingestUrl.replaceAll("/+$", "");
         URL url = new URL(base + "/events");
@@ -56,30 +131,14 @@ final class DeviceEventClient {
           payload.put("detail", truncated);
         }
 
-        byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
-
-        connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("POST");
-        connection.setRequestProperty("X-App-Id", appId);
-        connection.setRequestProperty("Content-Type", "application/json");
-        connection.setConnectTimeout(10_000);
-        connection.setReadTimeout(10_000);
-        connection.setDoOutput(true);
-
-        try (OutputStream output = connection.getOutputStream()) {
-          output.write(body);
-        }
-
-        // Device events are best-effort and should never block the update flow.
-        connection.getResponseCode();
+        if (outbox == null) throw new java.io.IOException("Outbox unavailable");
+        outbox.enqueue(url.toString(), appId, payload.toString(), System.currentTimeMillis());
+        schedule();
       } catch (Exception ignored) {
-        // Device events are best-effort, don't fail on errors
-      } finally {
-        if (connection != null) {
-          connection.disconnect();
-        }
+        // Persistence failure must not fail or roll back the update itself.
+        android.util.Log.w("OtaKit", "Cannot persist device event");
       }
-    });
+    }
   }
 
   private static String iso8601Now() {

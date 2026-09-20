@@ -166,6 +166,7 @@ public class UpdaterPlugin extends Plugin {
     );
     this.cdnUrl = resolveCdnUrl(getConfig().getString("cdnUrl"), System.getenv("OTAKIT_CDN_URL"));
     this.appId = getConfig().getString("appId");
+    DeviceEventClient.resume(new File(getContext().getNoBackupFilesDir(), "otakit-events"));
     this.channel = trimToNull(getConfig().getString("channel"));
     this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
     this.store = new BundleStore(getContext(), builtinVersion, nativeBuild, this.runtimeVersion);
@@ -269,6 +270,9 @@ public class UpdaterPlugin extends Plugin {
   protected void handleOnResume() {
     super.handleOnResume();
     trialDeadline.setForeground(true);
+    if (bridge != null) DeviceEventClient.resume(
+      new File(getContext().getNoBackupFilesDir(), "otakit-events")
+    );
     if (!storageReady) return;
     if (coldStartInProgress) {
       coldStartInProgress = false;
