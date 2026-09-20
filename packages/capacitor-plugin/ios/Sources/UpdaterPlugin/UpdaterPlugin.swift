@@ -54,6 +54,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var runtimeVersion: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var bundleKeys: [(kid: String, key: Data)] = []
+  private lazy var updateOwner = UpdateOwner(isAvailable: { [weak self] in self?.bridge?.webView != nil })
   private let documentReadyBridge = DocumentReadyBridge()
   private let trialDeadline = ForegroundDeadline()
   private var checkIntervalMs: Int = 600_000
@@ -337,7 +338,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     Task {
       defer { coordinator.endOperation() }
       do {
+        try ensureOwnerActive()
         try await operation()
+      } catch is CancellationError {
+        // The owning bridge went away; this is not a failed update attempt.
       } catch {
         print("[OtaKit] \(label) failed: \(error.localizedDescription)")
       }
@@ -463,9 +467,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     DispatchQueue.main.async { [weak self] in
       guard let self else { call.reject("Updater is unavailable"); return }
       do {
-        let preparation = try self.coordinator.prepareNotifyAppReady(
-          activationId: call.getString("_otakitActivationId")
-        )
+        let preparation = try self.updateOwner.run {
+          try self.coordinator.prepareNotifyAppReady(activationId: call.getString("_otakitActivationId"))
+        }
         self.cleanupInBackground(preparation.cleanupBundleIds)
         if let eventPayload = preparation.eventPayload {
           self.cancelTrialTimeout()
@@ -556,6 +560,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     respectInterval: Bool,
     channel: String?
   ) async throws -> CheckResolution {
+    try ensureOwnerActive()
     let targetChannel = resolveTargetChannel(channel)
     if respectInterval, shouldSkipCheckInterval() {
       print("[OtaKit] Skipping resume check: checkInterval has not elapsed")
@@ -704,6 +709,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     releaseId: String? = nil,
     encryption: ManifestEncryption? = nil
   ) async throws -> BundleInfo {
+    try ensureOwnerActive()
     // Check disk space before downloading
     if let size = expectedSize {
       // zip + extracted + buffer; encrypted bundles keep an extra decrypted
@@ -745,6 +751,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     } catch {
       // Network failures must report like every other download-path failure
       // (Android's downloadZip already sits inside its try block).
+      if error is CancellationError { throw error }
       sendDeviceEvent(
         action: .downloadError,
         bundleVersion: version,
@@ -781,6 +788,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     do {
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
+      try ensureOwnerActive()
       let valid = try HashUtils.verify(
         fileURL: zipURL,
         expectedSha256: expectedSha256
@@ -837,7 +845,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         releaseId: releaseId
       )
 
-      let cleanupBundleIds = try coordinator.stageDownloadedBundle(info)
+      let cleanupBundleIds = try stageOwnedBundle(info)
       coordinator.cleanupBundles(cleanupBundleIds)
 
       sendDeviceEvent(
@@ -850,6 +858,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
     } catch {
+      if error is CancellationError { throw error }
       sendDeviceEvent(
         action: .downloadError,
         bundleVersion: version,
@@ -901,8 +910,18 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   @discardableResult
   private func applyStaged(reloadAfterApply: Bool) throws -> Bool {
     try runOnMainSynchronously { [self] in
-      try applyStagedOnMain(reloadAfterApply: reloadAfterApply)
+      try updateOwner.run { try applyStagedOnMain(reloadAfterApply: reloadAfterApply) }
     }
+  }
+
+  private func stageOwnedBundle(_ bundle: BundleInfo) throws -> [String] {
+    try runOnMainSynchronously { [self] in
+      try updateOwner.run { try coordinator.stageDownloadedBundle(bundle) }
+    }
+  }
+
+  private func ensureOwnerActive() throws {
+    try runOnMainSynchronously { [self] in try updateOwner.run {} }
   }
 
   private func cleanupInBackground(_ ids: [String]) {
@@ -971,9 +990,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   ) {
     let preparation: UpdaterCoordinator.RollbackPreparation
     do {
-      preparation = try coordinator.prepareRollback(
-        expectedTrial: expectedTrial, reason: reason, isBundleUsable: isBundleUsable
-      )
+      preparation = try updateOwner.run {
+        try coordinator.prepareRollback(
+          expectedTrial: expectedTrial, reason: reason, isBundleUsable: isBundleUsable
+        )
+      }
+    } catch is CancellationError {
+      cancelTrialTimeout()
+      return
     } catch {
       print("[OtaKit] Cannot persist rollback: \(error.localizedDescription)")
       scheduleTrialTimeout(for: expectedTrial)
@@ -1103,6 +1127,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     manifest: LatestManifest,
     targetChannel: String?
   ) async throws -> BundleInfo {
+    try ensureOwnerActive()
     // Same conservative disk-space guard as the zip path.
     let requiredSpace = Int64(Double(manifest.size) * 2.5)
     if getFreeDiskSpace() < requiredSpace {
@@ -1191,7 +1216,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         releaseId: manifest.releaseId
       )
 
-      let cleanupBundleIds = try coordinator.stageDownloadedBundle(info)
+      let cleanupBundleIds = try stageOwnedBundle(info)
       coordinator.cleanupBundles(cleanupBundleIds)
 
       pruneDeltaCache(assembler: assembler)
@@ -1206,6 +1231,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
     } catch {
+      if error is CancellationError { throw error }
       sendDeviceEvent(
         action: .downloadError,
         bundleVersion: manifest.version,
