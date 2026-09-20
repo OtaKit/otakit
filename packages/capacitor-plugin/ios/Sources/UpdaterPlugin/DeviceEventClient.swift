@@ -8,6 +8,8 @@ enum DeviceEventAction: String {
 }
 
 enum DeviceEventClient {
+    private static let delivery = EventDelivery()
+    static func resume() { delivery.resume() }
     static func send(
         ingestUrl: String,
         appId: String,
@@ -53,14 +55,6 @@ enum DeviceEventClient {
             return
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(appId, forHTTPHeaderField: "X-App-Id")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        request.timeoutInterval = 10
-
-        // Device events are best-effort and should never block the update flow.
-        URLSession.shared.dataTask(with: request).resume()
+        delivery.enqueue(url: url, appId: appId, body: body)
     }
 }

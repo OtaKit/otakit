@@ -66,6 +66,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private static let defaultRuntimeKey = "__default__"
 
   public override func load() {
+    DeviceEventClient.resume()
     trialDeadline.observe(
       center: .default,
       active: UIApplication.didBecomeActiveNotification,
@@ -165,15 +166,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     dispatchColdStart()
 
-    if resumePolicy != .off {
-      foregroundObserver = NotificationCenter.default.addObserver(
+    foregroundObserver = NotificationCenter.default.addObserver(
         forName: UIApplication.willEnterForegroundNotification,
         object: nil,
         queue: .main
       ) { [weak self] _ in
-        self?.handleAppWillEnterForeground()
+        DeviceEventClient.resume()
+        if self?.resumePolicy != .off { self?.handleAppWillEnterForeground() }
       }
-    }
   }
 
   deinit {
