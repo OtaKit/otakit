@@ -1,5 +1,4 @@
 import Capacitor
-import CryptoKit
 import Foundation
 import UIKit
 
@@ -754,7 +753,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)
     let decryptedZipURL = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-decrypted-\(UUID().uuidString).zip")
+    var installationId: String?
     defer {
+      if let installationId { coordinator.cleanupBundles([installationId]) }
       try? fileManager.removeItem(at: zipURL)
       try? fileManager.removeItem(at: decryptedZipURL)
       try? fileManager.removeItem(at: extractDirectory)
@@ -797,16 +798,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       try zipUtils.extractSecurely(zipURL: zipToExtract, to: extractDirectory)
       let bundleRoot = try resolveBundleRoot(extractedDirectory: extractDirectory)
 
-      let bundleId = buildBundleId(
-        version: version,
-        releaseId: releaseId,
-        sha256: expectedSha256
-      )
+      let bundleId = BundleStore.newInstallationId()
+      installationId = bundleId
       let destination = coordinator.bundleDirectory(for: bundleId)
 
-      if fileManager.fileExists(atPath: destination.path) {
-        try fileManager.removeItem(at: destination)
-      }
+      // moveItem fails if the destination exists; never replace an installation.
 
       if bundleRoot.path != destination.path {
         try fileManager.moveItem(at: bundleRoot, to: destination)
@@ -1132,7 +1128,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let assembleDirectory = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-assemble-\(UUID().uuidString)", isDirectory: true)
+    var installationId: String?
     defer {
+      if let installationId { coordinator.cleanupBundles([installationId]) }
       try? fileManager.removeItem(at: assembleDirectory)
     }
 
@@ -1161,15 +1159,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
       try await assembler.assemble(entries: files, into: assembleDirectory)
 
-      let bundleId = buildBundleId(
-        version: manifest.version,
-        releaseId: manifest.releaseId,
-        sha256: manifest.sha256
-      )
+      let bundleId = BundleStore.newInstallationId()
+      installationId = bundleId
       let destination = coordinator.bundleDirectory(for: bundleId)
-      if fileManager.fileExists(atPath: destination.path) {
-        try fileManager.removeItem(at: destination)
-      }
+      // moveItem fails if the destination exists; never replace an installation.
       try fileManager.moveItem(at: assembleDirectory, to: destination)
 
       // Record this bundle's content hashes for cache pruning.
@@ -1264,45 +1257,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   private func isCompatibleRuntime(_ bundle: BundleInfo) -> Bool {
     isCompatibleRuntime(bundle.runtimeVersion)
-  }
-
-  private func buildBundleId(
-    version: String,
-    releaseId: String?,
-    sha256: String?
-  ) -> String {
-    let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
-    let allowed = CharacterSet(
-      charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
-    )
-
-    var normalizedScalars = String.UnicodeScalarView()
-    for scalar in trimmed.unicodeScalars {
-      if allowed.contains(scalar) {
-        normalizedScalars.append(scalar)
-      } else {
-        normalizedScalars.append("-")
-      }
-    }
-
-    var normalized = String(normalizedScalars).replacingOccurrences(
-      of: "-{2,}",
-      with: "-",
-      options: .regularExpression
-    )
-    normalized = normalized.trimmingCharacters(in: CharacterSet(charactersIn: "-."))
-
-    if normalized.isEmpty {
-      normalized = "bundle"
-    }
-    if normalized.count > 64 {
-      normalized = String(normalized.prefix(64))
-    }
-
-    let identitySource = trimToNil(releaseId) ?? trimToNil(sha256) ?? trimmed
-    let digest = SHA256.hash(data: Data(identitySource.utf8))
-    let suffix = digest.map { String(format: "%02x", $0) }.joined().prefix(12)
-    return "\(normalized)-\(suffix)"
   }
 
   /// Emit a JS lifecycle event. `notifyListeners` marshals to the bridge

@@ -1,6 +1,9 @@
 import Foundation
 
 final class BundleStore {
+  /// Release identity is metadata; an installation must never reuse a live directory.
+  static func newInstallationId() -> String { "bundle-\(UUID().uuidString.lowercased())" }
+
   private enum Keys {
     static let currentBundleId = "otakit_current_bundle_id"
     static let fallbackBundleId = "otakit_fallback_bundle_id"

@@ -15,7 +15,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -839,6 +838,7 @@ public class UpdaterPlugin extends Plugin {
     File downloadedZip = null;
     File decryptedZip = null;
     File extractedDirectory = null;
+    String installationId = null;
 
     try {
       downloadedZip = downloadZip(url);
@@ -883,10 +883,11 @@ public class UpdaterPlugin extends Plugin {
       zipUtils.extractSecurely(zipToExtract, extractedDirectory);
       File bundleRoot = resolveBundleRoot(extractedDirectory);
 
-      String bundleId = buildBundleId(version, releaseId, expectedSha256);
+      String bundleId = BundleStore.newInstallationId();
+      installationId = bundleId;
       File destination = coordinator.bundleDirectory(bundleId);
       if (destination.exists()) {
-        deleteRecursively(destination);
+        throw new IllegalStateException("Bundle installation directory already exists");
       }
       moveDirectory(bundleRoot, destination);
 
@@ -924,6 +925,9 @@ public class UpdaterPlugin extends Plugin {
       );
       throw e;
     } finally {
+      if (installationId != null) coordinator.cleanupBundles(
+        java.util.Collections.singletonList(installationId)
+      );
       if (downloadedZip != null && downloadedZip.exists()) {
         //noinspection ResultOfMethodCallIgnored
         downloadedZip.delete();
@@ -1166,6 +1170,7 @@ public class UpdaterPlugin extends Plugin {
       getContext().getCacheDir(),
       "otakit-assemble-" + System.currentTimeMillis()
     );
+    String installationId = null;
 
     try {
       if (manifest.files == null || manifest.files.isEmpty()) {
@@ -1180,10 +1185,11 @@ public class UpdaterPlugin extends Plugin {
       assembler.seedFromBuiltinIfNeeded(getContext(), BUILTIN_ASSET_PATH, store.getNativeBuild());
       assembler.assemble(manifest.files, assembleDirectory, getContext());
 
-      String bundleId = buildBundleId(manifest.version, manifest.releaseId, manifest.sha256);
+      String bundleId = BundleStore.newInstallationId();
+      installationId = bundleId;
       File destination = coordinator.bundleDirectory(bundleId);
       if (destination.exists()) {
-        deleteRecursively(destination);
+        throw new IllegalStateException("Bundle installation directory already exists");
       }
       moveDirectory(assembleDirectory, destination);
 
@@ -1251,6 +1257,9 @@ public class UpdaterPlugin extends Plugin {
       );
       throw e;
     } finally {
+      if (installationId != null) coordinator.cleanupBundles(
+        java.util.Collections.singletonList(installationId)
+      );
       if (assembleDirectory.exists()) {
         try {
           deleteRecursively(assembleDirectory);
@@ -1352,36 +1361,6 @@ public class UpdaterPlugin extends Plugin {
     if (!target.delete()) {
       throw new IllegalStateException("Failed to delete: " + target.getAbsolutePath());
     }
-  }
-
-  private String buildBundleId(String version, String releaseId, String sha256) throws Exception {
-    String trimmed = version == null ? "" : version.trim();
-    String normalized = trimmed.replaceAll("[^A-Za-z0-9._-]", "-");
-    normalized = normalized.replaceAll("-{2,}", "-");
-    normalized = normalized.replaceAll("^[\\-.]+|[\\-.]+$", "");
-    if (normalized.isEmpty()) {
-      normalized = "bundle";
-    }
-    if (normalized.length() > 64) {
-      normalized = normalized.substring(0, 64);
-    }
-
-    String identitySource = trimToNull(releaseId);
-    if (identitySource == null) {
-      identitySource = trimToNull(sha256);
-    }
-    if (identitySource == null) {
-      identitySource = trimmed;
-    }
-
-    MessageDigest digest = MessageDigest.getInstance("SHA-256");
-    byte[] hash = digest.digest(identitySource.getBytes(StandardCharsets.UTF_8));
-    StringBuilder suffix = new StringBuilder();
-    for (int i = 0; i < 6; i++) {
-      suffix.append(String.format("%02x", hash[i]));
-    }
-
-    return normalized + "-" + suffix;
   }
 
   private String resolveIngestUrl(String configured, String env) {

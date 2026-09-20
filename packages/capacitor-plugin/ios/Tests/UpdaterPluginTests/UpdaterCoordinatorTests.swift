@@ -197,6 +197,75 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertTrue(fixture.indexExists("B"))
     XCTAssertTrue(fixture.indexExists("C"))
   }
+
+  func testStagingCannotOverwriteReferencedBundleMetadata() throws {
+    try fixture.installHealthy("A")
+    try fixture.apply("B")
+    try fixture.stage("C")
+    for id in ["A", "B", "C"] {
+      let existing = try XCTUnwrap(fixture.store.getBundle(id: id))
+      XCTAssertThrowsError(try fixture.coordinator.stageDownloadedBundle(existing.withStatus(.error)))
+      XCTAssertEqual(fixture.store.getBundle(id: id)?.status, existing.status)
+      XCTAssertTrue(fixture.indexExists(id))
+    }
+    XCTAssertEqual(fixture.store.getCurrentBundleId(), "B")
+    XCTAssertEqual(fixture.store.getFallbackBundleId(), "A")
+    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
+    let rollback = try fixture.coordinator.prepareRollback(
+      expectedTrial: try XCTUnwrap(fixture.trial), reason: "notify_timeout",
+      isBundleUsable: fixture.isUsable
+    )
+    XCTAssertEqual(rollback.activationPath, fixture.store.bundleDirectory(for: "A").path)
+  }
+
+  func testFreshInstallationIdPreservesReleaseMatching() throws {
+    let first = BundleStore.newInstallationId()
+    let second = BundleStore.newInstallationId()
+    XCTAssertNotEqual(first, second)
+    try fixture.installHealthy(first)
+    let latest = LatestManifest(
+      version: first, url: nil, sha256: "hash-\(first)", size: 0,
+      runtimeVersion: nil, releaseId: "release-\(first)", strategy: "zip",
+      forceImmediate: false, encryption: nil, files: nil
+    )
+    switch fixture.coordinator.classifyLatestManifest(
+      latest, targetChannel: nil, isStagedBundleUsable: fixture.isUsable
+    ) {
+    case .noUpdate: break
+    default: XCTFail("Release matching must not depend on installation ID")
+    }
+    try fixture.apply("B")
+    try fixture.stage(second)
+    let incoming = BundleInfo(
+      id: second, version: first, runtimeVersion: nil, status: .pending,
+      downloadedAt: Date(), sha256: latest.sha256,
+      path: fixture.store.bundleDirectory(for: second).path,
+      channel: nil, releaseId: latest.releaseId
+    )
+    try fixture.store.saveBundle(incoming)
+    switch fixture.coordinator.classifyLatestManifest(
+      latest, targetChannel: nil, isStagedBundleUsable: fixture.isUsable
+    ) {
+    case .alreadyStaged(let bundle): XCTAssertEqual(bundle.id, second)
+    default: XCTFail("The fresh installation must be reusable as a staged release")
+    }
+    XCTAssertEqual(fixture.store.getBundle(id: first)?.status, .success)
+    XCTAssertTrue(fixture.indexExists(first))
+  }
+
+  func testFailedStagingCleanupPreservesCurrentAndSuccessfulStaging() throws {
+    try fixture.installHealthy("A")
+    let orphan = BundleStore.newInstallationId()
+    try fixture.withReadOnlyState { XCTAssertThrowsError(try fixture.stage(orphan)) }
+    fixture.coordinator.cleanupBundles([orphan])
+    XCTAssertFalse(fixture.indexExists(orphan))
+    XCTAssertTrue(fixture.indexExists("A"))
+    let staged = BundleStore.newInstallationId()
+    try fixture.stage(staged)
+    fixture.coordinator.cleanupBundles([staged])
+    XCTAssertTrue(fixture.indexExists(staged))
+    XCTAssertEqual(fixture.store.getStagedBundleId(), staged)
+  }
 }
 
 final class CoordinatorFixture {

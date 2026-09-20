@@ -16,6 +16,11 @@ import org.json.JSONObject;
 
 final class BundleStore {
 
+  /** Release identity is metadata; an installation must never reuse a live directory. */
+  static String newInstallationId() {
+    return "bundle-" + java.util.UUID.randomUUID();
+  }
+
   private static final String PREFS_NAME = "otakit_updater_state";
   private static final String KEY_CURRENT = "current_bundle_id";
   private static final String KEY_FALLBACK = "fallback_bundle_id";
