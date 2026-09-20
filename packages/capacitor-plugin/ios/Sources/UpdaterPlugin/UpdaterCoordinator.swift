@@ -116,18 +116,19 @@ final class UpdaterCoordinator {
 
   func pruneIncompatibleBundles(
     isCompatibleRuntime: @escaping (BundleInfo) -> Bool
-  ) -> [String] {
-    withStateLock {
+  ) throws -> [String] {
+    try withStateLock {
+      _ = try store.protectedBundleIds()
       var cleanupBundleIds = Set<String>()
 
       for bundle in store.listDownloadedBundles() where !isCompatibleRuntime(bundle) {
-        detachBundleReferencesLocked(bundleId: bundle.id)
+        try detachBundleReferencesLocked(bundleId: bundle.id)
         cleanupBundleIds.insert(bundle.id)
       }
 
       if let failed = store.getLastFailedBundle(),
          !isCompatibleRuntime(failed) {
-        store.setLastFailedBundle(nil)
+        try store.setLastFailedBundle(nil)
       }
 
       return Array(cleanupBundleIds)
@@ -136,16 +137,17 @@ final class UpdaterCoordinator {
 
   func normalizeStartupState(
     isBundleUsable: @escaping (BundleInfo) -> Bool
-  ) -> StartupPreparation {
-    withStateLock {
+  ) throws -> StartupPreparation {
+    try withStateLock {
+      _ = try store.protectedBundleIds()
       activeTrial = nil
       var cleanupBundleIds = Set<String>()
-      clearStaleBundlePointersLocked()
-      normalizeStagedPointerLocked(
+      try clearStaleBundlePointersLocked()
+      try normalizeStagedPointerLocked(
         isBundleUsable: isBundleUsable,
         cleanupBundleIds: &cleanupBundleIds
       )
-      normalizeFallbackPointerLocked(
+      try normalizeFallbackPointerLocked(
         isBundleUsable: isBundleUsable,
         cleanupBundleIds: &cleanupBundleIds
       )
@@ -154,7 +156,7 @@ final class UpdaterCoordinator {
       let current = store.getCurrentBundle()
       if !current.isBuiltin,
          current.status == .trial {
-        let rollback = rollbackLocked(
+        let rollback = try rollbackLocked(
           reason: "app_restarted_before_notify",
           isBundleUsable: isBundleUsable,
           cleanupBundleIds: &cleanupBundleIds
@@ -166,7 +168,7 @@ final class UpdaterCoordinator {
       if !normalizedCurrent.isBuiltin,
          normalizedCurrent.status == .error || !isBundleUsable(normalizedCurrent) {
         cleanupBundleIds.insert(normalizedCurrent.id)
-        normalizedCurrent = restoreFallbackOrBuiltinLocked(
+        normalizedCurrent = try restoreFallbackOrBuiltinLocked(
           isBundleUsable: isBundleUsable,
           cleanupBundleIds: &cleanupBundleIds,
           excluding: normalizedCurrent.id
@@ -176,7 +178,7 @@ final class UpdaterCoordinator {
       var trial: Trial?
       if !normalizedCurrent.isBuiltin,
          normalizedCurrent.status == .pending {
-        normalizedCurrent = updateStatusLocked(normalizedCurrent, status: .trial)
+        normalizedCurrent = try updateStatusLocked(normalizedCurrent, status: .trial)
         trial = beginTrialLocked(bundleId: normalizedCurrent.id)
       }
 
@@ -236,7 +238,7 @@ final class UpdaterCoordinator {
       var cleanupBundleIds = Set<String>()
       let previousStagedId = store.getStagedBundleId()
       try store.saveBundle(bundle)
-      store.setStagedBundleId(bundle.id)
+      try store.setStagedBundleId(bundle.id)
 
       if let previousStagedId,
          previousStagedId != bundle.id,
@@ -253,15 +255,15 @@ final class UpdaterCoordinator {
   func prepareApplyStaged(
     isCompatibleRuntime: @escaping (BundleInfo) -> Bool,
     isBundleUsable: @escaping (BundleInfo) -> Bool
-  ) -> ApplyPreparation {
-    withStateLock {
+  ) throws -> ApplyPreparation {
+    try withStateLock {
       var cleanupBundleIds = Set<String>()
       let previousCurrent = store.getCurrentBundle()
       // Keep the staged update until the running trial has a definite outcome.
       guard previousCurrent.status != .trial else {
         return ApplyPreparation(activationPath: nil, trial: nil, cleanupBundleIds: [])
       }
-      guard var staged = stagedBundleLocked(
+      guard var staged = try stagedBundleLocked(
         cleanInvalid: true,
         isCompatibleRuntime: isCompatibleRuntime,
         isUsable: isBundleUsable,
@@ -274,22 +276,17 @@ final class UpdaterCoordinator {
         )
       }
 
-      if previousCurrent.isBuiltin {
-        store.setFallbackBundleId(nil)
-      } else if previousCurrent.status == .success {
-        store.setFallbackBundleId(previousCurrent.id)
-      }
-
-      store.setCurrentBundleId(staged.id)
-      store.setStagedBundleId(nil)
-
-      var trial: Trial?
+      let fallbackId = previousCurrent.isBuiltin ? nil :
+        (previousCurrent.status == .success ? previousCurrent.id : store.getFallbackBundleId())
       if staged.status == .pending {
-        staged = updateStatusLocked(staged, status: .trial)
-        trial = beginTrialLocked(bundleId: staged.id)
-      } else if staged.status == .trial {
-        trial = beginTrialLocked(bundleId: staged.id)
+        staged = try updateStatusLocked(staged, status: .trial)
       }
+      // Persist trial metadata before publishing the pointer; keep all pointers in one write.
+      try store.setCoreState(
+        currentId: staged.id, fallbackId: fallbackId, stagedId: nil,
+        lastFailed: store.getLastFailedBundle()
+      )
+      let trial = staged.status == .trial ? beginTrialLocked(bundleId: staged.id) : nil
 
       return ApplyPreparation(
         activationPath: staged.path,
@@ -299,17 +296,21 @@ final class UpdaterCoordinator {
     }
   }
 
-  func prepareNotifyAppReady() -> NotifyReadyPreparation {
-    withStateLock {
+  func prepareNotifyAppReady() throws -> NotifyReadyPreparation {
+    try withStateLock {
       let current = store.getCurrentBundle()
       guard !current.isBuiltin,
-            current.status == .trial else {
+            activeTrial?.bundleId == current.id,
+            current.status == .trial ||
+              (current.status == .success && store.getFallbackBundleId() != current.id) else {
         return NotifyReadyPreparation(eventPayload: nil, cleanupBundleIds: [])
       }
 
       let oldFallbackId = store.getFallbackBundleId()
-      _ = updateStatusLocked(current, status: .success)
-      store.setFallbackBundleId(current.id)
+      if current.status == .trial {
+        _ = try updateStatusLocked(current, status: .success)
+      }
+      try store.setFallbackBundleId(current.id)
       activeTrial = nil
 
       var cleanupBundleIds = Set<String>()
@@ -336,8 +337,8 @@ final class UpdaterCoordinator {
     expectedTrial: Trial,
     reason: String,
     isBundleUsable: @escaping (BundleInfo) -> Bool
-  ) -> RollbackPreparation {
-    withStateLock {
+  ) throws -> RollbackPreparation {
+    try withStateLock {
       let current = store.getCurrentBundle()
       guard activeTrial == expectedTrial,
             current.id == expectedTrial.bundleId,
@@ -347,7 +348,7 @@ final class UpdaterCoordinator {
         )
       }
       var cleanupBundleIds = Set<String>()
-      let rollback = rollbackLocked(
+      let rollback = try rollbackLocked(
         reason: reason,
         isBundleUsable: isBundleUsable,
         cleanupBundleIds: &cleanupBundleIds
@@ -369,12 +370,12 @@ final class UpdaterCoordinator {
 
   func cleanupBundles(_ bundleIds: [String]) {
     withStateLock {
+      // An unreadable state is not evidence that these files are unreferenced.
+      guard let protectedIds = try? store.protectedBundleIds() else { return }
       let uniqueIds = Set(bundleIds).filter { !$0.isEmpty && $0 != "builtin" }
       for bundleId in uniqueIds {
         // A later transition may have made an earlier cleanup candidate live again.
-        guard bundleId != store.getCurrentBundleId(),
-              bundleId != store.getFallbackBundleId(),
-              bundleId != store.getStagedBundleId() else { continue }
+        guard !protectedIds.contains(bundleId) else { continue }
         try? FileManager.default.removeItem(at: store.bundleDirectory(for: bundleId))
       }
     }
@@ -392,27 +393,27 @@ final class UpdaterCoordinator {
     return try work()
   }
 
-  private func clearStaleBundlePointersLocked() {
+  private func clearStaleBundlePointersLocked() throws {
     if let currentId = store.getCurrentBundleId(),
        store.getBundle(id: currentId) == nil {
-      store.setCurrentBundleId(nil)
+      try store.setCurrentBundleId(nil)
     }
 
     if let fallbackId = store.getFallbackBundleId(),
        store.getBundle(id: fallbackId) == nil {
-      store.setFallbackBundleId(nil)
+      try store.setFallbackBundleId(nil)
     }
 
     if let stagedId = store.getStagedBundleId(),
        store.getBundle(id: stagedId) == nil {
-      store.setStagedBundleId(nil)
+      try store.setStagedBundleId(nil)
     }
   }
 
   private func normalizeFallbackPointerLocked(
     isBundleUsable: (BundleInfo) -> Bool,
     cleanupBundleIds: inout Set<String>
-  ) {
+  ) throws {
     guard let fallbackId = store.getFallbackBundleId(),
           let fallback = store.getBundle(id: fallbackId) else {
       return
@@ -423,7 +424,7 @@ final class UpdaterCoordinator {
     }
 
     if fallback.status != .success || !isBundleUsable(fallback) {
-      store.setFallbackBundleId(nil)
+      try store.setFallbackBundleId(nil)
       cleanupBundleIds.insert(fallback.id)
     }
   }
@@ -431,18 +432,18 @@ final class UpdaterCoordinator {
   private func normalizeStagedPointerLocked(
     isBundleUsable: (BundleInfo) -> Bool,
     cleanupBundleIds: inout Set<String>
-  ) {
+  ) throws {
     guard let stagedId = store.getStagedBundleId() else {
       return
     }
 
     guard let staged = store.getBundle(id: stagedId) else {
-      store.setStagedBundleId(nil)
+      try store.setStagedBundleId(nil)
       return
     }
 
     if !isBundleUsable(staged) {
-      store.setStagedBundleId(nil)
+      try store.setStagedBundleId(nil)
       cleanupBundleIds.insert(staged.id)
     }
   }
@@ -452,7 +453,7 @@ final class UpdaterCoordinator {
     isUsable: (BundleInfo) -> Bool
   ) -> BundleInfo? {
     var ignored = Set<String>()
-    return stagedBundleLocked(
+    return try? stagedBundleLocked(
       cleanInvalid: false,
       isCompatibleRuntime: isCompatibleRuntime,
       isUsable: isUsable,
@@ -465,14 +466,14 @@ final class UpdaterCoordinator {
     isCompatibleRuntime: ((BundleInfo) -> Bool)?,
     isUsable: (BundleInfo) -> Bool,
     cleanupBundleIds: inout Set<String>
-  ) -> BundleInfo? {
+  ) throws -> BundleInfo? {
     guard let stagedId = store.getStagedBundleId() else {
       return nil
     }
 
     guard let staged = store.getBundle(id: stagedId) else {
       if cleanInvalid {
-        store.setStagedBundleId(nil)
+        try store.setStagedBundleId(nil)
       }
       return nil
     }
@@ -480,7 +481,7 @@ final class UpdaterCoordinator {
     if let isCompatibleRuntime,
        !isCompatibleRuntime(staged) {
       if cleanInvalid {
-        store.setStagedBundleId(nil)
+        try store.setStagedBundleId(nil)
         cleanupBundleIds.insert(staged.id)
       }
       return nil
@@ -488,7 +489,7 @@ final class UpdaterCoordinator {
 
     if !isUsable(staged) {
       if cleanInvalid {
-        store.setStagedBundleId(nil)
+        try store.setStagedBundleId(nil)
         cleanupBundleIds.insert(staged.id)
       }
       return nil
@@ -497,15 +498,15 @@ final class UpdaterCoordinator {
     return staged
   }
 
-  private func detachBundleReferencesLocked(bundleId: String) {
+  private func detachBundleReferencesLocked(bundleId: String) throws {
     if store.getCurrentBundleId() == bundleId {
-      store.setCurrentBundleId(nil)
+      try store.setCurrentBundleId(nil)
     }
     if store.getFallbackBundleId() == bundleId {
-      store.setFallbackBundleId(nil)
+      try store.setFallbackBundleId(nil)
     }
     if store.getStagedBundleId() == bundleId {
-      store.setStagedBundleId(nil)
+      try store.setStagedBundleId(nil)
     }
   }
 
@@ -513,7 +514,7 @@ final class UpdaterCoordinator {
     reason: String,
     isBundleUsable: (BundleInfo) -> Bool,
     cleanupBundleIds: inout Set<String>
-  ) -> LockedRollbackResult {
+  ) throws -> LockedRollbackResult {
     let current = store.getCurrentBundle()
     guard !current.isBuiltin else {
       return LockedRollbackResult(
@@ -523,16 +524,14 @@ final class UpdaterCoordinator {
       )
     }
 
-    let failed = updateStatusLocked(current, status: .error)
-    activeTrial = nil
-    store.setLastFailedBundle(failed)
-    store.setStagedBundleId(nil)
-
-    let fallback = restoreFallbackOrBuiltinLocked(
+    let failed = current.withStatus(.error)
+    let fallback = try restoreFallbackOrBuiltinLocked(
       isBundleUsable: isBundleUsable,
       cleanupBundleIds: &cleanupBundleIds,
-      excluding: current.id
+      excluding: current.id,
+      failedBundle: failed
     )
+    activeTrial = nil
     cleanupBundleIds.insert(current.id)
 
     return LockedRollbackResult(
@@ -552,45 +551,38 @@ final class UpdaterCoordinator {
   private func restoreFallbackOrBuiltinLocked(
     isBundleUsable: (BundleInfo) -> Bool,
     cleanupBundleIds: inout Set<String>,
-    excluding excludedBundleId: String
-  ) -> BundleInfo {
+    excluding excludedBundleId: String,
+    failedBundle: BundleInfo? = nil
+  ) throws -> BundleInfo {
+    var restored = store.builtinBundle()
     if let fallbackId = store.getFallbackBundleId(),
        let fallback = store.getBundle(id: fallbackId),
        !fallback.isBuiltin,
        fallback.id != excludedBundleId,
        fallback.status == .success,
        isBundleUsable(fallback) {
-      store.setCurrentBundleId(fallback.id)
-      return fallback
+      restored = fallback
     }
 
-    if let fallbackId = store.getFallbackBundleId() {
-      store.setFallbackBundleId(nil)
-      if fallbackId != "builtin" {
-        cleanupBundleIds.insert(fallbackId)
-      }
+    if let fallbackId = store.getFallbackBundleId(),
+       fallbackId != "builtin", fallbackId != restored.id {
+      cleanupBundleIds.insert(fallbackId)
     }
-
-    store.setCurrentBundleId(nil)
-    return store.builtinBundle()
+    let restoredId = restored.isBuiltin ? nil : restored.id
+    try store.setCoreState(
+      currentId: restoredId, fallbackId: restoredId,
+      stagedId: failedBundle == nil ? store.getStagedBundleId() : nil,
+      lastFailed: failedBundle ?? store.getLastFailedBundle()
+    )
+    return restored
   }
 
   private func updateStatusLocked(
     _ bundle: BundleInfo,
     status: BundleStatus
-  ) -> BundleInfo {
-    let updated = BundleInfo(
-      id: bundle.id,
-      version: bundle.version,
-      runtimeVersion: bundle.runtimeVersion,
-      status: status,
-      downloadedAt: bundle.downloadedAt,
-      sha256: bundle.sha256,
-      path: bundle.path,
-      channel: bundle.channel,
-      releaseId: bundle.releaseId
-    )
-    try? store.saveBundle(updated)
+  ) throws -> BundleInfo {
+    let updated = bundle.withStatus(status)
+    try store.saveBundle(updated)
     return updated
   }
 

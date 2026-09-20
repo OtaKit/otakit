@@ -124,11 +124,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       print("[OtaKit] ERROR: bundleKeys has wrong format (expected array of {kid, key}). Encrypted bundles cannot be decrypted.")
     }
 
-    pruneIncompatibleBundles()
-
-    let startup = coordinator.normalizeStartupState(
-      isBundleUsable: isBundleUsable
-    )
+    let startup: UpdaterCoordinator.StartupPreparation
+    do {
+      try pruneIncompatibleBundles()
+      startup = try coordinator.normalizeStartupState(isBundleUsable: isBundleUsable)
+    } catch {
+      print("[OtaKit] Cannot persist startup recovery: \(error.localizedDescription)")
+      try? applyServerBasePathSynchronously(nil)
+      return
+    }
     coordinator.cleanupBundles(startup.cleanupBundleIds)
 
     do {
@@ -445,17 +449,18 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func notifyAppReady(_ call: CAPPluginCall) {
-    cancelTrialTimeout()
-    let preparation = coordinator.prepareNotifyAppReady()
-    coordinator.cleanupBundles(preparation.cleanupBundleIds)
-    if let eventPayload = preparation.eventPayload {
-      sendDeviceEvent(eventPayload)
-      // eventPayload is non-nil only on a genuine trial -> success transition,
-      // so repeat notifyAppReady() calls never double-emit.
-      emitEvent("updateApplied", ["bundle": store.getCurrentBundle().toDictionary()])
+    do {
+      let preparation = try coordinator.prepareNotifyAppReady()
+      coordinator.cleanupBundles(preparation.cleanupBundleIds)
+      if let eventPayload = preparation.eventPayload {
+        cancelTrialTimeout()
+        sendDeviceEvent(eventPayload)
+        emitEvent("updateApplied", ["bundle": store.getCurrentBundle().toDictionary()])
+      }
+      call.resolve()
+    } catch {
+      call.reject("Could not persist update readiness: \(error.localizedDescription)")
     }
-
-    call.resolve()
   }
 
   @objc func getLastFailure(_ call: CAPPluginCall) {
@@ -882,7 +887,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   @discardableResult
   private func applyStaged(reloadAfterApply: Bool) throws -> Bool {
-    let preparation = coordinator.prepareApplyStaged(
+    let preparation = try coordinator.prepareApplyStaged(
       isCompatibleRuntime: isCompatibleRuntime,
       isBundleUsable: isBundleUsable
     )
@@ -941,11 +946,16 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private func rollbackCurrentBundle(
     expectedTrial: UpdaterCoordinator.Trial, reason: String, shouldReload: Bool
   ) {
-    let preparation = coordinator.prepareRollback(
-      expectedTrial: expectedTrial,
-      reason: reason,
-      isBundleUsable: isBundleUsable
-    )
+    let preparation: UpdaterCoordinator.RollbackPreparation
+    do {
+      preparation = try coordinator.prepareRollback(
+        expectedTrial: expectedTrial, reason: reason, isBundleUsable: isBundleUsable
+      )
+    } catch {
+      print("[OtaKit] Cannot persist rollback: \(error.localizedDescription)")
+      scheduleTrialTimeout(for: expectedTrial)
+      return
+    }
     guard preparation.didRollback else {
       return
     }
@@ -1241,8 +1251,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     assembler.pruneCache(referencedHashes: referenced)
   }
 
-  private func pruneIncompatibleBundles() {
-    let cleanupBundleIds = coordinator.pruneIncompatibleBundles(
+  private func pruneIncompatibleBundles() throws {
+    let cleanupBundleIds = try coordinator.pruneIncompatibleBundles(
       isCompatibleRuntime: isCompatibleRuntime
     )
     coordinator.cleanupBundles(cleanupBundleIds)

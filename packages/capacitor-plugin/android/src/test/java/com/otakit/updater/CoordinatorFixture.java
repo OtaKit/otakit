@@ -12,11 +12,14 @@ import org.robolectric.RuntimeEnvironment;
 final class CoordinatorFixture {
 
   final BundleStore store;
+  final File root;
+  final Context context;
   final UpdaterCoordinator coordinator;
   UpdaterCoordinator.Trial trial;
 
   CoordinatorFixture(File root) {
-    Context context = new ContextWrapper(RuntimeEnvironment.getApplication()) {
+    this.root = root;
+    context = new ContextWrapper(RuntimeEnvironment.getApplication()) {
       @Override
       public Context getApplicationContext() {
         return this;
@@ -41,6 +44,36 @@ final class CoordinatorFixture {
 
   boolean isUsable(BundleInfo bundle) {
     return bundle.isBuiltin() || indexExists(bundle.id);
+  }
+
+  interface ThrowingWork {
+    void run() throws Exception;
+  }
+
+  BundleStore reopenStore() {
+    return new BundleStore(context, "1.0", "1", null);
+  }
+
+  void withReadOnlyState(ThrowingWork work) throws Exception {
+    assertTrue(root.setWritable(false, false));
+    try {
+      work.run();
+    } finally {
+      assertTrue(root.setWritable(true, true));
+    }
+  }
+
+  void withReadOnlyMetadata(String id, ThrowingWork work) throws Exception {
+    File directory = store.bundleDirectory(id);
+    File metadata = new File(directory, "bundle.json");
+    assertTrue(metadata.setWritable(false, false));
+    assertTrue(directory.setWritable(false, false));
+    try {
+      work.run();
+    } finally {
+      assertTrue(directory.setWritable(true, true));
+      assertTrue(metadata.setWritable(true, true));
+    }
   }
 
   void stage(String id) throws Exception {

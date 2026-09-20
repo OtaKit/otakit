@@ -2,9 +2,9 @@ package com.otakit.updater;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.AtomicFile;
 import com.getcapacitor.JSArray;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -105,9 +105,7 @@ final class BundleStore {
     }
 
     byte[] bytes = bundle.toJSONObject().toString().getBytes(StandardCharsets.UTF_8);
-    try (FileOutputStream output = new FileOutputStream(metadataFile(bundle.id), false)) {
-      output.write(bytes);
-    }
+    writeAtomically(metadataFile(bundle.id), bytes);
   }
 
   synchronized BundleInfo getBundle(String id) {
@@ -116,12 +114,8 @@ final class BundleStore {
     }
 
     File metadata = metadataFile(id);
-    if (!metadata.exists()) {
-      return null;
-    }
-
-    try (FileInputStream input = new FileInputStream(metadata)) {
-      byte[] bytes = readAllBytes(input);
+    try {
+      byte[] bytes = new AtomicFile(metadata).readFully();
       JSONObject json = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
       return BundleInfo.fromJSONObject(json);
     } catch (Exception ignored) {
@@ -129,104 +123,156 @@ final class BundleStore {
     }
   }
 
-  private static byte[] readAllBytes(FileInputStream input) throws Exception {
-    java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
-    byte[] chunk = new byte[8192];
-    int read;
-    while ((read = input.read(chunk)) != -1) {
-      buffer.write(chunk, 0, read);
-    }
-    return buffer.toByteArray();
-  }
-
   synchronized boolean bundleExists(String id) {
     return getBundle(id) != null;
   }
 
-  synchronized BundleInfo getCurrentBundle() {
-    String currentId = prefs.getString(KEY_CURRENT, null);
-    if (currentId == null) {
-      return builtinBundle();
+  private File stateFile() {
+    return new File(context.getFilesDir(), "otakit-state.json");
+  }
+
+  private static void writeAtomically(File file, byte[] bytes) throws Exception {
+    AtomicFile atomic = new AtomicFile(file);
+    FileOutputStream output = null;
+    try {
+      output = atomic.startWrite();
+      output.write(bytes);
+      output.getFD().sync();
+      atomic.finishWrite(output);
+      output = null;
+      if (!Arrays.equals(atomic.readFully(), bytes)) {
+        throw new java.io.IOException("Atomic updater state write did not complete");
+      }
+    } catch (Exception error) {
+      if (output != null) atomic.failWrite(output);
+      throw error;
     }
-    BundleInfo current = getBundle(currentId);
-    return current != null ? current : builtinBundle();
+  }
+
+  private JSONObject readCoreState() throws Exception {
+    File file = stateFile();
+    if (file.exists() || new File(file.getPath() + ".bak").exists()) {
+      JSONObject state = new JSONObject(
+        new String(new AtomicFile(file).readFully(), StandardCharsets.UTF_8)
+      );
+      if (state.getInt("version") != 1) throw new IllegalStateException(
+        "Unsupported updater state"
+      );
+      return state;
+    }
+    JSONObject state = new JSONObject();
+    state.put("version", 1);
+    state.put("currentId", prefs.getString(KEY_CURRENT, null));
+    state.put("fallbackId", prefs.getString(KEY_FALLBACK, null));
+    state.put("stagedId", prefs.getString(KEY_STAGED, null));
+    String failed = prefs.getString(KEY_LAST_FAILED_BUNDLE_INFO, null);
+    if (failed != null) {
+      try {
+        state.put("lastFailed", new JSONObject(failed));
+      } catch (JSONException ignored) {}
+    }
+    return state;
+  }
+
+  private JSONObject readCoreStateOrEmpty() {
+    try {
+      return readCoreState();
+    } catch (Exception error) {
+      return new JSONObject();
+    }
+  }
+
+  private void writeCoreState(JSONObject state) throws Exception {
+    writeAtomically(stateFile(), state.toString().getBytes(StandardCharsets.UTF_8));
+  }
+
+  private void setCoreValue(String key, Object value) {
+    try {
+      JSONObject state = readCoreState();
+      state.put(key, value);
+      writeCoreState(state);
+    } catch (Exception error) {
+      throw new IllegalStateException("Could not persist updater state", error);
+    }
+  }
+
+  synchronized void setCoreState(
+    String currentId,
+    String fallbackId,
+    String stagedId,
+    BundleInfo lastFailed
+  ) {
+    try {
+      readCoreState();
+      JSONObject state = new JSONObject();
+      state.put("version", 1);
+      state.put("currentId", currentId);
+      state.put("fallbackId", fallbackId);
+      state.put("stagedId", stagedId);
+      if (lastFailed != null) state.put("lastFailed", lastFailed.toJSONObject());
+      writeCoreState(state);
+    } catch (Exception error) {
+      throw new IllegalStateException("Could not persist updater state", error);
+    }
+  }
+
+  synchronized BundleInfo getCurrentBundle() {
+    String id = getCurrentBundleId();
+    BundleInfo bundle = id == null ? null : getBundle(id);
+    return bundle != null ? bundle : builtinBundle();
+  }
+
+  synchronized java.util.Set<String> protectedBundleIds() throws Exception {
+    JSONObject state = readCoreState();
+    java.util.Set<String> ids = new java.util.HashSet<>();
+    for (String key : new String[] { "currentId", "fallbackId", "stagedId" }) {
+      String id = state.optString(key, null);
+      if (id != null) ids.add(id);
+    }
+    return ids;
   }
 
   synchronized String getCurrentBundleId() {
-    return prefs.getString(KEY_CURRENT, null);
+    return readCoreStateOrEmpty().optString("currentId", null);
   }
 
   synchronized void setCurrentBundleId(String id) {
-    SharedPreferences.Editor editor = prefs.edit();
-    if (id == null) {
-      editor.remove(KEY_CURRENT);
-    } else {
-      editor.putString(KEY_CURRENT, id);
-    }
-    editor.commit();
+    setCoreValue("currentId", id);
   }
 
   synchronized BundleInfo getFallbackBundle() {
-    String fallbackId = prefs.getString(KEY_FALLBACK, null);
-    if (fallbackId == null) {
-      return builtinBundle();
-    }
-    BundleInfo fallback = getBundle(fallbackId);
-    return fallback != null ? fallback : builtinBundle();
+    String id = getFallbackBundleId();
+    BundleInfo bundle = id == null ? null : getBundle(id);
+    return bundle != null ? bundle : builtinBundle();
   }
 
   synchronized String getFallbackBundleId() {
-    return prefs.getString(KEY_FALLBACK, null);
+    return readCoreStateOrEmpty().optString("fallbackId", null);
   }
 
   synchronized void setFallbackBundleId(String id) {
-    SharedPreferences.Editor editor = prefs.edit();
-    if (id == null) {
-      editor.remove(KEY_FALLBACK);
-    } else {
-      editor.putString(KEY_FALLBACK, id);
-    }
-    editor.commit();
+    setCoreValue("fallbackId", id);
   }
 
   synchronized String getStagedBundleId() {
-    return prefs.getString(KEY_STAGED, null);
+    return readCoreStateOrEmpty().optString("stagedId", null);
   }
 
   synchronized void setStagedBundleId(String id) {
-    SharedPreferences.Editor editor = prefs.edit();
-    if (id == null) {
-      editor.remove(KEY_STAGED);
-    } else {
-      editor.putString(KEY_STAGED, id);
-    }
-    editor.commit();
+    setCoreValue("stagedId", id);
   }
 
   synchronized void setLastFailedBundle(BundleInfo bundle) {
-    SharedPreferences.Editor editor = prefs.edit();
-    if (bundle == null) {
-      editor.remove(KEY_LAST_FAILED_BUNDLE_INFO);
-    } else {
-      try {
-        editor.putString(KEY_LAST_FAILED_BUNDLE_INFO, bundle.toJSONObject().toString());
-      } catch (JSONException ignored) {
-        editor.remove(KEY_LAST_FAILED_BUNDLE_INFO);
-      }
+    try {
+      setCoreValue("lastFailed", bundle == null ? null : bundle.toJSONObject());
+    } catch (JSONException error) {
+      throw new IllegalStateException(error);
     }
-    editor.apply();
   }
 
   synchronized BundleInfo getLastFailedBundle() {
-    String json = prefs.getString(KEY_LAST_FAILED_BUNDLE_INFO, null);
-    if (json == null) {
-      return null;
-    }
-    try {
-      return BundleInfo.fromJSONObject(new JSONObject(json));
-    } catch (Exception e) {
-      return null;
-    }
+    JSONObject failed = readCoreStateOrEmpty().optJSONObject("lastFailed");
+    return failed == null ? null : BundleInfo.fromJSONObject(failed);
   }
 
   synchronized String getOverrideChannel() {
@@ -265,7 +311,9 @@ final class BundleStore {
     }
     try {
       saveBundle(existing.withStatus(status));
-    } catch (Exception ignored) {}
+    } catch (Exception error) {
+      throw new IllegalStateException("Could not persist bundle status", error);
+    }
   }
 
   synchronized void deleteBundle(String id) throws Exception {
@@ -273,18 +321,13 @@ final class BundleStore {
       return;
     }
 
-    File directory = bundleDirectory(id);
-    deleteRecursively(directory);
-
-    if (id.equals(getStagedBundleId())) {
-      setStagedBundleId(null);
-    }
-    if (id.equals(prefs.getString(KEY_CURRENT, null))) {
-      setCurrentBundleId(null);
-    }
-    if (id.equals(prefs.getString(KEY_FALLBACK, null))) {
-      setFallbackBundleId(null);
-    }
+    setCoreState(
+      id.equals(getCurrentBundleId()) ? null : getCurrentBundleId(),
+      id.equals(getFallbackBundleId()) ? null : getFallbackBundleId(),
+      id.equals(getStagedBundleId()) ? null : getStagedBundleId(),
+      getLastFailedBundle()
+    );
+    deleteRecursively(bundleDirectory(id));
   }
 
   synchronized List<BundleInfo> listDownloadedBundleInfos() {

@@ -15,6 +15,14 @@ struct BundleInfo: Codable {
     id == "builtin"
   }
 
+  func withStatus(_ status: BundleStatus) -> BundleInfo {
+    BundleInfo(
+      id: id, version: version, runtimeVersion: runtimeVersion, status: status,
+      downloadedAt: downloadedAt, sha256: sha256, path: path, channel: channel,
+      releaseId: releaseId
+    )
+  }
+
   func toDictionary() -> [String: Any] {
     var result: [String: Any] = [
       "id": id,

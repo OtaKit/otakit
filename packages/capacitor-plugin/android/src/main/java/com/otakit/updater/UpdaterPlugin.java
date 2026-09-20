@@ -103,6 +103,7 @@ public class UpdaterPlugin extends Plugin {
   private Runnable trialTimeoutRunnable;
 
   private int appReadyTimeoutMs = 10_000;
+  private boolean storageReady;
   private boolean allowInsecureUrls = false;
   private Policy launchPolicy = Policy.APPLY_STAGED;
   private Policy resumePolicy = Policy.SHADOW;
@@ -231,13 +232,17 @@ public class UpdaterPlugin extends Plugin {
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
     this.checkIntervalMs = getConfig().getInt("checkInterval", 600_000);
 
-    pruneIncompatibleBundles();
-
-    UpdaterCoordinator.StartupPreparation startup = coordinator.normalizeStartupState(
-      this::isBundleUsable
-    );
-    coordinator.cleanupBundles(startup.cleanupBundleIds);
-    pendingStartupPreparation = startup;
+    try {
+      pruneIncompatibleBundles();
+      UpdaterCoordinator.StartupPreparation startup = coordinator.normalizeStartupState(
+        this::isBundleUsable
+      );
+      coordinator.cleanupBundles(startup.cleanupBundleIds);
+      pendingStartupPreparation = startup;
+      storageReady = true;
+    } catch (Exception error) {
+      android.util.Log.e("OtaKit", "Cannot persist startup recovery; keeping builtin", error);
+    }
   }
 
   @Override
@@ -249,6 +254,7 @@ public class UpdaterPlugin extends Plugin {
   @Override
   protected void handleOnResume() {
     super.handleOnResume();
+    if (!storageReady) return;
     if (coldStartInProgress) {
       coldStartInProgress = false;
       return;
@@ -572,18 +578,20 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void notifyAppReady(PluginCall call) {
-    cancelTrialTimeout();
-    UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady();
-    coordinator.cleanupBundles(preparation.cleanupBundleIds);
-    if (preparation.eventPayload != null) {
-      sendDeviceEvent(preparation.eventPayload);
-      // eventPayload is non-null only on a genuine trial -> success transition,
-      // so repeat notifyAppReady() calls never double-emit.
-      JSObject appliedData = new JSObject();
-      appliedData.put("bundle", store.getCurrentBundle().toJSObject());
-      emitEvent("updateApplied", appliedData);
+    try {
+      UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady();
+      coordinator.cleanupBundles(preparation.cleanupBundleIds);
+      if (preparation.eventPayload != null) {
+        cancelTrialTimeout();
+        sendDeviceEvent(preparation.eventPayload);
+        JSObject appliedData = new JSObject();
+        appliedData.put("bundle", store.getCurrentBundle().toJSObject());
+        emitEvent("updateApplied", appliedData);
+      }
+      call.resolve();
+    } catch (Exception error) {
+      call.reject("Could not persist update readiness: " + error.getMessage(), error);
     }
-    call.resolve();
   }
 
   @PluginMethod
@@ -1024,11 +1032,14 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private void rollbackCurrentBundle(UpdaterCoordinator.Trial expectedTrial, String reason) {
-    UpdaterCoordinator.RollbackPreparation preparation = coordinator.prepareRollback(
-      expectedTrial,
-      reason,
-      this::isBundleUsable
-    );
+    UpdaterCoordinator.RollbackPreparation preparation;
+    try {
+      preparation = coordinator.prepareRollback(expectedTrial, reason, this::isBundleUsable);
+    } catch (Exception error) {
+      android.util.Log.e("OtaKit", "Cannot persist rollback", error);
+      scheduleTrialTimeout(expectedTrial);
+      return;
+    }
     if (!preparation.didRollback) {
       return;
     }
