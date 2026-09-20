@@ -25,6 +25,10 @@ final class DeviceEventClient {
 
   private DeviceEventClient() {}
 
+  static synchronized boolean hasPendingEvents() {
+    return outbox != null && outbox.waitMilliseconds(System.currentTimeMillis()) != null;
+  }
+
   static synchronized void resume(java.io.File directory) {
     try {
       if (outbox == null) outbox = new EventOutbox(directory);

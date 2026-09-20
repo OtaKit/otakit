@@ -97,10 +97,9 @@ public class EventDeliveryTest {
       assertEquals(bodies.get(0), bodies.get(1));
       assertEquals(java.util.Arrays.asList("app-a", "app-a"), appIds);
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
-      while (
-        new EventOutbox(directory).waitMilliseconds(System.currentTimeMillis()) != null &&
-        System.nanoTime() < deadline
-      ) Thread.sleep(20);
+      while (DeviceEventClient.hasPendingEvents() && System.nanoTime() < deadline) Thread.sleep(20);
+      assertFalse("Delivery was not durably acknowledged", DeviceEventClient.hasPendingEvents());
+      // AtomicFile readers must not race its writer: openRead can delete an in-flight .new file.
       assertNull(new EventOutbox(directory).waitMilliseconds(System.currentTimeMillis()));
     } finally {
       server.close();
