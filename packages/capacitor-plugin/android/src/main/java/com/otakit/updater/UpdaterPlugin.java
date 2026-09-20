@@ -13,8 +13,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -943,35 +941,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private File downloadZip(URL url) throws Exception {
-    ManifestClient.requireHTTPS(url, allowInsecureUrls);
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    try {
-      connection.setRequestMethod("GET");
-      connection.setConnectTimeout(15_000);
-      connection.setReadTimeout(60_000);
-
-      int status = connection.getResponseCode();
-      if (status < 200 || status >= 300) {
-        throw new IllegalStateException("Download failed with HTTP " + status);
-      }
-
-      File destination = File.createTempFile("otakit-", ".zip", getContext().getCacheDir());
-
-      try (
-        InputStream input = connection.getInputStream();
-        FileOutputStream output = new FileOutputStream(destination)
-      ) {
-        byte[] buffer = new byte[8192];
-        int read;
-        while ((read = input.read(buffer)) > 0) {
-          output.write(buffer, 0, read);
-        }
-      }
-
-      return destination;
-    } finally {
-      connection.disconnect();
-    }
+    return ZipDownloader.download(url, getContext().getCacheDir(), allowInsecureUrls);
   }
 
   private File resolveBundleRoot(File extractedDirectory) throws Exception {
