@@ -34,10 +34,65 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
+  public void timeoutAfterReadinessDoesNotRollBackSuccess() throws Exception {
+    fixture.installHealthy("A");
+    fixture.apply("B");
+    var ready = fixture.coordinator.prepareNotifyAppReady();
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
+    var rollback = fixture.coordinator.prepareRollback(
+      fixture.trial,
+      "notify_timeout",
+      fixture::isUsable
+    );
+    fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds);
+    assertFalse(rollback.didRollback);
+    assertNull(rollback.eventPayload);
+    assertEquals("B", fixture.store.getCurrentBundle().id);
+    assertEquals(BundleStatus.SUCCESS, fixture.store.getCurrentBundle().status);
+    assertTrue(fixture.indexExists("B"));
+  }
+
+  @Test
+  public void oldTimeoutDoesNotAffectNewTrial() throws Exception {
+    fixture.installHealthy("A");
+    var oldTrial = fixture.apply("B").trial;
+    var ready = fixture.coordinator.prepareNotifyAppReady();
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
+    fixture.apply("C");
+    var stale = fixture.coordinator.prepareRollback(oldTrial, "notify_timeout", fixture::isUsable);
+    assertFalse(stale.didRollback);
+    assertTrue(stale.cleanupBundleIds.isEmpty());
+    assertEquals("C", fixture.store.getCurrentBundle().id);
+    assertEquals(BundleStatus.TRIAL, fixture.store.getCurrentBundle().status);
+  }
+
+  @Test
+  public void oldTimeoutDoesNotAffectRetryOfSameBundle() throws Exception {
+    fixture.installHealthy("A");
+    var oldTrial = fixture.apply("B").trial;
+    var failed = fixture.coordinator.prepareRollback(oldTrial, "notify_timeout", fixture::isUsable);
+    fixture.coordinator.cleanupBundles(failed.cleanupBundleIds);
+    var retry = fixture.apply("B").trial;
+    assertNotEquals(oldTrial.activationId, retry.activationId);
+    var stale = fixture.coordinator.prepareRollback(oldTrial, "notify_timeout", fixture::isUsable);
+    assertFalse(stale.didRollback);
+    assertEquals("B", fixture.store.getCurrentBundle().id);
+    var actual = fixture.coordinator.prepareRollback(retry, "notify_timeout", fixture::isUsable);
+    assertTrue(actual.didRollback);
+    assertEquals("A", fixture.store.getCurrentBundle().id);
+    var duplicate = fixture.coordinator.prepareRollback(retry, "notify_timeout", fixture::isUsable);
+    assertFalse(duplicate.didRollback);
+  }
+
+  @Test
   public void rollbackRestoresHealthyBundleAndRemovesFailedTrial() throws Exception {
     fixture.installHealthy("A");
     fixture.apply("B");
-    var rollback = fixture.coordinator.prepareRollback("notify_timeout", fixture::isUsable);
+    var rollback = fixture.coordinator.prepareRollback(
+      fixture.trial,
+      "notify_timeout",
+      fixture::isUsable
+    );
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds);
     assertTrue(rollback.didRollback);
     assertEquals("A", fixture.store.getCurrentBundle().id);
@@ -68,7 +123,11 @@ public class UpdaterCoordinatorTest {
     assertEquals("B", fixture.store.getCurrentBundle().id);
     assertEquals("A", fixture.store.getFallbackBundle().id);
     assertEquals("C", fixture.store.getStagedBundleId());
-    var rollback = fixture.coordinator.prepareRollback("notify_timeout", fixture::isUsable);
+    var rollback = fixture.coordinator.prepareRollback(
+      fixture.trial,
+      "notify_timeout",
+      fixture::isUsable
+    );
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds);
     var startup = fixture.coordinator.normalizeStartupState(fixture::isUsable);
     fixture.coordinator.cleanupBundles(startup.cleanupBundleIds);
@@ -108,7 +167,11 @@ public class UpdaterCoordinatorTest {
     fixture.apply("B");
     fixture.stage("C");
     fixture.store.setFallbackBundleId("C");
-    var rollback = fixture.coordinator.prepareRollback("notify_timeout", fixture::isUsable);
+    var rollback = fixture.coordinator.prepareRollback(
+      fixture.trial,
+      "notify_timeout",
+      fixture::isUsable
+    );
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds);
     assertNull(rollback.activationPath);
     assertTrue(fixture.store.getCurrentBundle().isBuiltin());

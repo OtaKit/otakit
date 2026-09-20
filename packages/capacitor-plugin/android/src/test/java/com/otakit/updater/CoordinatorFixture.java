@@ -13,6 +13,7 @@ final class CoordinatorFixture {
 
   final BundleStore store;
   final UpdaterCoordinator coordinator;
+  UpdaterCoordinator.Trial trial;
 
   CoordinatorFixture(File root) {
     Context context = new ContextWrapper(RuntimeEnvironment.getApplication()) {
@@ -63,6 +64,7 @@ final class CoordinatorFixture {
   UpdaterCoordinator.ApplyPreparation apply(String id) throws Exception {
     stage(id);
     var result = coordinator.prepareApplyStaged(bundle -> true, this::isUsable);
+    if (result.trial != null) trial = result.trial;
     coordinator.cleanupBundles(result.cleanupBundleIds);
     return result;
   }

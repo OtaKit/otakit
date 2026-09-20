@@ -21,10 +21,68 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertNil(fixture.coordinator.prepareNotifyAppReady().eventPayload)
   }
 
+  func testTimeoutAfterReadinessDoesNotRollBackSuccess() throws {
+    try fixture.installHealthy("A")
+    try fixture.apply("B")
+    let ready = fixture.coordinator.prepareNotifyAppReady()
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
+    let rollback = fixture.coordinator.prepareRollback(
+      expectedTrial: try XCTUnwrap(fixture.trial),
+      reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
+    XCTAssertFalse(rollback.didRollback)
+    XCTAssertNil(rollback.eventPayload)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "B")
+    XCTAssertEqual(fixture.store.getCurrentBundle().status, .success)
+    XCTAssertTrue(fixture.indexExists("B"))
+  }
+
+  func testOldTimeoutDoesNotAffectNewTrial() throws {
+    try fixture.installHealthy("A")
+    let oldTrial = try XCTUnwrap(fixture.apply("B").trial)
+    let ready = fixture.coordinator.prepareNotifyAppReady()
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
+    try fixture.apply("C")
+    let stale = fixture.coordinator.prepareRollback(
+      expectedTrial: oldTrial, reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    XCTAssertFalse(stale.didRollback)
+    XCTAssertTrue(stale.cleanupBundleIds.isEmpty)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "C")
+    XCTAssertEqual(fixture.store.getCurrentBundle().status, .trial)
+  }
+
+  func testOldTimeoutDoesNotAffectRetryOfSameBundle() throws {
+    try fixture.installHealthy("A")
+    let oldTrial = try XCTUnwrap(fixture.apply("B").trial)
+    let failed = fixture.coordinator.prepareRollback(
+      expectedTrial: oldTrial, reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    fixture.coordinator.cleanupBundles(failed.cleanupBundleIds)
+    let retry = try XCTUnwrap(fixture.apply("B").trial)
+    XCTAssertNotEqual(oldTrial.activationId, retry.activationId)
+    let stale = fixture.coordinator.prepareRollback(
+      expectedTrial: oldTrial, reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    XCTAssertFalse(stale.didRollback)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "B")
+    let actual = fixture.coordinator.prepareRollback(
+      expectedTrial: retry, reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    XCTAssertTrue(actual.didRollback)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "A")
+    let duplicate = fixture.coordinator.prepareRollback(
+      expectedTrial: retry, reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    XCTAssertFalse(duplicate.didRollback)
+  }
+
   func testRollbackRestoresHealthyBundleAndRemovesFailedTrial() throws {
     try fixture.installHealthy("A")
     try fixture.apply("B")
     let rollback = fixture.coordinator.prepareRollback(
+      expectedTrial: try XCTUnwrap(fixture.trial),
       reason: "notify_timeout", isBundleUsable: fixture.isUsable
     )
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
@@ -57,6 +115,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
 
     let rollback = fixture.coordinator.prepareRollback(
+      expectedTrial: try XCTUnwrap(fixture.trial),
       reason: "notify_timeout", isBundleUsable: fixture.isUsable
     )
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
@@ -97,6 +156,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
     try fixture.stage("C")
     fixture.store.setFallbackBundleId("C")
     let rollback = fixture.coordinator.prepareRollback(
+      expectedTrial: try XCTUnwrap(fixture.trial),
       reason: "notify_timeout", isBundleUsable: fixture.isUsable
     )
     fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
@@ -121,6 +181,7 @@ final class CoordinatorFixture {
   let suiteName = "otakit-coordinator-tests-\(UUID().uuidString)"
   let store: BundleStore
   let coordinator: UpdaterCoordinator
+  var trial: UpdaterCoordinator.Trial?
 
   init() throws {
     root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -164,6 +225,7 @@ final class CoordinatorFixture {
     let result = coordinator.prepareApplyStaged(
       isCompatibleRuntime: { _ in true }, isBundleUsable: isUsable
     )
+    if let active = result.trial { trial = active }
     coordinator.cleanupBundles(result.cleanupBundleIds)
     return result
   }

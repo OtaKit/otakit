@@ -10,6 +10,16 @@ import java.util.concurrent.locks.ReentrantLock;
 
 final class UpdaterCoordinator {
 
+  static final class Trial {
+
+    final String bundleId;
+    final String activationId = java.util.UUID.randomUUID().toString();
+
+    Trial(String bundleId) {
+      this.bundleId = bundleId;
+    }
+  }
+
   interface BundlePredicate {
     boolean test(BundleInfo bundle);
   }
@@ -86,18 +96,18 @@ final class UpdaterCoordinator {
   static final class StartupPreparation {
 
     final String activationPath;
-    final String trialBundleId;
+    final Trial trial;
     final List<String> cleanupBundleIds;
     final DeviceEventPayload eventPayload;
 
     StartupPreparation(
       String activationPath,
-      String trialBundleId,
+      Trial trial,
       List<String> cleanupBundleIds,
       DeviceEventPayload eventPayload
     ) {
       this.activationPath = activationPath;
-      this.trialBundleId = trialBundleId;
+      this.trial = trial;
       this.cleanupBundleIds = cleanupBundleIds;
       this.eventPayload = eventPayload;
     }
@@ -106,12 +116,12 @@ final class UpdaterCoordinator {
   static final class ApplyPreparation {
 
     final String activationPath;
-    final String trialBundleId;
+    final Trial trial;
     final List<String> cleanupBundleIds;
 
-    ApplyPreparation(String activationPath, String trialBundleId, List<String> cleanupBundleIds) {
+    ApplyPreparation(String activationPath, Trial trial, List<String> cleanupBundleIds) {
       this.activationPath = activationPath;
-      this.trialBundleId = trialBundleId;
+      this.trial = trial;
       this.cleanupBundleIds = cleanupBundleIds;
     }
 
@@ -176,6 +186,7 @@ final class UpdaterCoordinator {
   private final BundleStore store;
   private final AtomicBoolean operationInProgress = new AtomicBoolean(false);
   private final ReentrantLock stateLock = new ReentrantLock();
+  private Trial activeTrial;
 
   UpdaterCoordinator(BundleStore store) {
     this.store = store;
@@ -234,6 +245,7 @@ final class UpdaterCoordinator {
 
   StartupPreparation normalizeStartupState(BundlePredicate isBundleUsable) {
     return withStateLock(() -> {
+      activeTrial = null;
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
       clearStaleBundlePointersLocked();
       normalizeStagedPointerLocked(isBundleUsable, cleanupBundleIds);
@@ -263,15 +275,15 @@ final class UpdaterCoordinator {
         );
       }
 
-      String trialBundleId = null;
+      Trial trial = null;
       if (!normalizedCurrent.isBuiltin() && normalizedCurrent.status == BundleStatus.PENDING) {
         normalizedCurrent = updateStatusLocked(normalizedCurrent, BundleStatus.TRIAL);
-        trialBundleId = normalizedCurrent.id;
+        trial = beginTrialLocked(normalizedCurrent.id);
       }
 
       return new StartupPreparation(
         normalizedCurrent.isBuiltin() ? null : normalizedCurrent.path,
-        trialBundleId,
+        trial,
         new ArrayList<>(cleanupBundleIds),
         eventPayload
       );
@@ -374,15 +386,15 @@ final class UpdaterCoordinator {
       store.setCurrentBundleId(staged.id);
       store.setStagedBundleId(null);
 
-      String trialBundleId = null;
+      Trial trial = null;
       if (staged.status == BundleStatus.PENDING) {
         staged = updateStatusLocked(staged, BundleStatus.TRIAL);
-        trialBundleId = staged.id;
+        trial = beginTrialLocked(staged.id);
       } else if (staged.status == BundleStatus.TRIAL) {
-        trialBundleId = staged.id;
+        trial = beginTrialLocked(staged.id);
       }
 
-      return new ApplyPreparation(staged.path, trialBundleId, new ArrayList<>(cleanupBundleIds));
+      return new ApplyPreparation(staged.path, trial, new ArrayList<>(cleanupBundleIds));
     });
   }
 
@@ -396,6 +408,7 @@ final class UpdaterCoordinator {
       String oldFallbackId = store.getFallbackBundleId();
       updateStatusLocked(current, BundleStatus.SUCCESS);
       store.setFallbackBundleId(current.id);
+      activeTrial = null;
 
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
       if (oldFallbackId != null && !oldFallbackId.equals(current.id)) {
@@ -416,8 +429,22 @@ final class UpdaterCoordinator {
     });
   }
 
-  RollbackPreparation prepareRollback(String reason, BundlePredicate isBundleUsable) {
+  RollbackPreparation prepareRollback(
+    Trial expectedTrial,
+    String reason,
+    BundlePredicate isBundleUsable
+  ) {
     return withStateLock(() -> {
+      BundleInfo current = store.getCurrentBundle();
+      if (
+        activeTrial == null ||
+        expectedTrial == null ||
+        !activeTrial.activationId.equals(expectedTrial.activationId) ||
+        !current.id.equals(expectedTrial.bundleId) ||
+        current.status != BundleStatus.TRIAL
+      ) {
+        return new RollbackPreparation(false, null, null, new ArrayList<>());
+      }
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
       LockedRollbackResult rollback = rollbackLocked(reason, isBundleUsable, cleanupBundleIds);
       return new RollbackPreparation(
@@ -429,11 +456,9 @@ final class UpdaterCoordinator {
     });
   }
 
-  boolean isCurrentTrialBundle(String bundleId) {
-    return withStateLock(() -> {
-      BundleInfo current = store.getCurrentBundle();
-      return current.id.equals(bundleId) && current.status == BundleStatus.TRIAL;
-    });
+  private Trial beginTrialLocked(String bundleId) {
+    activeTrial = new Trial(bundleId);
+    return activeTrial;
   }
 
   void cleanupBundles(List<String> bundleIds) {
@@ -598,6 +623,7 @@ final class UpdaterCoordinator {
     }
 
     BundleInfo failed = updateStatusLocked(current, BundleStatus.ERROR);
+    activeTrial = null;
     store.setLastFailedBundle(failed);
     store.setStagedBundleId(null);
 
