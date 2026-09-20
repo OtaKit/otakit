@@ -301,11 +301,12 @@ final class UpdaterCoordinator {
     }
   }
 
-  func prepareNotifyAppReady() throws -> NotifyReadyPreparation {
+  func prepareNotifyAppReady(activationId: String?) throws -> NotifyReadyPreparation {
     try withStateLock {
       let current = store.getCurrentBundle()
       guard !current.isBuiltin,
             activeTrial?.bundleId == current.id,
+            let activationId, activeTrial?.activationId == activationId,
             current.status == .trial ||
               (current.status == .success && store.getFallbackBundleId() != current.id) else {
         return NotifyReadyPreparation(eventPayload: nil, cleanupBundleIds: [])

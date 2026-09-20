@@ -54,17 +54,19 @@ public class BundlePersistenceTest {
     fixture.installHealthy("A");
     fixture.apply("B");
     fixture.withReadOnlyState(() -> {
-      assertThrows(Exception.class, () -> fixture.coordinator.prepareNotifyAppReady());
+      assertThrows(Exception.class, () ->
+        fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId)
+      );
       assertEquals(BundleStatus.SUCCESS, fixture.store.getCurrentBundle().status);
       assertEquals("A", fixture.reopenStore().getFallbackBundle().id);
       assertTrue(fixture.indexExists("A"));
     });
-    var ready = fixture.coordinator.prepareNotifyAppReady();
+    var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);
     assertEquals("applied", ready.eventPayload.action);
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
     assertFalse(fixture.indexExists("A"));
     assertTrue(fixture.indexExists("B"));
-    assertNull(fixture.coordinator.prepareNotifyAppReady().eventPayload);
+    assertNull(fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId).eventPayload);
   }
 
   @Test

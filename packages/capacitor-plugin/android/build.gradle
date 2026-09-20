@@ -57,6 +57,7 @@ repositories {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation project(':capacitor-android')
+    implementation "androidx.webkit:webkit:${rootProject.ext.has('androidxWebkitVersion') ? rootProject.ext.androidxWebkitVersion : '1.12.1'}"
     testImplementation "junit:junit:$junitVersion"
     testImplementation 'org.robolectric:robolectric:4.17'
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

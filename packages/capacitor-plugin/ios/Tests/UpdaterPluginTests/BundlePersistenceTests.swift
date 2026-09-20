@@ -34,17 +34,17 @@ final class BundlePersistenceTests: XCTestCase {
     try fixture.installHealthy("A")
     try fixture.apply("B")
     try fixture.withReadOnlyState {
-      XCTAssertThrowsError(try fixture.coordinator.prepareNotifyAppReady())
+      XCTAssertThrowsError(try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId))
       XCTAssertEqual(fixture.store.getCurrentBundle().status, .success)
       XCTAssertEqual(fixture.reopenStore().getFallbackBundle().id, "A")
       XCTAssertTrue(fixture.indexExists("A"))
     }
-    let ready = try fixture.coordinator.prepareNotifyAppReady()
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
     XCTAssertEqual(ready.eventPayload?.action, .applied)
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
     XCTAssertFalse(fixture.indexExists("A"))
     XCTAssertTrue(fixture.indexExists("B"))
-    XCTAssertNil(try fixture.coordinator.prepareNotifyAppReady().eventPayload)
+    XCTAssertNil(try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId).eventPayload)
   }
 
   func testFailedRollbackCommitKeepsBothBundlesAndCanRetry() throws {

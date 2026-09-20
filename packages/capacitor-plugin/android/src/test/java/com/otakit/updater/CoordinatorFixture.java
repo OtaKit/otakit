@@ -104,7 +104,7 @@ final class CoordinatorFixture {
 
   void installHealthy(String id) throws Exception {
     assertTrue(apply(id).didApply());
-    var ready = coordinator.prepareNotifyAppReady();
+    var ready = coordinator.prepareNotifyAppReady(trial.activationId);
     assertNotNull(ready.eventPayload);
     coordinator.cleanupBundles(ready.cleanupBundleIds);
   }

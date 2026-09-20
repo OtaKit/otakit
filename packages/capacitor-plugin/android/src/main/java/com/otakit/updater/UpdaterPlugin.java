@@ -97,6 +97,7 @@ public class UpdaterPlugin extends Plugin {
 
   private BundleStore store;
   private UpdaterCoordinator coordinator;
+  private final DocumentReadyBridge documentReadyBridge = new DocumentReadyBridge();
   private Runnable trialTimeoutRunnable;
 
   private int appReadyTimeoutMs = 10_000;
@@ -234,7 +235,7 @@ public class UpdaterPlugin extends Plugin {
       UpdaterCoordinator.StartupPreparation startup = coordinator.normalizeStartupState(
         this::isBundleUsable
       );
-      coordinator.cleanupBundles(startup.cleanupBundleIds);
+      cleanupInBackground(startup.cleanupBundleIds);
       pendingStartupPreparation = startup;
       storageReady = true;
     } catch (Exception error) {
@@ -288,9 +289,14 @@ public class UpdaterPlugin extends Plugin {
 
     if (startup.activationPath != null && !startup.activationPath.isEmpty()) {
       try {
+        if (startup.trial != null) installReadinessBridge(startup.trial);
         applyServerBasePathSynchronously(startup.activationPath);
       } catch (Exception e) {
         android.util.Log.w("OtaKit", "startup activation failed", e);
+        if (startup.trial != null) {
+          rollbackCurrentBundle(startup.trial, "activation_failed");
+          return;
+        }
       }
     }
 
@@ -575,20 +581,24 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void notifyAppReady(PluginCall call) {
-    try {
-      UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady();
-      coordinator.cleanupBundles(preparation.cleanupBundleIds);
-      if (preparation.eventPayload != null) {
-        cancelTrialTimeout();
-        sendDeviceEvent(preparation.eventPayload);
-        JSObject appliedData = new JSObject();
-        appliedData.put("bundle", store.getCurrentBundle().toJSObject());
-        emitEvent("updateApplied", appliedData);
+    mainHandler.post(() -> {
+      try {
+        UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady(
+          call.getString("_otakitActivationId")
+        );
+        cleanupInBackground(preparation.cleanupBundleIds);
+        if (preparation.eventPayload != null) {
+          cancelTrialTimeout();
+          sendDeviceEvent(preparation.eventPayload);
+          JSObject appliedData = new JSObject();
+          appliedData.put("bundle", store.getCurrentBundle().toJSObject());
+          emitEvent("updateApplied", appliedData);
+        }
+        call.resolve();
+      } catch (Exception error) {
+        call.reject("Could not persist update readiness: " + error.getMessage(), error);
       }
-      call.resolve();
-    } catch (Exception error) {
-      call.reject("Could not persist update readiness: " + error.getMessage(), error);
-    }
+    });
   }
 
   @PluginMethod
@@ -966,16 +976,38 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private boolean applyStaged() throws Exception {
+    java.util.concurrent.atomic.AtomicBoolean applied =
+      new java.util.concurrent.atomic.AtomicBoolean();
+    runOnMainSynchronously(() -> applied.set(applyStagedOnMain()));
+    return applied.get();
+  }
+
+  private void cleanupInBackground(java.util.List<String> ids) {
+    if (!ids.isEmpty()) executor.execute(() -> coordinator.cleanupBundles(ids));
+  }
+
+  private void installReadinessBridge(UpdaterCoordinator.Trial trial) {
+    documentReadyBridge.install(bridge.getWebView(), bridge.getAppUrl(), trial.activationId);
+  }
+
+  private boolean applyStagedOnMain() throws Exception {
+    DocumentReadyBridge.preflight(bridge.getWebView(), bridge.getAppUrl());
     UpdaterCoordinator.ApplyPreparation preparation = coordinator.prepareApplyStaged(
       this::isCompatibleRuntime,
       this::isBundleUsable
     );
-    coordinator.cleanupBundles(preparation.cleanupBundleIds);
+    cleanupInBackground(preparation.cleanupBundleIds);
     if (!preparation.didApply()) {
       return false;
     }
 
-    applyServerBasePathSynchronously(preparation.activationPath);
+    try {
+      if (preparation.trial != null) installReadinessBridge(preparation.trial);
+      applyServerBasePathSynchronously(preparation.activationPath);
+    } catch (Exception error) {
+      if (preparation.trial != null) rollbackCurrentBundle(preparation.trial, "activation_failed");
+      throw error;
+    }
 
     cancelTrialTimeout();
     if (preparation.trial != null) {
@@ -1018,7 +1050,7 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     cancelTrialTimeout();
-    coordinator.cleanupBundles(preparation.cleanupBundleIds);
+    cleanupInBackground(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
       emitEvent(
