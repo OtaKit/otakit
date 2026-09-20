@@ -1,23 +1,35 @@
 DESCRIPTION >
     Applied/rollback event counts per release over a rolling time window,
     for the auto-revert health check. Reads the raw table (not the daily MV)
-    because the check needs sub-day granularity.
+    because the check needs sub-day granularity. Retries retain the earliest
+    receipt visible within raw-table retention.
 
 TOKEN otakit_web READ
+
+NODE first_release_health_receipts
+SQL >
+    %
+    SELECT
+        event_id,
+        ifNull(release_id, '') AS release_id,
+        action,
+        min(received_at) AS first_received_at
+    FROM device_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND action IN ('applied', 'rollback')
+      AND ifNull(release_id, '') != ''
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), ifNull(release_id, ''))
+    GROUP BY event_id, release_id, action
 
 NODE count_release_health_events
 SQL >
     %
     SELECT
-        ifNull(release_id, '') AS release_id,
+        release_id,
         action,
-        uniqExact(event_id) AS events_count
-    FROM device_events_raw
-    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
-      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
-      AND action IN ('applied', 'rollback')
-      AND ifNull(release_id, '') != ''
-      AND has(splitByChar(',', {{ String(release_ids, '') }}), ifNull(release_id, ''))
+        count() AS events_count
+    FROM first_release_health_receipts
+    WHERE first_received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
     GROUP BY release_id, action
 
 TYPE ENDPOINT
