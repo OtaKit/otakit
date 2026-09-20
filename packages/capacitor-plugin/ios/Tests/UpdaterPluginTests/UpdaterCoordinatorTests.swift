@@ -46,6 +46,73 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertEqual(fixture.store.getCurrentBundle().id, "A")
     XCTAssertTrue(fixture.indexExists("A"))
   }
+
+  func testSecondActivationWaitsForCurrentTrialAndPreservesHealthyFallback() throws {
+    try fixture.installHealthy("A")
+    try fixture.apply("B")
+    let second = try fixture.apply("C")
+    XCTAssertFalse(second.didApply)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "B")
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "A")
+    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
+
+    let rollback = fixture.coordinator.prepareRollback(
+      reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
+    let startup = fixture.coordinator.normalizeStartupState(isBundleUsable: fixture.isUsable)
+    fixture.coordinator.cleanupBundles(startup.cleanupBundleIds)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "A")
+    XCTAssertTrue(fixture.indexExists("A"))
+  }
+
+  func testLegacySelfFallbackRestoresBuiltinInsteadOfDeletingActivationTarget() throws {
+    try fixture.apply("B")
+    fixture.store.setFallbackBundleId("B")
+    let startup = fixture.coordinator.normalizeStartupState(isBundleUsable: fixture.isUsable)
+    fixture.coordinator.cleanupBundles(startup.cleanupBundleIds)
+    XCTAssertNil(startup.activationPath)
+    XCTAssertTrue(fixture.store.getCurrentBundle().isBuiltin)
+    XCTAssertNil(fixture.store.getFallbackBundleId())
+  }
+
+  func testDeferredUpdateCanApplyAfterReadiness() throws {
+    try fixture.installHealthy("A")
+    try fixture.apply("B")
+    XCTAssertFalse(try fixture.apply("C").didApply)
+    let ready = fixture.coordinator.prepareNotifyAppReady()
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
+    let applied = fixture.coordinator.prepareApplyStaged(
+      isCompatibleRuntime: { _ in true }, isBundleUsable: fixture.isUsable
+    )
+    XCTAssertTrue(applied.didApply)
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "C")
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "B")
+    XCTAssertEqual(fixture.store.getFallbackBundle().status, .success)
+    XCTAssertTrue(fixture.indexExists("B"))
+  }
+
+  func testRollbackNeverRestoresAnUnconfirmedFallback() throws {
+    try fixture.apply("B")
+    try fixture.stage("C")
+    fixture.store.setFallbackBundleId("C")
+    let rollback = fixture.coordinator.prepareRollback(
+      reason: "notify_timeout", isBundleUsable: fixture.isUsable
+    )
+    fixture.coordinator.cleanupBundles(rollback.cleanupBundleIds)
+    XCTAssertNil(rollback.activationPath)
+    XCTAssertTrue(fixture.store.getCurrentBundle().isBuiltin)
+  }
+
+  func testCleanupRechecksReferencesBeforeDeleting() throws {
+    try fixture.installHealthy("A")
+    try fixture.apply("B")
+    try fixture.stage("C")
+    fixture.coordinator.cleanupBundles(["A", "B", "C", "builtin"])
+    XCTAssertTrue(fixture.indexExists("A"))
+    XCTAssertTrue(fixture.indexExists("B"))
+    XCTAssertTrue(fixture.indexExists("C"))
+  }
 }
 
 final class CoordinatorFixture {

@@ -251,9 +251,16 @@ final class UpdaterCoordinator {
       }
 
       BundleInfo normalizedCurrent = store.getCurrentBundle();
-      if (!normalizedCurrent.isBuiltin() && !isBundleUsable.test(normalizedCurrent)) {
+      if (
+        !normalizedCurrent.isBuiltin() &&
+        (normalizedCurrent.status == BundleStatus.ERROR || !isBundleUsable.test(normalizedCurrent))
+      ) {
         cleanupBundleIds.add(normalizedCurrent.id);
-        normalizedCurrent = restoreFallbackOrBuiltinLocked(isBundleUsable, cleanupBundleIds);
+        normalizedCurrent = restoreFallbackOrBuiltinLocked(
+          isBundleUsable,
+          cleanupBundleIds,
+          normalizedCurrent.id
+        );
       }
 
       String trialBundleId = null;
@@ -343,6 +350,11 @@ final class UpdaterCoordinator {
   ) {
     return withStateLock(() -> {
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
+      BundleInfo previousCurrent = store.getCurrentBundle();
+      // A staged update must not replace the only running trial before it is acknowledged.
+      if (previousCurrent.status == BundleStatus.TRIAL) {
+        return new ApplyPreparation(null, null, new ArrayList<>());
+      }
       BundleInfo staged = stagedBundleLocked(
         true,
         isCompatibleRuntime,
@@ -353,10 +365,9 @@ final class UpdaterCoordinator {
         return new ApplyPreparation(null, null, new ArrayList<>(cleanupBundleIds));
       }
 
-      BundleInfo previousCurrent = store.getCurrentBundle();
       if (previousCurrent.isBuiltin()) {
         store.setFallbackBundleId(null);
-      } else {
+      } else if (previousCurrent.status == BundleStatus.SUCCESS) {
         store.setFallbackBundleId(previousCurrent.id);
       }
 
@@ -433,9 +444,19 @@ final class UpdaterCoordinator {
       }
     }
 
-    for (String bundleId : uniqueIds) {
-      deleteRecursivelyQuietly(store.bundleDirectory(bundleId));
-    }
+    withStateLock(() -> {
+      for (String bundleId : uniqueIds) {
+        // Cleanup can run after a newer transition has made this bundle live again.
+        if (
+          !bundleId.equals(store.getCurrentBundleId()) &&
+          !bundleId.equals(store.getFallbackBundleId()) &&
+          !bundleId.equals(store.getStagedBundleId())
+        ) {
+          deleteRecursivelyQuietly(store.bundleDirectory(bundleId));
+        }
+      }
+      return null;
+    });
   }
 
   private <T> T withStateLock(LockedSupplier<T> work) {
@@ -482,7 +503,7 @@ final class UpdaterCoordinator {
       return;
     }
 
-    if (!isBundleUsable.test(fallback)) {
+    if (fallback.status != BundleStatus.SUCCESS || !isBundleUsable.test(fallback)) {
       store.setFallbackBundleId(null);
       cleanupBundleIds.add(fallback.id);
     }
@@ -580,7 +601,11 @@ final class UpdaterCoordinator {
     store.setLastFailedBundle(failed);
     store.setStagedBundleId(null);
 
-    BundleInfo fallback = restoreFallbackOrBuiltinLocked(isBundleUsable, cleanupBundleIds);
+    BundleInfo fallback = restoreFallbackOrBuiltinLocked(
+      isBundleUsable,
+      cleanupBundleIds,
+      current.id
+    );
     cleanupBundleIds.add(current.id);
 
     return new LockedRollbackResult(
@@ -599,12 +624,19 @@ final class UpdaterCoordinator {
 
   private BundleInfo restoreFallbackOrBuiltinLocked(
     BundlePredicate isBundleUsable,
-    Set<String> cleanupBundleIds
+    Set<String> cleanupBundleIds,
+    String excludedBundleId
   ) {
     String fallbackId = store.getFallbackBundleId();
     if (fallbackId != null) {
       BundleInfo fallback = store.getBundle(fallbackId);
-      if (fallback != null && !fallback.isBuiltin() && isBundleUsable.test(fallback)) {
+      if (
+        fallback != null &&
+        !fallback.isBuiltin() &&
+        !fallback.id.equals(excludedBundleId) &&
+        fallback.status == BundleStatus.SUCCESS &&
+        isBundleUsable.test(fallback)
+      ) {
         store.setCurrentBundleId(fallback.id);
         return fallback;
       }

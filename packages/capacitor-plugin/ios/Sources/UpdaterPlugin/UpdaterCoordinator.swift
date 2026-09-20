@@ -157,11 +157,12 @@ final class UpdaterCoordinator {
 
       var normalizedCurrent = store.getCurrentBundle()
       if !normalizedCurrent.isBuiltin,
-         !isBundleUsable(normalizedCurrent) {
+         normalizedCurrent.status == .error || !isBundleUsable(normalizedCurrent) {
         cleanupBundleIds.insert(normalizedCurrent.id)
         normalizedCurrent = restoreFallbackOrBuiltinLocked(
           isBundleUsable: isBundleUsable,
-          cleanupBundleIds: &cleanupBundleIds
+          cleanupBundleIds: &cleanupBundleIds,
+          excluding: normalizedCurrent.id
         )
       }
 
@@ -248,6 +249,11 @@ final class UpdaterCoordinator {
   ) -> ApplyPreparation {
     withStateLock {
       var cleanupBundleIds = Set<String>()
+      let previousCurrent = store.getCurrentBundle()
+      // Keep the staged update until the running trial has a definite outcome.
+      guard previousCurrent.status != .trial else {
+        return ApplyPreparation(activationPath: nil, trialBundleId: nil, cleanupBundleIds: [])
+      }
       guard var staged = stagedBundleLocked(
         cleanInvalid: true,
         isCompatibleRuntime: isCompatibleRuntime,
@@ -261,10 +267,9 @@ final class UpdaterCoordinator {
         )
       }
 
-      let previousCurrent = store.getCurrentBundle()
       if previousCurrent.isBuiltin {
         store.setFallbackBundleId(nil)
-      } else {
+      } else if previousCurrent.status == .success {
         store.setFallbackBundleId(previousCurrent.id)
       }
 
@@ -347,9 +352,15 @@ final class UpdaterCoordinator {
   }
 
   func cleanupBundles(_ bundleIds: [String]) {
-    let uniqueIds = Set(bundleIds).filter { !$0.isEmpty && $0 != "builtin" }
-    for bundleId in uniqueIds {
-      try? FileManager.default.removeItem(at: store.bundleDirectory(for: bundleId))
+    withStateLock {
+      let uniqueIds = Set(bundleIds).filter { !$0.isEmpty && $0 != "builtin" }
+      for bundleId in uniqueIds {
+        // A later transition may have made an earlier cleanup candidate live again.
+        guard bundleId != store.getCurrentBundleId(),
+              bundleId != store.getFallbackBundleId(),
+              bundleId != store.getStagedBundleId() else { continue }
+        try? FileManager.default.removeItem(at: store.bundleDirectory(for: bundleId))
+      }
     }
   }
 
@@ -395,7 +406,7 @@ final class UpdaterCoordinator {
       return
     }
 
-    if !isBundleUsable(fallback) {
+    if fallback.status != .success || !isBundleUsable(fallback) {
       store.setFallbackBundleId(nil)
       cleanupBundleIds.insert(fallback.id)
     }
@@ -502,7 +513,8 @@ final class UpdaterCoordinator {
 
     let fallback = restoreFallbackOrBuiltinLocked(
       isBundleUsable: isBundleUsable,
-      cleanupBundleIds: &cleanupBundleIds
+      cleanupBundleIds: &cleanupBundleIds,
+      excluding: current.id
     )
     cleanupBundleIds.insert(current.id)
 
@@ -522,11 +534,14 @@ final class UpdaterCoordinator {
 
   private func restoreFallbackOrBuiltinLocked(
     isBundleUsable: (BundleInfo) -> Bool,
-    cleanupBundleIds: inout Set<String>
+    cleanupBundleIds: inout Set<String>,
+    excluding excludedBundleId: String
   ) -> BundleInfo {
     if let fallbackId = store.getFallbackBundleId(),
        let fallback = store.getBundle(id: fallbackId),
        !fallback.isBuiltin,
+       fallback.id != excludedBundleId,
+       fallback.status == .success,
        isBundleUsable(fallback) {
       store.setCurrentBundleId(fallback.id)
       return fallback
