@@ -4,7 +4,7 @@ description: Set up, release, inspect, troubleshoot, or self-host OtaKit for Cap
 license: MIT
 metadata:
   author: OtaKit
-  version: '1.5.0'
+  version: '1.6.0'
 ---
 
 # OtaKit
