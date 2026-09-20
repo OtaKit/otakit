@@ -166,9 +166,7 @@ final class DeltaAssembler {
 
     File temporary = FileDownloader.download(url, context.getCacheDir(), allowInsecureUrls);
     try {
-      if (!HashUtils.verify(temporary, entry.sha256)) {
-        throw new IllegalStateException("Downloaded file hash mismatch: " + entry.path);
-      }
+      HashUtils.verifyDownload(temporary, entry.sha256, entry.size, "file");
 
       if (!cached.exists()) {
         // Write via temp + rename so process death mid-copy can never leave

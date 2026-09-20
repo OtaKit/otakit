@@ -45,4 +45,30 @@ final class HashUtils {
   static boolean verify(File file, String expectedSha256) throws Exception {
     return sha256(file).equalsIgnoreCase(expectedSha256);
   }
+
+  static void verifyDownload(File file, String expectedSha256, long expectedBytes, String kind)
+    throws Exception {
+    String actual = sha256(file);
+    boolean hashMatches = actual.equalsIgnoreCase(expectedSha256);
+    boolean sizeMatches = expectedBytes < 0 || expectedBytes == file.length();
+    if (!hashMatches || !sizeMatches) {
+      String safeExpected =
+        expectedSha256 != null && expectedSha256.matches("[a-fA-F0-9]{64}")
+          ? expectedSha256.toLowerCase(java.util.Locale.ROOT)
+          : "invalid";
+      throw new IllegalStateException(
+        "Downloaded " +
+          kind +
+          (hashMatches ? " size mismatch" : " hash mismatch") +
+          "; expectedSha256=" +
+          safeExpected +
+          "; actualSha256=" +
+          actual +
+          "; expectedBytes=" +
+          expectedBytes +
+          "; receivedBytes=" +
+          file.length()
+      );
+    }
+  }
 }

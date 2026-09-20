@@ -112,7 +112,7 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
       resolve(.failure(URLError(.badServerResponse)))
       return
     }
-    if !(200..<300).contains(response.statusCode) {
+    if response.statusCode != 200 {
       resolve(.failure(DownloadHTTPError(status: response.statusCode, retryAfter: response.value(forHTTPHeaderField: "Retry-After"))))
       return
     }

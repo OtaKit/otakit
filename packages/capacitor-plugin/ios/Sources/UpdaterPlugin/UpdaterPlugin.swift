@@ -789,17 +789,11 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
       try ensureOwnerActive()
-      let valid = try HashUtils.verify(
+      try HashUtils.verifyDownload(
         fileURL: zipURL,
-        expectedSha256: expectedSha256
+        expectedSha256: expectedSha256,
+        expectedBytes: expectedSize.flatMap { $0 > 0 ? $0 : nil }, kind: "bundle"
       )
-      guard valid else {
-        throw NSError(
-          domain: "OtaKit",
-          code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "Downloaded bundle hash mismatch"]
-        )
-      }
 
       var zipToExtract = zipURL
       if let encryption {

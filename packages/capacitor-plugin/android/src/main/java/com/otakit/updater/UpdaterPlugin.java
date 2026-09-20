@@ -890,9 +890,12 @@ public class UpdaterPlugin extends Plugin {
       ensureOwnerActive();
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
-      if (!HashUtils.verify(downloadedZip, expectedSha256)) {
-        throw new IllegalStateException("Downloaded bundle hash mismatch");
-      }
+      HashUtils.verifyDownload(
+        downloadedZip,
+        expectedSha256,
+        expectedSize > 0 ? expectedSize : -1,
+        "bundle"
+      );
 
       File zipToExtract = downloadedZip;
       if (encryption != null) {
