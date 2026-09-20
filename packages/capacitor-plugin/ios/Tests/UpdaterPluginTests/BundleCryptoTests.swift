@@ -29,6 +29,15 @@ final class BundleCryptoTests: XCTestCase {
     try BundleCrypto.decryptFile(dek: key, nonceB64: nonce, input: input, output: output, availableBytes: 1024 * 1024 * 1024)
     XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "<html>authenticated OTA fixture</html>")
   }
+  #if targetEnvironment(simulator)
+  func testSimulatorDecryptsWithDefaultMemoryEstimate() throws {
+    let input = directory.appendingPathComponent("encrypted")
+    let output = directory.appendingPathComponent("plain")
+    try hex(ciphertext).write(to: input)
+    try BundleCrypto.decryptFile(dek: key, nonceB64: nonce, input: input, output: output)
+    XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "<html>authenticated OTA fixture</html>")
+  }
+  #endif
   func testTamperedBodyTagAndWrongKeyCannotPublishPlaintext() throws {
     let input = directory.appendingPathComponent("encrypted")
     let output = directory.appendingPathComponent("plain")

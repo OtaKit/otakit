@@ -439,6 +439,10 @@ Operational rules:
   process memory after reserving 32 MiB. This is a conservative estimate, not a
   reservation or an OOM guarantee. Test representative physical devices and keep
   encrypted assets small.
+- **iOS Simulator:** admission uses host physical RAM as an estimate because the
+  process-memory API can report zero in simulator apps. The same reserve, factor,
+  and 128 MiB ceiling apply. Simulator decryption does not validate physical-device
+  memory pressure or establish that the host has that much memory free.
 
 ## Source areas
 
