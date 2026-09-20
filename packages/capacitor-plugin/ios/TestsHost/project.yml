@@ -1,13 +1,13 @@
 name: UpdaterTests
 options:
   deploymentTarget:
-    iOS: "15.0"
+    iOS: '15.0'
 packages:
   Updater:
     path: ../..
 settings:
   base:
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: '5.9'
 targets:
   UpdaterTestHost:
     type: application

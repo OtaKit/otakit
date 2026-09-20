@@ -18,6 +18,8 @@ xcodebuild test -project ios/TestsHost/UpdaterTests.xcodeproj \
 ```
 
 The Xcode project is checked in, so verification does not require XcodeGen.
+The verification script fails if the target's compiled sources differ from the
+shipped Swift tests, preventing new tests from being silently omitted.
 When adding or removing test files, regenerate it with XcodeGen 2.45.4:
 
 ```sh

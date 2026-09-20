@@ -1,8 +1,43 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageDirectory = fileURLToPath(new URL('../packages/capacitor-plugin/', import.meta.url));
+const projectDirectory = resolve(packageDirectory, 'ios/TestsHost');
+const projectPath = resolve(projectDirectory, 'UpdaterTests.xcodeproj');
+const project = JSON.parse(
+  execFileSync('plutil', ['-convert', 'json', '-o', '-', `${projectPath}/project.pbxproj`]),
+);
+const filePaths = new Map();
+function collectFilePaths(id, parentDirectory) {
+  const object = project.objects[id];
+  const directory = resolve(
+    object.sourceTree === 'SOURCE_ROOT' ? projectDirectory : parentDirectory,
+    object.path ?? '',
+  );
+  if (object.isa === 'PBXFileReference') filePaths.set(id, directory);
+  for (const child of object.children ?? []) collectFilePaths(child, directory);
+}
+collectFilePaths(project.objects[project.rootObject].mainGroup, projectDirectory);
+const testTarget = Object.values(project.objects).find(
+  (object) => object.isa === 'PBXNativeTarget' && object.name === 'UpdaterPluginTests',
+);
+const compiledSources = (testTarget?.buildPhases ?? [])
+  .map((id) => project.objects[id])
+  .filter((phase) => phase.isa === 'PBXSourcesBuildPhase')
+  .flatMap((phase) => phase.files.map((id) => filePaths.get(project.objects[id].fileRef)))
+  .sort();
+const testDirectory = resolve(packageDirectory, 'ios/Tests/UpdaterPluginTests');
+const shippedSources = readdirSync(testDirectory, { recursive: true })
+  .filter((path) => path.endsWith('.swift'))
+  .map((path) => resolve(testDirectory, path))
+  .sort();
+if (JSON.stringify(compiledSources) !== JSON.stringify(shippedSources)) {
+  throw new Error(
+    'Native test host sources differ from the shipped tests. Regenerate the Xcode project from ios/TestsHost/project.yml; see ios/TestsHost/README.md.',
+  );
+}
 const resultsDirectory = fileURLToPath(
   new URL('../packages/capacitor-plugin/.build/verification-results/', import.meta.url),
 );
@@ -22,8 +57,10 @@ const result = spawnSync(
   'xcodebuild',
   [
     'test',
+    '-project',
+    projectPath,
     '-scheme',
-    'OtakitCapacitorUpdater',
+    'UpdaterTests',
     '-destination',
     `platform=iOS Simulator,id=${simulator.udid}`,
     '-derivedDataPath',
