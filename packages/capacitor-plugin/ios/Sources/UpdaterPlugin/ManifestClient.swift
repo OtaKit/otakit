@@ -45,6 +45,7 @@ enum ManifestClientError: Error {
   case invalidURL
   case invalidResponse
   case requestFailed(String)
+  case httpStatus(Int)
   case insecureURL(String)
 }
 
@@ -107,10 +108,7 @@ enum ManifestClient {
     }
 
     guard httpResponse.statusCode == 200 else {
-      let body = String(data: data, encoding: .utf8) ?? "unknown"
-      throw ManifestClientError.requestFailed(
-        "HTTP \(httpResponse.statusCode): \(body)"
-      )
+      throw ManifestClientError.httpStatus(httpResponse.statusCode)
     }
 
     guard

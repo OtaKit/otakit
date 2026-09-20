@@ -18,6 +18,18 @@ const row = {
 };
 const args = { appId: 'app-a', from: new Date('2026-09-01'), limit: 10 };
 describe('native context in recent events', () => {
+  it('keeps check errors visible without inventing a release association', async () => {
+    mocks.query.mockResolvedValue([
+      { ...row, action: 'check_error', bundle_version: '', release_id: null, phase: 'signature' },
+    ]);
+    const result = await listRecentAppEventsWithStatus(args);
+    expect(result.data[0]).toMatchObject({
+      action: 'check_error',
+      bundleVersion: null,
+      releaseId: null,
+      phase: 'signature',
+    });
+  });
   beforeEach(() => vi.resetAllMocks());
   it('exposes the native context returned by Tinybird', async () => {
     mocks.query.mockResolvedValue([

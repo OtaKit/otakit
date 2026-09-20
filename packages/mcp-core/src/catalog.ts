@@ -240,7 +240,9 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema.optional(),
       bundleVersion: z.string().trim().min(1).max(64).optional(),
-      action: z.enum(['downloaded', 'applied', 'download_error', 'rollback']).optional(),
+      action: z
+        .enum(['downloaded', 'applied', 'download_error', 'rollback', 'check_error'])
+        .optional(),
       platform: z.enum(['ios', 'android']).optional(),
       channel: channelSchema.optional(),
       runtimeVersion: runtimeVersionSchema.optional(),

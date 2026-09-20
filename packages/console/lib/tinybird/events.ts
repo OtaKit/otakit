@@ -83,6 +83,7 @@ const VALID_ACTIONS: readonly DeviceEventAction[] = [
   'applied',
   'download_error',
   'rollback',
+  'check_error',
 ];
 const VALID_PLATFORMS: readonly Platform[] = ['ios', 'android'];
 

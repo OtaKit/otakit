@@ -33,6 +33,38 @@ function fixture() {
 }
 
 describe('device event context', () => {
+  it('accepts check failures before a release or bundle is known', async () => {
+    const { post, send } = fixture();
+    expect(
+      (
+        await post({
+          ...event,
+          action: 'check_error',
+          bundleVersion: null,
+          releaseId: null,
+          phase: 'signature',
+          detail: 'signature_expired',
+        })
+      ).status,
+    ).toBe(202);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'check_error',
+        bundle_version: '',
+        release_id: null,
+        phase: 'signature',
+        detail: 'signature_expired',
+      }),
+    );
+  });
+  it('retains required release identity for download and lifecycle events', async () => {
+    const { post, send } = fixture();
+    for (const action of ['downloaded', 'applied', 'download_error', 'rollback']) {
+      expect((await post({ ...event, action, releaseId: null })).status).toBe(400);
+      expect((await post({ ...event, action, bundleVersion: null })).status).toBe(400);
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
   it('keeps old native clients valid with null context', async () => {
     const { post, send } = fixture();
     expect((await post(event)).status).toBe(202);

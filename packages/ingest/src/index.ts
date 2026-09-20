@@ -1,5 +1,5 @@
 type Platform = 'ios' | 'android';
-type EventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback';
+type EventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback' | 'check_error';
 
 type EnqueuedEvent = {
   event_id: string;
@@ -11,7 +11,7 @@ type EnqueuedEvent = {
   bundle_version: string;
   channel: string | null;
   runtime_version: string | null;
-  release_id: string;
+  release_id: string | null;
   native_build: string;
   detail: string | null;
   attempt_id: string | null;
@@ -61,7 +61,13 @@ type WorkerEnv = {
 
 const EVENTS_PATHS = new Set(['/v1/events']);
 const HEALTH_PATHS = new Set(['/healthz', '/v1/healthz']);
-const VALID_ACTIONS = new Set<EventAction>(['downloaded', 'applied', 'download_error', 'rollback']);
+const VALID_ACTIONS = new Set<EventAction>([
+  'downloaded',
+  'applied',
+  'download_error',
+  'rollback',
+  'check_error',
+]);
 const VALID_PLATFORMS = new Set<Platform>(['ios', 'android']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETRYABLE_TINYBIRD_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
@@ -165,10 +171,16 @@ function normalizeEvent(input: Record<string, unknown>, appId: string): Enqueued
     app_id: appId,
     platform: platform as Platform,
     action: action as EventAction,
-    bundle_version: requireTrimmedAndCap(input.bundleVersion, 64, 'bundleVersion'),
+    bundle_version:
+      action === 'check_error'
+        ? (trimAndCap(input.bundleVersion, 64) ?? '')
+        : requireTrimmedAndCap(input.bundleVersion, 64, 'bundleVersion'),
     channel: trimAndCap(input.channel, 64),
     runtime_version: trimAndCap(input.runtimeVersion, 64),
-    release_id: requireTrimmedAndCap(input.releaseId, 64, 'releaseId'),
+    release_id:
+      action === 'check_error'
+        ? trimAndCap(input.releaseId, 64)
+        : requireTrimmedAndCap(input.releaseId, 64, 'releaseId'),
     native_build: requireTrimmedAndCap(input.nativeBuild, 32, 'nativeBuild'),
     detail: trimAndCap(input.detail, 500),
     attempt_id: normalizeAttemptId(input.attemptId),

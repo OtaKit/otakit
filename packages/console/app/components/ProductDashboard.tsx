@@ -87,7 +87,13 @@ import { cn } from '@/lib/utils';
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 type EventPlatformFilter = Platform | 'all';
-type EventActionFilter = 'all' | 'downloaded' | 'applied' | 'download_error' | 'rollback';
+type EventActionFilter =
+  | 'all'
+  | 'downloaded'
+  | 'applied'
+  | 'download_error'
+  | 'rollback'
+  | 'check_error';
 type EventTimeframeFilter = '1h' | '24h' | '7d' | '30d';
 type ReleaseTarget = {
   channel: string | null;
@@ -229,6 +235,7 @@ function formatEventAction(action: string): string {
   if (action === 'downloaded') return 'Downloaded';
   if (action === 'applied') return 'Applied';
   if (action === 'download_error') return 'Download error';
+  if (action === 'check_error') return 'Update check error';
   if (action === 'rollback') return 'Rollback';
   return action.replace(/_/g, ' ');
 }
@@ -376,6 +383,7 @@ const EVENT_ACTION_OPTIONS: Array<{ value: EventActionFilter; label: string; ico
     { value: 'downloaded', label: 'Downloaded' },
     { value: 'applied', label: 'Applied' },
     { value: 'download_error', label: 'Download error' },
+    { value: 'check_error', label: 'Update check error' },
     { value: 'rollback', label: 'Rollback' },
   ];
 
