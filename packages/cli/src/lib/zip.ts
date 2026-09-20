@@ -26,6 +26,9 @@ export function validateBundleDirectory(directory: string): void {
       `Missing index.html in ${directory}. Expected a Capacitor web build output.`,
     );
   }
+  if (!lstatSync(indexPath).isFile()) {
+    throw new CliError(`index.html must be a regular file in ${directory}.`);
+  }
 }
 
 function addDirectory(zipfile: yazl.ZipFile, sourceDirectory: string, relativePath: string): void {

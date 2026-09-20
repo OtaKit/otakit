@@ -30,6 +30,7 @@ type UploadOptions = {
   autoRevertRate?: string;
   autoRevertMinSample?: string;
   encrypt?: boolean;
+  strictArtifacts?: boolean;
 };
 
 function parseAutoRevertThreshold(
@@ -80,6 +81,10 @@ export const uploadCommand = new Command('upload')
   .option('--server <url>', 'Server URL override')
   .option('--version <version>', 'Version string (default: OTAKIT_VERSION, then auto-generated)')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
+  .option(
+    '--strict-artifacts',
+    'Fail before uploading on large bundles or native installer artifacts',
+  )
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
   .option(
     '--strategy <strategy>',
@@ -214,6 +219,7 @@ export const uploadCommand = new Command('upload')
             autoRevertRatePercent,
             autoRevertMinSample,
             encrypt: options.encrypt,
+            strictArtifacts: options.strictArtifacts,
             onStatus: (message) => {
               spinner.text = message;
             },
