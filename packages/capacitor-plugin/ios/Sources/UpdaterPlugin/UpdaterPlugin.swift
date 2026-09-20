@@ -55,7 +55,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var bundleKeys: [(kid: String, key: Data)] = []
   private let documentReadyBridge = DocumentReadyBridge()
-  private var trialTimeoutWorkItem: DispatchWorkItem?
+  private let trialDeadline = ForegroundDeadline()
   private var checkIntervalMs: Int = 600_000
   private var foregroundObserver: NSObjectProtocol?
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
@@ -65,6 +65,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private static let defaultRuntimeKey = "__default__"
 
   public override func load() {
+    trialDeadline.observe(
+      center: .default,
+      active: UIApplication.didBecomeActiveNotification,
+      inactive: UIApplication.willResignActiveNotification,
+      initiallyActive: UIApplication.shared.applicationState == .active
+    )
     let envIngestUrl = ProcessInfo.processInfo.environment["OTAKIT_INGEST_URL"]
     let envCdnUrl = ProcessInfo.processInfo.environment["OTAKIT_CDN_URL"]
     ingestUrl = resolveIngestUrl(
@@ -953,26 +959,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   private func scheduleTrialTimeout(for trial: UpdaterCoordinator.Trial) {
-    cancelTrialTimeout()
-
-    let workItem = DispatchWorkItem { [weak self] in
-      guard let self else {
-        return
-      }
-      self.rollbackCurrentBundle(expectedTrial: trial, reason: "notify_timeout", shouldReload: true)
+    trialDeadline.start(timeout: Double(appReadyTimeoutMs) / 1000) { [weak self] in
+      self?.rollbackCurrentBundle(expectedTrial: trial, reason: "notify_timeout", shouldReload: true)
     }
-    trialTimeoutWorkItem = workItem
-
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(appReadyTimeoutMs),
-      execute: workItem
-    )
   }
 
-  private func cancelTrialTimeout() {
-    trialTimeoutWorkItem?.cancel()
-    trialTimeoutWorkItem = nil
-  }
+  private func cancelTrialTimeout() { trialDeadline.cancel() }
 
   private func rollbackCurrentBundle(
     expectedTrial: UpdaterCoordinator.Trial, reason: String, shouldReload: Bool
