@@ -6,6 +6,7 @@ import { dirname, join, posix, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ApiClient, Bundle, DeltaFileDescriptor, ReleaseResult } from './api.js';
+import { preflightArtifacts, validateEncryptedArchiveSize } from './artifact-preflight.js';
 import type { BundleEncryptionParams } from './crypto.js';
 import { encryptFile, parseEncryptionKey } from './crypto.js';
 import { CliError } from './errors.js';
@@ -158,6 +159,8 @@ export type UploadWorkflowOptions = {
   idempotencyKey?: string;
   compatibilityDecision?: 'block' | 'proceed' | 'skip';
   encrypt?: boolean;
+  strictArtifacts?: boolean;
+  onWarning?: (message: string) => void;
   onStatus?: (message: string) => void;
   signal?: AbortSignal;
   manageProcessSignals?: boolean;
@@ -196,6 +199,12 @@ export type UploadWorkflowResult = {
 export async function runUploadWorkflow(
   options: UploadWorkflowOptions,
 ): Promise<UploadWorkflowResult> {
+  throwIfAborted(options.signal);
+  preflightArtifacts(options.sourcePath, {
+    strategy: options.strategy,
+    strict: options.strictArtifacts,
+    onWarning: options.onWarning,
+  });
   if (options.strategy === 'deltas') {
     return runDeltaUploadWorkflow(options);
   }
@@ -244,12 +253,13 @@ export async function runUploadWorkflow(
 
   try {
     onStatus?.('Creating zip archive...');
-    await createZip(sourcePath, tempZipPath);
+    const archive = await createZip(sourcePath, tempZipPath);
     throwIfAborted(signal);
 
     let uploadPath = tempZipPath;
     let encryption: BundleEncryptionParams | undefined;
     if (encryptionKey) {
+      validateEncryptedArchiveSize(archive.size);
       onStatus?.('Encrypting bundle...');
       encryption = await encryptFile(encryptionKey, tempZipPath, tempEncPath);
       uploadPath = tempEncPath;
