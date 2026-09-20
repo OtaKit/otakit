@@ -8,6 +8,10 @@ struct DownloadHTTPError: Error, LocalizedError {
 
 /// Bounded retries for GET transport failures. Integrity and disk failures stay terminal.
 struct DownloadRetry {
+  static func isExpiredURLFailure(_ error: Error) -> Bool {
+    guard let http = error as? DownloadHTTPError else { return false }
+    return http.status == 403 || http.status == 410
+  }
   var now: () -> Date = { Date() }
   var random: () -> Double = { Double.random(in: 0..<1) }
 

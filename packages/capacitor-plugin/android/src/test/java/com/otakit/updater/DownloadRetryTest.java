@@ -25,6 +25,21 @@ public class DownloadRetryTest {
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Test
+  public void onlyActualHttp403And410RefreshTheManifest() {
+    assertTrue(DownloadRetry.isExpiredUrlFailure(new DownloadRetry.HttpFailure(403, null)));
+    assertTrue(DownloadRetry.isExpiredUrlFailure(new DownloadRetry.HttpFailure(410, null)));
+    assertFalse(DownloadRetry.isExpiredUrlFailure(new DownloadRetry.HttpFailure(503, null)));
+    assertFalse(
+      DownloadRetry.isExpiredUrlFailure(
+        new IllegalStateException("hash mismatch; actualSha256=abc403def410; receivedBytes=40300")
+      )
+    );
+    assertFalse(
+      DownloadRetry.isExpiredUrlFailure(new IOException("forbidden local path or expired key"))
+    );
+  }
+
+  @Test
   public void earlyEofRetriesAndUnsolicitedPartialResponseFails() throws Exception {
     Reply shortBody = Reply.success();
     shortBody.contentLength = "100";

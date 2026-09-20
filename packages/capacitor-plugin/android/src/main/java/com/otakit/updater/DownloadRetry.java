@@ -15,6 +15,12 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 /** Bounded retries for GET transport failures. Integrity and disk failures stay terminal. */
 final class DownloadRetry {
 
+  static boolean isExpiredUrlFailure(Exception error) {
+    if (!(error instanceof HttpFailure)) return false;
+    int status = ((HttpFailure) error).status;
+    return status == 403 || status == 410;
+  }
+
   interface Sleeper {
     void sleep(long milliseconds) throws InterruptedException;
   }

@@ -605,7 +605,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           targetChannel: targetChannel
         )
         return .staged(bundle, forceImmediate: manifest.forceImmediate)
-      } catch let error as NSError where isExpiredURLError(error) {
+      } catch where DownloadRetry.isExpiredURLFailure(error) {
         guard let refreshed = try await fetchLatest(channel: targetChannel) else {
           return .noUpdate
         }
@@ -688,15 +688,6 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return forceImmediate
     }
     return false
-  }
-
-  private func isExpiredURLError(_ error: NSError) -> Bool {
-    // HTTP 403 or 410 typically indicates an expired presigned URL
-    if error.domain == "Downloader" && (error.code == 403 || error.code == 410) {
-      return true
-    }
-    let desc = error.localizedDescription.lowercased()
-    return desc.contains("403") || desc.contains("410")
   }
 
   private func downloadAndStage(

@@ -838,15 +838,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private boolean isExpiredURLError(Exception e) {
-    String msg = e.getMessage();
-    if (msg == null) return false;
-    msg = msg.toLowerCase();
-    return (
-      msg.contains("403") ||
-      msg.contains("410") ||
-      msg.contains("forbidden") ||
-      msg.contains("expired")
-    );
+    return DownloadRetry.isExpiredUrlFailure(e);
   }
 
   private BundleInfo downloadAndStage(
