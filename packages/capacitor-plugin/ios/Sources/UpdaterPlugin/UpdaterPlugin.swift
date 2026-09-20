@@ -95,22 +95,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     appReadyTimeoutMs = max(1000, getConfig().getInt("appReadyTimeout", 10_000))
     checkIntervalMs = getConfig().getInt("checkInterval", 600_000)
 
-    let rawKeysValue = getConfig().getArray("manifestKeys")
-    if let rawKeys = rawKeysValue as? [[String: String]] {
-      manifestKeys = rawKeys.compactMap { entry in
-        guard let kid = entry["kid"],
-              let keyBase64 = entry["key"],
-              let keyData = Data(base64Encoded: keyBase64) else { return nil }
-        return (kid: kid, key: keyData)
-      }
-      if manifestKeys.isEmpty && !rawKeys.isEmpty {
-        print("[OtaKit] ERROR: manifestKeys configured but all entries are invalid. Manifest verification will reject all updates.")
-        manifestKeys = [(kid: "_invalid_", key: Data())]
-      }
-    } else if rawKeysValue != nil {
-      print("[OtaKit] ERROR: manifestKeys has wrong format (expected array of {kid, key}). Manifest verification will reject all updates.")
-      manifestKeys = [(kid: "_invalid_", key: Data())]
-    }
+    manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON())
 
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults

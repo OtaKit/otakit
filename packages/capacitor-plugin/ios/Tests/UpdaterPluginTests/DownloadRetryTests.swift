@@ -119,7 +119,7 @@ final class DownloadRetryTests: XCTestCase {
 }
 
 /// Real loopback HTTP responses, including a body disconnected before Content-Length.
-private final class DownloadHTTPServer {
+final class DownloadHTTPServer {
   struct Response {
     let status: Int
     let retryAfter: String?

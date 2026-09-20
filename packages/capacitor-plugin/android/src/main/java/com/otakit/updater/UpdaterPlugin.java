@@ -177,37 +177,7 @@ public class UpdaterPlugin extends Plugin {
     this.resumePolicy = resolvePolicy(getConfig().getString("resumePolicy"), Policy.SHADOW);
     this.runtimePolicy = resolvePolicy(getConfig().getString("runtimePolicy"), Policy.IMMEDIATE);
 
-    try {
-      org.json.JSONArray rawKeys = getConfig().getConfigJSON().optJSONArray("manifestKeys");
-      if (rawKeys != null && rawKeys.length() > 0) {
-        for (int i = 0; i < rawKeys.length(); i++) {
-          org.json.JSONObject entry = rawKeys.optJSONObject(i);
-          if (entry == null) {
-            continue;
-          }
-          String kid = entry.optString("kid", null);
-          String keyBase64 = entry.optString("key", null);
-          if (kid != null && keyBase64 != null) {
-            byte[] keyBytes = android.util.Base64.decode(keyBase64, android.util.Base64.DEFAULT);
-            manifestKeys.add(new ManifestVerifier.KeyEntry(kid, keyBytes));
-          }
-        }
-        if (manifestKeys.isEmpty()) {
-          android.util.Log.e(
-            "OtaKit",
-            "manifestKeys configured but all entries are invalid. Manifest verification will reject all updates."
-          );
-          manifestKeys.add(new ManifestVerifier.KeyEntry("_invalid_", new byte[0]));
-        }
-      }
-    } catch (Exception e) {
-      android.util.Log.e(
-        "OtaKit",
-        "Failed to parse manifestKeys. Manifest verification will reject all updates.",
-        e
-      );
-      manifestKeys.add(new ManifestVerifier.KeyEntry("_invalid_", new byte[0]));
-    }
+    manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON());
 
     if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
