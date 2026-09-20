@@ -2,7 +2,9 @@
 
 AES-GCM bundle decryption still verifies the tag before writing any plaintext. This change does not introduce streaming plaintext or change the encrypted bundle format.
 
-Before loading the encrypted object, both clients compare its actual file length with a conservative admission budget: the smaller of 128 MiB and one quarter of current available process memory after reserving 32 MiB. Android measures Java heap headroom using `Runtime`; iOS queries `os_proc_available_memory` at each call. Objects over budget fail with `insufficient_memory_for_encrypted_bundle` and byte-count diagnostics, leaving the active installation intact. Reduce the bundle's assets to make it installable on constrained devices.
+Before loading the encrypted object, both clients compare its actual file length with a conservative admission budget: the smaller of 128 MiB and one quarter of current available process memory after reserving 32 MiB. Android measures Java heap headroom using `Runtime`; physical iOS devices query `os_proc_available_memory` at each call. Objects over budget fail with `insufficient_memory_for_encrypted_bundle` and byte-count diagnostics, leaving the active installation intact. Reduce the bundle's assets to make it installable on constrained devices.
+
+iOS Simulator apps can report zero from `os_proc_available_memory`, which would reject every encrypted object. Simulator builds instead estimate memory using host physical RAM, retaining the same reserve, factor, and 128 MiB ceiling. This estimates total host RAM, not free memory; simulator decryption cannot validate physical-device memory pressure. Physical-device behavior is unchanged.
 
 Android reads into one exactly sized array, removing ByteArrayOutputStream growth and its final full-size copy. iOS uses mapped input where Foundation considers that safe. Authentication and plaintext allocation remain with the platform crypto provider.
 

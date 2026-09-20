@@ -32,6 +32,16 @@ enum BundleCrypto {
   private static let reserveBytes: Int64 = 32 * 1024 * 1024
   private static let maximumEncryptedBytes: Int64 = 128 * 1024 * 1024
 
+  static func decryptionMemoryEstimate() -> Int64 {
+    #if targetEnvironment(simulator)
+    // Simulator apps can report zero from os_proc_available_memory(). Host RAM
+    // is only an estimate; keep the same reserve, multiplier, and hard cap.
+    return Int64(clamping: ProcessInfo.processInfo.physicalMemory)
+    #else
+    return Int64(os_proc_available_memory())
+    #endif
+  }
+
   static func requireMemoryBudget(encryptedBytes: Int64, availableBytes: Int64) throws {
     let budget = availableBytes <= reserveBytes ? 0 : min(maximumEncryptedBytes, (availableBytes - reserveBytes) / 4)
     guard encryptedBytes <= budget else {
@@ -77,7 +87,7 @@ enum BundleCrypto {
     nonceB64: String,
     input: URL,
     output: URL,
-    availableBytes: Int64 = Int64(os_proc_available_memory())
+    availableBytes: Int64 = BundleCrypto.decryptionMemoryEstimate()
   ) throws {
     guard let nonce = Data(base64Encoded: nonceB64) else {
       throw BundleCryptoError.invalidParameter("nonce")
