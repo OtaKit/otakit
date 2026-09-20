@@ -1,10 +1,12 @@
 import CryptoKit
 import Foundation
+import os
 
 enum BundleCryptoError: Error, LocalizedError {
   case noMatchingKey(String)
   case invalidParameter(String)
   case decryptionFailed(String)
+  case insufficientMemory(encryptedBytes: Int64, budgetBytes: Int64)
 
   var errorDescription: String? {
     switch self {
@@ -14,6 +16,8 @@ enum BundleCryptoError: Error, LocalizedError {
       return "invalid bundle encryption parameter: \(name)"
     case let .decryptionFailed(detail):
       return "bundle decryption failed: \(detail)"
+    case let .insufficientMemory(encryptedBytes, budgetBytes):
+      return "insufficient_memory_for_encrypted_bundle; encryptedBytes=\(encryptedBytes); budgetBytes=\(budgetBytes)"
     }
   }
 }
@@ -25,6 +29,15 @@ enum BundleCryptoError: Error, LocalizedError {
 enum BundleCrypto {
   private static let tagLength = 16
   private static let keyLength = 32
+  private static let reserveBytes: Int64 = 32 * 1024 * 1024
+  private static let maximumEncryptedBytes: Int64 = 128 * 1024 * 1024
+
+  static func requireMemoryBudget(encryptedBytes: Int64, availableBytes: Int64) throws {
+    let budget = availableBytes <= reserveBytes ? 0 : min(maximumEncryptedBytes, (availableBytes - reserveBytes) / 4)
+    guard encryptedBytes <= budget else {
+      throw BundleCryptoError.insufficientMemory(encryptedBytes: encryptedBytes, budgetBytes: budget)
+    }
+  }
 
   static func unwrapDek(
     kek: Data,
@@ -63,15 +76,24 @@ enum BundleCrypto {
     dek: Data,
     nonceB64: String,
     input: URL,
-    output: URL
+    output: URL,
+    availableBytes: Int64 = Int64(os_proc_available_memory())
   ) throws {
     guard let nonce = Data(base64Encoded: nonceB64) else {
       throw BundleCryptoError.invalidParameter("nonce")
     }
 
-    let ciphertextWithTag = try Data(contentsOf: input)
-    guard ciphertextWithTag.count > tagLength else {
+    guard dek.count == keyLength, nonce.count == 12 else {
+      throw BundleCryptoError.invalidParameter("key or nonce length")
+    }
+    let attributes = try FileManager.default.attributesOfItem(atPath: input.path)
+    guard let size = attributes[.size] as? NSNumber, size.int64Value > tagLength else {
       throw BundleCryptoError.invalidParameter("ciphertext too short")
+    }
+    try requireMemoryBudget(encryptedBytes: size.int64Value, availableBytes: availableBytes)
+    let ciphertextWithTag = try Data(contentsOf: input, options: .mappedIfSafe)
+    guard ciphertextWithTag.count == size.intValue else {
+      throw BundleCryptoError.invalidParameter("ciphertext changed during read")
     }
 
     do {
