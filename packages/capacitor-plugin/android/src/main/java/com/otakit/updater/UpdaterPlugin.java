@@ -992,7 +992,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private File downloadZip(URL url) throws Exception {
-    return ZipDownloader.download(url, getContext().getCacheDir(), allowInsecureUrls);
+    return FileDownloader.download(url, getContext().getCacheDir(), allowInsecureUrls);
   }
 
   private File resolveBundleRoot(File extractedDirectory) throws Exception {

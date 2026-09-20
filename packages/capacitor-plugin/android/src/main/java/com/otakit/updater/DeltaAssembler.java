@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -165,33 +164,8 @@ final class DeltaAssembler {
     URL url = new URL(entry.url);
     ManifestClient.requireHTTPS(url, allowInsecureUrls);
 
-    File temporary = File.createTempFile("otakit-file-", ".tmp", context.getCacheDir());
+    File temporary = FileDownloader.download(url, context.getCacheDir(), allowInsecureUrls);
     try {
-      HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-      try {
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(15_000);
-        connection.setReadTimeout(60_000);
-
-        int status = connection.getResponseCode();
-        if (status < 200 || status >= 300) {
-          throw new IllegalStateException("File download failed with HTTP " + status);
-        }
-
-        try (
-          InputStream input = connection.getInputStream();
-          FileOutputStream output = new FileOutputStream(temporary)
-        ) {
-          byte[] buffer = new byte[8192];
-          int read;
-          while ((read = input.read(buffer)) > 0) {
-            output.write(buffer, 0, read);
-          }
-        }
-      } finally {
-        connection.disconnect();
-      }
-
       if (!HashUtils.verify(temporary, entry.sha256)) {
         throw new IllegalStateException("Downloaded file hash mismatch: " + entry.path);
       }
