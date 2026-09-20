@@ -1,6 +1,11 @@
 import Foundation
 
 final class UpdaterCoordinator {
+  struct Trial: Equatable {
+    let bundleId: String
+    let activationId = UUID().uuidString
+  }
+
   struct StateSnapshot {
     let current: BundleInfo
     let fallback: BundleInfo
@@ -25,14 +30,14 @@ final class UpdaterCoordinator {
 
   struct StartupPreparation {
     let activationPath: String?
-    let trialBundleId: String?
+    let trial: Trial?
     let cleanupBundleIds: [String]
     let eventPayload: DeviceEventPayload?
   }
 
   struct ApplyPreparation {
     let activationPath: String?
-    let trialBundleId: String?
+    let trial: Trial?
     let cleanupBundleIds: [String]
 
     var didApply: Bool {
@@ -56,6 +61,7 @@ final class UpdaterCoordinator {
   private let operationLock = NSLock()
   private let stateLock = NSLock()
   private var operationInProgress = false
+  private var activeTrial: Trial?
 
   init(store: BundleStore) {
     self.store = store
@@ -132,6 +138,7 @@ final class UpdaterCoordinator {
     isBundleUsable: @escaping (BundleInfo) -> Bool
   ) -> StartupPreparation {
     withStateLock {
+      activeTrial = nil
       var cleanupBundleIds = Set<String>()
       clearStaleBundlePointersLocked()
       normalizeStagedPointerLocked(
@@ -166,16 +173,16 @@ final class UpdaterCoordinator {
         )
       }
 
-      var trialBundleId: String?
+      var trial: Trial?
       if !normalizedCurrent.isBuiltin,
          normalizedCurrent.status == .pending {
         normalizedCurrent = updateStatusLocked(normalizedCurrent, status: .trial)
-        trialBundleId = normalizedCurrent.id
+        trial = beginTrialLocked(bundleId: normalizedCurrent.id)
       }
 
       return StartupPreparation(
         activationPath: normalizedCurrent.isBuiltin ? nil : normalizedCurrent.path,
-        trialBundleId: trialBundleId,
+        trial: trial,
         cleanupBundleIds: Array(cleanupBundleIds),
         eventPayload: eventPayload
       )
@@ -252,7 +259,7 @@ final class UpdaterCoordinator {
       let previousCurrent = store.getCurrentBundle()
       // Keep the staged update until the running trial has a definite outcome.
       guard previousCurrent.status != .trial else {
-        return ApplyPreparation(activationPath: nil, trialBundleId: nil, cleanupBundleIds: [])
+        return ApplyPreparation(activationPath: nil, trial: nil, cleanupBundleIds: [])
       }
       guard var staged = stagedBundleLocked(
         cleanInvalid: true,
@@ -262,7 +269,7 @@ final class UpdaterCoordinator {
       ) else {
         return ApplyPreparation(
           activationPath: nil,
-          trialBundleId: nil,
+          trial: nil,
           cleanupBundleIds: Array(cleanupBundleIds)
         )
       }
@@ -276,17 +283,17 @@ final class UpdaterCoordinator {
       store.setCurrentBundleId(staged.id)
       store.setStagedBundleId(nil)
 
-      var trialBundleId: String?
+      var trial: Trial?
       if staged.status == .pending {
         staged = updateStatusLocked(staged, status: .trial)
-        trialBundleId = staged.id
+        trial = beginTrialLocked(bundleId: staged.id)
       } else if staged.status == .trial {
-        trialBundleId = staged.id
+        trial = beginTrialLocked(bundleId: staged.id)
       }
 
       return ApplyPreparation(
         activationPath: staged.path,
-        trialBundleId: trialBundleId,
+        trial: trial,
         cleanupBundleIds: Array(cleanupBundleIds)
       )
     }
@@ -303,6 +310,7 @@ final class UpdaterCoordinator {
       let oldFallbackId = store.getFallbackBundleId()
       _ = updateStatusLocked(current, status: .success)
       store.setFallbackBundleId(current.id)
+      activeTrial = nil
 
       var cleanupBundleIds = Set<String>()
       if let oldFallbackId,
@@ -325,10 +333,19 @@ final class UpdaterCoordinator {
   }
 
   func prepareRollback(
+    expectedTrial: Trial,
     reason: String,
     isBundleUsable: @escaping (BundleInfo) -> Bool
   ) -> RollbackPreparation {
     withStateLock {
+      let current = store.getCurrentBundle()
+      guard activeTrial == expectedTrial,
+            current.id == expectedTrial.bundleId,
+            current.status == .trial else {
+        return RollbackPreparation(
+          didRollback: false, activationPath: nil, eventPayload: nil, cleanupBundleIds: []
+        )
+      }
       var cleanupBundleIds = Set<String>()
       let rollback = rollbackLocked(
         reason: reason,
@@ -344,11 +361,10 @@ final class UpdaterCoordinator {
     }
   }
 
-  func isCurrentTrialBundle(_ bundleId: String) -> Bool {
-    withStateLock {
-      let current = store.getCurrentBundle()
-      return current.id == bundleId && current.status == .trial
-    }
+  private func beginTrialLocked(bundleId: String) -> Trial {
+    let trial = Trial(bundleId: bundleId)
+    activeTrial = trial
+    return trial
   }
 
   func cleanupBundles(_ bundleIds: [String]) {
@@ -508,6 +524,7 @@ final class UpdaterCoordinator {
     }
 
     let failed = updateStatusLocked(current, status: .error)
+    activeTrial = nil
     store.setLastFailedBundle(failed)
     store.setStagedBundleId(nil)
 

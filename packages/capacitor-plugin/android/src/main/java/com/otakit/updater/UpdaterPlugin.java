@@ -295,8 +295,8 @@ public class UpdaterPlugin extends Plugin {
       sendDeviceEvent(startup.eventPayload);
     }
 
-    if (startup.trialBundleId != null) {
-      scheduleTrialTimeout(startup.trialBundleId);
+    if (startup.trial != null) {
+      scheduleTrialTimeout(startup.trial);
     } else {
       cancelTrialTimeout();
     }
@@ -996,8 +996,8 @@ public class UpdaterPlugin extends Plugin {
     applyServerBasePathSynchronously(preparation.activationPath);
 
     cancelTrialTimeout();
-    if (preparation.trialBundleId != null) {
-      scheduleTrialTimeout(preparation.trialBundleId);
+    if (preparation.trial != null) {
+      scheduleTrialTimeout(preparation.trial);
     }
     return true;
   }
@@ -1008,12 +1008,10 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private void scheduleTrialTimeout(String bundleId) {
+  private void scheduleTrialTimeout(UpdaterCoordinator.Trial trial) {
     cancelTrialTimeout();
     trialTimeoutRunnable = () -> {
-      if (coordinator.isCurrentTrialBundle(bundleId)) {
-        rollbackCurrentBundle("notify_timeout");
-      }
+      rollbackCurrentBundle(trial, "notify_timeout");
     };
     mainHandler.postDelayed(trialTimeoutRunnable, appReadyTimeoutMs);
   }
@@ -1025,15 +1023,16 @@ public class UpdaterPlugin extends Plugin {
     }
   }
 
-  private void rollbackCurrentBundle(String reason) {
-    cancelTrialTimeout();
+  private void rollbackCurrentBundle(UpdaterCoordinator.Trial expectedTrial, String reason) {
     UpdaterCoordinator.RollbackPreparation preparation = coordinator.prepareRollback(
+      expectedTrial,
       reason,
       this::isBundleUsable
     );
     if (!preparation.didRollback) {
       return;
     }
+    cancelTrialTimeout();
     coordinator.cleanupBundles(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);

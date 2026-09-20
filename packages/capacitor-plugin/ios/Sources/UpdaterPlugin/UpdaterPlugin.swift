@@ -141,8 +141,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       sendDeviceEvent(eventPayload)
     }
 
-    if let trialBundleId = startup.trialBundleId {
-      scheduleTrialTimeout(for: trialBundleId)
+    if let trial = startup.trial {
+      scheduleTrialTimeout(for: trial)
     } else {
       cancelTrialTimeout()
     }
@@ -899,8 +899,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     cancelTrialTimeout()
-    if let trialBundleId = preparation.trialBundleId {
-      scheduleTrialTimeout(for: trialBundleId)
+    if let trial = preparation.trial {
+      scheduleTrialTimeout(for: trial)
     }
 
     return true
@@ -916,16 +916,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
-  private func scheduleTrialTimeout(for bundleId: String) {
+  private func scheduleTrialTimeout(for trial: UpdaterCoordinator.Trial) {
     cancelTrialTimeout()
 
     let workItem = DispatchWorkItem { [weak self] in
       guard let self else {
         return
       }
-      if self.coordinator.isCurrentTrialBundle(bundleId) {
-        self.rollbackCurrentBundle(reason: "notify_timeout", shouldReload: true)
-      }
+      self.rollbackCurrentBundle(expectedTrial: trial, reason: "notify_timeout", shouldReload: true)
     }
     trialTimeoutWorkItem = workItem
 
@@ -940,15 +938,18 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     trialTimeoutWorkItem = nil
   }
 
-  private func rollbackCurrentBundle(reason: String, shouldReload: Bool) {
-    cancelTrialTimeout()
+  private func rollbackCurrentBundle(
+    expectedTrial: UpdaterCoordinator.Trial, reason: String, shouldReload: Bool
+  ) {
     let preparation = coordinator.prepareRollback(
+      expectedTrial: expectedTrial,
       reason: reason,
       isBundleUsable: isBundleUsable
     )
     guard preparation.didRollback else {
       return
     }
+    cancelTrialTimeout()
 
     coordinator.cleanupBundles(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
