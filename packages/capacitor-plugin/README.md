@@ -19,6 +19,36 @@ The plugin is intentionally small:
 
 There is no built-in splash or overlay manager in this model.
 
+## Reliability update compatibility
+
+These native reliability changes require rebuilding and distributing the iOS/Android
+app. An OTA web update cannot replace the native plugin.
+
+- **Android WebView:** applying an update requires support for
+  `WebViewFeature.DOCUMENT_START_SCRIPT`. Update Android System WebView on devices
+  without that capability. A confirmed installed app can still launch, and a new
+  update stays staged, but it cannot activate without the readiness guard. Include
+  older supported WebView versions in your native rollout tests.
+- **Readiness:** keep calling `OtaKit.notifyAppReady()` with no arguments after
+  startup succeeds. Native code binds the call to its WebView document. The default
+  `appReadyTimeout` remains 10 seconds and now counts cumulative foreground time;
+  backgrounding pauses the remaining budget. Process exit before readiness still
+  triggers rollback on the next launch.
+- **Encrypted bundles:** the downloaded encrypted object must fit within 128 MiB
+  and a smaller device-dependent memory budget. Oversized objects fail before
+  decryption with `insufficient_memory_for_encrypted_bundle`, preserving the
+  current installation. Previously attempted large encrypted bundles may now be
+  rejected; reduce their assets before rollout.
+- **Signing configuration:** explicit `manifestKeys` values must be arrays.
+  A string, object, number, boolean, or null fails closed. Omitted keys or an empty
+  array retain the hosted defaults or existing self-hosted unsigned mode.
+- **Self-hosted telemetry:** deploy nullable event-context columns, then the
+  updated ingest Worker and Tinybird endpoints, before releasing the native SDK.
+  Old ingest Workers discard context and reject the new `check_error` action.
+
+Use a native canary rollout to check startup, rollback, background/resume behavior,
+and encrypted downloads on physical low-memory devices before widening adoption.
+
 ## Hosted config
 
 ```ts
@@ -247,8 +277,8 @@ OtaKit.addListener('rollback', (failure) => {}); // applied bundle reverted (not
 OtaKit.removeAllListeners();
 ```
 
-Events fire only while the app process is alive — there is no buffering or
-replay. Reconcile on startup:
+JavaScript listener events fire only while the app process is alive and have no
+buffering or replay. Reconcile on startup:
 
 - a bundle staged in a previous session: `getState().staged`
 - a startup rollback (app restarted before `notifyAppReady()`): it happens
@@ -261,6 +291,11 @@ early in app startup, not in the restart click handler.
 
 Download and stage are atomic in this plugin — there is a single
 `updateStaged` event, not separate "downloaded" and "staged" events.
+
+Server telemetry uses a separate durable retry queue with stable event IDs. It is
+limited to 256 events, seven days, and 8 KiB per event; storage failures and process
+termination between a state commit and event creation can still lose telemetry.
+Suspended/terminated apps resume delivery when their process runs again.
 
 The headline pattern — background download via `shadow` policies, prompt to
 restart:
@@ -399,9 +434,11 @@ Operational rules:
   receive updates until a store build ships a new key.
 - Decryption failures are never fatal: they behave like download failures —
   the running bundle is untouched and nothing unverified is ever applied.
-- **Memory:** decryption buffers the bundle in memory (roughly 2–3× the
-  bundle size at peak). Keep encrypted bundles comfortably under ~100 MB,
-  especially for low-end Android devices.
+- **Memory:** authenticated decryption still uses whole-object buffers. Admission
+  is limited to the smaller of 128 MiB and one quarter of currently available
+  process memory after reserving 32 MiB. This is a conservative estimate, not a
+  reservation or an OOM guarantee. Test representative physical devices and keep
+  encrypted assets small.
 
 ## Source areas
 
