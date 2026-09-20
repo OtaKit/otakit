@@ -47,14 +47,14 @@ final class DeltaAssembler {
   private let maxTotalSize: UInt64 = 500_000_000 // 500 MB
 
   private let cacheDirectory: URL
-  private let downloader: Downloader
+  private let download: (URL) async throws -> URL
   private let fileManager = FileManager.default
 
   private static let builtinSeedMarkerName = "builtin_seed.json"
 
-  init(cacheDirectory: URL, downloader: Downloader) {
+  init(cacheDirectory: URL, downloader: Downloader, fetch: ((URL) async throws -> URL)? = nil) {
     self.cacheDirectory = cacheDirectory
-    self.downloader = downloader
+    self.download = fetch ?? { try await downloader.download(from: $0) }
   }
 
   // MARK: - Canonical file list
@@ -153,35 +153,43 @@ final class DeltaAssembler {
     cacheDirectory.appendingPathComponent(sha256.lowercased(), isDirectory: false)
   }
 
-  private func isCached(_ sha256: String) -> Bool {
-    fileManager.fileExists(atPath: cachePath(for: sha256).path)
+  private func validCached(_ entry: ManifestFileEntry) -> Bool {
+    let file = cachePath(for: entry.sha256)
+    guard let attributes = try? fileManager.attributesOfItem(atPath: file.path),
+          attributes[.type] as? FileAttributeType == .typeRegular,
+          let size = attributes[.size] as? NSNumber,
+          entry.size == nil || size.intValue == entry.size else { return false }
+    return (try? HashUtils.verify(fileURL: file, expectedSha256: entry.sha256)) == true
+  }
+
+  private func discardDamagedCache(_ file: URL) throws {
+    if fileManager.fileExists(atPath: file.path) { try fileManager.removeItem(at: file) }
   }
 
   private func ensureCached(_ entry: ManifestFileEntry) async throws {
-    if isCached(entry.sha256) {
-      return
-    }
+    if validCached(entry) { return }
+    let destination = cachePath(for: entry.sha256)
+    try discardDamagedCache(destination)
 
     guard let url = URL(string: entry.url) else {
       throw DeltaAssemblerError.invalidFileURL(entry.url)
     }
 
-    let temporary = try await downloader.download(from: url)
+    let temporary = try await download(url)
     defer { try? fileManager.removeItem(at: temporary) }
 
     try HashUtils.verifyDownload(fileURL: temporary, expectedSha256: entry.sha256,
       expectedBytes: entry.size, kind: "file")
 
-    let destination = cachePath(for: entry.sha256)
-    if fileManager.fileExists(atPath: destination.path) {
-      return
-    }
+    if validCached(entry) { return }
+    try discardDamagedCache(destination)
     // Write via temp + rename so a crash mid-copy can never leave a
-    // truncated file at a content-addressed path (exists() implies valid).
+    // truncated file at a content-addressed path. Existing entries are still verified.
     let staging = cacheDirectory.appendingPathComponent(
       ".tmp-\(UUID().uuidString)",
       isDirectory: false
     )
+    defer { try? fileManager.removeItem(at: staging) }
     try fileManager.copyItem(at: temporary, to: staging)
     do {
       try fileManager.moveItem(at: staging, to: destination)
@@ -192,6 +200,8 @@ final class DeltaAssembler {
         throw error
       }
     }
+    try HashUtils.verifyDownload(fileURL: destination, expectedSha256: entry.sha256,
+      expectedBytes: entry.size, kind: "cached file")
   }
 
   // MARK: - Assembly
@@ -227,6 +237,9 @@ final class DeltaAssembler {
       let parent = target.deletingLastPathComponent()
       try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
       try fileManager.copyItem(at: cachePath(for: entry.sha256), to: target)
+      // Recheck the installed copy if the cache changed during assembly.
+      try HashUtils.verifyDownload(fileURL: target, expectedSha256: entry.sha256,
+        expectedBytes: entry.size, kind: "assembled file")
     }
   }
 
