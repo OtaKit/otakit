@@ -10,9 +10,18 @@ final class BundleStore {
     static let overrideChannel = "otakit_override_channel"
   }
 
-  private let defaults = UserDefaults.standard
+  private let defaults: UserDefaults
+  private let rootDirectory: URL
   private let fileManager = FileManager.default
   var appRuntimeVersion: String?
+
+  init(defaults: UserDefaults = .standard, rootDirectory: URL? = nil) {
+    self.defaults = defaults
+    self.rootDirectory = rootDirectory ?? FileManager.default.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    )[0]
+  }
 
   private lazy var decoder: JSONDecoder = {
     let decoder = JSONDecoder()
@@ -27,11 +36,7 @@ final class BundleStore {
   }()
 
   private(set) lazy var bundlesDirectory: URL = {
-    let appSupport = fileManager.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first!
-    let directory = appSupport.appendingPathComponent(
+    let directory = rootDirectory.appendingPathComponent(
       "otakit_bundles",
       isDirectory: true
     )
@@ -44,11 +49,7 @@ final class BundleStore {
 
   /// Content-addressed file cache for the deltas strategy (`otakit_files/<sha256>`).
   private(set) lazy var filesCacheDirectory: URL = {
-    let appSupport = fileManager.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
-    ).first!
-    let directory = appSupport.appendingPathComponent(
+    let directory = rootDirectory.appendingPathComponent(
       "otakit_files",
       isDirectory: true
     )

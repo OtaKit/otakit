@@ -45,6 +45,7 @@ packages/capacitor-plugin/ios/DerivedData/
 packages/capacitor-plugin/ios/*.xcworkspace
 packages/capacitor-plugin/ios/build/
 packages/capacitor-plugin/android/.gradle/
+packages/capacitor-plugin/android/test-project/.gradle/
 packages/capacitor-plugin/android/build/
 packages/capacitor-plugin/android/local.properties
 packages/capacitor-plugin/android/.cxx/
