@@ -398,12 +398,13 @@ final class UpdaterCoordinator {
     });
   }
 
-  NotifyReadyPreparation prepareNotifyAppReady() {
+  NotifyReadyPreparation prepareNotifyAppReady(String activationId) {
     return withStateLock(() -> {
       BundleInfo current = store.getCurrentBundle();
       if (
         current.isBuiltin() ||
         activeTrial == null ||
+        !activeTrial.activationId.equals(activationId) ||
         !activeTrial.bundleId.equals(current.id) ||
         (current.status != BundleStatus.TRIAL &&
           !(current.status == BundleStatus.SUCCESS &&

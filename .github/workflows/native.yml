@@ -34,6 +34,10 @@ jobs:
 
   ios:
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        capacitor: ['7.0.0', '8.0.2']
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -42,4 +46,56 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Pin native Capacitor for compatibility tests
+        env:
+          TEST_CAPACITOR_VERSION: ${{ matrix.capacitor }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          manifest = Path('packages/capacitor-plugin/Package.swift')
+          manifest.write_text(manifest.read_text().replace('"7.0.0"..<"9.0.0"', 'exact: "' + os.environ['TEST_CAPACITOR_VERSION'] + '"'))
+          PY
       - run: pnpm --filter @otakit/capacitor-updater verify:ios
+
+  android-webview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        capacitor: ['7.0.0', '8.0.2']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: pnpm install --frozen-lockfile
+      - name: Pin native Capacitor for compatibility tests
+        env:
+          TEST_CAPACITOR_VERSION: ${{ matrix.capacitor }}
+        run: pnpm --filter @otakit/capacitor-updater add --save-dev --save-exact --ignore-scripts "@capacitor/android@$TEST_CAPACITOR_VERSION" "@capacitor/core@$TEST_CAPACITOR_VERSION" "@capacitor/ios@$TEST_CAPACITOR_VERSION"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: pnpm --filter @otakit/capacitor-updater verify:android:device

@@ -27,10 +27,10 @@ public class UpdaterCoordinatorTest {
   @Test
   public void readinessAcknowledgesOnlyOnce() throws Exception {
     fixture.apply("A");
-    var ready = fixture.coordinator.prepareNotifyAppReady();
+    var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);
     assertEquals("applied", ready.eventPayload.action);
     assertEquals(BundleStatus.SUCCESS, fixture.store.getCurrentBundle().status);
-    assertNull(fixture.coordinator.prepareNotifyAppReady().eventPayload);
+    assertNull(fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId).eventPayload);
   }
 
   @Test
@@ -58,10 +58,27 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
+  public void oldOrUntaggedDocumentCannotConfirmNewTrial() throws Exception {
+    fixture.installHealthy("A");
+    String oldDocument = fixture.trial.activationId;
+    fixture.apply("B");
+    for (String identity : new String[] { oldDocument, null }) {
+      var stale = fixture.coordinator.prepareNotifyAppReady(identity);
+      assertNull(stale.eventPayload);
+      assertTrue(stale.cleanupBundleIds.isEmpty());
+      assertEquals(BundleStatus.TRIAL, fixture.store.getCurrentBundle().status);
+      assertEquals("A", fixture.store.getFallbackBundleId());
+    }
+    assertNotNull(
+      fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId).eventPayload
+    );
+  }
+
+  @Test
   public void timeoutAfterReadinessDoesNotRollBackSuccess() throws Exception {
     fixture.installHealthy("A");
     fixture.apply("B");
-    var ready = fixture.coordinator.prepareNotifyAppReady();
+    var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
     var rollback = fixture.coordinator.prepareRollback(
       fixture.trial,
@@ -143,7 +160,9 @@ public class UpdaterCoordinatorTest {
     fixture.installHealthy("A");
     fixture.apply("B");
     fixture.withReadOnlyMetadata("B", () -> {
-      assertThrows(Exception.class, () -> fixture.coordinator.prepareNotifyAppReady());
+      assertThrows(Exception.class, () ->
+        fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId)
+      );
       assertEquals(BundleStatus.TRIAL, fixture.store.getCurrentBundle().status);
       assertEquals("A", fixture.store.getFallbackBundle().id);
       assertTrue(fixture.indexExists("A"));
@@ -168,7 +187,7 @@ public class UpdaterCoordinatorTest {
   public void oldTimeoutDoesNotAffectNewTrial() throws Exception {
     fixture.installHealthy("A");
     var oldTrial = fixture.apply("B").trial;
-    var ready = fixture.coordinator.prepareNotifyAppReady();
+    var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
     fixture.apply("C");
     var stale = fixture.coordinator.prepareRollback(oldTrial, "notify_timeout", fixture::isUsable);
@@ -264,7 +283,7 @@ public class UpdaterCoordinatorTest {
     fixture.installHealthy("A");
     fixture.apply("B");
     assertFalse(fixture.apply("C").didApply());
-    var ready = fixture.coordinator.prepareNotifyAppReady();
+    var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds);
     var applied = fixture.coordinator.prepareApplyStaged(bundle -> true, fixture::isUsable);
     assertTrue(applied.didApply());

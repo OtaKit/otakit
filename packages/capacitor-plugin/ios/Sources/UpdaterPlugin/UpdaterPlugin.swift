@@ -54,6 +54,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var runtimeVersion: String?
   private var manifestKeys: [(kid: String, key: Data)] = []
   private var bundleKeys: [(kid: String, key: Data)] = []
+  private let documentReadyBridge = DocumentReadyBridge()
   private var trialTimeoutWorkItem: DispatchWorkItem?
   private var checkIntervalMs: Int = 600_000
   private var foregroundObserver: NSObjectProtocol?
@@ -132,12 +133,17 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       try? applyServerBasePathSynchronously(nil)
       return
     }
-    coordinator.cleanupBundles(startup.cleanupBundleIds)
+    cleanupInBackground(startup.cleanupBundleIds)
 
     do {
+      if let trial = startup.trial { try installReadinessBridge(for: trial) }
       try applyServerBasePathSynchronously(startup.activationPath)
     } catch {
       print("[OtaKit] startup activation failed: \(error.localizedDescription)")
+      if let trial = startup.trial {
+        rollbackCurrentBundle(expectedTrial: trial, reason: "activation_failed", shouldReload: true)
+        return
+      }
     }
 
     if let eventPayload = startup.eventPayload {
@@ -448,17 +454,22 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   }
 
   @objc func notifyAppReady(_ call: CAPPluginCall) {
-    do {
-      let preparation = try coordinator.prepareNotifyAppReady()
-      coordinator.cleanupBundles(preparation.cleanupBundleIds)
-      if let eventPayload = preparation.eventPayload {
-        cancelTrialTimeout()
-        sendDeviceEvent(eventPayload)
-        emitEvent("updateApplied", ["bundle": store.getCurrentBundle().toDictionary()])
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { call.reject("Updater is unavailable"); return }
+      do {
+        let preparation = try self.coordinator.prepareNotifyAppReady(
+          activationId: call.getString("_otakitActivationId")
+        )
+        self.cleanupInBackground(preparation.cleanupBundleIds)
+        if let eventPayload = preparation.eventPayload {
+          self.cancelTrialTimeout()
+          self.sendDeviceEvent(eventPayload)
+          self.emitEvent("updateApplied", ["bundle": self.store.getCurrentBundle().toDictionary()])
+        }
+        call.resolve()
+      } catch {
+        call.reject("Could not persist update readiness: \(error.localizedDescription)")
       }
-      call.resolve()
-    } catch {
-      call.reject("Could not persist update readiness: \(error.localizedDescription)")
     }
   }
 
@@ -883,20 +894,44 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   @discardableResult
   private func applyStaged(reloadAfterApply: Bool) throws -> Bool {
+    try runOnMainSynchronously { [self] in
+      try applyStagedOnMain(reloadAfterApply: reloadAfterApply)
+    }
+  }
+
+  private func cleanupInBackground(_ ids: [String]) {
+    guard !ids.isEmpty else { return }
+    let coordinator = self.coordinator
+    DispatchQueue.global(qos: .utility).async { coordinator.cleanupBundles(ids) }
+  }
+
+  private func installReadinessBridge(for trial: UpdaterCoordinator.Trial) throws {
+    guard let webView = bridge?.webView else {
+      throw NSError(domain: "OtaKit", code: 1, userInfo: [NSLocalizedDescriptionKey: "WebView unavailable"])
+    }
+    try documentReadyBridge.install(on: webView, activationId: trial.activationId)
+  }
+
+  private func applyStagedOnMain(reloadAfterApply: Bool) throws -> Bool {
     let preparation = try coordinator.prepareApplyStaged(
       isCompatibleRuntime: isCompatibleRuntime,
       isBundleUsable: isBundleUsable
     )
-    coordinator.cleanupBundles(preparation.cleanupBundleIds)
+    cleanupInBackground(preparation.cleanupBundleIds)
 
     guard let activationPath = preparation.activationPath else {
       return false
     }
 
-    try applyServerBasePathSynchronously(activationPath)
-
-    if reloadAfterApply {
-      try reloadWebViewSynchronously()
+    do {
+      if let trial = preparation.trial { try installReadinessBridge(for: trial) }
+      try applyServerBasePathSynchronously(activationPath)
+      if reloadAfterApply { try reloadWebViewSynchronously() }
+    } catch {
+      if let trial = preparation.trial {
+        rollbackCurrentBundle(expectedTrial: trial, reason: "activation_failed", shouldReload: true)
+      }
+      throw error
     }
 
     cancelTrialTimeout()
@@ -957,7 +992,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     cancelTrialTimeout()
 
-    coordinator.cleanupBundles(preparation.cleanupBundleIds)
+    cleanupInBackground(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
       emitEvent(
@@ -1015,31 +1050,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
   }
 
-  private func runOnMainSynchronously(_ work: @escaping () throws -> Void) throws {
-    if Thread.isMainThread {
-      try work()
-      return
-    }
-
-    let semaphore = DispatchSemaphore(value: 0)
-    final class FailureBox {
-      var error: Error?
-    }
-    let failure = FailureBox()
-
-    DispatchQueue.main.async {
-      defer { semaphore.signal() }
-      do {
-        try work()
-      } catch {
-        failure.error = error
-      }
-    }
-
-    semaphore.wait()
-    if let error = failure.error {
-      throw error
-    }
+  private func runOnMainSynchronously<T>(_ work: () throws -> T) rethrows -> T {
+    if Thread.isMainThread { return try work() }
+    return try DispatchQueue.main.sync(execute: work)
   }
 
   private func manifestToDictionary(

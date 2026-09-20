@@ -15,16 +15,32 @@ final class UpdaterCoordinatorTests: XCTestCase {
 
   func testReadinessAcknowledgesOnlyOnce() throws {
     try fixture.apply("A")
-    let ready = try fixture.coordinator.prepareNotifyAppReady()
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
     XCTAssertEqual(ready.eventPayload?.action, .applied)
     XCTAssertEqual(fixture.store.getCurrentBundle().status, .success)
-    XCTAssertNil(try fixture.coordinator.prepareNotifyAppReady().eventPayload)
+    XCTAssertNil(try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId).eventPayload)
+  }
+
+  func testOldOrUntaggedDocumentCannotConfirmNewTrial() throws {
+    try fixture.installHealthy("A")
+    let oldDocument = try XCTUnwrap(fixture.trial).activationId
+    try fixture.apply("B")
+    for identity in [oldDocument, nil] {
+      let stale = try fixture.coordinator.prepareNotifyAppReady(activationId: identity)
+      XCTAssertNil(stale.eventPayload)
+      XCTAssertTrue(stale.cleanupBundleIds.isEmpty)
+      XCTAssertEqual(fixture.store.getCurrentBundle().status, .trial)
+      XCTAssertEqual(fixture.store.getFallbackBundleId(), "A")
+    }
+    XCTAssertNotNil(try fixture.coordinator.prepareNotifyAppReady(
+      activationId: fixture.trial?.activationId
+    ).eventPayload)
   }
 
   func testTimeoutAfterReadinessDoesNotRollBackSuccess() throws {
     try fixture.installHealthy("A")
     try fixture.apply("B")
-    let ready = try fixture.coordinator.prepareNotifyAppReady()
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
     let rollback = try fixture.coordinator.prepareRollback(
       expectedTrial: try XCTUnwrap(fixture.trial),
@@ -42,7 +58,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
     try fixture.installHealthy("A")
     try fixture.apply("B")
     try fixture.withReadOnlyMetadata("B") {
-      XCTAssertThrowsError(try fixture.coordinator.prepareNotifyAppReady())
+      XCTAssertThrowsError(try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId))
       XCTAssertEqual(fixture.store.getCurrentBundle().status, .trial)
       XCTAssertEqual(fixture.store.getFallbackBundle().id, "A")
       XCTAssertTrue(fixture.indexExists("A"))
@@ -65,7 +81,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
   func testOldTimeoutDoesNotAffectNewTrial() throws {
     try fixture.installHealthy("A")
     let oldTrial = try XCTUnwrap(fixture.apply("B").trial)
-    let ready = try fixture.coordinator.prepareNotifyAppReady()
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
     try fixture.apply("C")
     let stale = try fixture.coordinator.prepareRollback(
@@ -163,7 +179,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
     try fixture.installHealthy("A")
     try fixture.apply("B")
     XCTAssertFalse(try fixture.apply("C").didApply)
-    let ready = try fixture.coordinator.prepareNotifyAppReady()
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
     fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
     let applied = try fixture.coordinator.prepareApplyStaged(
       isCompatibleRuntime: { _ in true }, isBundleUsable: fixture.isUsable
@@ -350,7 +366,7 @@ final class CoordinatorFixture {
   func installHealthy(_ id: String) throws {
     let applied = try apply(id)
     XCTAssertTrue(applied.didApply)
-    let ready = try coordinator.prepareNotifyAppReady()
+    let ready = try coordinator.prepareNotifyAppReady(activationId: trial?.activationId)
     XCTAssertNotNil(ready.eventPayload)
     coordinator.cleanupBundles(ready.cleanupBundleIds)
   }
