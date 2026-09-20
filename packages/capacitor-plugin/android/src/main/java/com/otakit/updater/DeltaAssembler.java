@@ -36,9 +36,22 @@ final class DeltaAssembler {
   private final File cacheDirectory;
   private final boolean allowInsecureUrls;
 
+  interface Fetcher {
+    File download(URL url, Context context) throws Exception;
+  }
+
+  private final Fetcher fetcher;
+
   DeltaAssembler(File cacheDirectory, boolean allowInsecureUrls) {
+    this(cacheDirectory, allowInsecureUrls, (url, context) ->
+      FileDownloader.download(url, context.getCacheDir(), allowInsecureUrls)
+    );
+  }
+
+  DeltaAssembler(File cacheDirectory, boolean allowInsecureUrls, Fetcher fetcher) {
     this.cacheDirectory = cacheDirectory;
     this.allowInsecureUrls = allowInsecureUrls;
+    this.fetcher = fetcher;
   }
 
   // ── Canonical file list ─────────────────────────────────────────────
@@ -157,27 +170,40 @@ final class DeltaAssembler {
   private void ensureCached(ManifestClient.ManifestFileEntry entry, Context context)
     throws Exception {
     File cached = cachePath(entry.sha256);
-    if (cached.exists()) {
-      return;
-    }
+    if (validCached(entry)) return;
+    discardDamagedCache(cached);
 
     URL url = new URL(entry.url);
     ManifestClient.requireHTTPS(url, allowInsecureUrls);
 
-    File temporary = FileDownloader.download(url, context.getCacheDir(), allowInsecureUrls);
+    File temporary = fetcher.download(url, context);
     try {
       HashUtils.verifyDownload(temporary, entry.sha256, entry.size, "file");
 
-      if (!cached.exists()) {
-        // Write via temp + rename so process death mid-copy can never leave
-        // a truncated file at a content-addressed path (exists() implies
-        // fully-written, hash-verified content).
-        atomicCopyIntoCache(temporary, cached);
-      }
+      if (validCached(entry)) return;
+      discardDamagedCache(cached);
+      atomicCopyIntoCache(temporary, cached);
+      HashUtils.verifyDownload(cached, entry.sha256, entry.size, "cached file");
     } finally {
       //noinspection ResultOfMethodCallIgnored
       temporary.delete();
     }
+  }
+
+  private boolean validCached(ManifestClient.ManifestFileEntry entry) {
+    File file = cachePath(entry.sha256);
+    if (!file.isFile() || (entry.size >= 0 && file.length() != entry.size)) return false;
+    try {
+      return HashUtils.verify(file, entry.sha256);
+    } catch (Exception unreadable) {
+      return false;
+    }
+  }
+
+  private static void discardDamagedCache(File file) throws Exception {
+    if (file.exists() && !file.delete()) throw new java.io.IOException(
+      "Cannot remove damaged delta cache entry"
+    );
   }
 
   // ── Assembly ────────────────────────────────────────────────────────
@@ -210,6 +236,8 @@ final class DeltaAssembler {
         throw new IllegalStateException("Cannot create parent: " + parent.getAbsolutePath());
       }
       copyFile(cachePath(entry.sha256), target);
+      // Recheck the installed copy if the cache changed while assembly was in progress.
+      HashUtils.verifyDownload(target, entry.sha256, entry.size, "assembled file");
     }
   }
 
@@ -344,8 +372,13 @@ final class DeltaAssembler {
 
   private void atomicCopyIntoCache(File source, File destination) throws Exception {
     File staging = new File(cacheDirectory, ".tmp-" + java.util.UUID.randomUUID());
-    copyFile(source, staging);
-    renameIntoCache(staging, destination);
+    try {
+      copyFile(source, staging);
+      renameIntoCache(staging, destination);
+    } finally {
+      //noinspection ResultOfMethodCallIgnored
+      staging.delete();
+    }
   }
 
   private static void renameIntoCache(File staging, File destination) throws Exception {
