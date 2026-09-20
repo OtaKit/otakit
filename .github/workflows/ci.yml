@@ -61,6 +61,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Verify native SDK version metadata
+        run: node scripts/generate-native-sdk-version.mjs
+
       - name: Test
         run: pnpm test
 

@@ -42,6 +42,16 @@ class BundleInfo {
     return "builtin".equals(id);
   }
 
+  String attemptId() {
+    if (
+      id == null ||
+      !id.matches(
+        "bundle-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+      )
+    ) return null;
+    return id;
+  }
+
   JSObject toJSObject() {
     JSObject object = new JSObject();
     object.put("id", id);

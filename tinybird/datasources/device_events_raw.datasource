@@ -15,7 +15,11 @@ SCHEMA >
     `runtime_version` Nullable(String) `json:$.runtime_version`,
     `release_id` Nullable(String) `json:$.release_id`,
     `native_build` String `json:$.native_build`,
-    `detail` Nullable(String) `json:$.detail`
+    `detail` Nullable(String) `json:$.detail`,
+    `attempt_id` Nullable(String) `json:$.attempt_id`,
+    `native_sdk_version` Nullable(String) `json:$.native_sdk_version`,
+    `phase` Nullable(String) `json:$.phase`,
+    `lifecycle` Nullable(String) `json:$.lifecycle`
 
 ENGINE "MergeTree"
 ENGINE_PARTITION_KEY "toYYYYMM(received_at)"

@@ -701,6 +701,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     encryption: ManifestEncryption? = nil
   ) async throws -> BundleInfo {
     try ensureOwnerActive()
+    let installationId = BundleStore.newInstallationId()
+    var phase = "admission"
     // Check disk space before downloading
     if let size = expectedSize {
       // zip + extracted + buffer; encrypted bundles keep an extra decrypted
@@ -720,7 +722,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
           runtimeVersion: runtimeVersion,
           channel: channel,
           releaseId: releaseId,
-          detail: "insufficient_disk_space"
+          detail: "insufficient_disk_space", attemptId: installationId, phase: phase
         )
         emitEvent(
           "downloadFailed",
@@ -736,6 +738,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       }
     }
 
+    phase = "transfer"
     let zipURL: URL
     do {
       zipURL = try await downloader.download(from: url)
@@ -749,7 +752,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeVersion: runtimeVersion,
         channel: channel,
         releaseId: releaseId,
-        detail: error.localizedDescription
+        detail: error.localizedDescription, attemptId: installationId, phase: phase
       )
       emitEvent(
         "downloadFailed",
@@ -768,9 +771,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       .appendingPathComponent("otakit-extract-\(UUID().uuidString)", isDirectory: true)
     let decryptedZipURL = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-decrypted-\(UUID().uuidString).zip")
-    var installationId: String?
     defer {
-      if let installationId { coordinator.cleanupBundles([installationId]) }
+      coordinator.cleanupBundles([installationId])
       try? fileManager.removeItem(at: zipURL)
       try? fileManager.removeItem(at: decryptedZipURL)
       try? fileManager.removeItem(at: extractDirectory)
@@ -780,6 +782,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
       try ensureOwnerActive()
+      phase = "integrity"
       try HashUtils.verifyDownload(
         fileURL: zipURL,
         expectedSha256: expectedSha256,
@@ -788,6 +791,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
       var zipToExtract = zipURL
       if let encryption {
+        phase = "decrypt"
         guard let bundleKey = bundleKeys.first(where: { $0.kid == encryption.kid }) else {
           throw BundleCryptoError.noMatchingKey(encryption.kid)
         }
@@ -805,11 +809,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         zipToExtract = decryptedZipURL
       }
 
+      phase = "extract"
       try zipUtils.extractSecurely(zipURL: zipToExtract, to: extractDirectory)
       let bundleRoot = try resolveBundleRoot(extractedDirectory: extractDirectory)
 
-      let bundleId = BundleStore.newInstallationId()
-      installationId = bundleId
+      phase = "install"
+      let bundleId = installationId
       let destination = coordinator.bundleDirectory(for: bundleId)
 
       // moveItem fails if the destination exists; never replace an installation.
@@ -830,6 +835,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         releaseId: releaseId
       )
 
+      phase = "stage"
       let cleanupBundleIds = try stageOwnedBundle(info)
       coordinator.cleanupBundles(cleanupBundleIds)
 
@@ -838,7 +844,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         bundleVersion: version,
         runtimeVersion: runtimeVersion,
         channel: channel,
-        releaseId: releaseId
+        releaseId: releaseId, attemptId: installationId, phase: phase
       )
       emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
@@ -850,7 +856,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeVersion: runtimeVersion,
         channel: channel,
         releaseId: releaseId,
-        detail: error.localizedDescription
+        detail: error.localizedDescription, attemptId: installationId, phase: phase
       )
       emitEvent(
         "downloadFailed",
@@ -1113,6 +1119,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     targetChannel: String?
   ) async throws -> BundleInfo {
     try ensureOwnerActive()
+    let installationId = BundleStore.newInstallationId()
+    var phase = "admission"
     // Same conservative disk-space guard as the zip path.
     let requiredSpace = Int64(Double(manifest.size) * 2.5)
     if getFreeDiskSpace() < requiredSpace {
@@ -1122,7 +1130,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeVersion: manifest.runtimeVersion,
         channel: targetChannel,
         releaseId: manifest.releaseId,
-        detail: "insufficient_disk_space"
+        detail: "insufficient_disk_space", attemptId: installationId, phase: phase
       )
       emitEvent(
         "downloadFailed",
@@ -1143,13 +1151,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let assembleDirectory = fileManager.temporaryDirectory
       .appendingPathComponent("otakit-assemble-\(UUID().uuidString)", isDirectory: true)
-    var installationId: String?
     defer {
-      if let installationId { coordinator.cleanupBundles([installationId]) }
+      coordinator.cleanupBundles([installationId])
       try? fileManager.removeItem(at: assembleDirectory)
     }
 
     do {
+      phase = "delta"
       guard let files = manifest.files, !files.isEmpty else {
         throw NSError(
           domain: "OtaKit",
@@ -1174,8 +1182,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
       try await assembler.assemble(entries: files, into: assembleDirectory)
 
-      let bundleId = BundleStore.newInstallationId()
-      installationId = bundleId
+      phase = "install"
+      let bundleId = installationId
       let destination = coordinator.bundleDirectory(for: bundleId)
       // moveItem fails if the destination exists; never replace an installation.
       try fileManager.moveItem(at: assembleDirectory, to: destination)
@@ -1201,6 +1209,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         releaseId: manifest.releaseId
       )
 
+      phase = "stage"
       let cleanupBundleIds = try stageOwnedBundle(info)
       coordinator.cleanupBundles(cleanupBundleIds)
 
@@ -1211,7 +1220,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         bundleVersion: manifest.version,
         runtimeVersion: manifest.runtimeVersion,
         channel: targetChannel,
-        releaseId: manifest.releaseId
+        releaseId: manifest.releaseId, attemptId: installationId, phase: phase
       )
       emitEvent("updateStaged", ["bundle": info.toDictionary()])
       return info
@@ -1223,7 +1232,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeVersion: manifest.runtimeVersion,
         channel: targetChannel,
         releaseId: manifest.releaseId,
-        detail: error.localizedDescription
+        detail: error.localizedDescription, attemptId: installationId, phase: phase
       )
       emitEvent(
         "downloadFailed",
@@ -1328,7 +1337,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     runtimeVersion: String? = nil,
     channel: String? = nil,
     releaseId: String? = nil,
-    detail: String? = nil
+    detail: String? = nil,
+    attemptId: String? = nil,
+    phase: String? = nil
   ) {
     sendDeviceEvent(
       UpdaterCoordinator.DeviceEventPayload(
@@ -1337,7 +1348,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeVersion: runtimeVersion,
         channel: channel,
         releaseId: releaseId,
-        detail: detail
+        detail: detail,
+        attemptId: attemptId,
+        phase: phase
       )
     )
   }
@@ -1369,8 +1382,23 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       runtimeVersion: trimToNil(payload.runtimeVersion),
       releaseId: releaseId,
       nativeBuild: nativeBuild,
-      detail: payload.detail
+      detail: payload.detail,
+      attemptId: payload.attemptId,
+      phase: payload.phase,
+      lifecycle: nativeEventLifecycle()
     )
+  }
+
+  private func nativeEventLifecycle() -> String {
+    let read = { () -> String in
+      switch UIApplication.shared.applicationState {
+      case .active: return "foreground"
+      case .background: return "background"
+      case .inactive: return "inactive"
+      @unknown default: return "unknown"
+      }
+    }
+    return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
   }
 
   private func isBundleUsable(_ bundle: BundleInfo) -> Bool {

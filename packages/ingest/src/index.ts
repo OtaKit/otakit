@@ -14,6 +14,10 @@ type EnqueuedEvent = {
   release_id: string;
   native_build: string;
   detail: string | null;
+  attempt_id: string | null;
+  native_sdk_version: string | null;
+  phase: string | null;
+  lifecycle: string | null;
 };
 
 type RetryOptions = {
@@ -167,7 +171,39 @@ function normalizeEvent(input: Record<string, unknown>, appId: string): Enqueued
     release_id: requireTrimmedAndCap(input.releaseId, 64, 'releaseId'),
     native_build: requireTrimmedAndCap(input.nativeBuild, 32, 'nativeBuild'),
     detail: trimAndCap(input.detail, 500),
+    attempt_id: normalizeAttemptId(input.attemptId),
+    native_sdk_version: trimAndCap(input.nativeSdkVersion, 32),
+    phase: normalizeOptionalEnum(input.phase, [
+      'admission',
+      'transfer',
+      'integrity',
+      'decrypt',
+      'extract',
+      'install',
+      'stage',
+      'delta',
+      'readiness',
+      'rollback',
+      'check',
+      'signature',
+    ]),
+    lifecycle: normalizeOptionalEnum(input.lifecycle, [
+      'foreground',
+      'background',
+      'inactive',
+      'unknown',
+    ]),
   };
+}
+
+function normalizeAttemptId(value: unknown): string | null {
+  const id = trimToNull(value);
+  return id && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null;
+}
+
+function normalizeOptionalEnum(value: unknown, allowed: readonly string[]): string | null {
+  const normalized = trimToNull(value);
+  return normalized && allowed.includes(normalized) ? normalized : null;
 }
 
 async function maybeRateLimit(env: WorkerEnv, appId: string): Promise<boolean> {

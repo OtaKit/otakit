@@ -89,12 +89,20 @@ public class EventDeliveryTest {
         null,
         "release-a",
         "1",
-        null
+        null,
+        "bundle-cd7b94bb-074a-4a4c-830c-5f4c0c103f68",
+        "readiness",
+        "foreground"
       );
       assertTrue("Retry was not delivered", accepted.await(15, TimeUnit.SECONDS));
       assertNull(serverFailure.get());
       assertEquals(2, bodies.size());
       assertEquals(bodies.get(0), bodies.get(1));
+      org.json.JSONObject delivered = new org.json.JSONObject(bodies.get(0));
+      assertEquals(SDKVersion.VALUE, delivered.getString("nativeSdkVersion"));
+      assertEquals("bundle-cd7b94bb-074a-4a4c-830c-5f4c0c103f68", delivered.getString("attemptId"));
+      assertEquals("readiness", delivered.getString("phase"));
+      assertEquals("foreground", delivered.getString("lifecycle"));
       assertEquals(java.util.Arrays.asList("app-a", "app-a"), appIds);
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
       while (DeviceEventClient.hasPendingEvents() && System.nanoTime() < deadline) Thread.sleep(20);

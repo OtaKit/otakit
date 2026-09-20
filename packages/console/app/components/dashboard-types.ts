@@ -52,6 +52,10 @@ export type DeviceEvent = {
   releaseId?: string | null;
   detail: string | null;
   createdAt: string;
+  attemptId?: string | null;
+  nativeSdkVersion?: string | null;
+  phase?: string | null;
+  lifecycle?: string | null;
 };
 
 export type EventCountSummary = {

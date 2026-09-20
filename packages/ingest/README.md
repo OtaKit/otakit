@@ -42,6 +42,14 @@ JSON body:
 - `releaseId` (required)
 - `nativeBuild` (required)
 - `detail` (optional)
+- `attemptId` (optional opaque installation ID, at most 64 safe characters)
+- `nativeSdkVersion` (optional installed native SDK version)
+- `phase` (optional operation phase)
+- `lifecycle` (optional `foreground`, `background`, `inactive`, or `unknown`)
+
+Optional context is stored in nullable Tinybird columns. Older clients remain valid.
+Follow the additive schema-first [deployment order](../capacitor-plugin/DEVICE_EVENT_CONTEXT.md)
+before publishing rebuilt native clients.
 
 ## Wrangler bindings
 

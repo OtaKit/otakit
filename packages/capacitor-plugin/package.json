@@ -50,10 +50,11 @@
     "prettier": "prettier \"src/**/*.{ts,js}\" \"android/src/main/java/**/*.java\" --plugin=prettier-plugin-java",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api UpdaterPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "build": "node ../../scripts/generate-native-sdk-version.mjs --write && npm run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build",
+    "prepack": "node ../../scripts/generate-native-sdk-version.mjs --write",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

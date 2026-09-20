@@ -20,6 +20,8 @@ final class UpdaterCoordinator {
     let channel: String?
     let releaseId: String?
     let detail: String?
+    var attemptId: String? = nil
+    var phase: String? = nil
   }
 
   enum LatestManifestClassification {
@@ -332,7 +334,9 @@ final class UpdaterCoordinator {
           runtimeVersion: current.runtimeVersion,
           channel: current.channel,
           releaseId: current.releaseId,
-          detail: nil
+          detail: nil,
+          attemptId: current.attemptId,
+          phase: "readiness"
         ),
         cleanupBundleIds: Array(cleanupBundleIds)
       )
@@ -549,7 +553,9 @@ final class UpdaterCoordinator {
         runtimeVersion: current.runtimeVersion,
         channel: current.channel,
         releaseId: current.releaseId,
-        detail: reason
+        detail: reason,
+        attemptId: current.attemptId,
+        phase: "rollback"
       )
     )
   }
