@@ -97,6 +97,7 @@ public class UpdaterPlugin extends Plugin {
 
   private BundleStore store;
   private UpdaterCoordinator coordinator;
+  private final UpdateOwner updateOwner;
   private final DocumentReadyBridge documentReadyBridge = new DocumentReadyBridge();
   private final ForegroundDeadline trialDeadline;
 
@@ -127,10 +128,17 @@ public class UpdaterPlugin extends Plugin {
 
   public UpdaterPlugin() {
     this.trialDeadline = new ForegroundDeadline(mainHandler);
+    this.updateOwner = new UpdateOwner(() -> bridge != null && bridge.getWebView() != null);
   }
 
   UpdaterPlugin(ForegroundDeadline trialDeadline) {
     this.trialDeadline = trialDeadline;
+    this.updateOwner = new UpdateOwner(() -> bridge != null && bridge.getWebView() != null);
+  }
+
+  UpdaterPlugin(ForegroundDeadline trialDeadline, UpdateOwner updateOwner) {
+    this.trialDeadline = trialDeadline;
+    this.updateOwner = updateOwner;
   }
 
   @Override
@@ -277,6 +285,7 @@ public class UpdaterPlugin extends Plugin {
 
   @Override
   protected void handleOnDestroy() {
+    updateOwner.close();
     trialDeadline.cancel();
     super.handleOnDestroy();
   }
@@ -471,7 +480,10 @@ public class UpdaterPlugin extends Plugin {
     }
     executor.execute(() -> {
       try {
+        ensureOwnerActive();
         operation.run();
+      } catch (java.util.concurrent.CancellationException ignored) {
+        // The owning bridge went away; this is not a failed update attempt.
       } catch (Exception e) {
         android.util.Log.w("OtaKit", label + " failed", e);
       } finally {
@@ -604,8 +616,8 @@ public class UpdaterPlugin extends Plugin {
   public void notifyAppReady(PluginCall call) {
     mainHandler.post(() -> {
       try {
-        UpdaterCoordinator.NotifyReadyPreparation preparation = coordinator.prepareNotifyAppReady(
-          call.getString("_otakitActivationId")
+        UpdaterCoordinator.NotifyReadyPreparation preparation = updateOwner.run(() ->
+          coordinator.prepareNotifyAppReady(call.getString("_otakitActivationId"))
         );
         cleanupInBackground(preparation.cleanupBundleIds);
         if (preparation.eventPayload != null) {
@@ -705,6 +717,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private CheckResolution checkLatest(boolean respectInterval, String channel) throws Exception {
+    ensureOwnerActive();
     String targetChannel = resolveTargetChannel(channel);
     if (respectInterval && shouldSkipCheckInterval()) {
       android.util.Log.d("OtaKit", "Skipping resume check: checkInterval has not elapsed");
@@ -842,6 +855,7 @@ public class UpdaterPlugin extends Plugin {
     String releaseId,
     ManifestClient.ManifestEncryption encryption
   ) throws Exception {
+    ensureOwnerActive();
     // Check disk space before downloading
     if (expectedSize > 0) {
       // zip + extracted + buffer; encrypted bundles keep an extra decrypted
@@ -873,6 +887,7 @@ public class UpdaterPlugin extends Plugin {
 
     try {
       downloadedZip = downloadZip(url);
+      ensureOwnerActive();
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
       if (!HashUtils.verify(downloadedZip, expectedSha256)) {
@@ -933,7 +948,7 @@ public class UpdaterPlugin extends Plugin {
         channel,
         releaseId
       );
-      java.util.List<String> cleanupBundleIds = coordinator.stageDownloadedBundle(info);
+      java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
       coordinator.cleanupBundles(cleanupBundleIds);
 
       sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
@@ -942,6 +957,7 @@ public class UpdaterPlugin extends Plugin {
       emitEvent("updateStaged", stagedData);
       return info;
     } catch (Exception e) {
+      if (e instanceof java.util.concurrent.CancellationException) throw e;
       sendDeviceEvent(
         "download_error",
         version,
@@ -999,8 +1015,20 @@ public class UpdaterPlugin extends Plugin {
   private boolean applyStaged() throws Exception {
     java.util.concurrent.atomic.AtomicBoolean applied =
       new java.util.concurrent.atomic.AtomicBoolean();
-    runOnMainSynchronously(() -> applied.set(applyStagedOnMain()));
+    runOnMainSynchronously(() -> applied.set(updateOwner.run(this::applyStagedOnMain)));
     return applied.get();
+  }
+
+  private java.util.List<String> stageOwnedBundle(BundleInfo bundle) throws Exception {
+    AtomicReference<java.util.List<String>> cleanup = new AtomicReference<>();
+    runOnMainSynchronously(() ->
+      cleanup.set(updateOwner.run(() -> coordinator.stageDownloadedBundle(bundle)))
+    );
+    return cleanup.get();
+  }
+
+  private void ensureOwnerActive() throws Exception {
+    runOnMainSynchronously(() -> updateOwner.run(() -> null));
   }
 
   private void cleanupInBackground(java.util.List<String> ids) {
@@ -1054,7 +1082,12 @@ public class UpdaterPlugin extends Plugin {
   private void rollbackCurrentBundle(UpdaterCoordinator.Trial expectedTrial, String reason) {
     UpdaterCoordinator.RollbackPreparation preparation;
     try {
-      preparation = coordinator.prepareRollback(expectedTrial, reason, this::isBundleUsable);
+      preparation = updateOwner.run(() ->
+        coordinator.prepareRollback(expectedTrial, reason, this::isBundleUsable)
+      );
+    } catch (java.util.concurrent.CancellationException ignored) {
+      cancelTrialTimeout();
+      return;
     } catch (Exception error) {
       android.util.Log.e("OtaKit", "Cannot persist rollback", error);
       scheduleTrialTimeout(expectedTrial);
@@ -1186,6 +1219,7 @@ public class UpdaterPlugin extends Plugin {
    */
   private BundleInfo assembleAndStage(ManifestClient.LatestManifest manifest, String targetChannel)
     throws Exception {
+    ensureOwnerActive();
     // Same conservative disk-space guard as the zip path.
     if (manifest.size > 0) {
       long requiredSpace = (long) (manifest.size * 2.5);
@@ -1265,7 +1299,7 @@ public class UpdaterPlugin extends Plugin {
         targetChannel,
         manifest.releaseId
       );
-      java.util.List<String> cleanupBundleIds = coordinator.stageDownloadedBundle(info);
+      java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
       coordinator.cleanupBundles(cleanupBundleIds);
 
       pruneDeltaCache(assembler);
@@ -1283,6 +1317,7 @@ public class UpdaterPlugin extends Plugin {
       emitEvent("updateStaged", stagedData);
       return info;
     } catch (Exception e) {
+      if (e instanceof java.util.concurrent.CancellationException) throw e;
       sendDeviceEvent(
         "download_error",
         manifest.version,
