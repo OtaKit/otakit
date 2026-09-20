@@ -340,6 +340,9 @@ final class UpdaterCoordinator {
 
   List<String> stageDownloadedBundle(BundleInfo bundle) throws Exception {
     return withStateLock(() -> {
+      if (bundle.isBuiltin() || store.protectedBundleIds().contains(bundle.id)) {
+        throw new IllegalStateException("Cannot overwrite a referenced bundle installation");
+      }
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
       String previousStagedId = store.getStagedBundleId();
       store.saveBundle(bundle);

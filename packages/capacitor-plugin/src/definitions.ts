@@ -17,7 +17,7 @@ export enum BundleStatus {
 }
 
 export interface BundleInfo {
-  /** Unique bundle identifier */
+  /** Opaque local installation identifier. Separate downloads can have different IDs for the same release. */
   id: string;
   /** Semantic version string */
   version: string;

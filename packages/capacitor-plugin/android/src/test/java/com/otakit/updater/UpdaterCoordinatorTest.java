@@ -34,6 +34,30 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
+  public void stagingCannotOverwriteReferencedBundleMetadata() throws Exception {
+    fixture.installHealthy("A");
+    fixture.apply("B");
+    fixture.stage("C");
+    for (String id : new String[] { "A", "B", "C" }) {
+      var existing = fixture.store.getBundle(id);
+      assertThrows(Exception.class, () ->
+        fixture.coordinator.stageDownloadedBundle(existing.withStatus(BundleStatus.ERROR))
+      );
+      assertEquals(existing.status, fixture.store.getBundle(id).status);
+      assertTrue(fixture.indexExists(id));
+    }
+    assertEquals("B", fixture.store.getCurrentBundleId());
+    assertEquals("A", fixture.store.getFallbackBundleId());
+    assertEquals("C", fixture.store.getStagedBundleId());
+    var rollback = fixture.coordinator.prepareRollback(
+      fixture.trial,
+      "notify_timeout",
+      fixture::isUsable
+    );
+    assertEquals(fixture.store.bundleDirectory("A").getAbsolutePath(), rollback.activationPath);
+  }
+
+  @Test
   public void timeoutAfterReadinessDoesNotRollBackSuccess() throws Exception {
     fixture.installHealthy("A");
     fixture.apply("B");
@@ -50,6 +74,68 @@ public class UpdaterCoordinatorTest {
     assertEquals("B", fixture.store.getCurrentBundle().id);
     assertEquals(BundleStatus.SUCCESS, fixture.store.getCurrentBundle().status);
     assertTrue(fixture.indexExists("B"));
+  }
+
+  @Test
+  public void freshInstallationIdPreservesReleaseMatching() throws Exception {
+    String first = BundleStore.newInstallationId();
+    String second = BundleStore.newInstallationId();
+    assertNotEquals(first, second);
+    fixture.installHealthy(first);
+    var latest = new ManifestClient.LatestManifest(
+      first,
+      null,
+      "hash-" + first,
+      0,
+      null,
+      "release-" + first,
+      "zip",
+      false,
+      null,
+      null
+    );
+    assertEquals(
+      "no_update",
+      fixture.coordinator.classifyLatestManifest(latest, null, fixture::isUsable).kind
+    );
+    fixture.apply("B");
+    fixture.stage(second);
+    var incoming = new BundleInfo(
+      second,
+      first,
+      null,
+      BundleStatus.PENDING,
+      System.currentTimeMillis(),
+      latest.sha256,
+      fixture.store.bundleDirectory(second).getAbsolutePath(),
+      null,
+      latest.releaseId
+    );
+    fixture.store.saveBundle(incoming);
+    var classification = fixture.coordinator.classifyLatestManifest(
+      latest,
+      null,
+      fixture::isUsable
+    );
+    assertEquals("already_staged", classification.kind);
+    assertEquals(second, classification.bundle.id);
+    assertEquals(BundleStatus.SUCCESS, fixture.store.getBundle(first).status);
+    assertTrue(fixture.indexExists(first));
+  }
+
+  @Test
+  public void failedStagingCleanupPreservesCurrentAndSuccessfulStaging() throws Exception {
+    fixture.installHealthy("A");
+    String orphan = BundleStore.newInstallationId();
+    fixture.withReadOnlyState(() -> assertThrows(Exception.class, () -> fixture.stage(orphan)));
+    fixture.coordinator.cleanupBundles(java.util.Collections.singletonList(orphan));
+    assertFalse(fixture.indexExists(orphan));
+    assertTrue(fixture.indexExists("A"));
+    String staged = BundleStore.newInstallationId();
+    fixture.stage(staged);
+    fixture.coordinator.cleanupBundles(java.util.Collections.singletonList(staged));
+    assertTrue(fixture.indexExists(staged));
+    assertEquals(staged, fixture.store.getStagedBundleId());
   }
 
   @Test

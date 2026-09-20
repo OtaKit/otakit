@@ -235,6 +235,11 @@ final class UpdaterCoordinator {
 
   func stageDownloadedBundle(_ bundle: BundleInfo) throws -> [String] {
     try withStateLock {
+      guard !bundle.isBuiltin, !(try store.protectedBundleIds()).contains(bundle.id) else {
+        throw NSError(domain: "OtaKit", code: 1, userInfo: [
+          NSLocalizedDescriptionKey: "Cannot overwrite a referenced bundle installation"
+        ])
+      }
       var cleanupBundleIds = Set<String>()
       let previousStagedId = store.getStagedBundleId()
       try store.saveBundle(bundle)
