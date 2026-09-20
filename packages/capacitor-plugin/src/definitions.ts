@@ -182,7 +182,7 @@ export interface OtaKitConfig {
    * Set to 0 or a negative value to disable resume throttling.
    */
   checkInterval?: number;
-  /** Milliseconds to wait for notifyAppReady(). Defaults to 10000. */
+  /** Foreground milliseconds to wait for notifyAppReady(). Pauses while inactive/backgrounded. Defaults to 10000. */
   appReadyTimeout?: number;
   /** Custom event ingest base URL. Hosted default: https://ingest.otakit.app/v1 */
   ingestUrl?: string;
@@ -239,7 +239,7 @@ export interface OtaKitPlugin {
 
   /**
    * **CRITICAL**: Call this when your app has successfully started.
-   * Must be called within appReadyTimeout (default 10s) or rollback occurs.
+   * Must be called within appReadyTimeout of foreground time (default 10s) or rollback occurs.
    */
   notifyAppReady(): Promise<void>;
 

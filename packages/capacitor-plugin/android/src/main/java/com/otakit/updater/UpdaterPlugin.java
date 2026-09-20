@@ -98,7 +98,7 @@ public class UpdaterPlugin extends Plugin {
   private BundleStore store;
   private UpdaterCoordinator coordinator;
   private final DocumentReadyBridge documentReadyBridge = new DocumentReadyBridge();
-  private Runnable trialTimeoutRunnable;
+  private final ForegroundDeadline trialDeadline;
 
   private int appReadyTimeoutMs = 10_000;
   private boolean storageReady;
@@ -124,6 +124,14 @@ public class UpdaterPlugin extends Plugin {
   private static final java.util.regex.Pattern CHANNEL_NAME_PATTERN =
     java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
   private UpdaterCoordinator.StartupPreparation pendingStartupPreparation;
+
+  public UpdaterPlugin() {
+    this.trialDeadline = new ForegroundDeadline(mainHandler);
+  }
+
+  UpdaterPlugin(ForegroundDeadline trialDeadline) {
+    this.trialDeadline = trialDeadline;
+  }
 
   @Override
   public void load() {
@@ -252,12 +260,25 @@ public class UpdaterPlugin extends Plugin {
   @Override
   protected void handleOnResume() {
     super.handleOnResume();
+    trialDeadline.setForeground(true);
     if (!storageReady) return;
     if (coldStartInProgress) {
       coldStartInProgress = false;
       return;
     }
     handleResume();
+  }
+
+  @Override
+  protected void handleOnPause() {
+    trialDeadline.setForeground(false);
+    super.handleOnPause();
+  }
+
+  @Override
+  protected void handleOnDestroy() {
+    trialDeadline.cancel();
+    super.handleOnDestroy();
   }
 
   private boolean shouldSkipCheckInterval() {
@@ -1023,18 +1044,11 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private void scheduleTrialTimeout(UpdaterCoordinator.Trial trial) {
-    cancelTrialTimeout();
-    trialTimeoutRunnable = () -> {
-      rollbackCurrentBundle(trial, "notify_timeout");
-    };
-    mainHandler.postDelayed(trialTimeoutRunnable, appReadyTimeoutMs);
+    trialDeadline.start(appReadyTimeoutMs, () -> rollbackCurrentBundle(trial, "notify_timeout"));
   }
 
   private void cancelTrialTimeout() {
-    if (trialTimeoutRunnable != null) {
-      mainHandler.removeCallbacks(trialTimeoutRunnable);
-      trialTimeoutRunnable = null;
-    }
+    trialDeadline.cancel();
   }
 
   private void rollbackCurrentBundle(UpdaterCoordinator.Trial expectedTrial, String reason) {
