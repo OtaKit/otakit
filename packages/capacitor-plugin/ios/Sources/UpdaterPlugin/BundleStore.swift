@@ -23,17 +23,17 @@ final class BundleStore {
     )[0]
   }
 
-  private lazy var decoder: JSONDecoder = {
+  private var decoder: JSONDecoder {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     return decoder
-  }()
+  }
 
-  private lazy var encoder: JSONEncoder = {
+  private var encoder: JSONEncoder {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
     return encoder
-  }()
+  }
 
   private(set) lazy var bundlesDirectory: URL = {
     let directory = rootDirectory.appendingPathComponent(
@@ -152,78 +152,105 @@ final class BundleStore {
     return bundles
   }
 
+  private struct CoreState: Codable {
+    var version = 1
+    var currentId: String?
+    var fallbackId: String?
+    var stagedId: String?
+    var lastFailed: BundleInfo?
+  }
+
+  private var stateURL: URL { rootDirectory.appendingPathComponent("otakit-state.json") }
+  private let persistenceLock = NSRecursiveLock()
+
+  private func readCoreState() throws -> CoreState {
+    persistenceLock.lock()
+    defer { persistenceLock.unlock() }
+    if fileManager.fileExists(atPath: stateURL.path) {
+      let state = try decoder.decode(CoreState.self, from: Data(contentsOf: stateURL))
+      guard state.version == 1 else {
+        throw CocoaError(.coderReadCorrupt)
+      }
+      return state
+    }
+    // Existing installations migrate on their first successful state write.
+    let failed = defaults.data(forKey: Keys.lastFailedBundleInfo)
+      .flatMap { try? decoder.decode(BundleInfo.self, from: $0) }
+    return CoreState(
+      currentId: defaults.string(forKey: Keys.currentBundleId),
+      fallbackId: defaults.string(forKey: Keys.fallbackBundleId),
+      stagedId: defaults.string(forKey: Keys.stagedBundleId),
+      lastFailed: failed
+    )
+  }
+
+  private func writeCoreState(_ state: CoreState) throws {
+    try fileManager.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+    try encoder.encode(state).write(to: stateURL, options: .atomic)
+  }
+
+  private func mutateCoreState(_ mutation: (inout CoreState) -> Void) throws {
+    persistenceLock.lock()
+    defer { persistenceLock.unlock() }
+    var state = try readCoreState()
+    mutation(&state)
+    try writeCoreState(state)
+  }
+
+  func setCoreState(
+    currentId: String?, fallbackId: String?, stagedId: String?, lastFailed: BundleInfo?
+  ) throws {
+    persistenceLock.lock()
+    defer { persistenceLock.unlock() }
+    // Validate an existing state before replacing it; corruption must fail closed.
+    _ = try readCoreState()
+    try writeCoreState(CoreState(
+      currentId: currentId, fallbackId: fallbackId, stagedId: stagedId, lastFailed: lastFailed
+    ))
+  }
+
+  func protectedBundleIds() throws -> Set<String> {
+    let state = try readCoreState()
+    return Set([state.currentId, state.fallbackId, state.stagedId].compactMap { $0 })
+  }
+
   func getCurrentBundle() -> BundleInfo {
-    guard
-      let bundleId = defaults.string(forKey: Keys.currentBundleId),
-      let bundle = getBundle(id: bundleId)
-    else {
+    guard let id = getCurrentBundleId(), let bundle = getBundle(id: id) else {
       return builtinBundle()
     }
     return bundle
   }
 
-  func getCurrentBundleId() -> String? {
-    defaults.string(forKey: Keys.currentBundleId)
-  }
+  func getCurrentBundleId() -> String? { (try? readCoreState())?.currentId }
 
-  func setCurrentBundleId(_ id: String?) {
-    if let id {
-      defaults.set(id, forKey: Keys.currentBundleId)
-    } else {
-      defaults.removeObject(forKey: Keys.currentBundleId)
-    }
+  func setCurrentBundleId(_ id: String?) throws {
+    try mutateCoreState { $0.currentId = id }
   }
 
   func getFallbackBundle() -> BundleInfo {
-    guard
-      let bundleId = defaults.string(forKey: Keys.fallbackBundleId),
-      let bundle = getBundle(id: bundleId)
-    else {
+    guard let id = getFallbackBundleId(), let bundle = getBundle(id: id) else {
       return builtinBundle()
     }
     return bundle
   }
 
-  func getFallbackBundleId() -> String? {
-    defaults.string(forKey: Keys.fallbackBundleId)
+  func getFallbackBundleId() -> String? { (try? readCoreState())?.fallbackId }
+
+  func setFallbackBundleId(_ id: String?) throws {
+    try mutateCoreState { $0.fallbackId = id }
   }
 
-  func setFallbackBundleId(_ id: String?) {
-    if let id {
-      defaults.set(id, forKey: Keys.fallbackBundleId)
-    } else {
-      defaults.removeObject(forKey: Keys.fallbackBundleId)
-    }
+  func getStagedBundleId() -> String? { (try? readCoreState())?.stagedId }
+
+  func setStagedBundleId(_ id: String?) throws {
+    try mutateCoreState { $0.stagedId = id }
   }
 
-  func getStagedBundleId() -> String? {
-    defaults.string(forKey: Keys.stagedBundleId)
+  func setLastFailedBundle(_ bundle: BundleInfo?) throws {
+    try mutateCoreState { $0.lastFailed = bundle }
   }
 
-  func setStagedBundleId(_ id: String?) {
-    if let id {
-      defaults.set(id, forKey: Keys.stagedBundleId)
-    } else {
-      defaults.removeObject(forKey: Keys.stagedBundleId)
-    }
-  }
-
-  func setLastFailedBundle(_ bundle: BundleInfo?) {
-    if let bundle {
-      if let data = try? encoder.encode(bundle) {
-        defaults.set(data, forKey: Keys.lastFailedBundleInfo)
-      }
-    } else {
-      defaults.removeObject(forKey: Keys.lastFailedBundleInfo)
-    }
-  }
-
-  func getLastFailedBundle() -> BundleInfo? {
-    guard let data = defaults.data(forKey: Keys.lastFailedBundleInfo) else {
-      return nil
-    }
-    return try? decoder.decode(BundleInfo.self, from: data)
-  }
+  func getLastFailedBundle() -> BundleInfo? { (try? readCoreState())?.lastFailed }
 
   func getOverrideChannel() -> String? {
     defaults.string(forKey: Keys.overrideChannel)
@@ -250,7 +277,7 @@ final class BundleStore {
     }
   }
 
-  func markStatus(bundleId: String, status: BundleStatus) {
+  func markStatus(bundleId: String, status: BundleStatus) throws {
     guard var bundle = getBundle(id: bundleId) else {
       return
     }
@@ -265,7 +292,7 @@ final class BundleStore {
       channel: bundle.channel,
       releaseId: bundle.releaseId
     )
-    try? saveBundle(bundle)
+    try saveBundle(bundle)
   }
 
   func deleteBundle(id: String) throws {
@@ -273,17 +300,12 @@ final class BundleStore {
       return
     }
 
+    try setCoreState(
+      currentId: getCurrentBundleId() == id ? nil : getCurrentBundleId(),
+      fallbackId: getFallbackBundleId() == id ? nil : getFallbackBundleId(),
+      stagedId: getStagedBundleId() == id ? nil : getStagedBundleId(),
+      lastFailed: getLastFailedBundle()
+    )
     try fileManager.removeItem(at: bundleDirectory(for: id))
-
-    if getStagedBundleId() == id {
-      setStagedBundleId(nil)
-    }
-    if defaults.string(forKey: Keys.currentBundleId) == id {
-      setCurrentBundleId(nil)
-    }
-    if defaults.string(forKey: Keys.fallbackBundleId) == id {
-      setFallbackBundleId(nil)
-    }
   }
-
 }

@@ -53,6 +53,32 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
+  public void failedReadinessWritePreservesHealthyFallback() throws Exception {
+    fixture.installHealthy("A");
+    fixture.apply("B");
+    fixture.withReadOnlyMetadata("B", () -> {
+      assertThrows(Exception.class, () -> fixture.coordinator.prepareNotifyAppReady());
+      assertEquals(BundleStatus.TRIAL, fixture.store.getCurrentBundle().status);
+      assertEquals("A", fixture.store.getFallbackBundle().id);
+      assertTrue(fixture.indexExists("A"));
+    });
+  }
+
+  @Test
+  public void failedTrialWriteDoesNotSwitchCurrentBundle() throws Exception {
+    fixture.installHealthy("A");
+    fixture.stage("B");
+    fixture.withReadOnlyMetadata("B", () -> {
+      assertThrows(Exception.class, () ->
+        fixture.coordinator.prepareApplyStaged(bundle -> true, fixture::isUsable)
+      );
+      assertEquals("A", fixture.store.getCurrentBundle().id);
+      assertEquals("B", fixture.store.getStagedBundleId());
+      assertTrue(fixture.indexExists("A"));
+    });
+  }
+
+  @Test
   public void oldTimeoutDoesNotAffectNewTrial() throws Exception {
     fixture.installHealthy("A");
     var oldTrial = fixture.apply("B").trial;

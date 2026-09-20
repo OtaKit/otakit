@@ -225,6 +225,7 @@ final class UpdaterCoordinator {
 
   List<String> pruneIncompatibleBundles(BundlePredicate isCompatibleRuntime) {
     return withStateLock(() -> {
+      store.protectedBundleIds();
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
 
       for (BundleInfo bundle : store.listDownloadedBundleInfos()) {
@@ -245,6 +246,7 @@ final class UpdaterCoordinator {
 
   StartupPreparation normalizeStartupState(BundlePredicate isBundleUsable) {
     return withStateLock(() -> {
+      store.protectedBundleIds();
       activeTrial = null;
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
       clearStaleBundlePointersLocked();
@@ -271,7 +273,8 @@ final class UpdaterCoordinator {
         normalizedCurrent = restoreFallbackOrBuiltinLocked(
           isBundleUsable,
           cleanupBundleIds,
-          normalizedCurrent.id
+          normalizedCurrent.id,
+          null
         );
       }
 
@@ -377,22 +380,16 @@ final class UpdaterCoordinator {
         return new ApplyPreparation(null, null, new ArrayList<>(cleanupBundleIds));
       }
 
-      if (previousCurrent.isBuiltin()) {
-        store.setFallbackBundleId(null);
-      } else if (previousCurrent.status == BundleStatus.SUCCESS) {
-        store.setFallbackBundleId(previousCurrent.id);
-      }
-
-      store.setCurrentBundleId(staged.id);
-      store.setStagedBundleId(null);
-
-      Trial trial = null;
+      String fallbackId = previousCurrent.isBuiltin()
+        ? null
+        : (previousCurrent.status == BundleStatus.SUCCESS
+            ? previousCurrent.id
+            : store.getFallbackBundleId());
       if (staged.status == BundleStatus.PENDING) {
         staged = updateStatusLocked(staged, BundleStatus.TRIAL);
-        trial = beginTrialLocked(staged.id);
-      } else if (staged.status == BundleStatus.TRIAL) {
-        trial = beginTrialLocked(staged.id);
       }
+      store.setCoreState(staged.id, fallbackId, null, store.getLastFailedBundle());
+      Trial trial = staged.status == BundleStatus.TRIAL ? beginTrialLocked(staged.id) : null;
 
       return new ApplyPreparation(staged.path, trial, new ArrayList<>(cleanupBundleIds));
     });
@@ -401,12 +398,21 @@ final class UpdaterCoordinator {
   NotifyReadyPreparation prepareNotifyAppReady() {
     return withStateLock(() -> {
       BundleInfo current = store.getCurrentBundle();
-      if (current.isBuiltin() || current.status != BundleStatus.TRIAL) {
+      if (
+        current.isBuiltin() ||
+        activeTrial == null ||
+        !activeTrial.bundleId.equals(current.id) ||
+        (current.status != BundleStatus.TRIAL &&
+          !(current.status == BundleStatus.SUCCESS &&
+            !current.id.equals(store.getFallbackBundleId())))
+      ) {
         return new NotifyReadyPreparation(null, new ArrayList<>());
       }
 
       String oldFallbackId = store.getFallbackBundleId();
-      updateStatusLocked(current, BundleStatus.SUCCESS);
+      if (current.status == BundleStatus.TRIAL) {
+        updateStatusLocked(current, BundleStatus.SUCCESS);
+      }
       store.setFallbackBundleId(current.id);
       activeTrial = null;
 
@@ -470,13 +476,16 @@ final class UpdaterCoordinator {
     }
 
     withStateLock(() -> {
+      Set<String> protectedIds;
+      try {
+        protectedIds = store.protectedBundleIds();
+      } catch (Exception error) {
+        // An unreadable state is not evidence that these files are unreferenced.
+        return null;
+      }
       for (String bundleId : uniqueIds) {
         // Cleanup can run after a newer transition has made this bundle live again.
-        if (
-          !bundleId.equals(store.getCurrentBundleId()) &&
-          !bundleId.equals(store.getFallbackBundleId()) &&
-          !bundleId.equals(store.getStagedBundleId())
-        ) {
+        if (!protectedIds.contains(bundleId)) {
           deleteRecursivelyQuietly(store.bundleDirectory(bundleId));
         }
       }
@@ -622,16 +631,14 @@ final class UpdaterCoordinator {
       return new LockedRollbackResult(false, null, null);
     }
 
-    BundleInfo failed = updateStatusLocked(current, BundleStatus.ERROR);
-    activeTrial = null;
-    store.setLastFailedBundle(failed);
-    store.setStagedBundleId(null);
-
+    BundleInfo failed = current.withStatus(BundleStatus.ERROR);
     BundleInfo fallback = restoreFallbackOrBuiltinLocked(
       isBundleUsable,
       cleanupBundleIds,
-      current.id
+      current.id,
+      failed
     );
+    activeTrial = null;
     cleanupBundleIds.add(current.id);
 
     return new LockedRollbackResult(
@@ -651,8 +658,10 @@ final class UpdaterCoordinator {
   private BundleInfo restoreFallbackOrBuiltinLocked(
     BundlePredicate isBundleUsable,
     Set<String> cleanupBundleIds,
-    String excludedBundleId
+    String excludedBundleId,
+    BundleInfo failedBundle
   ) {
+    BundleInfo restored = store.builtinBundle();
     String fallbackId = store.getFallbackBundleId();
     if (fallbackId != null) {
       BundleInfo fallback = store.getBundle(fallbackId);
@@ -663,27 +672,30 @@ final class UpdaterCoordinator {
         fallback.status == BundleStatus.SUCCESS &&
         isBundleUsable.test(fallback)
       ) {
-        store.setCurrentBundleId(fallback.id);
-        return fallback;
+        restored = fallback;
       }
     }
 
-    if (fallbackId != null) {
-      store.setFallbackBundleId(null);
-      if (!"builtin".equals(fallbackId)) {
-        cleanupBundleIds.add(fallbackId);
-      }
+    if (fallbackId != null && !"builtin".equals(fallbackId) && !fallbackId.equals(restored.id)) {
+      cleanupBundleIds.add(fallbackId);
     }
-
-    store.setCurrentBundleId(null);
-    return store.builtinBundle();
+    String restoredId = restored.isBuiltin() ? null : restored.id;
+    store.setCoreState(
+      restoredId,
+      restoredId,
+      failedBundle == null ? store.getStagedBundleId() : null,
+      failedBundle == null ? store.getLastFailedBundle() : failedBundle
+    );
+    return restored;
   }
 
   private BundleInfo updateStatusLocked(BundleInfo bundle, BundleStatus status) {
     BundleInfo updated = bundle.withStatus(status);
     try {
       store.saveBundle(updated);
-    } catch (Exception ignored) {}
+    } catch (Exception error) {
+      throw new IllegalStateException("Could not persist bundle status", error);
+    }
     return updated;
   }
 
