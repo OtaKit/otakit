@@ -4,6 +4,15 @@ import XCTest
 @testable import UpdaterPlugin
 
 final class DownloadRetryTests: XCTestCase {
+  func testOnlyActualHTTP403And410RefreshTheManifest() {
+    XCTAssertTrue(DownloadRetry.isExpiredURLFailure(DownloadHTTPError(status: 403, retryAfter: nil)))
+    XCTAssertTrue(DownloadRetry.isExpiredURLFailure(DownloadHTTPError(status: 410, retryAfter: nil)))
+    XCTAssertFalse(DownloadRetry.isExpiredURLFailure(DownloadHTTPError(status: 503, retryAfter: nil)))
+    XCTAssertFalse(DownloadRetry.isExpiredURLFailure(NSError(domain: "OtaKit", code: 1,
+      userInfo: [NSLocalizedDescriptionKey: "hash mismatch; actualSha256=abc403def410; receivedBytes=40300"])))
+    XCTAssertFalse(DownloadRetry.isExpiredURLFailure(NSError(domain: "OtaKit", code: 403,
+      userInfo: [NSLocalizedDescriptionKey: "forbidden local path or expired key"])))
+  }
   func testTransientHTTPAndDisconnectedBodyRetryFreshDownloads() async throws {
     let server = try DownloadHTTPServer(responses: [
       .http(status: 503), .truncated, .success
