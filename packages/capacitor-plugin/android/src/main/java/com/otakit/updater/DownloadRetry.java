@@ -36,6 +36,16 @@ final class DownloadRetry {
     NetworkFailure(IOException cause) {
       super("Download connection failed (" + cause.getClass().getSimpleName() + ")", cause);
     }
+
+    @Override
+    public String getMessage() {
+      // Only locally constructed EOF diagnostics are safe to include; arbitrary network messages may contain URLs.
+      String detail = getCause() instanceof java.io.EOFException ? getCause().getMessage() : null;
+      return (
+        super.getMessage() +
+        (detail != null && detail.startsWith("body length mismatch;") ? "; " + detail : "")
+      );
+    }
   }
 
   private final Sleeper sleeper;

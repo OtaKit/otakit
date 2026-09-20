@@ -57,6 +57,17 @@ final class DownloadRetryTests: XCTestCase {
     XCTAssertEqual(server.requestCount, 1)
   }
 
+  func testUnsolicitedPartialResponseIsRejected() async throws {
+    let server = try DownloadHTTPServer(responses: [.http(status: 206)])
+    let url = try await server.start()
+    defer { server.stop() }
+    do {
+      _ = try await Downloader(allowInsecureUrls: true).download(from: url)
+      XCTFail("A whole-object request must not accept a partial response")
+    } catch let error as DownloadHTTPError { XCTAssertEqual(error.status, 206) }
+    XCTAssertEqual(server.requestCount, 1)
+  }
+
   func testCancellationDuringBackoffStopsFurtherRequests() async throws {
     let server = try DownloadHTTPServer(responses: [.http(status: 503)])
     let url = try await server.start()

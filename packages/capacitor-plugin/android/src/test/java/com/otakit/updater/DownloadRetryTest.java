@@ -25,6 +25,20 @@ public class DownloadRetryTest {
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Test
+  public void earlyEofRetriesAndUnsolicitedPartialResponseFails() throws Exception {
+    Reply shortBody = Reply.success();
+    shortBody.contentLength = "100";
+    Server server = new Server(temporaryFolder.newFolder(), shortBody, Reply.success());
+    File result = server.download();
+    assertArrayEquals(new byte[] { 1, 2, 3 }, Files.readAllBytes(result.toPath()));
+    assertEquals(2, server.opened);
+    Server partial = new Server(temporaryFolder.newFolder(), new Reply(206, null));
+    assertThrows(DownloadRetry.HttpFailure.class, partial::download);
+    assertEquals(1, partial.opened);
+    assertEquals(0, partial.cache.list().length);
+  }
+
+  @Test
   public void transientFailuresRetryFreshFilesWithoutAppendingPartialBytes() throws Exception {
     Server server = new Server(
       temporaryFolder.newFolder(),
@@ -190,6 +204,7 @@ public class DownloadRetryTest {
 
     final int status;
     final String retryAfter;
+    String contentLength;
     InputStream stream = new ByteArrayInputStream(new byte[] { 1, 2, 3 });
     IOException responseFailure;
     boolean disconnected;
@@ -226,6 +241,7 @@ public class DownloadRetryTest {
 
     @Override
     public String getHeaderField(String name) {
+      if ("Content-Length".equals(name)) return contentLength;
       return "Retry-After".equals(name) ? retryAfter : null;
     }
 

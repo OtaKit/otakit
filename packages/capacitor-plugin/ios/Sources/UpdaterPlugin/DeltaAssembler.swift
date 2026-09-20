@@ -169,9 +169,8 @@ final class DeltaAssembler {
     let temporary = try await downloader.download(from: url)
     defer { try? fileManager.removeItem(at: temporary) }
 
-    guard try HashUtils.verify(fileURL: temporary, expectedSha256: entry.sha256) else {
-      throw DeltaAssemblerError.fileHashMismatch(entry.path)
-    }
+    try HashUtils.verifyDownload(fileURL: temporary, expectedSha256: entry.sha256,
+      expectedBytes: entry.size, kind: "file")
 
     let destination = cachePath(for: entry.sha256)
     if fileManager.fileExists(atPath: destination.path) {
