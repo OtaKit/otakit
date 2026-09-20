@@ -15,7 +15,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-public class ZipDownloaderTest {
+public class FileDownloaderTest {
 
   @Rule
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
@@ -39,7 +39,12 @@ public class ZipDownloaderTest {
       }
     };
     assertThrows(IOException.class, () ->
-      ZipDownloader.download(connection.testUrl(), cache, false)
+      FileDownloader.download(
+        connection.testUrl(),
+        cache,
+        false,
+        new DownloadRetry(delay -> {}, () -> 0.5, () -> 0L)
+      )
     );
     assertEquals(0, cache.list().length);
     assertTrue(connection.inputClosed);
@@ -52,7 +57,12 @@ public class ZipDownloaderTest {
     TestConnection connection = new TestConnection();
     connection.failOpen = true;
     assertThrows(IOException.class, () ->
-      ZipDownloader.download(connection.testUrl(), cache, false)
+      FileDownloader.download(
+        connection.testUrl(),
+        cache,
+        false,
+        new DownloadRetry(delay -> {}, () -> 0.5, () -> 0L)
+      )
     );
     assertEquals(0, cache.list().length);
     assertTrue(connection.disconnected);
@@ -63,7 +73,12 @@ public class ZipDownloaderTest {
     File cache = temporaryFolder.newFolder();
     TestConnection connection = new TestConnection();
     connection.stream = new ByteArrayInputStream(new byte[] { 1, 2, 3 });
-    File result = ZipDownloader.download(connection.testUrl(), cache, false);
+    File result = FileDownloader.download(
+      connection.testUrl(),
+      cache,
+      false,
+      new DownloadRetry(delay -> {}, () -> 0.5, () -> 0L)
+    );
     assertArrayEquals(new byte[] { 1, 2, 3 }, Files.readAllBytes(result.toPath()));
     assertEquals(1, cache.list().length);
     assertTrue(connection.disconnected);
@@ -73,9 +88,14 @@ public class ZipDownloaderTest {
   public void httpFailureDoesNotAllocateAFile() throws Exception {
     File cache = temporaryFolder.newFolder();
     TestConnection connection = new TestConnection();
-    connection.status = 503;
-    assertThrows(IllegalStateException.class, () ->
-      ZipDownloader.download(connection.testUrl(), cache, false)
+    connection.status = 403;
+    assertThrows(DownloadRetry.HttpFailure.class, () ->
+      FileDownloader.download(
+        connection.testUrl(),
+        cache,
+        false,
+        new DownloadRetry(delay -> {}, () -> 0.5, () -> 0L)
+      )
     );
     assertEquals(0, cache.list().length);
     assertTrue(connection.disconnected);
