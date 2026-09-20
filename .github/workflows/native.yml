@@ -57,6 +57,15 @@ jobs:
           manifest.write_text(manifest.read_text().replace('"7.0.0"..<"9.0.0"', 'exact: "' + os.environ['TEST_CAPACITOR_VERSION'] + '"'))
           PY
       - run: pnpm --filter @otakit/capacitor-updater verify:ios
+      - name: Upload failed iOS test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results-capacitor-${{ matrix.capacitor }}-attempt-${{ github.run_attempt }}
+          path: packages/capacitor-plugin/.build/verification-results/*.xcresult
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
   android-webview:
     runs-on: ubuntu-latest

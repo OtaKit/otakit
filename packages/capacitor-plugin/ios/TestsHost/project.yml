@@ -1,0 +1,48 @@
+name: UpdaterTests
+options:
+  deploymentTarget:
+    iOS: '15.0'
+packages:
+  Updater:
+    path: ../..
+settings:
+  base:
+    SWIFT_VERSION: '5.9'
+targets:
+  UpdaterTestHost:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.otakit.native-tests.host
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  UpdaterPluginTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - ../Tests/UpdaterPluginTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.otakit.native-tests.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/UpdaterTestHost.app/UpdaterTestHost
+        BUNDLE_LOADER: $(TEST_HOST)
+    dependencies:
+      - target: UpdaterTestHost
+      - package: Updater
+        product: OtakitCapacitorUpdater
+schemes:
+  UpdaterTests:
+    build:
+      targets:
+        UpdaterTestHost: all
+        UpdaterPluginTests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - UpdaterPluginTests
