@@ -1,6 +1,11 @@
 export type MemberRole = 'owner' | 'admin' | 'member';
 export type Platform = 'ios' | 'android';
-export type DeviceEventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback';
+export type DeviceEventAction =
+  | 'downloaded'
+  | 'applied'
+  | 'download_error'
+  | 'rollback'
+  | 'check_error';
 
 export type OrganizationMembership = {
   id: string;

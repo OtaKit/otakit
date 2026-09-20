@@ -10,6 +10,16 @@ import org.json.JSONObject;
 
 final class ManifestClient {
 
+  static final class HttpFailure extends Exception {
+
+    final int status;
+
+    HttpFailure(int status) {
+      super("Latest request failed (" + status + ")");
+      this.status = status;
+    }
+  }
+
   private static final String BASE_CHANNEL_KEY = "__base__";
   private static final String DEFAULT_RUNTIME_KEY = "__default__";
 
@@ -155,12 +165,7 @@ final class ManifestClient {
         return null;
       }
       if (status != 200) {
-        String body = readStream(
-          connection.getErrorStream() != null
-            ? connection.getErrorStream()
-            : connection.getInputStream()
-        );
-        throw new IllegalStateException("Latest request failed (" + status + "): " + body);
+        throw new HttpFailure(status);
       }
 
       String payload = readStream(connection.getInputStream());
@@ -230,9 +235,7 @@ final class ManifestClient {
 
       if (manifestKeys != null && !manifestKeys.isEmpty()) {
         if (signature == null) {
-          throw new IllegalStateException(
-            "Manifest signature missing but signing keys are configured"
-          );
+          throw new ManifestVerifier.VerificationException("signature_missing");
         }
 
         ManifestVerifier.verify(

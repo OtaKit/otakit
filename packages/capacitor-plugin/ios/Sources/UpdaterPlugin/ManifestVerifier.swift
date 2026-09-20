@@ -51,7 +51,13 @@ enum ManifestVerifier {
       iat: signature.iat,
       exp: signature.exp
     )
-    try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
+    do {
+      try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
+    } catch let error as ManifestVerifierError {
+      throw error
+    } catch {
+      throw ManifestVerifierError.invalidSignature
+    }
   }
 
   private static func verifyPayload(

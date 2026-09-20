@@ -22,6 +22,16 @@ final class ManifestVerifier {
 
   private ManifestVerifier() {}
 
+  static final class VerificationException extends Exception {
+
+    final String reason;
+
+    VerificationException(String reason) {
+      super("Manifest verification failed: " + reason);
+      this.reason = reason;
+    }
+  }
+
   /**
    * Verify a manifest signature using ES256 (ECDSA P-256 + SHA-256).
    *
@@ -54,7 +64,15 @@ final class ManifestVerifier {
       signature.iat,
       signature.exp
     );
-    verifyPayload(payload, signature, trustedKeys);
+    try {
+      verifyPayload(payload, signature, trustedKeys);
+    } catch (VerificationException error) {
+      throw error;
+    } catch (Exception error) {
+      VerificationException failure = new VerificationException("signature_invalid");
+      failure.initCause(error);
+      throw failure;
+    }
   }
 
   private static void verifyPayload(
@@ -65,7 +83,7 @@ final class ManifestVerifier {
     // Check expiry
     long now = System.currentTimeMillis() / 1000;
     if (signature.exp <= now) {
-      throw new IllegalStateException("Manifest signature expired");
+      throw new VerificationException("signature_expired");
     }
 
     // Find matching key
@@ -77,7 +95,7 @@ final class ManifestVerifier {
       }
     }
     if (keyEntry == null) {
-      throw new IllegalStateException("Unknown signing key ID: " + signature.kid);
+      throw new VerificationException("signature_unknown_key");
     }
 
     // Decode base64url signature
@@ -93,7 +111,7 @@ final class ManifestVerifier {
     verifier.update(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
     if (!verifier.verify(sigBytes)) {
-      throw new IllegalStateException("Manifest signature verification failed");
+      throw new VerificationException("signature_invalid");
     }
   }
 

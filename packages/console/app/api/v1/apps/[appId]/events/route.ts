@@ -11,7 +11,13 @@ import {
 
 export const runtime = 'nodejs';
 
-const VALID_ACTIONS = ['downloaded', 'applied', 'download_error', 'rollback'] as const;
+const VALID_ACTIONS = [
+  'downloaded',
+  'applied',
+  'download_error',
+  'rollback',
+  'check_error',
+] as const;
 
 type ValidAction = (typeof VALID_ACTIONS)[number];
 

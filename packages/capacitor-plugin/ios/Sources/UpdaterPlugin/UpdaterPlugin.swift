@@ -544,16 +544,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       throw NSError(domain: "OtaKit", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing appId in plugin config"])
     }
 
-    return try await ManifestClient.fetchLatest(
-      cdnUrl: cdnUrl,
-      appId: appId,
-      channel: channel,
-      runtimeVersion: runtimeVersion,
-      allowInsecureUrls: allowInsecureUrls,
-      manifestKeys: manifestKeys.map {
-        ManifestKey(kid: $0.kid, derData: $0.key)
-      }
-    )
+    let checkId = "check-\(UUID().uuidString)"
+    return try await CheckFailure.observe({
+      let latest = try await ManifestClient.fetchLatest(
+        cdnUrl: self.cdnUrl, appId: appId, channel: channel,
+        runtimeVersion: self.runtimeVersion, allowInsecureUrls: self.allowInsecureUrls,
+        manifestKeys: self.manifestKeys.map { ManifestKey(kid: $0.kid, derData: $0.key) }
+      )
+      try self.ensureOwnerActive()
+      return latest
+    }, report: { failure in
+      try self.ensureOwnerActive()
+      self.sendDeviceEvent(action: .checkError, runtimeVersion: self.runtimeVersion, channel: channel,
+        detail: failure.detail, attemptId: checkId, phase: failure.phase)
+    })
   }
 
   private func checkLatest(
@@ -631,6 +635,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     targetChannel: String?
   ) throws -> CheckResolution {
     guard isCompatibleRuntime(manifest.runtimeVersion) else {
+      try ensureOwnerActive()
+      sendDeviceEvent(action: .checkError, bundleVersion: manifest.version, runtimeVersion: runtimeVersion,
+        channel: targetChannel, releaseId: manifest.releaseId, detail: "runtime_mismatch",
+        attemptId: "check-\(UUID().uuidString)", phase: "check")
       throw NSError(
         domain: "OtaKit",
         code: 1,
@@ -1359,11 +1367,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     guard let appId else {
       return
     }
-    guard let bundleVersion = trimToNil(payload.bundleVersion) else {
+    let bundleVersion = trimToNil(payload.bundleVersion)
+    guard payload.action == .checkError || bundleVersion != nil else {
       print("[OtaKit] Skipping device event without bundleVersion")
       return
     }
-    guard let releaseId = trimToNil(payload.releaseId) else {
+    let releaseId = trimToNil(payload.releaseId)
+    guard payload.action == .checkError || releaseId != nil else {
       print("[OtaKit] Skipping device event without releaseId")
       return
     }
@@ -1377,10 +1387,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       appId: appId,
       platform: "ios",
       action: payload.action,
-      bundleVersion: bundleVersion,
+      bundleVersion: bundleVersion ?? "",
       channel: payload.channel,
       runtimeVersion: trimToNil(payload.runtimeVersion),
-      releaseId: releaseId,
+      releaseId: releaseId ?? "",
       nativeBuild: nativeBuild,
       detail: payload.detail,
       attemptId: payload.attemptId,

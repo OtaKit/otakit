@@ -713,13 +713,33 @@ public class UpdaterPlugin extends Plugin {
       throw new IllegalStateException("Missing appId in plugin config");
     }
 
-    return ManifestClient.fetchLatest(
-      cdnUrl,
-      appId,
-      channel,
-      runtimeVersion,
-      allowInsecureUrls,
-      manifestKeys
+    String checkId = "check-" + java.util.UUID.randomUUID();
+    return CheckFailure.observe(
+      () -> {
+        ManifestClient.LatestManifest latest = ManifestClient.fetchLatest(
+          cdnUrl,
+          appId,
+          channel,
+          runtimeVersion,
+          allowInsecureUrls,
+          manifestKeys
+        );
+        ensureOwnerActive();
+        return latest;
+      },
+      failure -> {
+        ensureOwnerActive();
+        sendDeviceEvent(
+          "check_error",
+          null,
+          runtimeVersion,
+          channel,
+          null,
+          failure.detail,
+          checkId,
+          failure.phase
+        );
+      }
     );
   }
 
@@ -806,6 +826,17 @@ public class UpdaterPlugin extends Plugin {
     String targetChannel
   ) throws Exception {
     if (!isCompatibleRuntime(latest.runtimeVersion)) {
+      ensureOwnerActive();
+      sendDeviceEvent(
+        "check_error",
+        latest.version,
+        runtimeVersion,
+        targetChannel,
+        latest.releaseId,
+        "runtime_mismatch",
+        "check-" + java.util.UUID.randomUUID(),
+        "check"
+      );
       throw new IllegalStateException(
         "Manifest runtimeVersion does not match the installed app runtime"
       );
@@ -1628,12 +1659,12 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     String normalizedBundleVersion = trimToNull(payload.bundleVersion);
-    if (normalizedBundleVersion == null) {
+    if (normalizedBundleVersion == null && !"check_error".equals(payload.action)) {
       android.util.Log.w("OtaKit", "Skipping device event without bundleVersion");
       return;
     }
     String normalizedReleaseId = trimToNull(payload.releaseId);
-    if (normalizedReleaseId == null) {
+    if (normalizedReleaseId == null && !"check_error".equals(payload.action)) {
       android.util.Log.w("OtaKit", "Skipping device event without releaseId");
       return;
     }

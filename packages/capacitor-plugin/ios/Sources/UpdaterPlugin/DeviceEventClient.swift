@@ -4,6 +4,7 @@ enum DeviceEventAction: String {
     case downloaded
     case applied
     case downloadError = "download_error"
+    case checkError = "check_error"
     case rollback
 }
 
