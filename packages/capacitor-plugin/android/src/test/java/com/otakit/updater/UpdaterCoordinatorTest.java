@@ -25,6 +25,33 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
+  public void telemetryKeepsInstallationIdentityAcrossReadinessAndRestartRollback()
+    throws Exception {
+    String installed = BundleStore.newInstallationId();
+    fixture.apply(installed);
+    var applied = fixture.coordinator.prepareNotifyAppReady(
+      fixture.trial.activationId
+    ).eventPayload;
+    assertEquals(installed, applied.attemptId);
+    assertEquals("readiness", applied.phase);
+    assertEquals(installed, fixture.reopenStore().getCurrentBundle().attemptId());
+    String failed = BundleStore.newInstallationId();
+    fixture.apply(failed);
+    var restarted = new UpdaterCoordinator(fixture.reopenStore());
+    var startup = restarted.normalizeStartupState(fixture::isUsable);
+    assertEquals(failed, startup.eventPayload.attemptId);
+    assertEquals("rollback", startup.eventPayload.phase);
+  }
+
+  @Test
+  public void legacyBundleDoesNotInventAnAttemptIdentity() throws Exception {
+    fixture.apply("legacy-release");
+    assertNull(
+      fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId).eventPayload.attemptId
+    );
+  }
+
+  @Test
   public void readinessAcknowledgesOnlyOnce() throws Exception {
     fixture.apply("A");
     var ready = fixture.coordinator.prepareNotifyAppReady(fixture.trial.activationId);

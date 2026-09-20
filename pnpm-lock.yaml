@@ -351,7 +351,11 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@25.2.2)(vite@8.2.2(@types/node@25.2.2)(esbuild@0.28.2)(jiti@2.6.1))
 
-  packages/ingest: {}
+  packages/ingest:
+    devDependencies:
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@25.2.2)(vite@8.2.2(@types/node@25.2.2)(esbuild@0.28.2)(jiti@2.6.1))
 
   packages/mcp-core:
     dependencies:

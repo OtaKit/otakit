@@ -111,6 +111,38 @@ final class DeviceEventClient {
     String nativeBuild,
     String detail
   ) {
+    send(
+      ingestUrl,
+      appId,
+      platform,
+      action,
+      bundleVersion,
+      channel,
+      runtimeVersion,
+      releaseId,
+      nativeBuild,
+      detail,
+      null,
+      null,
+      "unknown"
+    );
+  }
+
+  static void send(
+    String ingestUrl,
+    String appId,
+    String platform,
+    String action,
+    String bundleVersion,
+    String channel,
+    String runtimeVersion,
+    String releaseId,
+    String nativeBuild,
+    String detail,
+    String attemptId,
+    String phase,
+    String lifecycle
+  ) {
     synchronized (DeviceEventClient.class) {
       try {
         String base = ingestUrl.replaceAll("/+$", "");
@@ -130,6 +162,10 @@ final class DeviceEventClient {
         }
         payload.put("releaseId", releaseId);
         payload.put("nativeBuild", nativeBuild);
+        payload.put("nativeSdkVersion", SDKVersion.VALUE);
+        payload.put("attemptId", attemptId);
+        payload.put("phase", phase);
+        payload.put("lifecycle", lifecycle);
         if (detail != null) {
           String truncated = detail.length() > 500 ? detail.substring(0, 500) : detail;
           payload.put("detail", truncated);

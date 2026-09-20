@@ -103,6 +103,7 @@ public class UpdaterPlugin extends Plugin {
 
   private int appReadyTimeoutMs = 10_000;
   private boolean storageReady;
+  private volatile String lifecycleState = "unknown";
   private boolean allowInsecureUrls = false;
   private Policy launchPolicy = Policy.APPLY_STAGED;
   private Policy resumePolicy = Policy.SHADOW;
@@ -269,6 +270,7 @@ public class UpdaterPlugin extends Plugin {
   @Override
   protected void handleOnResume() {
     super.handleOnResume();
+    lifecycleState = "foreground";
     trialDeadline.setForeground(true);
     if (bridge != null) DeviceEventClient.resume(
       new File(getContext().getNoBackupFilesDir(), "otakit-events")
@@ -283,6 +285,7 @@ public class UpdaterPlugin extends Plugin {
 
   @Override
   protected void handleOnPause() {
+    lifecycleState = "background";
     trialDeadline.setForeground(false);
     super.handleOnPause();
   }
@@ -852,6 +855,8 @@ public class UpdaterPlugin extends Plugin {
     ManifestClient.ManifestEncryption encryption
   ) throws Exception {
     ensureOwnerActive();
+    String installationId = BundleStore.newInstallationId();
+    String phase = "admission";
     // Check disk space before downloading
     if (expectedSize > 0) {
       // zip + extracted + buffer; encrypted bundles keep an extra decrypted
@@ -866,7 +871,9 @@ public class UpdaterPlugin extends Plugin {
           runtimeVersion,
           channel,
           releaseId,
-          "insufficient_disk_space"
+          "insufficient_disk_space",
+          installationId,
+          phase
         );
         emitEvent(
           "downloadFailed",
@@ -879,13 +886,14 @@ public class UpdaterPlugin extends Plugin {
     File downloadedZip = null;
     File decryptedZip = null;
     File extractedDirectory = null;
-    String installationId = null;
 
     try {
+      phase = "transfer";
       downloadedZip = downloadZip(url);
       ensureOwnerActive();
       // The manifest sha256 covers the downloaded object as-is — the
       // ciphertext when the bundle is encrypted.
+      phase = "integrity";
       HashUtils.verifyDownload(
         downloadedZip,
         expectedSha256,
@@ -895,6 +903,7 @@ public class UpdaterPlugin extends Plugin {
 
       File zipToExtract = downloadedZip;
       if (encryption != null) {
+        phase = "decrypt";
         byte[] kek = bundleKeys.get(encryption.kid);
         if (kek == null) {
           throw new IllegalStateException("no matching bundle key (kid " + encryption.kid + ")");
@@ -917,6 +926,7 @@ public class UpdaterPlugin extends Plugin {
         zipToExtract = decryptedZip;
       }
 
+      phase = "extract";
       extractedDirectory = new File(
         getContext().getCacheDir(),
         "otakit-extract-" + System.currentTimeMillis()
@@ -928,8 +938,8 @@ public class UpdaterPlugin extends Plugin {
       zipUtils.extractSecurely(zipToExtract, extractedDirectory);
       File bundleRoot = resolveBundleRoot(extractedDirectory);
 
-      String bundleId = BundleStore.newInstallationId();
-      installationId = bundleId;
+      phase = "install";
+      String bundleId = installationId;
       File destination = coordinator.bundleDirectory(bundleId);
       if (destination.exists()) {
         throw new IllegalStateException("Bundle installation directory already exists");
@@ -947,10 +957,20 @@ public class UpdaterPlugin extends Plugin {
         channel,
         releaseId
       );
+      phase = "stage";
       java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
       coordinator.cleanupBundles(cleanupBundleIds);
 
-      sendDeviceEvent("downloaded", version, runtimeVersion, channel, releaseId, null);
+      sendDeviceEvent(
+        "downloaded",
+        version,
+        runtimeVersion,
+        channel,
+        releaseId,
+        null,
+        installationId,
+        phase
+      );
       JSObject stagedData = new JSObject();
       stagedData.put("bundle", info.toJSObject());
       emitEvent("updateStaged", stagedData);
@@ -963,7 +983,9 @@ public class UpdaterPlugin extends Plugin {
         runtimeVersion,
         channel,
         releaseId,
-        e.getMessage()
+        e.getMessage(),
+        installationId,
+        phase
       );
       emitEvent(
         "downloadFailed",
@@ -1219,6 +1241,8 @@ public class UpdaterPlugin extends Plugin {
   private BundleInfo assembleAndStage(ManifestClient.LatestManifest manifest, String targetChannel)
     throws Exception {
     ensureOwnerActive();
+    String installationId = BundleStore.newInstallationId();
+    String phase = "admission";
     // Same conservative disk-space guard as the zip path.
     if (manifest.size > 0) {
       long requiredSpace = (long) (manifest.size * 2.5);
@@ -1229,7 +1253,9 @@ public class UpdaterPlugin extends Plugin {
           manifest.runtimeVersion,
           targetChannel,
           manifest.releaseId,
-          "insufficient_disk_space"
+          "insufficient_disk_space",
+          installationId,
+          phase
         );
         emitEvent(
           "downloadFailed",
@@ -1249,9 +1275,9 @@ public class UpdaterPlugin extends Plugin {
       getContext().getCacheDir(),
       "otakit-assemble-" + System.currentTimeMillis()
     );
-    String installationId = null;
 
     try {
+      phase = "delta";
       if (manifest.files == null || manifest.files.isEmpty()) {
         throw new IllegalStateException("Delta manifest is missing its file list");
       }
@@ -1264,8 +1290,8 @@ public class UpdaterPlugin extends Plugin {
       assembler.seedFromBuiltinIfNeeded(getContext(), BUILTIN_ASSET_PATH, store.getNativeBuild());
       assembler.assemble(manifest.files, assembleDirectory, getContext());
 
-      String bundleId = BundleStore.newInstallationId();
-      installationId = bundleId;
+      phase = "install";
+      String bundleId = installationId;
       File destination = coordinator.bundleDirectory(bundleId);
       if (destination.exists()) {
         throw new IllegalStateException("Bundle installation directory already exists");
@@ -1298,6 +1324,7 @@ public class UpdaterPlugin extends Plugin {
         targetChannel,
         manifest.releaseId
       );
+      phase = "stage";
       java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
       coordinator.cleanupBundles(cleanupBundleIds);
 
@@ -1309,7 +1336,9 @@ public class UpdaterPlugin extends Plugin {
         manifest.runtimeVersion,
         targetChannel,
         manifest.releaseId,
-        null
+        null,
+        installationId,
+        phase
       );
       JSObject stagedData = new JSObject();
       stagedData.put("bundle", info.toJSObject());
@@ -1323,7 +1352,9 @@ public class UpdaterPlugin extends Plugin {
         manifest.runtimeVersion,
         targetChannel,
         manifest.releaseId,
-        e.getMessage()
+        e.getMessage(),
+        installationId,
+        phase
       );
       emitEvent(
         "downloadFailed",
@@ -1565,6 +1596,19 @@ public class UpdaterPlugin extends Plugin {
     String releaseId,
     String detail
   ) {
+    sendDeviceEvent(action, bundleVersion, runtimeVersion, channel, releaseId, detail, null, null);
+  }
+
+  private void sendDeviceEvent(
+    String action,
+    String bundleVersion,
+    String runtimeVersion,
+    String channel,
+    String releaseId,
+    String detail,
+    String attemptId,
+    String phase
+  ) {
     sendDeviceEvent(
       new UpdaterCoordinator.DeviceEventPayload(
         action,
@@ -1572,7 +1616,9 @@ public class UpdaterPlugin extends Plugin {
         runtimeVersion,
         channel,
         releaseId,
-        detail
+        detail,
+        attemptId,
+        phase
       )
     );
   }
@@ -1606,7 +1652,10 @@ public class UpdaterPlugin extends Plugin {
       trimToNull(payload.runtimeVersion),
       normalizedReleaseId,
       nativeBuild,
-      payload.detail
+      payload.detail,
+      payload.attemptId,
+      payload.phase,
+      lifecycleState
     );
   }
 

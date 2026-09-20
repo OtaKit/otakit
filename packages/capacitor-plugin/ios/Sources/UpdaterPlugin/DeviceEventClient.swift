@@ -20,7 +20,10 @@ enum DeviceEventClient {
         runtimeVersion: String?,
         releaseId: String,
         nativeBuild: String,
-        detail: String?
+        detail: String?,
+        attemptId: String? = nil,
+        phase: String? = nil,
+        lifecycle: String = "unknown"
     ) {
         let sanitizedBase = ingestUrl.replacingOccurrences(
             of: "/+$",
@@ -40,7 +43,11 @@ enum DeviceEventClient {
             "bundleVersion": bundleVersion,
             "releaseId": releaseId,
             "nativeBuild": nativeBuild,
+            "nativeSdkVersion": SDKVersion.value,
+            "lifecycle": lifecycle,
         ]
+        if let attemptId { payload["attemptId"] = attemptId }
+        if let phase { payload["phase"] = phase }
         if let channel, !channel.isEmpty {
             payload["channel"] = channel
         }

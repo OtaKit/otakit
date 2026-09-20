@@ -52,6 +52,8 @@ final class UpdaterCoordinator {
     final String channel;
     final String releaseId;
     final String detail;
+    final String attemptId;
+    final String phase;
 
     DeviceEventPayload(
       String action,
@@ -61,12 +63,27 @@ final class UpdaterCoordinator {
       String releaseId,
       String detail
     ) {
+      this(action, bundleVersion, runtimeVersion, channel, releaseId, detail, null, null);
+    }
+
+    DeviceEventPayload(
+      String action,
+      String bundleVersion,
+      String runtimeVersion,
+      String channel,
+      String releaseId,
+      String detail,
+      String attemptId,
+      String phase
+    ) {
       this.action = action;
       this.bundleVersion = bundleVersion;
       this.runtimeVersion = runtimeVersion;
       this.channel = channel;
       this.releaseId = releaseId;
       this.detail = detail;
+      this.attemptId = attemptId;
+      this.phase = phase;
     }
   }
 
@@ -432,7 +449,9 @@ final class UpdaterCoordinator {
           current.runtimeVersion,
           current.channel,
           current.releaseId,
-          null
+          null,
+          current.attemptId(),
+          "readiness"
         ),
         new ArrayList<>(cleanupBundleIds)
       );
@@ -654,7 +673,9 @@ final class UpdaterCoordinator {
         current.runtimeVersion,
         current.channel,
         current.releaseId,
-        reason
+        reason,
+        current.attemptId(),
+        "rollback"
       )
     );
   }

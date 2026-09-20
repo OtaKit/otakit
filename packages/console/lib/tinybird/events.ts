@@ -23,6 +23,10 @@ type RecentEventRow = {
   release_id?: string | null;
   detail?: string | null;
   received_at?: string | null;
+  attempt_id?: string | null;
+  native_sdk_version?: string | null;
+  phase?: string | null;
+  lifecycle?: string | null;
 };
 
 type AggregateCountRow = {
@@ -141,6 +145,10 @@ function normalizeEventRow(row: RecentEventRow): DeviceEvent | null {
     releaseId: trimToNull(row.release_id),
     detail: trimToNull(row.detail),
     createdAt,
+    attemptId: trimToNull(row.attempt_id),
+    nativeSdkVersion: trimToNull(row.native_sdk_version),
+    phase: trimToNull(row.phase),
+    lifecycle: trimToNull(row.lifecycle),
   };
 }
 

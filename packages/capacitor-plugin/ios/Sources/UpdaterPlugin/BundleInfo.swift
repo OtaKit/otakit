@@ -15,6 +15,11 @@ struct BundleInfo: Codable {
     id == "builtin"
   }
 
+  var attemptId: String? {
+    guard id.hasPrefix("bundle-"), UUID(uuidString: String(id.dropFirst(7))) != nil else { return nil }
+    return id
+  }
+
   func withStatus(_ status: BundleStatus) -> BundleInfo {
     BundleInfo(
       id: id, version: version, runtimeVersion: runtimeVersion, status: status,

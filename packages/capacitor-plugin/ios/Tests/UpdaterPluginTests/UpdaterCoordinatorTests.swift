@@ -21,6 +21,27 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertNil(try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId).eventPayload)
   }
 
+  func testTelemetryKeepsInstallationIdentityAcrossReadinessAndRestartRollback() throws {
+    let installed = BundleStore.newInstallationId()
+    try fixture.apply(installed)
+    let applied = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId).eventPayload
+    XCTAssertEqual(applied?.attemptId, installed)
+    XCTAssertEqual(applied?.phase, "readiness")
+    XCTAssertEqual(fixture.reopenStore().getCurrentBundle().attemptId, installed)
+    let failed = BundleStore.newInstallationId()
+    try fixture.apply(failed)
+    let restarted = UpdaterCoordinator(store: fixture.reopenStore())
+    let startup = try restarted.normalizeStartupState(isBundleUsable: fixture.isUsable)
+    XCTAssertEqual(startup.eventPayload?.attemptId, failed)
+    XCTAssertEqual(startup.eventPayload?.phase, "rollback")
+  }
+
+  func testLegacyBundleDoesNotInventAnAttemptIdentity() throws {
+    try fixture.apply("legacy-release")
+    let applied = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
+    XCTAssertNil(applied.eventPayload?.attemptId)
+  }
+
   func testOldOrUntaggedDocumentCannotConfirmNewTrial() throws {
     try fixture.installHealthy("A")
     let oldDocument = try XCTUnwrap(fixture.trial).activationId

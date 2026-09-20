@@ -16,6 +16,10 @@ SQL >
         runtime_version,
         release_id,
         detail,
+        attempt_id,
+        native_sdk_version,
+        phase,
+        lifecycle,
         received_at
     FROM device_events_raw
     WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
