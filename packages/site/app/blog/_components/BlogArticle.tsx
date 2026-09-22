@@ -62,6 +62,8 @@ export function BlogArticle({ post, children }: { post: BlogPostMeta; children: 
         {children}
       </div>
 
+      <OtaKitCta />
+
       <Separator className="my-8" />
 
       <section>
@@ -78,7 +80,54 @@ export function BlogArticle({ post, children }: { post: BlogPostMeta; children: 
           ))}
         </div>
       </section>
+
+      <FriendLink />
     </article>
+  );
+}
+
+/** Every article ends by pitching OtaKit, the way the landing page does. */
+function OtaKitCta() {
+  return (
+    <aside className="mt-10 border border-border bg-muted/40 px-6 py-6 text-center">
+      <p className="text-lg font-semibold tracking-tight text-foreground">
+        Ship fixes to your Capacitor app today, not after review.
+      </p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+        OtaKit pushes over-the-air updates straight to your users, with channels, rollbacks and delta
+        updates. Free for 5,000 updates a month. Open source and self-hostable.
+      </p>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+        <a
+          href={site.signup}
+          className="rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+        >
+          Get started free
+        </a>
+        <Link
+          href="/docs"
+          className="rounded-full border border-border px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          Read the docs
+        </Link>
+      </div>
+      <p className="mt-4 font-mono text-xs text-muted-foreground">{site.install}</p>
+    </aside>
+  );
+}
+
+/** A one-line link to our sister product. */
+function FriendLink() {
+  return (
+    <p className="mt-8 text-xs text-muted-foreground">
+      Friends of OtaKit:{' '}
+      <a
+        href="https://nomac.app/?utm_source=otakit&utm_medium=blog&utm_campaign=friends"
+        className="underline underline-offset-4 hover:text-foreground"
+      >
+        NoMac, cloud Macs for iOS builds and AI agents
+      </a>
+    </p>
   );
 }
 

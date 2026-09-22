@@ -29,6 +29,15 @@ export default function IosFromWindowsPage() {
         code; the runner checks it out, builds the iOS app, signs it, and uploads to App Store Connect. You
         never touch a physical Mac.
       </p>
+      <p>
+        If you would rather debug interactively than push a commit per attempt, our sister product{' '}
+        <A href="https://nomac.app/?utm_source=otakit&utm_medium=blog&utm_campaign=ios-from-windows">
+          NoMac
+        </A>{' '}
+        gives you or your AI agent a cloud Mac with Xcode over SSH or MCP, billed by the second. Run{' '}
+        <Code>npx cap sync ios</Code> and <Code>xcodebuild</Code> there until it builds, then let CI take
+        over.
+      </p>
 
       <h2>1. Develop and test everything else locally</h2>
       <p>

@@ -23,6 +23,30 @@ export type BlogPostMeta = {
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
+    slug: 'build-capacitor-ios-app-on-cloud-mac',
+    title: 'Build and test your Capacitor iOS app on a cloud Mac',
+    seoTitle: 'Build a Capacitor iOS App on a Cloud Mac Without Owning One (2026)',
+    description:
+      'Compile, run the iOS Simulator and archive a Capacitor app on a disposable cloud Mac from Windows or Linux, driven by you or your AI agent. Then ship every later web change over the air.',
+    category: 'Tutorial',
+    publishedAt: '2026-09-22',
+    readingTime: '7 min read',
+    keywords: [
+      'Capacitor iOS without Mac',
+      'build Capacitor iOS app Windows',
+      'Capacitor cloud Mac',
+      'Capacitor iOS simulator cloud',
+      'Capacitor Xcode remote',
+      'AI agent Capacitor iOS build',
+    ],
+    order: 102,
+    relatedDocs: [
+      { href: '/docs', label: 'Getting started' },
+      { href: '/docs/channels', label: 'Channels & runtime version' },
+      { href: '/docs/update-strategies', label: 'Update strategies' },
+    ],
+  },
+  {
     slug: 'ship-capacitor-updates-with-ai-agents',
     title: 'Ship Capacitor updates with AI agents',
     seoTitle: 'Ship Capacitor OTA Updates With AI Agents',
