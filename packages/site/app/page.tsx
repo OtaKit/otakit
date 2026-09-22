@@ -784,6 +784,12 @@ export default function LandingPage() {
             <Link href="/policy" className="transition-colors hover:text-foreground">
               Privacy
             </Link>
+            <a
+              href="https://nomac.app/?utm_source=otakit&utm_medium=footer&utm_campaign=friends"
+              className="transition-colors hover:text-foreground"
+            >
+              Friends: NoMac
+            </a>
           </div>
         </div>
       </footer>

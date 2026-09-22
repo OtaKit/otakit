@@ -2018,3 +2018,7 @@ POLAR_*
 vars unset for unlimited usage with no billing UI.
 
 Stuck on something? Email us or open an issue on GitHub — self-hosting reports help us make this guide better.
+
+## Related
+
+Building the native iOS shell of a Capacitor app needs a Mac with Xcode. NoMac (https://nomac.app), from friends of OtaKit, gives developers and AI agents a cloud Mac for those builds, billed by the second.

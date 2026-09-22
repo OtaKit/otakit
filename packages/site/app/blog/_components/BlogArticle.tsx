@@ -80,8 +80,6 @@ export function BlogArticle({ post, children }: { post: BlogPostMeta; children: 
           ))}
         </div>
       </section>
-
-      <FriendLink />
     </article>
   );
 }
@@ -113,21 +111,6 @@ function OtaKitCta() {
       </div>
       <p className="mt-4 font-mono text-xs text-muted-foreground">{site.install}</p>
     </aside>
-  );
-}
-
-/** A one-line link to our sister product. */
-function FriendLink() {
-  return (
-    <p className="mt-8 text-xs text-muted-foreground">
-      Friends of OtaKit:{' '}
-      <a
-        href="https://nomac.app/?utm_source=otakit&utm_medium=blog&utm_campaign=friends"
-        className="underline underline-offset-4 hover:text-foreground"
-      >
-        NoMac, cloud Macs for iOS builds and AI agents
-      </a>
-    </p>
   );
 }
 

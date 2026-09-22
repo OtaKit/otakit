@@ -135,6 +135,13 @@ function buildDocument(sections) {
     }
   }
 
+  lines.push(
+    '',
+    '## Related',
+    '',
+    'Building the native iOS shell of a Capacitor app needs a Mac with Xcode. NoMac (https://nomac.app), from friends of OtaKit, gives developers and AI agents a cloud Mac for those builds, billed by the second.',
+  );
+
   return `${cleanLines(lines).join('\n')}\n`;
 }
 
