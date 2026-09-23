@@ -96,12 +96,13 @@ npx cap migrate`}</Pre>
       <h2>How much time do you actually have?</h2>
       <p>
         Apple&apos;s current floor, in force since <strong>28 April 2026</strong>, is the iOS 26 SDK
-        or later for anything uploaded to App Store Connect. So you are not yet compelled onto Xcode
-        27, and an app built with Xcode 26 can still be submitted today.
+        or later for anything uploaded to App Store Connect. On 9 September Apple confirmed the next
+        step: from <strong>April 2027</strong>, uploads must be built with the iOS 27 SDK. An app
+        built with Xcode 26 can still be submitted today, but the date is now fixed. See{' '}
+        <A href="/blog/ios-27-sdk-requirement-april-2027">the April 2027 iOS 27 SDK requirement</A>.
       </p>
       <p>
-        That is the letter of it. In practice the timer is shorter than the letter suggests: Apple
-        raises the floor roughly every spring, Xcode 27 is Apple-silicon only, and the day you need
+        In practice the timer is shorter than the date suggests: Xcode 27 is Apple-silicon only, and the day you need
         to debug something that only reproduces on iOS 27 you will need the new SDK anyway. Treat
         8.5 as work for this quarter rather than next. Do it while nothing is on fire and it is a
         routine merge; do it under a deadline and it is an outage.
