@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
-import { BookOpen, LayoutDashboard, Settings } from 'lucide-react';
+import { Bell, BookOpen, LayoutDashboard, Settings } from 'lucide-react';
 
 type DashboardSection = 'dashboard' | 'settings' | 'push';
 
@@ -25,6 +25,7 @@ export function DashboardHeader({
       href: dashboardHref,
       icon: LayoutDashboard,
     },
+    { section: 'push' as const, label: 'Push', href: '/dashboard/push', icon: Bell },
     { section: 'settings' as const, label: 'Settings', href: settingsHref, icon: Settings },
   ];
 
