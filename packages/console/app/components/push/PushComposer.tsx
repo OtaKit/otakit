@@ -24,6 +24,10 @@ import { Textarea } from '@/components/ui/textarea';
 
 type AudienceCount = { total: number; ios: number; android: number };
 
+function devices(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? 'device' : 'devices'}`;
+}
+
 function splitList(value: string): string[] {
   return value
     .split(/[\s,]+/)
@@ -122,7 +126,7 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
         );
       }
       const data = (await response.json()) as { campaign: { targeted: number } };
-      toast.success(`Sending to ${data.campaign.targeted.toLocaleString()} devices`);
+      toast.success(`Sending to ${devices(data.campaign.targeted)}`);
       setTitle('');
       setBody('');
       setUrl('');
@@ -224,8 +228,7 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
               <span className="text-muted-foreground">Counting devices…</span>
             ) : (
               <>
-                <strong>{count.total.toLocaleString()}</strong> devices ({count.ios} iOS,{' '}
-                {count.android} Android)
+                <strong>{devices(count.total)}</strong> ({count.ios} iOS, {count.android} Android)
               </>
             )}
           </p>
@@ -258,9 +261,7 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Send to {count?.total.toLocaleString() ?? 0} devices?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Send to {devices(count?.total ?? 0)}?</AlertDialogTitle>
             <AlertDialogDescription>
               “{title}” will be delivered right away. This cannot be undone once devices receive it.
             </AlertDialogDescription>
