@@ -45,13 +45,13 @@ PushNotifications.addListener('pushNotificationActionPerformed', ({ notification
 
 ## API
 
-| Method | Description |
-|---|---|
+| Method                                      | Description                                                                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `init({ appId, serverUrl?, environment? })` | Configure once. `serverUrl` for self-hosting; `environment: 'sandbox'` for Xcode debug builds (also detected automatically). |
-| `syncToken(token, { userId?, topics? })` | Register or update the device. Sends only when something changed, or once a day. |
-| `setUser(userId \| null)` | Attach or clear your own user ID. |
-| `subscribe(topic)` / `unsubscribe(topic)` | Manage topics (`[A-Za-z0-9_-]{1,64}`, up to 20). |
-| `unregister()` | Remove this device, e.g. on sign-out. |
+| `syncToken(token, { userId?, topics? })`    | Register or update the device. Sends only when something changed, or once a day.                                             |
+| `setUser(userId \| null)`                   | Attach or clear your own user ID.                                                                                            |
+| `subscribe(topic)` / `unsubscribe(topic)`   | Manage topics (`[A-Za-z0-9_-]{1,64}`, up to 20).                                                                             |
+| `unregister()`                              | Remove this device, e.g. on sign-out.                                                                                        |
 
 All methods resolve with a status instead of throwing on network errors or plan limits, so push
 setup can never break your app.
