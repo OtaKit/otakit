@@ -27,6 +27,11 @@ const DOCS = [
     route: '/docs/events',
     file: 'packages/site/app/docs/events/page.tsx',
   },
+  {
+    label: 'Push Notifications',
+    route: '/docs/push',
+    file: 'packages/site/app/docs/push/page.tsx',
+  },
   { label: 'CI Automation', route: '/docs/ci', file: 'packages/site/app/docs/ci/page.tsx' },
   {
     label: 'MCP & Agent Skills',

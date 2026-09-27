@@ -16,6 +16,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Channels: /docs/channels
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
+- Push Notifications: /docs/push
 - CI Automation: /docs/ci
 - MCP & Agent Skills: /docs/agents
 - Security: /docs/security
@@ -1514,6 +1515,140 @@ if (failure) reportError('ota_rollback_startup', failure);
 `addListener` resolves to a `PluginListenerHandle`; call `.remove()` on it when the owning UI unmounts, or `OtaKit.removeAllListeners()` to drop everything at once.
 
 Also see Update Strategies for choosing the policies these events observe, and the Plugin API reference for the full method list.
+
+## Push Notifications
+
+Route: /docs/push
+
+Free push notifications for Capacitor apps: upload your APNs key and Firebase service account, register devices with @otakit/push, and send from the dashboard, CLI, API or an AI agent.
+
+OtaKit sends push notifications to your Capacitor app on iOS and Android. It uses the official `@capacitor/push-notifications` plugin on the device and talks to Apple (APNs) and Google (Firebase Cloud Messaging) directly with your own keys. There is no extra native SDK, and it works with or without OtaKit live updates.
+
+Push is an add-on. Turn it on per workspace in the dashboard under Settings → Add-ons → Push notifications; a Push page then appears in the menu.
+
+### 1. Upload your keys
+
+Open Push → Setup and choose the app. Only workspace owners and admins can upload keys. Keys are encrypted at rest and never shown again after upload.
+
+#### iOS: APNs key
+1. In the Apple Developer account, open Certificates, IDs & Profiles → Keys, create a key with Apple Push Notifications service (APNs) enabled, and download the `.p8` file (Apple lets you download it once).
+2. Note the Key ID (10 characters) and your Team ID (top right of the developer account).
+3. Make sure your bundle ID is registered under Identifiers with the Push Notifications capability, in the same team as the key.
+4. Upload the `.p8` file with the Key ID, Team ID and bundle ID, then click Test. One key works for development and production builds.
+
+#### Android: Firebase service account
+1. In the Firebase console, add an Android app with your application ID and download `google-services.json` (you need it in step 2).
+2. Open Project settings → Service accounts and click Generate new private key.
+3. Upload the JSON file and click Test. A key created a minute ago can be rejected briefly while Google activates it.
+
+### 2. Install
+
+```txt
+npm install @capacitor/push-notifications @otakit/push
+npx cap sync
+```
+
+#### iOS project
+
+In Xcode, add the Push Notifications capability to the app target, then add the two `AppDelegate` methods from the Capacitor push notifications guide :
+
+```txt
+func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+}
+
+func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+}
+```
+
+#### Android project
+
+Copy `google-services.json` to `android/app/`. The Capacitor Android template applies the Google Services plugin when the file is present. Android 13 and newer show notifications only after the user grants the notification permission.
+
+### 3. Register devices
+
+```txt
+import { PushNotifications } from '@capacitor/push-notifications';
+import { OtaKitPush } from '@otakit/push';
+
+OtaKitPush.init({ appId: 'YOUR_OTAKIT_APP_ID' });
+
+PushNotifications.addListener('registration', ({ value }) => {
+  OtaKitPush.syncToken(value, { userId: currentUser?.id ?? null, topics: ['news'] });
+});
+
+const permission = await PushNotifications.requestPermissions();
+if (permission.receive === 'granted') {
+  await PushNotifications.register();
+}
+
+// Open a screen when the user taps a notification.
+PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
+  const url = notification.data?.url;
+  if (url) router.push(url);
+});
+```
+
+The app ID is the same one you use for live updates (`plugins.OtaKit.appId`). The device appears under Push → Devices within seconds.
+
+#### OtaKitPush API
+Method
+What it does
+API_ROWS.map(([method, description]) => ( <tr key={method} className="border-b border-border align-top"> <td className="py-2 pr-4"> <Code>{method}</Code> </td> <td className="py-2">{description}</td> </tr> ))
+
+Every method resolves with a status instead of throwing, so push setup never breaks your app. When OtaKit live updates are installed, the device's OTA channel and bundle version are attached automatically, so you can target by channel.
+
+#### Development builds
+
+Builds run from Xcode get sandbox tokens. On the first send, OtaKit notices when Apple rejects such a token on production, delivers it through the sandbox instead, and remembers that for the device. You can also pass `environment: 'sandbox'` to `init` in debug builds.
+
+### 4. Send
+
+Dashboard: Push → Send. Write the title and text, choose the audience, and check the device count before you confirm.
+
+CLI (`@otakit/cli` 1.7.0 or newer):
+
+```txt
+otakit push send --title "Your order shipped" --body "Track it in the app" --url /orders --user user_42
+otakit push campaigns
+```
+
+REST API with an organization key. Preview first to see the audience, then send with an idempotency key so a retry never sends twice:
+
+```txt
+curl -X POST https://console.otakit.app/api/v1/apps/$APP_ID/push/campaigns \
+  -H "Authorization: Bearer $OTAKIT_TOKEN" \
+  -H "Idempotency-Key: order-42-shipped" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "payload": { "title": "Your order shipped", "body": "Track it in the app", "url": "/orders" },
+    "audience": { "userIds": ["user_42"] }
+  }'
+```
+
+`POST …/push/audience` takes the same body and returns the device count and warnings without sending. `GET …/push/campaigns/:id` returns delivery counts.
+
+#### Message
+
+`title` (up to 100 characters) and `body` (up to 1,000) are required. Optional: `url` (a path like `/inbox` or an https link, delivered as `data.url`), `data` (up to 20 string values), `sound`, `badge` and `ttlSeconds` (default one day). The whole message must fit Apple's 4 KB limit.
+
+#### Audience
+
+Filter by `platforms`, `topics`, `userIds`, `channels` (OTA channel), `runtimeVersions` or `deviceIds`. Different filters must all match; values inside one filter match any. An empty audience sends to every device of the app.
+
+### Limits
+Plan
+Devices
+Notifications per month
+LIMIT_ROWS.map(([plan, devices, sends]) => ( <tr key={plan} className="border-b border-border"> <td className="py-2 pr-4">{plan}</td> <td className="py-2 pr-4">{devices}</td> <td className="py-2">{sends}</td> </tr> ))
+
+Over the device limit, new devices are not stored and the app is told why; it keeps working. Invalid tokens reported by Apple or Google are removed automatically.
+
+### Troubleshooting
+You see
+Fix
+TROUBLESHOOTING.map(([problem, fix]) => ( <tr key={problem} className="border-b border-border align-top"> <td className="py-2 pr-4"> <Code>{problem}</Code> </td> <td className="py-2">{fix}</td> </tr> ))
 
 ## CI Automation
 

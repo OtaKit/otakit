@@ -23,6 +23,52 @@ export type BlogPostMeta = {
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
+    slug: 'onesignal-alternative-capacitor',
+    title: 'A free OneSignal alternative for Capacitor apps',
+    seoTitle: 'OneSignal Alternative for Capacitor: Free Push Notifications (2026)',
+    description:
+      'OneSignal vs OtaKit Push for Capacitor apps: pricing, setup, sending from your backend, and what each does better. Includes a migration checklist for moving off the OneSignal SDK.',
+    category: 'Comparison',
+    publishedAt: '2026-09-27',
+    readingTime: '7 min read',
+    keywords: [
+      'OneSignal alternative',
+      'OneSignal alternative Capacitor',
+      'free push notifications Capacitor',
+      'Capacitor push notification service',
+      'OneSignal pricing',
+      'Ionic push notifications free',
+    ],
+    order: 120,
+    relatedDocs: [
+      { href: '/docs/push', label: 'Push notifications' },
+      { href: '/docs/cli', label: 'CLI reference' },
+    ],
+  },
+  {
+    slug: 'capacitor-push-notifications-without-firebase-ios',
+    title: 'Capacitor push notifications on iOS without Firebase',
+    seoTitle: 'Capacitor Push Notifications on iOS Without Firebase (APNs Guide 2026)',
+    description:
+      'Send push notifications to a Capacitor iOS app with APNs directly: no Firebase SDK, no GoogleService-Info.plist. Key setup, AppDelegate, tokens, the APNs details that trip people up, and a free shortcut.',
+    category: 'Tutorial',
+    publishedAt: '2026-09-27',
+    readingTime: '8 min read',
+    keywords: [
+      'Capacitor push notifications without Firebase',
+      'Capacitor APNs',
+      'Capacitor iOS push notifications',
+      'APNs token Capacitor',
+      'Ionic push notifications iOS',
+      'push notifications without Firebase iOS',
+    ],
+    order: 119,
+    relatedDocs: [
+      { href: '/docs/push', label: 'Push notifications' },
+      { href: '/docs/setup', label: 'Setup' },
+    ],
+  },
+  {
     slug: 'claude-code-capacitor-releases',
     title: 'Let Claude Code ship your Capacitor updates, with an approval step',
     seoTitle: 'Claude Code for Capacitor: Ship OTA Updates With Approval (2026)',
@@ -2145,6 +2191,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A complete guide to adding push notifications to a Capacitor app with Firebase Cloud Messaging — iOS and Android setup, permissions, tokens, and handling taps — plus shipping the JS side over the air.',
     category: 'Tutorial',
     publishedAt: '2026-07-13',
+    updatedAt: '2026-09-27',
     readingTime: '11 min read',
     keywords: [
       'Capacitor push notifications',

@@ -57,7 +57,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const initialError = describeAuthError(query);
   const session = await auth.api.getSession({ headers: await headers() });
   if (session) {
-    redirect(authorizationPath ?? '/dashboard');
+    redirect(authorizationPath ?? (query.addon === 'push' ? '/dashboard/push' : '/dashboard'));
   }
 
   const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
