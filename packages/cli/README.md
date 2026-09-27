@@ -115,6 +115,8 @@ Releases are append-only. The newest release for
 - `otakit releases [--channel <channel> | --base]`
 - `otakit list`
 - `otakit delete <bundleId> --force`
+- `otakit push send --title <title> --body <body> [--url <path>] [--topic <t>] [--channel <c>] [--user <id>] [--yes]` — send a push notification (Push notifications add-on)
+- `otakit push campaigns` / `otakit push campaign <id>` — delivery status
 - `otakit config validate`
 - `otakit config resolve --json`
 - `otakit generate-signing-key`
