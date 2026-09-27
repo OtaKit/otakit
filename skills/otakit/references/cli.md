@@ -61,6 +61,22 @@ describe what you are about to do.
 otakit delete <bundleId>        # prompts; only for bundles absent from release history
 ```
 
+## Push notifications
+
+Only when the user asks to notify their app users. Needs the Push notifications
+add-on (Settings → Add-ons) and uploaded APNs/Firebase keys; a `PUSH_DISABLED`
+error says so.
+
+```sh
+otakit push send --title "..." --body "..." [--url /path] [--topic news] [--channel beta] [--user id]
+otakit push campaigns           # recent sends with delivery counts
+otakit push campaign <id>       # one send in detail
+```
+
+`push send` prints the audience size and asks before sending. Show the user the
+title, text and audience first; pass `--yes` only after they confirm. A sent
+notification cannot be recalled.
+
 ## Getting set up
 
 ```sh

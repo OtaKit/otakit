@@ -428,6 +428,55 @@ Example
 npx -y @otakit/cli@latest connect
 ```
 
+### otakit push send
+
+Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending.
+
+Options
+- `--title <title>`: Notification title (required).
+- `--body <body>`: Notification text (required).
+- `--url <url>`: Path or https link the app opens, sent as data.url.
+- `--data <key=value>`: Extra data for the app (repeatable).
+- `--platform <platform>`: ios or android (repeatable; default both).
+- `--channel <channel>`: Only devices on this OTA channel (repeatable).
+- `--topic <topic>`: Only devices subscribed to this topic (repeatable).
+- `--user <id>`: Only devices of this user ID (repeatable).
+- `--yes`: Send without the confirmation prompt (required in CI).
+- `--json`: Print the campaign as JSON.
+
+Example
+
+```txt
+otakit push send --title "New drop" --body "Open the app to see it" --url /shop --topic news
+```
+
+### otakit push campaigns
+
+List recent push campaigns with delivery counts.
+
+Options
+- `--limit <n>`: Number of campaigns (default 10, max 100).
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit push campaigns
+```
+
+### otakit push campaign <campaignId>
+
+Show one campaign: status, devices targeted and accepted by Apple/Google, failures and removed tokens.
+
+Options
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit push campaign 11dead02-8f6f-4349-8ea3-7667c2a4382c
+```
+
 ### otakit mcp
 
 Start the local MCP server, bound to one project and organization for its lifetime.

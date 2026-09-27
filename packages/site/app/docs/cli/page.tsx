@@ -330,6 +330,51 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Separator />
 
         <Command
+          name="otakit push send"
+          description="Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending."
+          options={[
+            { flag: '--title <title>', desc: 'Notification title (required).' },
+            { flag: '--body <body>', desc: 'Notification text (required).' },
+            { flag: '--url <url>', desc: 'Path or https link the app opens, sent as data.url.' },
+            { flag: '--data <key=value>', desc: 'Extra data for the app (repeatable).' },
+            { flag: '--platform <platform>', desc: 'ios or android (repeatable; default both).' },
+            { flag: '--channel <channel>', desc: 'Only devices on this OTA channel (repeatable).' },
+            {
+              flag: '--topic <topic>',
+              desc: 'Only devices subscribed to this topic (repeatable).',
+            },
+            { flag: '--user <id>', desc: 'Only devices of this user ID (repeatable).' },
+            { flag: '--yes', desc: 'Send without the confirmation prompt (required in CI).' },
+            { flag: '--json', desc: 'Print the campaign as JSON.' },
+          ]}
+          example='otakit push send --title "New drop" --body "Open the app to see it" --url /shop --topic news'
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit push campaigns"
+          description="List recent push campaigns with delivery counts."
+          options={[
+            { flag: '--limit <n>', desc: 'Number of campaigns (default 10, max 100).' },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example="otakit push campaigns"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit push campaign"
+          args="<campaignId>"
+          description="Show one campaign: status, devices targeted and accepted by Apple/Google, failures and removed tokens."
+          options={[{ flag: '--json', desc: 'Print machine-readable JSON output.' }]}
+          example="otakit push campaign 11dead02-8f6f-4349-8ea3-7667c2a4382c"
+        />
+
+        <Separator />
+
+        <Command
           name="otakit mcp"
           description="Start the local MCP server, bound to one project and organization for its lifetime."
           options={[

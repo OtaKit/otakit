@@ -20,6 +20,12 @@ function connectionString(): string {
   url.searchParams.delete('schema');
   url.searchParams.delete('pgbouncer');
   url.searchParams.delete('connection_limit');
+  // pg already treats require/prefer/verify-ca as verify-full and warns about it on
+  // every connection; say verify-full explicitly (same behaviour, no warning).
+  const sslmode = url.searchParams.get('sslmode');
+  if (sslmode === 'require' || sslmode === 'prefer' || sslmode === 'verify-ca') {
+    url.searchParams.set('sslmode', 'verify-full');
+  }
   return url.toString();
 }
 

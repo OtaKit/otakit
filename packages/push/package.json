@@ -1,6 +1,6 @@
 {
   "name": "@otakit/push",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Register Capacitor push notification tokens with OtaKit Push",
   "type": "module",
   "main": "dist/index.js",
