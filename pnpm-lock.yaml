@@ -388,6 +388,21 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@25.2.2)(vite@8.2.2(@types/node@25.2.2)(esbuild@0.28.2)(jiti@2.6.1))
 
+  packages/push:
+    devDependencies:
+      '@capacitor/core':
+        specifier: 8.0.2
+        version: 8.0.2
+      rimraf:
+        specifier: ^6.1.2
+        version: 6.1.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@25.2.2)(vite@8.2.2(@types/node@25.2.2)(esbuild@0.28.2)(jiti@2.6.1))
+
   packages/site:
     dependencies:
       '@base-ui/react':

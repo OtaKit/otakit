@@ -1,0 +1,53 @@
+{
+  "name": "@otakit/push",
+  "version": "0.1.0",
+  "description": "Register Capacitor push notification tokens with OtaKit Push",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "LICENSE",
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "OtaKit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OtaKit/otakit.git",
+    "directory": "packages/push"
+  },
+  "homepage": "https://otakit.app/docs",
+  "keywords": [
+    "capacitor",
+    "push",
+    "notifications",
+    "apns",
+    "fcm"
+  ],
+  "scripts": {
+    "build": "rimraf ./dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^7.0.0 || ^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "8.0.2",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.11"
+  }
+}
