@@ -9,14 +9,15 @@ export default function LovableToMobilePage() {
   return (
     <BlogArticle post={post}>
       <p>
-        AI app builders like Lovable, v0, and Bolt make it fast to go from idea to a working web app.
-        The gap they leave is the last mile: getting that app onto the App Store and Google Play, and
-        iterating on it without a full redeploy each time. Capacitor and <A href="/">OtaKit</A> close
-        that gap.
+        AI app builders like Lovable, v0, and Bolt make it fast to go from idea to a working web
+        app. The gap they leave is the last mile: getting that app onto the App Store and Google
+        Play, and iterating on it without a full redeploy each time. Capacitor and{' '}
+        <A href="/">OtaKit</A> close that gap.
       </p>
       <p>
-        Because these tools generate a standard web app &mdash; almost always React with Vite &mdash;
-        you can wrap it natively with Capacitor and ship changes over the air. Here&apos;s the path.
+        Because these tools generate a standard web app &mdash; almost always React with Vite
+        &mdash; you can wrap it natively with Capacitor and ship changes over the air. Here&apos;s
+        the path.
       </p>
 
       <Callout>
@@ -54,9 +55,10 @@ npx cap add ios
 npx cap add android
 npx cap sync`}</Pre>
       <p>
-        Open a platform (<Code>npx cap open ios</Code>) and you&apos;ll see your AI-built app running
-        as a native app. For the deeper React-specific details &mdash; safe areas, routing &mdash;
-        the <A href="/blog/react-to-ios-android-with-capacitor">React guide</A> applies directly.
+        Open a platform (<Code>npx cap open ios</Code>) and you&apos;ll see your AI-built app
+        running as a native app. For the deeper React-specific details &mdash; safe areas, routing
+        &mdash; the <A href="/blog/react-to-ios-android-with-capacitor">React guide</A> applies
+        directly.
       </p>
 
       <h2>3. Add live updates with OtaKit</h2>
@@ -116,8 +118,14 @@ otakit upload --release`}</Pre>
       <h2>Where to go next</h2>
       <p>
         Start with the <A href="/docs/setup">setup guide</A>, then{' '}
-        <A href="/blog/automate-capacitor-ota-releases-github-actions">automate releases</A> so every
-        push ships.
+        <A href="/blog/automate-capacitor-ota-releases-github-actions">automate releases</A> so
+        every push ships.
+      </p>
+      <p>
+        Building with an AI coding agent? Let it ship the updates too:{' '}
+        <A href="/blog/claude-code-capacitor-releases">Claude Code</A> and{' '}
+        <A href="/blog/codex-capacitor-ota-updates">Codex</A> can release over the air with your
+        approval. See the <A href="/ai-agents">AI agents page</A>.
       </p>
     </BlogArticle>
   );

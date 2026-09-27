@@ -23,6 +23,54 @@ export type BlogPostMeta = {
 
 export const BLOG_POSTS: BlogPostMeta[] = [
   {
+    slug: 'claude-code-capacitor-releases',
+    title: 'Let Claude Code ship your Capacitor updates, with an approval step',
+    seoTitle: 'Claude Code for Capacitor: Ship OTA Updates With Approval (2026)',
+    description:
+      'Set up Claude Code to check, upload and release Capacitor over-the-air updates through OtaKit. Two install commands, a real session from start to finish, and the safety checks that stop it from shipping something broken.',
+    category: 'Guides',
+    publishedAt: '2026-09-27',
+    readingTime: '7 min read',
+    keywords: [
+      'Claude Code Capacitor',
+      'Claude Code mobile app',
+      'Claude Code MCP deploy',
+      'Claude Code OTA update',
+      'AI agent mobile release',
+      'Capacitor MCP server',
+    ],
+    order: 117,
+    relatedDocs: [
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
+      { href: '/docs/channels', label: 'Channels & runtime version' },
+      { href: '/docs/cli', label: 'CLI reference' },
+    ],
+  },
+  {
+    slug: 'codex-capacitor-ota-updates',
+    title: 'Ship Capacitor fixes from Codex',
+    seoTitle: 'Codex + Capacitor: Ship OTA Updates From Your Terminal (2026)',
+    description:
+      'Connect OpenAI Codex to OtaKit and ship Capacitor web fixes over the air: setup, the tools Codex uses, how approval works, read-only connections for reporting, and CI with an organization key.',
+    category: 'Guides',
+    publishedAt: '2026-09-27',
+    readingTime: '6 min read',
+    keywords: [
+      'Codex Capacitor',
+      'OpenAI Codex mobile app',
+      'Codex MCP server',
+      'Codex deploy app update',
+      'Codex OTA update',
+      'AI coding agent release',
+    ],
+    order: 118,
+    relatedDocs: [
+      { href: '/docs/agents', label: 'MCP & Agent Skills' },
+      { href: '/docs/ci', label: 'CI/CD' },
+      { href: '/docs/security', label: 'Security' },
+    ],
+  },
+  {
     slug: 'iphone-duo-capacitor-app',
     title: 'Get your Capacitor app ready for iPhone Duo',
     seoTitle: 'iPhone Duo and Capacitor: Prepare Your App for Apple’s Foldable',
@@ -97,7 +145,8 @@ export const BLOG_POSTS: BlogPostMeta[] = [
   {
     slug: 'apple-eu-app-store-changes-october-2026',
     title: 'Apple’s new EU App Store terms (1 October 2026), explained for app teams',
-    seoTitle: 'Apple EU App Store Changes October 2026: Fees, Link-Outs, Core Technology Commission',
+    seoTitle:
+      'Apple EU App Store Changes October 2026: Fees, Link-Outs, Core Technology Commission',
     description:
       'On 1 October 2026 Apple replaces the Core Technology Fee with a 5% commission and resets EU rates: 26% for In-App Purchase, 20% for alternative payments, 15% for web link-outs. What it means for Capacitor and web-based apps.',
     category: 'Compliance',

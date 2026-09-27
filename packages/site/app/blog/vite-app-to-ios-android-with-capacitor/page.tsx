@@ -15,8 +15,8 @@ export default function ViteToMobilePage() {
         native iOS and Android apps from your existing web build.
       </p>
       <p>
-        We&apos;ll go from a Vite project to installable native apps, then add <A href="/">OtaKit</A>{' '}
-        for over-the-air updates.
+        We&apos;ll go from a Vite project to installable native apps, then add{' '}
+        <A href="/">OtaKit</A> for over-the-air updates.
       </p>
 
       <Callout>
@@ -28,8 +28,8 @@ export default function ViteToMobilePage() {
 
       <h2>1. Set a relative base</h2>
       <p>
-        Native web views load from a <Code>file://</Code> origin, so absolute asset paths break. Tell
-        Vite to emit relative paths:
+        Native web views load from a <Code>file://</Code> origin, so absolute asset paths break.
+        Tell Vite to emit relative paths:
       </p>
       <Pre>{`// vite.config.ts
 import { defineConfig } from "vite";
@@ -114,8 +114,8 @@ otakit upload --release`}</Pre>
       <p>
         Once your app is on the stores with the plugin configured, each{' '}
         <Code>otakit upload --release</Code> reaches installed devices on the next launch. Native
-        changes still require a store submission; your Vite bundle ships over the air &mdash; signed,
-        hash-verified, CDN-delivered, and with no per-user or bandwidth billing.
+        changes still require a store submission; your Vite bundle ships over the air &mdash;
+        signed, hash-verified, CDN-delivered, and with no per-user or bandwidth billing.
       </p>
 
       <Callout>
