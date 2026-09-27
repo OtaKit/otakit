@@ -178,7 +178,7 @@ CDN_BASE_URL=https://cdn.your-domain.com`}</Pre>
 
       <H2 className="mt-10">Step 5 — Migrate, build, start</H2>
       <Pre>{`cd packages/console
-npx prisma migrate deploy
+pnpm db:migrate
 pnpm build
 pnpm start`}</Pre>
       <P>

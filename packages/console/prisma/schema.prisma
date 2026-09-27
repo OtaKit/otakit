@@ -317,6 +317,8 @@ model Organization {
   usageBlocked        Boolean                 @default(false)
   overageEnabled      Boolean                 @default(false)
   warningSent         UsageWarningSent        @default(none)
+  // Add-ons (their data lives in their own packages and Postgres schemas)
+  pushEnabled         Boolean                 @default(false)
   // Relations
   apps                App[]
   apiKeys             OrganizationApiKey[]
@@ -326,7 +328,6 @@ model Organization {
   releaseMutations    ReleaseMutation[]
   activeForUsers      User[]                  @relation("UserActiveOrganization")
   onboarding          OrganizationOnboarding?
-  pushUsage           PushUsage[]
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 }
@@ -414,9 +415,6 @@ model App {
   bundles         Bundle[]
   releases        Release[]
   uploadSessions  UploadSession[]
-  pushCredentials PushCredential[]
-  pushDevices     PushDevice[]
-  pushCampaigns   PushCampaign[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -529,128 +527,4 @@ model UploadSession {
   @@index([appId, status, createdAt(sort: Desc)])
   @@index([expiresAt, status])
   @@index([bundleId])
-}
-
-// ── Push notifications ─────────────────────────────────────────────
-
-enum PushProvider {
-  apns
-  fcm
-}
-
-enum PushPlatform {
-  ios
-  android
-}
-
-enum PushEnvironment {
-  production
-  sandbox
-}
-
-enum PushCampaignStatus {
-  queued
-  sending
-  completed
-  failed
-  canceled
-}
-
-enum PushBatchStatus {
-  pending
-  sending
-  done
-}
-
-model PushCredential {
-  id             String       @id @default(uuid())
-  app            App          @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId          String
-  provider       PushProvider
-  // lib/crypto/secret-box.ts: the .p8 PEM (apns) or service-account JSON (fcm)
-  sealedSecret   String
-  apnsKeyId      String?
-  apnsTeamId     String?
-  apnsBundleId   String?
-  fcmProjectId   String?
-  fcmClientEmail String?
-  lastTestAt     DateTime?
-  lastTestResult String?
-  createdBy      String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@unique([appId, provider])
-}
-
-model PushDevice {
-  id             String          @id @default(uuid())
-  app            App             @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId          String
-  platform       PushPlatform
-  provider       PushProvider
-  token          String
-  environment    PushEnvironment @default(production)
-  externalUserId String?
-  topics         String[]
-  channel        String?
-  runtimeVersion String?
-  bundleVersion  String?
-  appVersion     String?
-  locale         String?
-  createdAt      DateTime        @default(now())
-  lastSeenAt     DateTime        @default(now())
-
-  @@unique([appId, token])
-  @@index([appId, platform])
-  @@index([appId, externalUserId])
-  @@index([appId, channel])
-  @@index([appId, lastSeenAt])
-}
-
-model PushCampaign {
-  id             String             @id @default(uuid())
-  app            App                @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId          String
-  organizationId String
-  payload        Json
-  audience       Json
-  status         PushCampaignStatus @default(queued)
-  targeted       Int                @default(0)
-  accepted       Int                @default(0)
-  failed         Int                @default(0)
-  invalidRemoved Int                @default(0)
-  errorSummary   Json?
-  failureReason  String?
-  idempotencyKey String?
-  createdBy      String
-  createdAt      DateTime           @default(now())
-  completedAt    DateTime?
-  batches        PushSendBatch[]
-
-  @@unique([appId, idempotencyKey])
-  @@index([appId, createdAt(sort: Desc)])
-}
-
-model PushSendBatch {
-  id            String          @id @default(uuid())
-  campaign      PushCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId    String
-  deviceIds     String[]
-  status        PushBatchStatus @default(pending)
-  attempts      Int             @default(0)
-  nextAttemptAt DateTime        @default(now())
-  claimedAt     DateTime?
-
-  @@index([status, nextAttemptAt])
-  @@index([campaignId])
-}
-
-model PushUsage {
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String
-  periodStart    DateTime
-  sends          Int          @default(0)
-
-  @@id([organizationId, periodStart])
 }

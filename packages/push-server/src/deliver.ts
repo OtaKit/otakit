@@ -1,10 +1,8 @@
-import { Prisma } from '@prisma/client';
-
-import { db } from '@/lib/db';
-
 import { sendApnsBatch, type ApnsCredential, type ApnsResult } from './apns';
 import { loadApnsCredential, loadFcmCredential } from './credentials';
+import { type Prisma, pushDb } from './db';
 import { sendFcmBatch, type FcmCredential } from './fcm';
+import type { PushHost } from './host';
 import { pushPeriodStart } from './limits';
 import {
   buildApnsPayload,
@@ -44,16 +42,17 @@ type Senders = {
 };
 
 export async function claimBatches(limit: number): Promise<ClaimedBatch[]> {
+  const db = pushDb();
   await db.$executeRaw`
-    UPDATE "PushSendBatch"
+    UPDATE push."PushSendBatch"
     SET status = 'pending', "claimedAt" = NULL
     WHERE status = 'sending'
       AND "claimedAt" < now() - (${STUCK_AFTER_MINUTES} * interval '1 minute')`;
   return db.$queryRaw<ClaimedBatch[]>`
-    UPDATE "PushSendBatch"
+    UPDATE push."PushSendBatch"
     SET status = 'sending', "claimedAt" = now(), attempts = attempts + 1
     WHERE id IN (
-      SELECT id FROM "PushSendBatch"
+      SELECT id FROM push."PushSendBatch"
       WHERE status = 'pending' AND "nextAttemptAt" <= now()
       ORDER BY "nextAttemptAt"
       LIMIT ${limit}
@@ -222,11 +221,13 @@ function mergeErrors(
   return merged;
 }
 
-export async function processBatch(batch: ClaimedBatch, senders?: Senders): Promise<void> {
-  const campaign = await db.pushCampaign.findUnique({
-    where: { id: batch.campaignId },
-    include: { app: { select: { organization: { select: { usagePeriodStart: true } } } } },
-  });
+export async function processBatch(
+  host: PushHost,
+  batch: ClaimedBatch,
+  senders?: Senders,
+): Promise<void> {
+  const db = pushDb();
+  const campaign = await db.pushCampaign.findUnique({ where: { id: batch.campaignId } });
   if (!campaign || campaign.status === 'canceled' || campaign.status === 'failed') {
     await db.pushSendBatch.update({ where: { id: batch.id }, data: { status: 'done' } });
     return;
@@ -277,10 +278,11 @@ export async function processBatch(batch: ClaimedBatch, senders?: Senders): Prom
     RETRY_DELAYS_SECONDS[Math.min(batch.attempts - 1, RETRY_DELAYS_SECONDS.length - 1)] ?? 60,
     outcome.retryAfterSeconds,
   );
-  const periodStart = pushPeriodStart(campaign.app.organization.usagePeriodStart);
+  const { periodStart: billingPeriodStart } = await host.getWorkspace(campaign.organizationId);
+  const periodStart = pushPeriodStart(billingPeriodStart);
 
   await db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "PushCampaign" WHERE id = ${campaign.id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM push."PushCampaign" WHERE id = ${campaign.id} FOR UPDATE`;
     const current = await tx.pushCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
 
     if (outcome.invalidDeviceIds.length > 0) {
@@ -344,6 +346,7 @@ export async function processBatch(batch: ClaimedBatch, senders?: Senders): Prom
 
 /** Works through due batches until none are left or the time budget runs out. */
 export async function deliverDueBatches(
+  host: PushHost,
   options: { batchesPerClaim?: number; budgetMs?: number } = {},
 ): Promise<{ processed: number; failedBatches: number }> {
   const { batchesPerClaim = 4, budgetMs = 240_000 } = options;
@@ -354,7 +357,7 @@ export async function deliverDueBatches(
   while (Date.now() < deadline) {
     const batches = await claimBatches(batchesPerClaim);
     if (batches.length === 0) break;
-    const results = await Promise.allSettled(batches.map((batch) => processBatch(batch)));
+    const results = await Promise.allSettled(batches.map((batch) => processBatch(host, batch)));
     for (const [index, result] of results.entries()) {
       processed += 1;
       if (result.status === 'rejected') {

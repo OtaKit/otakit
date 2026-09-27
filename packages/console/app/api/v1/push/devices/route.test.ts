@@ -3,25 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   appFindUnique: vi.fn(),
-  deviceFindUnique: vi.fn(),
-  deviceUpdate: vi.fn(),
-  deviceCount: vi.fn(),
-  deviceUpsert: vi.fn(),
-  deviceDeleteMany: vi.fn(),
+  registerDevice: vi.fn(),
+  unregisterDevice: vi.fn(),
   checkRateLimit: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({
-  db: {
-    app: { findUnique: mocks.appFindUnique },
-    pushDevice: {
-      findUnique: mocks.deviceFindUnique,
-      update: mocks.deviceUpdate,
-      count: mocks.deviceCount,
-      upsert: mocks.deviceUpsert,
-      deleteMany: mocks.deviceDeleteMany,
-    },
-  },
+vi.mock('@/lib/db', () => ({ db: { app: { findUnique: mocks.appFindUnique } } }));
+vi.mock('@/lib/push/service', async (importOriginal) => ({
+  // Keep the real schemas: the route validates before push sees the device.
+  ...(await importOriginal<typeof import('@/lib/push/service')>()),
+  push: { registerDevice: mocks.registerDevice, unregisterDevice: mocks.unregisterDevice },
 }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mocks.checkRateLimit }));
 
@@ -49,11 +40,9 @@ describe('POST /api/v1/push/devices', () => {
     mocks.appFindUnique.mockResolvedValue({
       id: APP_ID,
       organizationId: 'org-1',
-      organization: { planKey: 'free' },
+      organization: { pushEnabled: true },
     });
-    mocks.deviceFindUnique.mockResolvedValue(null);
-    mocks.deviceCount.mockResolvedValue(0);
-    mocks.deviceUpsert.mockResolvedValue({ id: 'device-1' });
+    mocks.registerDevice.mockResolvedValue({ accepted: true, deviceId: 'device-1', created: true });
   });
 
   it('answers CORS preflight for Capacitor origins', () => {
@@ -63,15 +52,9 @@ describe('POST /api/v1/push/devices', () => {
     expect(response.headers.get('access-control-allow-headers')).toContain('X-App-Id');
   });
 
-  it('registers a new iOS device with OTA context', async () => {
+  it('registers a device with the app and workspace it belongs to', async () => {
     const response = await POST(
-      request('POST', {
-        token: IOS_TOKEN.toUpperCase(),
-        platform: 'ios',
-        topics: ['news'],
-        channel: 'beta',
-        externalUserId: 'user_1',
-      }),
+      request('POST', { token: IOS_TOKEN, platform: 'ios', topics: ['news'], channel: 'beta' }),
     );
     expect(response.status).toBe(201);
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
@@ -80,35 +63,37 @@ describe('POST /api/v1/push/devices', () => {
       deviceId: 'device-1',
       created: true,
     });
-    const upsert = mocks.deviceUpsert.mock.calls[0][0];
-    expect(upsert.create).toMatchObject({
-      appId: APP_ID,
-      token: IOS_TOKEN,
-      provider: 'apns',
-      platform: 'ios',
-      environment: 'production',
-      topics: ['news'],
-      channel: 'beta',
-      externalUserId: 'user_1',
-    });
-  });
-
-  it('updates a known device without counting it against the limit', async () => {
-    mocks.deviceFindUnique.mockResolvedValue({ id: 'device-9' });
-    const response = await POST(request('POST', { token: 'fcm-token:abc', platform: 'android' }));
-    expect(response.status).toBe(200);
-    expect(mocks.deviceCount).not.toHaveBeenCalled();
-    expect(mocks.deviceUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'device-9' } }),
+    expect(mocks.registerDevice).toHaveBeenCalledWith(
+      { appId: APP_ID, organizationId: 'org-1' },
+      expect.objectContaining({ token: IOS_TOKEN, platform: 'ios', channel: 'beta' }),
     );
   });
 
-  it('never fails the app when the plan limit is reached', async () => {
-    mocks.deviceCount.mockResolvedValue(10_000);
+  it('answers 200 for a known device and 202 when push does not accept it', async () => {
+    mocks.registerDevice.mockResolvedValueOnce({
+      accepted: true,
+      deviceId: 'device-9',
+      created: false,
+    });
+    expect((await POST(request('POST', { token: 'fcm:abc', platform: 'android' }))).status).toBe(
+      200,
+    );
+    mocks.registerDevice.mockResolvedValueOnce({ accepted: false, reason: 'device_limit' });
+    const limited = await POST(request('POST', { token: IOS_TOKEN, platform: 'ios' }));
+    expect(limited.status).toBe(202);
+    await expect(limited.json()).resolves.toEqual({ accepted: false, reason: 'device_limit' });
+  });
+
+  it('does not store devices while the workspace has the add-on off', async () => {
+    mocks.appFindUnique.mockResolvedValue({
+      id: APP_ID,
+      organizationId: 'org-1',
+      organization: { pushEnabled: false },
+    });
     const response = await POST(request('POST', { token: IOS_TOKEN, platform: 'ios' }));
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toEqual({ accepted: false, reason: 'device_limit' });
-    expect(mocks.deviceUpsert).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ accepted: false, reason: 'push_disabled' });
+    expect(mocks.registerDevice).not.toHaveBeenCalled();
   });
 
   it('rejects malformed tokens and unknown apps', async () => {
@@ -129,11 +114,8 @@ describe('POST /api/v1/push/devices', () => {
   });
 
   it('unregisters a device', async () => {
-    mocks.deviceDeleteMany.mockResolvedValue({ count: 1 });
-    const response = await DELETE(request('DELETE', { token: IOS_TOKEN.toUpperCase() }));
+    const response = await DELETE(request('DELETE', { token: IOS_TOKEN }));
     expect(response.status).toBe(200);
-    expect(mocks.deviceDeleteMany).toHaveBeenCalledWith({
-      where: { appId: APP_ID, token: IOS_TOKEN },
-    });
+    expect(mocks.unregisterDevice).toHaveBeenCalledWith(APP_ID, IOS_TOKEN);
   });
 });

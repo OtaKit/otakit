@@ -110,7 +110,7 @@ export type ReleaseHistoryItem = {
 
 export type DashboardInitialData = {
   user: { id: string; name: string; email: string; createdAt: string };
-  activeOrganization: { id: string; name: string; role: MemberRole };
+  activeOrganization: { id: string; name: string; role: MemberRole; pushEnabled: boolean };
   memberships: OrganizationMembership[];
   apps: AppSummary[];
   organizationApiKeys: OrganizationApiKey[];

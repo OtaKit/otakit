@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { AddonsSection } from '@/app/components/AddonsSection';
 import { AgentsSection } from '@/app/components/agents/AgentsSection';
 import {
   PricingDialog,
@@ -484,7 +485,10 @@ User ID: ${initialData.user.id}`,
   const membershipRows = useMemo(() => initialData.memberships, [initialData.memberships]);
   return (
     <div className="m-3 min-h-screen border border-border bg-background">
-      <DashboardHeader activeSection="settings" />
+      <DashboardHeader
+        activeSection="settings"
+        showPush={initialData.activeOrganization.pushEnabled}
+      />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
         <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
@@ -870,6 +874,17 @@ User ID: ${initialData.user.id}`,
               <section>
                 <div className="mx-auto max-w-3xl bg-muted/30">
                   <AgentsSection remoteMcpOAuthEnabled={initialData.remoteMcpOAuthEnabled} />
+                </div>
+              </section>
+
+              <Separator />
+
+              <section>
+                <div className="mx-auto max-w-3xl bg-muted/30">
+                  <AddonsSection
+                    pushEnabled={initialData.activeOrganization.pushEnabled}
+                    canManage={canManageTeam}
+                  />
                 </div>
               </section>
 

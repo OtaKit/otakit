@@ -67,6 +67,7 @@ async function getOrganizationData(organizationId: string) {
     select: {
       id: true,
       name: true,
+      pushEnabled: true,
       apiKeys: {
         orderBy: { createdAt: 'desc' },
         select: {
@@ -102,6 +103,7 @@ export const getDashboardInitialData = cache(async (): Promise<DashboardInitialD
       id: activeMembership.organization.id,
       name: activeMembership.organization.name,
       role: activeMembership.role,
+      pushEnabled: organizationData.organization?.pushEnabled ?? false,
     },
     memberships: memberships.map((membership) => ({
       id: membership.id,

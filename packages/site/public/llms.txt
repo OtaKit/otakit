@@ -1899,7 +1899,7 @@ Everything else in `.env.example` (Tinybird, Resend, Polar, Cloudflare purge, Up
 
 ```txt
 cd packages/console
-npx prisma migrate deploy
+pnpm db:migrate
 pnpm build
 pnpm start
 ```

@@ -1,17 +1,13 @@
 import { NextRequest } from 'next/server';
 
 import {
-  findPushApp,
-  registerDevice,
-  registerDeviceSchema,
-  unregisterDevice,
-} from '@/lib/push/devices';
-import {
   limitPublicPushRequest,
   publicJson,
   publicPreflight,
   readJsonObject,
-} from '@/lib/push/public-http';
+  resolvePublicPushApp,
+} from '@/lib/push/http';
+import { push, registerDeviceSchema } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -28,8 +24,8 @@ export async function POST(request: NextRequest) {
   const limited = await limitPublicPushRequest(request, appId);
   if (limited) return limited;
 
-  const app = await findPushApp(appId);
-  if (!app) return publicJson({ error: 'App not found' }, 404);
+  const resolved = await resolvePublicPushApp(appId);
+  if (!resolved.ok) return resolved.response;
 
   const body = await readJsonObject(request);
   if (!body) return publicJson({ error: 'Invalid JSON body' }, 400);
@@ -41,7 +37,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await registerDevice(app, parsed.data);
+  const result = await push.registerDevice(resolved.app, parsed.data);
   if (!result.accepted) return publicJson(result, 202);
   return publicJson(result, result.created ? 201 : 200);
 }
@@ -57,6 +53,7 @@ export async function DELETE(request: NextRequest) {
   const token = typeof body?.token === 'string' ? body.token.trim() : '';
   if (!token || token.length > 4096) return publicJson({ error: 'Missing token' }, 400);
 
-  await unregisterDevice(appId, token);
+  // Removing a device is always allowed, even with the add-on off.
+  await push.unregisterDevice(appId, token);
   return publicJson({ removed: true });
 }

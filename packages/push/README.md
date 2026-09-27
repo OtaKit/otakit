@@ -15,7 +15,8 @@ npm install @capacitor/push-notifications @otakit/push
 npx cap sync
 ```
 
-Upload your APNs key and/or Firebase service account in the OtaKit dashboard first. On iOS, add
+Turn on Push notifications in the OtaKit dashboard (Settings → Add-ons), then upload your APNs
+key and/or Firebase service account on the Push page. On iOS, add
 the Push Notifications capability and the two `AppDelegate` methods from the
 [Capacitor push notifications guide](https://capacitorjs.com/docs/apis/push-notifications). On
 Android, add `google-services.json`.

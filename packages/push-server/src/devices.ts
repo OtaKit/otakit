@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { db } from '@/lib/db';
-
+import { pushDb } from './db';
+import type { PushHost } from './host';
 import { getPushLimits } from './limits';
 
 const shortText = (max: number) => z.string().trim().min(1).max(max);
@@ -44,24 +44,12 @@ export type RegisterDeviceResult =
   | { accepted: true; deviceId: string; created: boolean }
   | { accepted: false; reason: 'device_limit' };
 
-export type PushApp = {
-  id: string;
-  organizationId: string;
-  planKey: 'free' | 'starter' | 'pro' | 'enterprise';
-};
-
-export async function findPushApp(appId: string): Promise<PushApp | null> {
-  if (!/^[0-9a-f-]{36}$/i.test(appId)) return null;
-  const app = await db.app.findUnique({
-    where: { id: appId },
-    select: { id: true, organizationId: true, organization: { select: { planKey: true } } },
-  });
-  if (!app) return null;
-  return { id: app.id, organizationId: app.organizationId, planKey: app.organization.planKey };
-}
+/** The app a device belongs to, as resolved by the host. */
+export type PushAppRef = { appId: string; organizationId: string };
 
 export async function registerDevice(
-  app: PushApp,
+  host: PushHost,
+  app: PushAppRef,
   input: RegisterDeviceInput,
   now: Date = new Date(),
 ): Promise<RegisterDeviceResult> {
@@ -81,8 +69,9 @@ export async function registerDevice(
     lastSeenAt: now,
   } as const;
 
+  const db = pushDb();
   const existing = await db.pushDevice.findUnique({
-    where: { appId_token: { appId: app.id, token } },
+    where: { appId_token: { appId: app.appId, token } },
     select: { id: true },
   });
   if (existing) {
@@ -92,16 +81,17 @@ export async function registerDevice(
 
   // Business limits never break the customer's app: over the cap, new devices are
   // simply not stored and the helper is told why.
-  const registered = await db.pushDevice.count({
-    where: { app: { organizationId: app.organizationId } },
-  });
-  if (registered >= getPushLimits(app.planKey).devices) {
+  const [registered, workspace] = await Promise.all([
+    db.pushDevice.count({ where: { organizationId: app.organizationId } }),
+    host.getWorkspace(app.organizationId),
+  ]);
+  if (registered >= getPushLimits(workspace.plan).devices) {
     return { accepted: false, reason: 'device_limit' };
   }
 
   const device = await db.pushDevice.upsert({
-    where: { appId_token: { appId: app.id, token } },
-    create: { appId: app.id, token, ...fields },
+    where: { appId_token: { appId: app.appId, token } },
+    create: { appId: app.appId, organizationId: app.organizationId, token, ...fields },
     update: fields,
     select: { id: true },
   });
@@ -110,7 +100,7 @@ export async function registerDevice(
 
 export async function unregisterDevice(appId: string, token: string): Promise<void> {
   const normalized = /^[0-9a-fA-F]{64,200}$/.test(token) ? token.toLowerCase() : token;
-  await db.pushDevice.deleteMany({ where: { appId, token: normalized } });
+  await pushDb().pushDevice.deleteMany({ where: { appId, token: normalized } });
 }
 
 export const topicsSchema = z.object({
@@ -126,6 +116,7 @@ export async function updateDeviceTopics(
   const normalized = /^[0-9a-fA-F]{64,200}$/.test(input.token)
     ? input.token.toLowerCase()
     : input.token;
+  const db = pushDb();
   const device = await db.pushDevice.findUnique({
     where: { appId_token: { appId, token: normalized } },
     select: { id: true, topics: true },
@@ -139,4 +130,14 @@ export async function updateDeviceTopics(
     data: { topics: [...next].slice(0, 20), lastSeenAt: new Date() },
   });
   return true;
+}
+
+/** Removes everything push stores for an app; the host calls it when the app is deleted. */
+export async function deleteAppData(appId: string): Promise<void> {
+  const db = pushDb();
+  await db.$transaction([
+    db.pushCampaign.deleteMany({ where: { appId } }),
+    db.pushDevice.deleteMany({ where: { appId } }),
+    db.pushCredential.deleteMany({ where: { appId } }),
+  ]);
 }

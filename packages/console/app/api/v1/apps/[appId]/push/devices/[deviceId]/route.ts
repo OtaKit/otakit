@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { deleteDevice } from '@/lib/push/device-admin';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+import { pushErrorResponse, requirePushAccess } from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -11,12 +10,12 @@ export async function DELETE(
   { params }: { params: Promise<{ appId: string; deviceId: string }> },
 ) {
   const { appId, deviceId } = await params;
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
   try {
-    await deleteDevice(appId, deviceId);
+    await push.deleteDevice(appId, deviceId);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

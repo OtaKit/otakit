@@ -18,6 +18,7 @@ import { whoamiCommand } from './commands/whoami.js';
 import { logoutCommand } from './commands/logout.js';
 import { mcpCommand } from './commands/mcp.js';
 import { organizationCommand } from './commands/organization.js';
+import { pushCommand } from './commands/push.js';
 import { CLI_VERSION } from './lib/version.js';
 
 const program = new Command();
@@ -36,6 +37,7 @@ program.addCommand(releaseCommand);
 program.addCommand(listCommand);
 program.addCommand(deleteCommand);
 program.addCommand(releasesCommand);
+program.addCommand(pushCommand);
 program.addCommand(generateSigningKeyCommand);
 program.addCommand(generateEncryptionKeyCommand);
 program.addCommand(loginCommand);

@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PushCampaigns } from './PushCampaigns';
 import { PushComposer } from './PushComposer';
 import { PushDevices } from './PushDevices';
+import { usePushAddon } from './use-push-addon';
 
 type Provider = 'apns' | 'fcm';
 
@@ -41,6 +42,45 @@ async function readError(response: Response, fallback: string): Promise<string> 
 }
 
 export function PushDashboard({ initialData }: { initialData: DashboardInitialData }) {
+  if (!initialData.activeOrganization.pushEnabled) {
+    return <PushAddonOff initialData={initialData} />;
+  }
+  return <PushWorkspace initialData={initialData} />;
+}
+
+function PushAddonOff({ initialData }: { initialData: DashboardInitialData }) {
+  const canManage =
+    initialData.activeOrganization.role === 'owner' ||
+    initialData.activeOrganization.role === 'admin';
+  const { saving, setEnabled } = usePushAddon();
+
+  return (
+    <div className="m-3 min-h-screen border border-border bg-background">
+      <DashboardHeader activeSection="push" />
+      <main className="mx-auto flex max-w-md flex-col items-center gap-4 px-5 py-24 text-center">
+        <Bell className="size-8 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Push notifications</h2>
+        <p className="text-sm text-muted-foreground">
+          Free push for your Capacitor apps on iOS and Android. Upload your Apple and Firebase keys,
+          add <code>@otakit/push</code> to your app, and send from here, the API, the CLI or an AI
+          agent.
+        </p>
+        {canManage ? (
+          <Button onClick={() => void setEnabled(true)} disabled={saving}>
+            {saving && <LoaderCircle className="size-3.5 animate-spin" />}
+            Turn on push notifications
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Ask a workspace owner or admin to turn it on in Settings.
+          </p>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function PushWorkspace({ initialData }: { initialData: DashboardInitialData }) {
   const apps = initialData.apps;
   const canManage =
     initialData.activeOrganization.role === 'owner' ||
@@ -97,7 +137,7 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
 
   return (
     <div className="m-3 min-h-screen border border-border bg-background">
-      <DashboardHeader activeSection="push" />
+      <DashboardHeader activeSection="push" showPush />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
         <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
