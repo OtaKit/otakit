@@ -1,0 +1,91 @@
+name: Publish package
+
+# Publishes one package to npm with npm trusted publishing (OIDC): no npm token is
+# stored anywhere. Each package lists this workflow as its trusted publisher on
+# npmjs.com. The CLI release also updates the MCP registry entry.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish
+        required: true
+        type: choice
+        options:
+          - cli
+          - push
+          - capacitor-updater
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-${{ inputs.package }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest && npm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve package directory
+        id: pkg
+        run: |
+          case "${{ inputs.package }}" in
+            cli) echo "dir=packages/cli" >> "$GITHUB_OUTPUT" ;;
+            push) echo "dir=packages/push" >> "$GITHUB_OUTPUT" ;;
+            capacitor-updater) echo "dir=packages/capacitor-plugin" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Check the version is not published yet
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm. Bump the version first."
+            exit 1
+          fi
+          echo "Publishing $NAME@$VERSION"
+
+      - name: Validate agent metadata
+        if: inputs.package == 'cli'
+        run: pnpm agents:validate
+
+      - name: Test
+        if: inputs.package != 'capacitor-updater'
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: pnpm test
+
+      - name: Build
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: pnpm run build
+
+      - name: Publish to npm
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm publish --access public
+
+      - name: Publish the MCP registry entry
+        if: inputs.package == 'cli'
+        run: |
+          curl -sSfL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          # The registry verifies mcpName against the published package; give npm a moment.
+          sleep 30
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
