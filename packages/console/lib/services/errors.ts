@@ -16,7 +16,10 @@ export type OtaKitErrorCode =
   | 'RELEASE_NOT_CURRENT'
   | 'MANIFEST_SYNC_PENDING'
   | 'ANALYTICS_UNAVAILABLE'
-  | 'RATE_LIMITED';
+  | 'RATE_LIMITED'
+  | 'PUSH_NOT_CONFIGURED'
+  | 'PUSH_LIMIT_REACHED'
+  | 'PUSH_CAMPAIGN_NOT_FOUND';
 
 export class OtaKitServiceError extends Error {
   readonly code: OtaKitErrorCode;
