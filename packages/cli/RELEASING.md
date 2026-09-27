@@ -2,7 +2,8 @@
 
 1. Bump `version` in `packages/cli/package.json`, and the matching versions in `server.json`
    (`version` and `packages[0].version`), `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`
-   and `packages/mcp-core` as needed. `pnpm agents:validate` checks they agree.
+   `packages/mcp-core` (`package.json` and `src/version.ts`), `skills/otakit/SKILL.md`, and the
+   expected version in `src/lib/version.test.ts`. `pnpm agents:validate` checks the metadata agrees.
 2. Build and publish to npm: `pnpm --filter @otakit/cli build`, then `npm publish` from
    `packages/cli`.
 3. Publish the MCP registry entry (after npm, because the registry verifies `mcpName` in the
