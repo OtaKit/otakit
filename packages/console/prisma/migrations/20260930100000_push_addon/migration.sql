@@ -10,12 +10,17 @@ WHERE EXISTS (
 );
 
 -- Move existing push data into the add-on's own schema. `pnpm db:migrate` applies the
--- push-server migrations first, so the target tables exist; if they do not (push
--- migrations never run), the old rows are dropped with the tables, as push was
--- unused there. Campaign batches are not moved: finished work only.
+-- push-server migrations first, so the target tables exist. If they do not and there
+-- is push data, stop instead of dropping it. Campaign batches are not moved.
 DO $$
 BEGIN
-    IF to_regclass('push."PushDevice"') IS NOT NULL THEN
+    IF to_regclass('push."PushDevice"') IS NULL THEN
+        IF EXISTS (SELECT 1 FROM public."PushCredential")
+            OR EXISTS (SELECT 1 FROM public."PushDevice")
+            OR EXISTS (SELECT 1 FROM public."PushCampaign") THEN
+            RAISE EXCEPTION 'Push data exists but the "push" schema is missing. Run the @otakit/push-server migrations first (pnpm db:migrate does both).';
+        END IF;
+    ELSE
         INSERT INTO push."PushCredential" (id, "appId", provider, "sealedSecret", "apnsKeyId",
             "apnsTeamId", "apnsBundleId", "fcmProjectId", "fcmClientEmail", "lastTestAt",
             "lastTestResult", "createdBy", "createdAt", "updatedAt")
