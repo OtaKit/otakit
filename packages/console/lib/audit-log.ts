@@ -23,7 +23,11 @@ export type AuditAction =
   | 'member.joined'
   | 'invite.created'
   | 'invite.revoked'
-  | 'oauth.connection_revoked';
+  | 'oauth.connection_revoked'
+  | 'push_credential.saved'
+  | 'push_credential.deleted'
+  | 'push_campaign.created'
+  | 'push_campaign.canceled';
 
 export type AuditActor = {
   actorType: 'user' | 'key' | 'system';

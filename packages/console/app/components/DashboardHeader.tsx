@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { BookOpen, LayoutDashboard, Settings } from 'lucide-react';
 
-type DashboardSection = 'dashboard' | 'settings';
+type DashboardSection = 'dashboard' | 'settings' | 'push';
 
 export function DashboardHeader({
   activeSection,
