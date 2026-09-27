@@ -31,7 +31,15 @@ export function AddonsSection({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="text-sm font-medium">Push notifications</div>
           <p className="text-xs text-muted-foreground">
-            Free push for your Capacitor apps on iOS and Android.
+            Free push for your Capacitor apps on iOS and Android.{' '}
+            <a
+              href="https://otakit.app/docs/push"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              Docs
+            </a>
           </p>
         </div>
         <Switch

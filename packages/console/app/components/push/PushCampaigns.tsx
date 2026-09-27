@@ -1,12 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 
 import { LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+
+import { TABLE_CLASS } from './SectionHeader';
 
 type Campaign = {
   id: string;
@@ -84,61 +94,83 @@ export function PushCampaigns({ appId, refreshKey }: { appId: string; refreshKey
     );
   }
   if (campaigns.length === 0) {
-    return (
-      <p className="px-5 py-12 text-center text-sm text-muted-foreground">
-        No notifications sent yet.
-      </p>
-    );
+    return <p className="px-6 py-10 text-sm text-muted-foreground">Nothing sent yet.</p>;
   }
 
   return (
-    <ul className="divide-y divide-border">
-      {campaigns.map((campaign) => (
-        <li key={campaign.id} className="px-5 py-3">
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 text-left"
-            onClick={() => setOpen(open === campaign.id ? null : campaign.id)}
-          >
-            <span className="w-28 shrink-0 text-xs text-muted-foreground">
-              {formatDate(campaign.createdAt)}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-              {campaign.payload.title}
-            </span>
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              {campaign.accepted.toLocaleString()} / {campaign.targeted.toLocaleString()} delivered
-            </span>
-            <Badge className={STATUS_STYLE[campaign.status]}>{campaign.status}</Badge>
-          </button>
-          {open === campaign.id && (
-            <div className="mt-3 space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
-              <p className="text-muted-foreground">{campaign.payload.body}</p>
-              <p>
-                Targeted {campaign.targeted} · Accepted by Apple/Google {campaign.accepted} · Failed{' '}
-                {campaign.failed} · Invalid tokens removed {campaign.invalidRemoved}
-              </p>
-              {campaign.payload.url && <p>Opens {campaign.payload.url}</p>}
-              {campaign.failureReason && (
-                <p className="text-destructive">{campaign.failureReason}</p>
-              )}
-              {campaign.errorSummary && Object.keys(campaign.errorSummary).length > 0 && (
-                <p className="font-mono text-muted-foreground">
-                  {Object.entries(campaign.errorSummary)
-                    .map(([reason, count]) => `${reason}: ${count}`)
-                    .join(' · ')}
-                </p>
-              )}
-              <p className="text-muted-foreground">Sent by {campaign.createdBy}</p>
-              {(campaign.status === 'queued' || campaign.status === 'sending') && (
-                <Button size="sm" variant="outline" onClick={() => void cancel(campaign.id)}>
-                  Cancel remaining
-                </Button>
-              )}
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
+    <div className="overflow-x-auto">
+      <Table className={TABLE_CLASS}>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-36">Sent</TableHead>
+            <TableHead>Notification</TableHead>
+            <TableHead className="w-28 text-right">Delivered</TableHead>
+            <TableHead className="w-28">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {campaigns.map((campaign) => (
+            <Fragment key={campaign.id}>
+              <TableRow
+                className="cursor-pointer"
+                onClick={() => setOpen(open === campaign.id ? null : campaign.id)}
+              >
+                <TableCell className="text-muted-foreground">
+                  {formatDate(campaign.createdAt)}
+                </TableCell>
+                <TableCell className="max-w-0 truncate">
+                  <span className="font-medium">{campaign.payload.title}</span>
+                  <span className="text-muted-foreground"> · {campaign.payload.body}</span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {campaign.accepted.toLocaleString()} / {campaign.targeted.toLocaleString()}
+                </TableCell>
+                <TableCell>
+                  <Badge className={STATUS_STYLE[campaign.status]}>{campaign.status}</Badge>
+                </TableCell>
+              </TableRow>
+              {open === campaign.id ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={4} className="whitespace-normal">
+                    <CampaignDetails
+                      campaign={campaign}
+                      onCancel={() => void cancel(campaign.id)}
+                    />
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </Fragment>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function CampaignDetails({ campaign, onCancel }: { campaign: Campaign; onCancel: () => void }) {
+  const active = campaign.status === 'queued' || campaign.status === 'sending';
+  return (
+    <div className="space-y-1.5 py-2 text-xs text-muted-foreground">
+      <p className="text-foreground">{campaign.payload.body}</p>
+      <p>
+        Targeted {campaign.targeted} · accepted by Apple/Google {campaign.accepted} · failed{' '}
+        {campaign.failed} · invalid tokens removed {campaign.invalidRemoved}
+        {campaign.payload.url ? ` · opens ${campaign.payload.url}` : ''}
+      </p>
+      {campaign.failureReason ? <p className="text-destructive">{campaign.failureReason}</p> : null}
+      {campaign.errorSummary && Object.keys(campaign.errorSummary).length > 0 ? (
+        <p className="font-mono">
+          {Object.entries(campaign.errorSummary)
+            .map(([reason, count]) => `${reason}: ${count}`)
+            .join(' · ')}
+        </p>
+      ) : null}
+      <p>Sent by {campaign.createdBy}</p>
+      {active ? (
+        <Button size="sm" variant="outline" className="mt-1" onClick={onCancel}>
+          Cancel remaining
+        </Button>
+      ) : null}
+    </div>
   );
 }

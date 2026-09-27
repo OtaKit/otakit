@@ -2,20 +2,44 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { Bell, CheckCircle2, LoaderCircle, Lock, XCircle } from 'lucide-react';
+import {
+  Bell,
+  CheckCircle2,
+  ChevronsUpDown,
+  Cpu,
+  History,
+  LoaderCircle,
+  Send,
+  Settings2,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
 import type { ApiError, DashboardInitialData } from '@/app/components/dashboard-types';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 import { PushCampaigns } from './PushCampaigns';
 import { PushComposer } from './PushComposer';
 import { PushDevices } from './PushDevices';
+import { SectionHeader } from './SectionHeader';
 import { usePushAddon } from './use-push-addon';
 
 type Provider = 'apns' | 'fcm';
@@ -35,10 +59,18 @@ type CredentialSummary = {
 type TestResult = { ok: boolean; result: string; message: string };
 
 const SELECTED_APP_KEY = 'selectedAppId';
+const DOCS_URL = 'https://otakit.app/docs/push';
 
 async function readError(response: Response, fallback: string): Promise<string> {
   const data = (await response.json().catch(() => null)) as ApiError | null;
   return data?.error ?? fallback;
+}
+
+function canManageWorkspace(initialData: DashboardInitialData): boolean {
+  return (
+    initialData.activeOrganization.role === 'owner' ||
+    initialData.activeOrganization.role === 'admin'
+  );
 }
 
 export function PushDashboard({ initialData }: { initialData: DashboardInitialData }) {
@@ -48,48 +80,75 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
   return <PushWorkspace initialData={initialData} />;
 }
 
-function PushAddonOff({ initialData }: { initialData: DashboardInitialData }) {
-  const canManage =
-    initialData.activeOrganization.role === 'owner' ||
-    initialData.activeOrganization.role === 'admin';
-  const { saving, setEnabled } = usePushAddon();
-
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="m-3 min-h-screen border border-border bg-background">
-      <DashboardHeader activeSection="push" />
-      <main className="mx-auto flex max-w-md flex-col items-center gap-4 px-5 py-24 text-center">
-        <Bell className="size-8 text-muted-foreground" />
-        <h2 className="text-lg font-semibold">Push notifications</h2>
-        <p className="text-sm text-muted-foreground">
-          Free push for your Capacitor apps on iOS and Android. Upload your Apple and Firebase keys,
-          add <code>@otakit/push</code> to your app, and send from here, the API, the CLI or an AI
-          agent.
-        </p>
-        {canManage ? (
-          <Button onClick={() => void setEnabled(true)} disabled={saving}>
-            {saving && <LoaderCircle className="size-3.5 animate-spin" />}
-            Turn on push notifications
-          </Button>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Ask a workspace owner or admin to turn it on in Settings.
-          </p>
-        )}
-      </main>
+      <DashboardHeader activeSection="push" showPush />
+      <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">{children}</main>
     </div>
+  );
+}
+
+function EmptyCard({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="p-5">
+      <div className="rounded-lg border border-dashed border-border py-12 text-center">
+        <Icon className="mx-auto size-6 text-muted-foreground/40" />
+        <p className="mt-3 text-sm font-medium">{title}</p>
+        <div className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function PushAddonOff({ initialData }: { initialData: DashboardInitialData }) {
+  const { saving, setEnabled } = usePushAddon();
+  return (
+    <Shell>
+      <section className="mx-auto w-full max-w-screen-xl">
+        <EmptyCard icon={Bell} title="Push notifications are off">
+          <p>Free push for your Capacitor apps on iOS and Android.</p>
+          <div className="mt-5">
+            {canManageWorkspace(initialData) ? (
+              <Button size="sm" onClick={() => void setEnabled(true)} disabled={saving}>
+                {saving && <LoaderCircle className="size-3.5 animate-spin" />}
+                Turn on
+              </Button>
+            ) : (
+              <p className="text-xs">Ask a workspace owner or admin to turn it on in Settings.</p>
+            )}
+          </div>
+          <p className="mt-4">
+            <a
+              href={DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              Read the docs
+            </a>
+          </p>
+        </EmptyCard>
+      </section>
+    </Shell>
   );
 }
 
 function PushWorkspace({ initialData }: { initialData: DashboardInitialData }) {
   const apps = initialData.apps;
-  const canManage =
-    initialData.activeOrganization.role === 'owner' ||
-    initialData.activeOrganization.role === 'admin';
+  const canManage = canManageWorkspace(initialData);
 
   const [appId, setAppId] = useState<string | null>(null);
-  const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('send');
+  const [credentials, setCredentials] = useState<CredentialSummary[] | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [sentCount, setSentCount] = useState(0);
 
   useEffect(() => {
@@ -104,25 +163,20 @@ function PushWorkspace({ initialData }: { initialData: DashboardInitialData }) {
     setAppId(preferred ?? apps[0]?.id ?? null);
   }, [apps]);
 
-  const loadCredentials = useCallback(async (id: string, options: { quiet?: boolean } = {}) => {
-    if (!options.quiet) setLoading(true);
+  const loadCredentials = useCallback(async (id: string) => {
     try {
       const response = await fetch(`/api/v1/apps/${id}/push/credentials`);
-      if (!response.ok) throw new Error(await readError(response, 'Failed to load credentials'));
+      if (!response.ok) throw new Error(await readError(response, 'Failed to load keys'));
       const payload = (await response.json()) as { credentials: CredentialSummary[] };
       setCredentials(payload.credentials);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load credentials');
-    } finally {
-      setLoading(false);
+      setCredentials([]);
+      toast.error(error instanceof Error ? error.message : 'Failed to load keys');
     }
   }, []);
 
   useEffect(() => {
-    if (!appId) {
-      setLoading(false);
-      return;
-    }
+    if (!appId) return;
     try {
       localStorage.setItem(SELECTED_APP_KEY, appId);
     } catch {
@@ -132,119 +186,161 @@ function PushWorkspace({ initialData }: { initialData: DashboardInitialData }) {
   }, [appId, loadCredentials]);
 
   const selectedApp = apps.find((app) => app.id === appId) ?? null;
-  const apns = credentials.find((credential) => credential.provider === 'apns') ?? null;
-  const fcm = credentials.find((credential) => credential.provider === 'fcm') ?? null;
+  const configured = (credentials?.length ?? 0) > 0;
+
+  const setup = appId ? (
+    <SetupContent
+      appId={appId}
+      bundleIdHint={selectedApp?.slug ?? ''}
+      credentials={credentials ?? []}
+      canManage={canManage}
+      onChanged={() => void loadCredentials(appId)}
+    />
+  ) : null;
 
   return (
-    <div className="m-3 min-h-screen border border-border bg-background">
-      <DashboardHeader activeSection="push" showPush />
-
-      <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
-        <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
-          <div className="h-full w-full max-w-3xl border-x border-border" />
-        </div>
-        <div className="relative mx-auto w-full max-w-3xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 pb-6 pt-8">
-            <div className="flex items-center gap-3">
-              <Bell className="size-6 shrink-0 text-muted-foreground" />
-              <div className="flex flex-col gap-0.5">
-                <h2 className="text-[15px] font-semibold leading-tight">Push notifications</h2>
-                <p className="text-xs leading-tight text-muted-foreground">
-                  Send to your app&apos;s users on iOS and Android
-                </p>
-              </div>
-            </div>
-            {apps.length > 0 && (
-              <NativeSelect
-                size="sm"
-                value={appId ?? ''}
-                onChange={(event) => setAppId(event.target.value)}
-                aria-label="App"
-              >
-                {apps.map((app) => (
-                  <NativeSelectOption key={app.id} value={app.id}>
-                    {app.slug}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            )}
-          </div>
-
-          {apps.length === 0 ? (
-            <EmptyState title="No apps yet" body="Create an app in the dashboard first." />
-          ) : loading || !appId ? (
-            <div className="flex items-center justify-center py-24">
-              <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Tabs
-              value={credentials.length === 0 && tab === 'send' ? 'setup' : tab}
-              onValueChange={setTab}
+    <Shell>
+      {/* App selector bar, as on the main dashboard */}
+      <section className="border-b border-border">
+        <div className="mx-auto flex max-w-screen-xl flex-wrap items-center gap-3 px-6 pb-5 pt-8">
+          <h2 className="flex items-center gap-3 text-[15px] font-semibold">
+            <Cpu className="size-6 shrink-0 text-muted-foreground" />
+            App
+          </h2>
+          <div className="mx-1 h-4 w-px bg-border" />
+          {apps.length > 0 ? (
+            <Select
+              value={appId ?? ''}
+              onValueChange={(value) => {
+                setCredentials(null);
+                setAppId(value);
+              }}
             >
-              <div className="border-b border-border px-5 py-3">
-                <TabsList>
-                  <TabsTrigger value="send">Send</TabsTrigger>
-                  <TabsTrigger value="campaigns">Sent</TabsTrigger>
-                  <TabsTrigger value="devices">Devices</TabsTrigger>
-                  <TabsTrigger value="setup">Setup</TabsTrigger>
-                </TabsList>
-              </div>
-              <TabsContent value="send">
-                <PushComposer
-                  appId={appId}
-                  onSent={() => {
-                    setSentCount((value) => value + 1);
-                    setTab('campaigns');
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="campaigns">
-                <PushCampaigns appId={appId} refreshKey={sentCount} />
-              </TabsContent>
-              <TabsContent value="devices">
-                <PushDevices appId={appId} />
-              </TabsContent>
-              <TabsContent value="setup">
-                {!canManage ? (
-                  <EmptyState
-                    title="Admins only"
-                    body="Only workspace owners and admins can manage push credentials."
-                    locked
-                  />
-                ) : (
-                  <div className="divide-y divide-border">
-                    <ApnsCard
-                      key={`apns:${appId}:${apns?.updatedAt ?? 'none'}`}
-                      appId={appId}
-                      defaultBundleId={selectedApp?.slug ?? ''}
-                      credential={apns}
-                      onChanged={() => loadCredentials(appId, { quiet: true })}
-                    />
-                    <FcmCard
-                      key={`fcm:${appId}:${fcm?.updatedAt ?? 'none'}`}
-                      appId={appId}
-                      credential={fcm}
-                      onChanged={() => loadCredentials(appId, { quiet: true })}
-                    />
-                    <InstallSnippet appId={appId} />
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+              <SelectTrigger
+                className="h-8 w-40 border-0 bg-transparent px-2 shadow-none hover:bg-accent sm:w-56"
+                icon={<ChevronsUpDown className="size-4 opacity-50" />}
+              >
+                <SelectValue placeholder="Select app" />
+              </SelectTrigger>
+              <SelectContent>
+                {apps.map((app) => (
+                  <SelectItem key={app.id} value={app.id}>
+                    {app.slug}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-sm text-muted-foreground">No apps yet</span>
           )}
+          {configured ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-8 text-muted-foreground"
+              onClick={() => setSetupOpen(true)}
+            >
+              <Settings2 className="size-3.5" />
+              Setup
+            </Button>
+          ) : null}
         </div>
-      </main>
-    </div>
+      </section>
+
+      {apps.length === 0 ? (
+        <section className="mx-auto w-full max-w-screen-xl">
+          <EmptyCard icon={Cpu} title="Connect an app first">
+            <p>Push notifications are sent per app. Create one on the dashboard.</p>
+          </EmptyCard>
+        </section>
+      ) : !appId || credentials === null ? (
+        <div className="flex flex-1 items-center justify-center py-24">
+          <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : !configured ? (
+        <section className="mx-auto w-full max-w-screen-xl bg-muted/30">
+          <SectionHeader
+            icon={Settings2}
+            title="Set up push"
+            subtitle="Add your Apple and Google keys, then register devices from your app"
+          />
+          {setup}
+        </section>
+      ) : (
+        <>
+          <section className="mx-auto w-full max-w-screen-xl bg-muted/30">
+            <SectionHeader
+              icon={Send}
+              title="New notification"
+              subtitle="Delivered right away to the devices you choose"
+            />
+            <PushComposer appId={appId} onSent={() => setSentCount((value) => value + 1)} />
+          </section>
+          <Separator />
+          <section className="mx-auto w-full max-w-screen-xl bg-muted/30">
+            <SectionHeader icon={History} title="Sent" subtitle="Recent notifications" />
+            <PushCampaigns appId={appId} refreshKey={sentCount} />
+          </section>
+          <Separator />
+          <section className="mx-auto w-full max-w-screen-xl flex-1 bg-muted/30">
+            <PushDevices appId={appId} />
+          </section>
+          <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Push setup</DialogTitle>
+                <DialogDescription>
+                  Keys for {selectedApp?.slug ?? 'this app'} and the code for your app.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="-mx-6 -mb-6 border-t border-border">{setup}</div>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+    </Shell>
   );
 }
 
-function EmptyState({ title, body, locked }: { title: string; body: string; locked?: boolean }) {
-  const Icon = locked ? Lock : Bell;
+function SetupContent({
+  appId,
+  bundleIdHint,
+  credentials,
+  canManage,
+  onChanged,
+}: {
+  appId: string;
+  bundleIdHint: string;
+  credentials: CredentialSummary[];
+  canManage: boolean;
+  onChanged: () => void;
+}) {
+  const apns = credentials.find((credential) => credential.provider === 'apns') ?? null;
+  const fcm = credentials.find((credential) => credential.provider === 'fcm') ?? null;
   return (
-    <div className="m-5 rounded-lg border border-dashed py-12 text-center">
-      <Icon className="mx-auto size-6 text-muted-foreground/40" />
-      <p className="mt-3 text-sm font-medium">{title}</p>
-      <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{body}</p>
+    <div className="divide-y divide-border">
+      {canManage ? (
+        <>
+          <ApnsCard
+            key={`apns:${appId}:${apns?.updatedAt ?? 'none'}`}
+            appId={appId}
+            defaultBundleId={bundleIdHint}
+            credential={apns}
+            onChanged={onChanged}
+          />
+          <FcmCard
+            key={`fcm:${appId}:${fcm?.updatedAt ?? 'none'}`}
+            appId={appId}
+            credential={fcm}
+            onChanged={onChanged}
+          />
+        </>
+      ) : (
+        <p className="px-6 py-5 text-sm text-muted-foreground">
+          Only workspace owners and admins can add or change keys.
+        </p>
+      )}
+      <InstallSnippet appId={appId} />
     </div>
   );
 }
@@ -362,14 +458,13 @@ function ApnsCard({
   }
 
   return (
-    <section className="space-y-4 px-5 py-6">
+    <section className="space-y-4 px-6 py-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold">Apple (APNs)</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            An APNs key from Apple Developer → Keys. One key works for every app in your team, so
-            treat it like a password. The bundle ID must be an App ID in the same team with Push
-            Notifications enabled.
+            APNs key from Apple Developer → Keys. The bundle ID needs Push Notifications enabled in
+            the same team.
           </p>
         </div>
         <StatusLine credential={credential} />
@@ -468,13 +563,12 @@ function FcmCard({
   const [fileName, setFileName] = useState('');
 
   return (
-    <section className="space-y-4 px-5 py-6">
+    <section className="space-y-4 px-6 py-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold">Google (Firebase Cloud Messaging)</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            A service account key from Firebase → Project settings → Service accounts → Generate new
-            private key.
+            Service account key from Firebase → Project settings → Service accounts.
           </p>
           {credential?.fcmProjectId && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -549,13 +643,21 @@ if ((await PushNotifications.requestPermissions()).receive === 'granted') {
   await PushNotifications.register();
 }`;
   return (
-    <section className="space-y-2 px-5 py-6">
+    <section className="space-y-2 px-6 py-6">
       <h3 className="text-sm font-semibold">Add it to your app</h3>
       <p className="text-xs text-muted-foreground">
-        On iOS, enable the Push Notifications capability and add the two AppDelegate methods from
-        the Capacitor push guide. On Android, add google-services.json.
+        iOS needs the Push Notifications capability and two AppDelegate methods; Android needs
+        google-services.json.{' '}
+        <a
+          href={DOCS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-4 hover:text-foreground"
+        >
+          Full guide
+        </a>
       </p>
-      <pre className="overflow-x-auto rounded-lg border border-border bg-muted px-4 py-3 font-mono text-[11px] leading-5">
+      <pre className="overflow-x-auto rounded-lg border border-border bg-background px-4 py-3 font-mono text-[11px] leading-5">
         {code}
       </pre>
     </section>
