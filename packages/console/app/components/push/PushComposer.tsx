@@ -47,6 +47,7 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
   const [count, setCount] = useState<AudienceCount | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [counting, setCounting] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
@@ -140,9 +141,11 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
     }
   }
 
+  const hasFilters = Boolean(topics || channels || userIds);
+
   return (
-    <div className="grid gap-6 px-5 py-6 md:grid-cols-[1fr_260px]">
-      <div className="space-y-4">
+    <div className="px-6 py-6">
+      <div className="max-w-2xl space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="push-title">Title</Label>
           <Input
@@ -172,15 +175,11 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
             onChange={(event) => setUrl(event.target.value)}
             placeholder="/orders/latest"
           />
-          <p className="text-xs text-muted-foreground">
-            Sent as <code>data.url</code>; handle it in <code>pushNotificationActionPerformed</code>
-            .
-          </p>
         </div>
 
-        <div className="space-y-3 rounded-lg border border-border p-4">
-          <p className="text-sm font-medium">Audience</p>
-          <div className="flex gap-5">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-5">
+            <span className="text-sm font-medium">Send to</span>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={ios} onCheckedChange={(value) => setIos(value === true)} /> iOS
             </label>
@@ -188,50 +187,53 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
               <Checkbox checked={android} onCheckedChange={(value) => setAndroid(value === true)} />{' '}
               Android
             </label>
+            {!showFilters && !hasFilters ? (
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                onClick={() => setShowFilters(true)}
+              >
+                Add filter
+              </button>
+            ) : null}
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="push-topics">Topics</Label>
-              <Input
-                id="push-topics"
-                value={topics}
-                onChange={(event) => setTopics(event.target.value)}
-                placeholder="news, offers"
-              />
+          {showFilters || hasFilters ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="push-topics" className="text-xs text-muted-foreground">
+                  Topics
+                </Label>
+                <Input
+                  id="push-topics"
+                  value={topics}
+                  onChange={(event) => setTopics(event.target.value)}
+                  placeholder="news, offers"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="push-channels" className="text-xs text-muted-foreground">
+                  OTA channels
+                </Label>
+                <Input
+                  id="push-channels"
+                  value={channels}
+                  onChange={(event) => setChannels(event.target.value)}
+                  placeholder="beta"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="push-users" className="text-xs text-muted-foreground">
+                  User IDs
+                </Label>
+                <Input
+                  id="push-users"
+                  value={userIds}
+                  onChange={(event) => setUserIds(event.target.value)}
+                  placeholder="user_1, user_2"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="push-channels">OTA channels</Label>
-              <Input
-                id="push-channels"
-                value={channels}
-                onChange={(event) => setChannels(event.target.value)}
-                placeholder="beta"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="push-users">User IDs</Label>
-              <Input
-                id="push-users"
-                value={userIds}
-                onChange={(event) => setUserIds(event.target.value)}
-                placeholder="user_1, user_2"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Leave filters empty to reach every device. Filters of different kinds must all match.
-          </p>
-          <p className="text-sm">
-            {noPlatform ? (
-              <span className="text-destructive">Choose at least one platform.</span>
-            ) : counting || !count ? (
-              <span className="text-muted-foreground">Counting devices…</span>
-            ) : (
-              <>
-                <strong>{devices(count.total)}</strong> ({count.ios} iOS, {count.android} Android)
-              </>
-            )}
-          </p>
+          ) : null}
           {warnings.map((warning) => (
             <p key={warning} className="text-xs text-amber-600">
               {warning}
@@ -239,23 +241,19 @@ export function PushComposer({ appId, onSent }: { appId: string; onSent: () => v
           ))}
         </div>
 
-        <Button disabled={!canSend} onClick={() => setConfirming(true)}>
-          <Send className="size-3.5" />
-          Send
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Preview</p>
-        <div className="rounded-2xl border border-border bg-muted/50 p-3 shadow-sm">
-          <p className="text-[13px] font-semibold leading-tight">{title || 'Title'}</p>
-          <p className="mt-0.5 line-clamp-4 text-[13px] leading-snug text-muted-foreground">
-            {body || 'Your message'}
-          </p>
+        <div className="flex items-center gap-4 pt-1">
+          <Button disabled={!canSend} onClick={() => setConfirming(true)}>
+            <Send className="size-3.5" />
+            Send
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {noPlatform
+              ? 'Choose at least one platform.'
+              : counting || !count
+                ? 'Counting devices…'
+                : `${devices(count.total)} (${count.ios} iOS, ${count.android} Android)`}
+          </span>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Long text is shortened on the lock screen. Keep the first line meaningful.
-        </p>
       </div>
 
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
