@@ -10,6 +10,8 @@ import {
 } from '@otakit/capacitor-updater';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { PushPanel } from './PushPanel';
+
 type LogLevel = 'info' | 'success' | 'error';
 
 type LogEntry = {
@@ -322,6 +324,8 @@ export default function Home() {
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           Placeholder text for demoing updates 38
         </section>
+
+        <PushPanel />
 
         <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <h2 className="mb-3 font-semibold text-cyan-200">Manual Flow</h2>
