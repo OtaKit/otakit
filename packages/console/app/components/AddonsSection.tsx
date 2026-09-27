@@ -1,7 +1,5 @@
 'use client';
 
-import Link from 'next/link';
-
 import { Bell, Blocks } from 'lucide-react';
 
 import { usePushAddon } from '@/app/components/push/use-push-addon';
@@ -33,22 +31,8 @@ export function AddonsSection({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="text-sm font-medium">Push notifications</div>
           <p className="text-xs text-muted-foreground">
-            Free push for your Capacitor apps on iOS and Android: send from the dashboard, API, CLI
-            or an AI agent. Adds a Push menu item.
-            {pushEnabled ? (
-              <>
-                {' '}
-                <Link href="/dashboard/push" className="underline underline-offset-2">
-                  Open Push
-                </Link>
-              </>
-            ) : null}
+            Free push for your Capacitor apps on iOS and Android.
           </p>
-          {pushEnabled ? (
-            <p className="text-xs text-muted-foreground">
-              Turning it off keeps your keys and devices, and new devices are not registered.
-            </p>
-          ) : null}
         </div>
         <Switch
           checked={pushEnabled}

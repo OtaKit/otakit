@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { ArrowLeft, LoaderCircle, Mail } from 'lucide-react';
 
+import { rememberPushIntent } from '@/app/components/push/addon-intent';
 import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -193,6 +194,11 @@ export function LoginPageClient({
   const [resendIn, setResendIn] = useState(0);
   // A complete code submits itself; this stops the click handler from racing it.
   const submittedCode = useRef<string | null>(null);
+
+  // Sign-ups from the push landing page (login?addon=push) get the add-on switched on.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('addon') === 'push') rememberPushIntent();
+  }, []);
 
   useEffect(() => {
     if (resendIn <= 0) return;

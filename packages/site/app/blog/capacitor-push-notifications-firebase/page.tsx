@@ -9,18 +9,19 @@ export default function PushNotificationsPage() {
   return (
     <BlogArticle post={post}>
       <p>
-        Push notifications are table stakes for a real mobile app, and Firebase Cloud Messaging (FCM) is
-        the standard way to deliver them to both iOS and Android from a Capacitor app. This guide walks
-        through the full setup &mdash; native config, permissions, tokens, and handling taps &mdash; and
-        shows where <A href="/">OtaKit</A> lets you iterate the notification logic without a rebuild.
+        Push notifications are table stakes for a real mobile app, and Firebase Cloud Messaging
+        (FCM) is the standard way to deliver them to both iOS and Android from a Capacitor app. This
+        guide walks through the full setup &mdash; native config, permissions, tokens, and handling
+        taps &mdash; and shows where <A href="/">OtaKit</A> lets you iterate the notification logic
+        without a rebuild.
       </p>
 
       <Callout>
         <p>
-          Split the work in your head: the <strong>native wiring</strong> (FCM, APNs, the push plugin)
-          is a one-time store build. The <strong>notification handling logic</strong> &mdash; routing a
-          tap, formatting content, deciding what to show &mdash; lives in your web layer and ships over
-          the air.
+          Split the work in your head: the <strong>native wiring</strong> (FCM, APNs, the push
+          plugin) is a one-time store build. The <strong>notification handling logic</strong>{' '}
+          &mdash; routing a tap, formatting content, deciding what to show &mdash; lives in your web
+          layer and ships over the air.
         </p>
       </Callout>
 
@@ -31,9 +32,24 @@ npx cap sync`}</Pre>
       <h2>2. Set up Firebase</h2>
       <ul>
         <li>Create a Firebase project and register your iOS and Android apps.</li>
-        <li>Add <Code>google-services.json</Code> to the Android project and <Code>GoogleService-Info.plist</Code> to the iOS project.</li>
+        <li>
+          Add <Code>google-services.json</Code> to the Android project and{' '}
+          <Code>GoogleService-Info.plist</Code> to the iOS project.
+        </li>
         <li>For iOS, upload your APNs key to Firebase &mdash; FCM delivers to iOS through APNs.</li>
       </ul>
+
+      <Callout>
+        <p>
+          On iOS, <Code>@capacitor/push-notifications</Code> returns the native APNs token, not an
+          FCM token. To send through FCM on iOS you need a Firebase messaging plugin that returns
+          FCM tokens; or skip Firebase on iOS and send to APNs directly, as in{' '}
+          <A href="/blog/capacitor-push-notifications-without-firebase-ios">
+            push notifications on iOS without Firebase
+          </A>
+          .
+        </p>
+      </Callout>
 
       <h2>3. Request permission and register</h2>
       <Pre>{`import { PushNotifications } from '@capacitor/push-notifications';
@@ -65,17 +81,26 @@ PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
 
       <Callout>
         <p>
-          Common gotcha: iOS push requires the Push Notifications capability and a real device (the
-          simulator won&apos;t receive remote push). Android needs the notification permission on API 33+.
-          Both are native concerns &mdash; get them right in the store build.
+          Common gotcha: iOS push requires the Push Notifications capability. The simulator receives
+          remote push on Apple silicon Macs with Xcode 14 or newer (sandbox tokens). Android needs
+          the notification permission on API 33+. Both are native concerns &mdash; get them right in
+          the store build.
         </p>
       </Callout>
+
+      <h2>Sending without running your own server</h2>
+      <p>
+        The steps above give you device tokens; something still has to send to them.{' '}
+        <A href="/push">OtaKit Push</A> does that for free: upload your APNs key and Firebase
+        service account, register tokens with <Code>@otakit/push</Code>, and send from the
+        dashboard, CLI or your backend. See the <A href="/docs/push">push docs</A>.
+      </p>
 
       <h2>Where to go next</h2>
       <p>
         See <A href="/docs/setup">Setup</A> to add OtaKit alongside the push plugin, and{' '}
-        <A href="/blog/capacitor-deep-links-universal-links">deep links</A> since notification taps and
-        deep links often share routing.
+        <A href="/blog/capacitor-deep-links-universal-links">deep links</A> since notification taps
+        and deep links often share routing.
       </p>
     </BlogArticle>
   );

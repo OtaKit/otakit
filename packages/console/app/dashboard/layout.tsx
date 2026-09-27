@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { DashboardDataProvider } from '@/app/dashboard/DashboardDataProvider';
 import { getDashboardInitialData } from '@/app/dashboard/data';
+import { PushAddonIntent } from '@/app/components/push/PushAddonIntent';
 import { SignupTracker } from '@/app/components/SignupTracker';
 import { SetupStatusProvider } from '@/app/components/setup/SetupStatusProvider';
 
@@ -12,6 +13,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <DashboardDataProvider initialData={initialData}>
       <SignupTracker userId={initialData.user.id} createdAt={initialData.user.createdAt} />
+      <PushAddonIntent
+        pushEnabled={initialData.activeOrganization.pushEnabled}
+        canManage={
+          initialData.activeOrganization.role === 'owner' ||
+          initialData.activeOrganization.role === 'admin'
+        }
+      />
       <SetupStatusProvider
         key={`${initialData.user.id}:${initialData.activeOrganization.id}`}
         userId={initialData.user.id}
