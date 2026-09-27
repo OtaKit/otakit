@@ -28,7 +28,7 @@ export default function SelfHostPage() {
       <P>
         There is no all-in-one Docker image yet. The control plane is a standard Next.js app, so it
         runs anywhere Node.js runs — a VPS behind nginx, your own container, or Vercel — plus a
-        Postgres database and an S3-compatible bucket. That's the whole required stack.
+        Postgres database and an S3-compatible bucket. That&apos;s the whole required stack.
       </P>
 
       <Separator className="my-10" />
@@ -108,7 +108,7 @@ export default function SelfHostPage() {
         </li>
         <li>
           <strong>Public site</strong> (<Code>packages/site</Code>) — the marketing site and docs
-          you're reading now. You don't need it.
+          you&apos;re reading now. You don&apos;t need it.
         </li>
       </Ul>
       <P>
@@ -128,7 +128,7 @@ pnpm install`}</Pre>
       <H2 className="mt-10">Step 2 — Create the database</H2>
       <P>
         Any PostgreSQL 14+ works — a managed database (Neon, RDS, Supabase) or your own server. Note
-        the connection string; you'll set it as <Code>DATABASE_URL</Code> in step 4.
+        the connection string; you&apos;ll set it as <Code>DATABASE_URL</Code> in step 4.
       </P>
 
       <H2 className="mt-10">Step 3 — Create the storage bucket and CDN</H2>
@@ -202,7 +202,7 @@ export OTAKIT_TOKEN=otakit_sk_...`}</Pre>
 
       <H2 className="mt-10">Step 8 — Configure the plugin</H2>
       <P>
-        In your app's <Code>capacitor.config.ts</Code>:
+        In your app&apos;s <Code>capacitor.config.ts</Code>:
       </P>
       <Pre>{`plugins: {
   OtaKit: {
@@ -236,7 +236,7 @@ otakit upload --release`}</Pre>
       <Pre>{`otakit generate-signing-key`}</Pre>
       <P>
         Put the private key in the console env (<Code>MANIFEST_SIGNING_KID</Code>,{' '}
-        <Code>MANIFEST_SIGNING_KEY</Code>) and the public key in the plugin config's{' '}
+        <Code>MANIFEST_SIGNING_KEY</Code>) and the public key in the plugin config&apos;s{' '}
         <Code>manifestKeys</Code>. To run without signing, set{' '}
         <Code>MANIFEST_SIGNING_DISABLED=true</Code>.
       </P>
@@ -257,8 +257,8 @@ cd packages/ingest
 npx wrangler secret put TINYBIRD_EVENTS_TOKEN   # Tinybird append token
 npx wrangler deploy`}</Pre>
       <P>
-        See <Code>packages/ingest/README.md</Code> for the Worker's queue and rate-limit bindings in{' '}
-        <Code>wrangler.jsonc</Code>. Then set <Code>TINYBIRD_API_HOST</Code> and{' '}
+        See <Code>packages/ingest/README.md</Code> for the Worker&apos;s queue and rate-limit
+        bindings in <Code>wrangler.jsonc</Code>. Then set <Code>TINYBIRD_API_HOST</Code> and{' '}
         <Code>TINYBIRD_READ_TOKEN</Code> in the console env, and <Code>ingestUrl</Code> in the
         plugin config.
       </P>
@@ -286,8 +286,8 @@ npx wrangler deploy`}</Pre>
           <Code>UPSTASH_REDIS_REST_TOKEN</Code> to rate-limit the API.
         </li>
         <li>
-          <strong>Billing</strong> — Polar integration powers the hosted service's plans. Leave the{' '}
-          <Code>POLAR_*</Code> vars unset for unlimited usage with no billing UI.
+          <strong>Billing</strong> — Polar integration powers the hosted service&apos;s plans. Leave
+          the <Code>POLAR_*</Code> vars unset for unlimited usage with no billing UI.
         </li>
       </Ul>
       <P>
