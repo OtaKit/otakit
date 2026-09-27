@@ -158,6 +158,27 @@ describe('sendToDevices', () => {
     });
   });
 
+  it('reports the sandbox reason instead of deleting when the retry fails differently', async () => {
+    const outcome = await sendToDevices({
+      devices: devices.slice(1, 2),
+      payload,
+      campaignId: 'c',
+      apns: apnsCredential,
+      fcm: null,
+      senders: {
+        apns: vi.fn(async ({ environment }) => [
+          environment === 'production'
+            ? { deviceId: 'ios-dev', kind: 'invalid', status: 400, reason: 'BadDeviceToken' }
+            : { deviceId: 'ios-dev', kind: 'auth', status: 400, reason: 'TopicDisallowed' },
+        ]),
+        fcm: vi.fn(),
+      } as never,
+    });
+    expect(outcome.invalidDeviceIds).toEqual([]);
+    expect(outcome.authFailure).toMatch(/Register the bundle ID as an App ID/);
+    expect(outcome.errors).toEqual({ 'apns:TopicDisallowed': 1 });
+  });
+
   it('counts devices without credentials as failed', async () => {
     const outcome = await sendToDevices({
       devices,

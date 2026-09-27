@@ -267,7 +267,10 @@ export async function testPushCredential(input: {
       result = {
         ok: false,
         result: probe.reason ?? 'auth',
-        message: `Google rejected the service account (${probe.reason ?? probe.status}). Check that the Firebase Cloud Messaging API is enabled for this project.`,
+        message:
+          probe.reason === 'PERMISSION_DENIED'
+            ? 'Google rejected the service account (PERMISSION_DENIED). A key created in the last few minutes can take a moment to start working, so try again shortly. If it keeps failing, check that the Firebase Cloud Messaging API is enabled for this project.'
+            : `Google rejected the service account (${probe.reason ?? probe.status}). Check that the Firebase Cloud Messaging API is enabled for this project.`,
       };
     } else {
       result = {

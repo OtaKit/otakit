@@ -32,12 +32,18 @@ importers:
       '@capacitor/ios':
         specifier: ^8.0.2
         version: 8.0.2(@capacitor/core@8.0.2)
+      '@capacitor/push-notifications':
+        specifier: ^8.0.0
+        version: 8.1.2(@capacitor/core@8.0.2)
       '@capacitor/splash-screen':
         specifier: 8.0.1
         version: 8.0.1(@capacitor/core@8.0.2)
       '@otakit/capacitor-updater':
         specifier: workspace:*
         version: link:../../packages/capacitor-plugin
+      '@otakit/push':
+        specifier: workspace:*
+        version: link:../../packages/push
       next:
         specifier: 16.1.6
         version: 16.1.6(@babel/core@7.29.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1013,6 +1019,11 @@ packages:
     resolution: {integrity: sha512-7EM7vBxXI3Ku49aYCJcS9su5Y3i6UmXpx7e0y+oQV9PzCnZ6l5B0ACJ+gXAU0bM3q7/f+kGBsOtXMid84rU6MQ==}
     peerDependencies:
       '@capacitor/core': ^8.0.0
+
+  '@capacitor/push-notifications@8.1.2':
+    resolution: {integrity: sha512-TQl4XxqJfNF+KbSYBFMXYYT5WXUaleVKXlByhh/8+KySMVNjp+l5OqAUoGe/sY1IAnGXEuUeCjA/WLZEVvGwrA==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/splash-screen@8.0.1':
     resolution: {integrity: sha512-c/ew/Z3eA7z8l06WoRAtzVF16VwYYrExmHmfGq1Cg675pVzaC/yuucB8/1xG1vhEfnW4fZ1KhSf/kzR1RiVYgg==}
@@ -7234,6 +7245,10 @@ snapshots:
       typescript: 4.2.4
 
   '@capacitor/ios@8.0.2(@capacitor/core@8.0.2)':
+    dependencies:
+      '@capacitor/core': 8.0.2
+
+  '@capacitor/push-notifications@8.1.2(@capacitor/core@8.0.2)':
     dependencies:
       '@capacitor/core': 8.0.2
 

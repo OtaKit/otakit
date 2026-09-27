@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
       spinnerColor: '#22d3ee',
     },
     OtaKit: {
-      appId: '4fdd60d6-4775-4ad5-8c61-1cb4012901ab',
+      appId: '65bb56c1-8279-4a71-a010-7a78ca96e613',
       runtimeVersion: 'demo-shell-v3',
       launchPolicy: 'apply-staged',
       resumePolicy: 'shadow',

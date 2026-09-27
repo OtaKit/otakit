@@ -288,7 +288,8 @@ function ApnsCard({
           <h3 className="text-sm font-semibold">Apple (APNs)</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             An APNs key from Apple Developer → Keys. One key works for every app in your team, so
-            treat it like a password.
+            treat it like a password. The bundle ID must be an App ID in the same team with Push
+            Notifications enabled.
           </p>
         </div>
         <StatusLine credential={credential} />

@@ -128,7 +128,10 @@ export async function sendToDevices(input: {
         break;
       case 'auth':
         outcome.failed += 1;
-        outcome.authFailure ??= `${provider === 'apns' ? 'Apple' : 'Google'} rejected the credentials (${result.reason ?? result.status}).`;
+        outcome.authFailure ??=
+          result.reason === 'TopicDisallowed' || result.reason === 'BadTopic'
+            ? `Apple does not allow this key to send to the bundle ID (${result.reason}). Register the bundle ID as an App ID with Push Notifications in the same Apple team as the key.`
+            : `${provider === 'apns' ? 'Apple' : 'Google'} rejected the credentials (${result.reason ?? result.status}).`;
         countError(outcome, `${provider}:${result.reason ?? 'auth'}`);
         break;
       default:
@@ -178,8 +181,11 @@ export async function sendToDevices(input: {
       for (const result of productionResults) {
         const fallback = fallbackById.get(result.deviceId);
         if (fallback) {
+          // ok: a development build's token. invalid on both: a dead token.
+          // Anything else (e.g. TopicDisallowed, throttling) is the real reason,
+          // so report it instead of deleting a device that may be fine.
           if (fallback.kind === 'ok') outcome.sandboxDeviceIds.push(result.deviceId);
-          record('apns', fallback.kind === 'ok' ? fallback : result);
+          record('apns', fallback.kind === 'invalid' ? result : fallback);
         } else {
           record('apns', result);
         }
