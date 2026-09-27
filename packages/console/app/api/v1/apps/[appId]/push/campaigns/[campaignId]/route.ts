@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { getCampaign } from '@/lib/push/campaigns';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+import { pushErrorResponse, requirePushAccess } from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -11,11 +10,11 @@ export async function GET(
   { params }: { params: Promise<{ appId: string; campaignId: string }> },
 ) {
   const { appId, campaignId } = await params;
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
   try {
-    return NextResponse.json({ campaign: await getCampaign(appId, campaignId) });
+    return NextResponse.json({ campaign: await push.getCampaign(appId, campaignId) });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

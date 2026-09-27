@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 
 /**
- * At-rest encryption for secrets we must be able to read back (push credentials,
- * webhook signing secrets). AES-256-GCM with a random IV per value.
+ * At-rest encryption for push credentials (APNs keys, Firebase service accounts),
+ * which must be readable again to send. AES-256-GCM with a random IV per value.
  *
  * Sealed format: `v1.<iv>.<ciphertext>.<tag>` (base64url parts). The `aad` binds a
  * value to the row it belongs to (for example `push-credential:<appId>:apns`), so a

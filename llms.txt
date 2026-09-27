@@ -1840,7 +1840,7 @@ Public site
 packages/site
 ) — the marketing site and docs you're reading now. You don't need it.
 
-The CLI (`packages/cli`) and Capacitor plugin (`packages/capacitor-plugin`) run on your machine and inside your app — you point them at your instance in steps 6 and 7.
+The CLI (`packages/cli`) and Capacitor plugin ( `packages/capacitor-plugin`) run on your machine and inside your app — you point them at your instance in steps 6 and 7.
 
 ### Step 1 — Clone and install
 
@@ -1899,7 +1899,7 @@ Everything else in `.env.example` (Tinybird, Resend, Polar, Cloudflare purge, Up
 
 ```txt
 cd packages/console
-npx prisma migrate deploy
+pnpm db:migrate
 pnpm build
 pnpm start
 ```

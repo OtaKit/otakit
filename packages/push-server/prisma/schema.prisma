@@ -1,0 +1,134 @@
+// Push notifications add-on. Its tables live in the Postgres schema "push" and
+// never reference core OtaKit tables: appId and organizationId are plain strings
+// owned by the host (the console), which removes push data when an app goes away.
+
+generator client {
+  provider   = "prisma-client"
+  output     = "../src/generated/prisma"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PUSH_DATABASE_URL")
+}
+
+enum PushProvider {
+  apns
+  fcm
+}
+
+enum PushPlatform {
+  ios
+  android
+}
+
+enum PushEnvironment {
+  production
+  sandbox
+}
+
+enum PushCampaignStatus {
+  queued
+  sending
+  completed
+  failed
+  canceled
+}
+
+enum PushBatchStatus {
+  pending
+  sending
+  done
+}
+
+model PushCredential {
+  id             String       @id @default(uuid())
+  appId          String
+  provider       PushProvider
+  // src/secret-box.ts: the .p8 PEM (apns) or service-account JSON (fcm)
+  sealedSecret   String
+  apnsKeyId      String?
+  apnsTeamId     String?
+  apnsBundleId   String?
+  fcmProjectId   String?
+  fcmClientEmail String?
+  lastTestAt     DateTime?
+  lastTestResult String?
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([appId, provider])
+}
+
+model PushDevice {
+  id             String          @id @default(uuid())
+  organizationId String
+  appId          String
+  platform       PushPlatform
+  provider       PushProvider
+  token          String
+  environment    PushEnvironment @default(production)
+  externalUserId String?
+  topics         String[]
+  channel        String?
+  runtimeVersion String?
+  bundleVersion  String?
+  appVersion     String?
+  locale         String?
+  createdAt      DateTime        @default(now())
+  lastSeenAt     DateTime        @default(now())
+
+  @@unique([appId, token])
+  @@index([organizationId])
+  @@index([appId, platform])
+  @@index([appId, externalUserId])
+  @@index([appId, channel])
+  @@index([appId, lastSeenAt])
+}
+
+model PushCampaign {
+  id             String             @id @default(uuid())
+  organizationId String
+  appId          String
+  payload        Json
+  audience       Json
+  status         PushCampaignStatus @default(queued)
+  targeted       Int                @default(0)
+  accepted       Int                @default(0)
+  failed         Int                @default(0)
+  invalidRemoved Int                @default(0)
+  errorSummary   Json?
+  failureReason  String?
+  idempotencyKey String?
+  createdBy      String
+  createdAt      DateTime           @default(now())
+  completedAt    DateTime?
+  batches        PushSendBatch[]
+
+  @@unique([appId, idempotencyKey])
+  @@index([appId, createdAt(sort: Desc)])
+}
+
+model PushSendBatch {
+  id            String          @id @default(uuid())
+  campaign      PushCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId    String
+  deviceIds     String[]
+  status        PushBatchStatus @default(pending)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime        @default(now())
+  claimedAt     DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([campaignId])
+}
+
+model PushUsage {
+  organizationId String
+  periodStart    DateTime
+  sends          Int      @default(0)
+
+  @@id([organizationId, periodStart])
+}

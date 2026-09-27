@@ -1,5 +1,7 @@
-import { db } from '@/lib/db';
-import { OtaKitServiceError } from '@/lib/services/errors';
+import { pushDb } from './db';
+import { PushError } from './errors';
+import type { PushHost } from './host';
+import { getPushLimits, pushPeriodStart } from './limits';
 
 export type DeviceSummary = {
   id: string;
@@ -16,6 +18,7 @@ export type DeviceSummary = {
 };
 
 export async function getDeviceOverview(appId: string) {
+  const db = pushDb();
   const [byPlatform, byChannel, topicRows] = await Promise.all([
     db.pushDevice.groupBy({
       by: ['platform', 'environment'],
@@ -31,7 +34,7 @@ export async function getDeviceOverview(appId: string) {
     }),
     db.$queryRaw<Array<{ topic: string; count: bigint }>>`
       SELECT topic, count(*) AS count
-      FROM "PushDevice", unnest(topics) AS topic
+      FROM push."PushDevice", unnest(topics) AS topic
       WHERE "appId" = ${appId}
       GROUP BY topic ORDER BY count DESC LIMIT 50`,
   ]);
@@ -57,7 +60,7 @@ export async function listDevices(input: {
   limit?: number;
 }): Promise<DeviceSummary[]> {
   const search = input.search?.trim();
-  const rows = await db.pushDevice.findMany({
+  const rows = await pushDb().pushDevice.findMany({
     where: {
       appId: input.appId,
       ...(search
@@ -89,25 +92,22 @@ export async function listDevices(input: {
 }
 
 export async function deleteDevice(appId: string, deviceId: string): Promise<void> {
-  const deleted = await db.pushDevice.deleteMany({ where: { id: deviceId, appId } });
-  if (deleted.count === 0) throw new OtaKitServiceError('INVALID_INPUT', 'Device not found', 404);
+  const deleted = await pushDb().pushDevice.deleteMany({ where: { id: deviceId, appId } });
+  if (deleted.count === 0) throw new PushError('NOT_FOUND', 'Device not found', 404);
 }
 
-export async function getPushUsage(organizationId: string) {
-  const { getPushLimits, pushPeriodStart } = await import('./limits');
-  const organization = await db.organization.findUniqueOrThrow({
-    where: { id: organizationId },
-    select: { planKey: true, usagePeriodStart: true },
-  });
-  const periodStart = pushPeriodStart(organization.usagePeriodStart);
+export async function getPushUsage(host: PushHost, organizationId: string) {
+  const db = pushDb();
+  const workspace = await host.getWorkspace(organizationId);
+  const periodStart = pushPeriodStart(workspace.periodStart);
   const [usage, devices] = await Promise.all([
     db.pushUsage.findUnique({
       where: { organizationId_periodStart: { organizationId, periodStart } },
       select: { sends: true },
     }),
-    db.pushDevice.count({ where: { app: { organizationId } } }),
+    db.pushDevice.count({ where: { organizationId } }),
   ]);
-  const limits = getPushLimits(organization.planKey);
+  const limits = getPushLimits(workspace.plan);
   return {
     periodStart: periodStart.toISOString(),
     sends: usage?.sends ?? 0,

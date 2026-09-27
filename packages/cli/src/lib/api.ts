@@ -78,6 +78,39 @@ export class OtaKitApiError extends Error {
   }
 }
 
+export type PushPayloadInput = {
+  title: string;
+  body: string;
+  url?: string;
+  data?: Record<string, string>;
+};
+
+export type PushAudienceInput = {
+  platforms?: Array<'ios' | 'android'>;
+  channels?: string[];
+  runtimeVersions?: string[];
+  topics?: string[];
+  userIds?: string[];
+};
+
+export type PushPreview = {
+  audienceCount: { total: number; ios: number; android: number };
+  warnings: string[];
+};
+
+export type PushCampaign = {
+  id: string;
+  status: 'queued' | 'sending' | 'completed' | 'failed' | 'canceled';
+  payload: PushPayloadInput;
+  targeted: number;
+  accepted: number;
+  failed: number;
+  invalidRemoved: number;
+  errorSummary: Record<string, number> | null;
+  failureReason: string | null;
+  createdAt: string;
+};
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly authToken: string;
@@ -165,6 +198,45 @@ export class ApiClient {
 
   private appPath(suffix: string): string {
     return `/api/v1/apps/${encodeURIComponent(this.appId)}${suffix}`;
+  }
+
+  async previewPush(input: {
+    payload: PushPayloadInput;
+    audience: PushAudienceInput;
+  }): Promise<PushPreview> {
+    return this.request<PushPreview>(this.appPath('/push/audience'), {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async sendPush(input: {
+    payload: PushPayloadInput;
+    audience: PushAudienceInput;
+    expectedAudience?: number;
+    idempotencyKey: string;
+  }): Promise<{ campaign: PushCampaign }> {
+    return this.request<{ campaign: PushCampaign }>(this.appPath('/push/campaigns'), {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: JSON.stringify({
+        payload: input.payload,
+        audience: input.audience,
+        expectedAudience: input.expectedAudience,
+      }),
+    });
+  }
+
+  async listPushCampaigns(limit = 20): Promise<{ campaigns: PushCampaign[] }> {
+    return this.request<{ campaigns: PushCampaign[] }>(
+      this.appPath(`/push/campaigns?limit=${encodeURIComponent(String(limit))}`),
+    );
+  }
+
+  async getPushCampaign(campaignId: string): Promise<{ campaign: PushCampaign }> {
+    return this.request<{ campaign: PushCampaign }>(
+      this.appPath(`/push/campaigns/${encodeURIComponent(campaignId)}`),
+    );
   }
 
   async initiateUpload(options: {

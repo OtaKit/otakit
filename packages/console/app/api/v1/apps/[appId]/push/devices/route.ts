@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { getDeviceOverview, getPushUsage, listDevices } from '@/lib/push/device-admin';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+import { pushErrorResponse, requirePushAccess } from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -11,18 +10,18 @@ export async function GET(
   { params }: { params: Promise<{ appId: string }> },
 ) {
   const { appId } = await params;
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
   try {
     const search = request.nextUrl.searchParams.get('search');
     const limit = Number(request.nextUrl.searchParams.get('limit') ?? 50);
     const [overview, devices, usage] = await Promise.all([
-      getDeviceOverview(appId),
-      listDevices({ appId, search, limit }),
-      getPushUsage(access.access.organizationId),
+      push.getDeviceOverview(appId),
+      push.listDevices({ appId, search, limit }),
+      push.getUsage(gate.access.organizationId),
     ]);
     return NextResponse.json({ overview, devices, usage });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

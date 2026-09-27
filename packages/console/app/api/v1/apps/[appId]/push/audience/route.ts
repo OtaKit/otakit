@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { previewCampaign } from '@/lib/push/campaigns';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+import { pushErrorResponse, requirePushAccess } from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -12,16 +11,16 @@ export async function POST(
   { params }: { params: Promise<{ appId: string }> },
 ) {
   const { appId } = await params;
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   try {
     return NextResponse.json(
-      await previewCampaign({ appId, payload: body.payload, audience: body.audience }),
+      await push.previewCampaign({ appId, payload: body.payload, audience: body.audience }),
     );
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

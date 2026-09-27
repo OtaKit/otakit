@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { accessActor } from '@/lib/audit-log';
-import { resolveOrganizationAccess } from '@/lib/organization-access';
-import { cancelCampaign } from '@/lib/push/campaigns';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+import { auditPush, pushErrorResponse, requirePushAccess } from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -12,17 +10,20 @@ export async function POST(
   { params }: { params: Promise<{ appId: string; campaignId: string }> },
 ) {
   const { appId, campaignId } = await params;
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
   try {
-    const campaign = await cancelCampaign({
-      organizationId: access.access.organizationId,
-      appId,
-      campaignId,
-      actor: await accessActor(access.access),
-    });
+    const { campaign, canceled } = await push.cancelCampaign({ appId, campaignId });
+    if (canceled) {
+      await auditPush(
+        gate.access,
+        'push_campaign.canceled',
+        { type: 'push_campaign', id: campaign.id },
+        { appId },
+      );
+    }
     return NextResponse.json({ campaign });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

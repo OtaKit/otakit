@@ -1,15 +1,10 @@
 import crypto from 'node:crypto';
 
-import type { PushProvider } from '@prisma/client';
-
-import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
-import { decryptSecret, encryptSecret } from '@/lib/crypto/secret-box';
-import { db } from '@/lib/db';
-import type { OrganizationAccess } from '@/lib/organization-access';
-import { OtaKitServiceError } from '@/lib/services/errors';
-
 import { sendApnsBatch, type ApnsCredential } from './apns';
+import { type PushProvider, pushDb } from './db';
+import { invalidInput as invalid, PushError } from './errors';
 import { parseServiceAccount, sendFcmBatch, type FcmCredential } from './fcm';
+import { decryptSecret, encryptSecret } from './secret-box';
 
 export type PushCredentialSummary = {
   provider: PushProvider;
@@ -34,20 +29,6 @@ const FCM_PROBE_TOKEN = 'otakit-credential-test';
 
 function aad(appId: string, provider: PushProvider): string {
   return `push-credential:${appId}:${provider}`;
-}
-
-export function requireCredentialAdmin(access: OrganizationAccess): void {
-  if (access.actorType !== 'user' || (access.role !== 'owner' && access.role !== 'admin')) {
-    throw new OtaKitServiceError(
-      'INSUFFICIENT_ROLE',
-      'Only organization owners and admins can manage push credentials.',
-      403,
-    );
-  }
-}
-
-function invalid(message: string): OtaKitServiceError {
-  return new OtaKitServiceError('INVALID_INPUT', message, 400);
 }
 
 export function validateApnsInput(input: {
@@ -84,30 +65,11 @@ export function validateApnsInput(input: {
   return { p8Pem: `${p8Pem}\n`, keyId, teamId, bundleId };
 }
 
-async function audit(
-  access: OrganizationAccess,
-  actor: AuditActor,
-  action: 'push_credential.saved' | 'push_credential.deleted',
-  appId: string,
-  provider: PushProvider,
-): Promise<void> {
-  await recordAuditLog({
-    organizationId: access.organizationId,
-    actor,
-    action,
-    targetType: 'app',
-    targetId: appId,
-    metadata: { provider },
-  });
-}
-
 export async function saveApnsCredential(input: {
-  access: OrganizationAccess;
-  actor: AuditActor;
   appId: string;
+  actorLabel: string;
   body: Record<string, unknown>;
 }): Promise<PushCredentialSummary> {
-  requireCredentialAdmin(input.access);
   const value = validateApnsInput({
     p8Pem: input.body.p8Pem,
     keyId: input.body.keyId,
@@ -121,24 +83,21 @@ export async function saveApnsCredential(input: {
     apnsBundleId: value.bundleId,
     lastTestAt: null,
     lastTestResult: null,
-    createdBy: input.actor.actorLabel,
+    createdBy: input.actorLabel,
   };
-  const row = await db.pushCredential.upsert({
+  const row = await pushDb().pushCredential.upsert({
     where: { appId_provider: { appId: input.appId, provider: 'apns' } },
     create: { appId: input.appId, provider: 'apns', ...data },
     update: data,
   });
-  await audit(input.access, input.actor, 'push_credential.saved', input.appId, 'apns');
   return toSummary(row);
 }
 
 export async function saveFcmCredential(input: {
-  access: OrganizationAccess;
-  actor: AuditActor;
   appId: string;
+  actorLabel: string;
   serviceAccountJson: unknown;
 }): Promise<PushCredentialSummary> {
-  requireCredentialAdmin(input.access);
   if (typeof input.serviceAccountJson !== 'string' || input.serviceAccountJson.length > 20_000) {
     throw invalid('Upload the Firebase service account JSON file.');
   }
@@ -154,39 +113,37 @@ export async function saveFcmCredential(input: {
     fcmClientEmail: account.client_email,
     lastTestAt: null,
     lastTestResult: null,
-    createdBy: input.actor.actorLabel,
+    createdBy: input.actorLabel,
   };
-  const row = await db.pushCredential.upsert({
+  const row = await pushDb().pushCredential.upsert({
     where: { appId_provider: { appId: input.appId, provider: 'fcm' } },
     create: { appId: input.appId, provider: 'fcm', ...data },
     update: data,
   });
-  await audit(input.access, input.actor, 'push_credential.saved', input.appId, 'fcm');
   return toSummary(row);
 }
 
 export async function listPushCredentials(appId: string): Promise<PushCredentialSummary[]> {
-  const rows = await db.pushCredential.findMany({ where: { appId }, orderBy: { provider: 'asc' } });
+  const rows = await pushDb().pushCredential.findMany({
+    where: { appId },
+    orderBy: { provider: 'asc' },
+  });
   return rows.map(toSummary);
 }
 
+/** Returns whether a credential was removed. */
 export async function deletePushCredential(input: {
-  access: OrganizationAccess;
-  actor: AuditActor;
   appId: string;
   provider: PushProvider;
-}): Promise<void> {
-  requireCredentialAdmin(input.access);
-  const deleted = await db.pushCredential.deleteMany({
+}): Promise<boolean> {
+  const deleted = await pushDb().pushCredential.deleteMany({
     where: { appId: input.appId, provider: input.provider },
   });
-  if (deleted.count > 0) {
-    await audit(input.access, input.actor, 'push_credential.deleted', input.appId, input.provider);
-  }
+  return deleted.count > 0;
 }
 
 export async function loadApnsCredential(appId: string): Promise<ApnsCredential | null> {
-  const row = await db.pushCredential.findUnique({
+  const row = await pushDb().pushCredential.findUnique({
     where: { appId_provider: { appId, provider: 'apns' } },
   });
   if (!row || !row.apnsKeyId || !row.apnsTeamId || !row.apnsBundleId) return null;
@@ -200,7 +157,7 @@ export async function loadApnsCredential(appId: string): Promise<ApnsCredential 
 }
 
 export async function loadFcmCredential(appId: string): Promise<FcmCredential | null> {
-  const row = await db.pushCredential.findUnique({
+  const row = await pushDb().pushCredential.findUnique({
     where: { appId_provider: { appId, provider: 'fcm' } },
   });
   if (!row) return null;
@@ -216,16 +173,14 @@ export async function loadFcmCredential(appId: string): Promise<FcmCredential | 
  * which the provider only says after it accepted our credentials.
  */
 export async function testPushCredential(input: {
-  access: OrganizationAccess;
   appId: string;
   provider: PushProvider;
 }): Promise<CredentialTestResult> {
-  requireCredentialAdmin(input.access);
   let result: CredentialTestResult;
 
   if (input.provider === 'apns') {
     const credential = await loadApnsCredential(input.appId);
-    if (!credential) throw new OtaKitServiceError('INVALID_INPUT', 'No APNs key uploaded.', 404);
+    if (!credential) throw new PushError('NOT_FOUND', 'No APNs key uploaded.', 404);
     const [probe] = await sendApnsBatch({
       credential,
       environment: 'sandbox',
@@ -253,7 +208,7 @@ export async function testPushCredential(input: {
   } else {
     const credential = await loadFcmCredential(input.appId);
     if (!credential) {
-      throw new OtaKitServiceError('INVALID_INPUT', 'No Firebase service account uploaded.', 404);
+      throw new PushError('NOT_FOUND', 'No Firebase service account uploaded.', 404);
     }
     const [probe] = await sendFcmBatch({
       credential,
@@ -281,7 +236,7 @@ export async function testPushCredential(input: {
     }
   }
 
-  await db.pushCredential.update({
+  await pushDb().pushCredential.update({
     where: { appId_provider: { appId: input.appId, provider: input.provider } },
     data: { lastTestAt: new Date(), lastTestResult: result.result },
   });

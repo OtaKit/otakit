@@ -1,7 +1,6 @@
-import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
-import { db } from '@/lib/db';
+import { type Prisma, pushDb } from './db';
 
 const list = <T extends z.ZodTypeAny>(item: T) => z.array(item).min(1).max(100).optional();
 
@@ -36,7 +35,7 @@ export async function countAudience(
   appId: string,
   audience: Audience,
 ): Promise<{ total: number; ios: number; android: number }> {
-  const rows = await db.pushDevice.groupBy({
+  const rows = await pushDb().pushDevice.groupBy({
     by: ['platform'],
     where: audienceWhere(appId, audience),
     _count: { _all: true },

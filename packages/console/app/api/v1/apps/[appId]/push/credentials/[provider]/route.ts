@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { accessActor } from '@/lib/audit-log';
-import { resolveOrganizationAccess } from '@/lib/organization-access';
 import {
-  deletePushCredential,
-  saveApnsCredential,
-  saveFcmCredential,
-} from '@/lib/push/credentials';
-import { organizationAccessErrorResponse, serviceErrorResponse } from '@/lib/services/http';
+  auditPush,
+  pushActorLabel,
+  pushAdminError,
+  pushErrorResponse,
+  readJsonObject,
+  requirePushAccess,
+} from '@/lib/push/http';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -22,32 +23,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const provider = parseProvider(rawProvider);
   if (!provider) return NextResponse.json({ error: 'Unknown provider' }, { status: 404 });
 
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
+  const forbidden = pushAdminError(gate.access);
+  if (forbidden) return forbidden;
 
-  let body: Record<string, unknown>;
-  try {
-    const parsed: unknown = await request.json();
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+  const body = await readJsonObject(request);
+  if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
 
   try {
-    const actor = await accessActor(access.access);
+    const actorLabel = await pushActorLabel(gate.access);
     const credential =
       provider === 'apns'
-        ? await saveApnsCredential({ access: access.access, actor, appId, body })
-        : await saveFcmCredential({
-            access: access.access,
-            actor,
+        ? await push.saveApnsCredential({ appId, actorLabel, body })
+        : await push.saveFcmCredential({
             appId,
+            actorLabel,
             serviceAccountJson: body.serviceAccountJson,
           });
+    await auditPush(gate.access, 'push_credential.saved', { type: 'app', id: appId }, { provider });
     return NextResponse.json({ credential });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }
 
@@ -56,18 +53,22 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const provider = parseProvider(rawProvider);
   if (!provider) return NextResponse.json({ error: 'Unknown provider' }, { status: 404 });
 
-  const access = await resolveOrganizationAccess(request, appId);
-  if (!access.success) return organizationAccessErrorResponse(access);
+  const gate = await requirePushAccess(request, appId);
+  if (!gate.ok) return gate.response;
+  const forbidden = pushAdminError(gate.access);
+  if (forbidden) return forbidden;
 
   try {
-    await deletePushCredential({
-      access: access.access,
-      actor: await accessActor(access.access),
-      appId,
-      provider,
-    });
+    if (await push.deleteCredential({ appId, provider })) {
+      await auditPush(
+        gate.access,
+        'push_credential.deleted',
+        { type: 'app', id: appId },
+        { provider },
+      );
+    }
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return serviceErrorResponse(error);
+    return pushErrorResponse(error);
   }
 }

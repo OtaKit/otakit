@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 
-import { findPushApp, topicsSchema, updateDeviceTopics } from '@/lib/push/devices';
 import {
   limitPublicPushRequest,
   publicJson,
   publicPreflight,
   readJsonObject,
-} from '@/lib/push/public-http';
+  resolvePublicPushApp,
+} from '@/lib/push/http';
+import { push, topicsSchema } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 
@@ -21,11 +22,12 @@ export async function POST(request: NextRequest) {
   const limited = await limitPublicPushRequest(request, appId);
   if (limited) return limited;
 
-  if (!(await findPushApp(appId))) return publicJson({ error: 'App not found' }, 404);
+  const resolved = await resolvePublicPushApp(appId);
+  if (!resolved.ok) return resolved.response;
 
   const parsed = topicsSchema.safeParse(await readJsonObject(request));
   if (!parsed.success) return publicJson({ error: 'Invalid request' }, 400);
 
-  const updated = await updateDeviceTopics(appId, parsed.data);
+  const updated = await push.updateDeviceTopics(appId, parsed.data);
   return publicJson({ updated }, updated ? 200 : 404);
 }

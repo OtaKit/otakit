@@ -2,19 +2,21 @@ import crypto, { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { encryptSecret, resetSecretBoxKeyForTests } from '@/lib/crypto/secret-box';
-import { db } from '@/lib/db';
-
 import type { ApnsResult } from './apns';
-import { createCampaign } from './campaigns';
+import { pushDb } from './db';
 import { claimBatches, processBatch } from './deliver';
-import { getDeviceOverview, getPushUsage, listDevices } from './device-admin';
+import type { PushHost } from './host';
+import { encryptSecret, resetSecretBoxKeyForTests } from './secret-box';
+import { createPushService } from './service';
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 
-const actor = { actorType: 'user' as const, actorId: 'push-test', actorLabel: 'push@example.com' };
+const actorLabel = 'push@example.com';
+const host: PushHost = { getWorkspace: async () => ({ plan: 'free', periodStart: null }) };
+const push = createPushService(host);
 
 databaseDescribe('push campaigns (PostgreSQL integration)', () => {
+  const db = pushDb();
   let organizationId: string;
   let appId: string;
 
@@ -29,13 +31,6 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
 
     organizationId = randomUUID();
     appId = randomUUID();
-    await db.organization.create({
-      data: {
-        id: organizationId,
-        name: `Push integration ${organizationId}`,
-        apps: { create: { id: appId, slug: `push.${organizationId}` } },
-      },
-    });
     await db.pushCredential.create({
       data: {
         appId,
@@ -49,39 +44,71 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
     });
     await db.pushDevice.createMany({
       data: [
-        { appId, platform: 'ios', provider: 'apns', token: 'a'.repeat(64), topics: ['news'] },
-        { appId, platform: 'ios', provider: 'apns', token: 'b'.repeat(64), topics: [] },
-        { appId, platform: 'ios', provider: 'apns', token: 'c'.repeat(64), topics: ['news'] },
-        { appId, platform: 'android', provider: 'fcm', token: 'fcm-x', topics: ['news'] },
+        {
+          organizationId,
+          appId,
+          platform: 'ios',
+          provider: 'apns',
+          token: 'a'.repeat(64),
+          topics: ['news'],
+        },
+        {
+          organizationId,
+          appId,
+          platform: 'ios',
+          provider: 'apns',
+          token: 'b'.repeat(64),
+          topics: [],
+        },
+        {
+          organizationId,
+          appId,
+          platform: 'ios',
+          provider: 'apns',
+          token: 'c'.repeat(64),
+          topics: ['news'],
+        },
+        {
+          organizationId,
+          appId,
+          platform: 'android',
+          provider: 'fcm',
+          token: 'fcm-x',
+          topics: ['news'],
+        },
       ],
     });
   });
 
   afterAll(async () => {
-    await db.organization.deleteMany({ where: { name: { startsWith: 'Push integration' } } });
+    await db.pushUsage.deleteMany({});
+    await db.pushCampaign.deleteMany({});
+    await db.pushDevice.deleteMany({});
+    await db.pushCredential.deleteMany({});
   });
 
   it('targets reachable devices, sends, prunes, retries and completes', async () => {
-    const campaign = await createCampaign({
+    const { campaign, created } = await push.createCampaign({
       organizationId,
       appId,
-      actor,
+      actorLabel,
       payload: { title: 'Hi', body: 'There' },
       audience: { topics: ['news'] },
       idempotencyKey: 'k1',
     });
     // Android has no Firebase credential, so only the two iOS "news" devices count.
     expect(campaign.targeted).toBe(2);
+    expect(created).toBe(true);
 
-    const replay = await createCampaign({
+    const replay = await push.createCampaign({
       organizationId,
       appId,
-      actor,
+      actorLabel,
       payload: { title: 'Hi', body: 'There' },
       audience: { topics: ['news'] },
       idempotencyKey: 'k1',
     });
-    expect(replay.id).toBe(campaign.id);
+    expect(replay).toMatchObject({ created: false, campaign: { id: campaign.id } });
 
     const devices = await db.pushDevice.findMany({ where: { appId, provider: 'apns' } });
     const goneId = devices.find((device) => device.token === 'c'.repeat(64))!.id;
@@ -101,7 +128,7 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
     expect(batch.campaignId).toBe(campaign.id);
     expect(batch.attempts).toBe(1);
     expect(await claimBatches(5)).toEqual([]); // claimed batches are locked out
-    await processBatch(batch, senders as never);
+    await processBatch(host, batch, senders as never);
 
     const done = await db.pushCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(done).toMatchObject({ status: 'completed', accepted: 1, invalidRemoved: 1, failed: 0 });
@@ -112,15 +139,15 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
   });
 
   it('requeues temporary failures and stops a campaign on credential rejection', async () => {
-    const campaign = await createCampaign({
+    const { campaign } = await push.createCampaign({
       organizationId,
       appId,
-      actor,
+      actorLabel,
       payload: { title: 'Hi', body: 'There' },
       audience: { platforms: ['ios'] },
     });
     const [batch] = await claimBatches(5);
-    await processBatch(batch, {
+    await processBatch(host, batch, {
       apns: vi.fn(
         async ({ items }): Promise<ApnsResult[]> =>
           items.map((item: { deviceId: string }) => ({
@@ -148,7 +175,7 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
     });
     const [again] = await claimBatches(5);
     expect(again.attempts).toBe(2);
-    await processBatch(again, {
+    await processBatch(host, again, {
       apns: vi.fn(
         async ({ items }): Promise<ApnsResult[]> =>
           items.map((item: { deviceId: string }) => ({
@@ -167,13 +194,13 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
   });
 
   it('summarizes devices by platform, channel and topic', async () => {
-    const overview = await getDeviceOverview(appId);
+    const overview = await push.getDeviceOverview(appId);
     expect(overview).toMatchObject({ total: 4, ios: 3, android: 1, iosSandbox: 0 });
     expect(overview.topics).toEqual([{ topic: 'news', count: 3 }]);
-    const found = await listDevices({ appId, search: 'a'.repeat(12) });
+    const found = await push.listDevices({ appId, search: 'a'.repeat(12) });
     expect(found).toHaveLength(1);
     expect(found[0].tokenPreview).toBe(`${'a'.repeat(10)}…`);
-    const usage = await getPushUsage(organizationId);
+    const usage = await push.getUsage(organizationId);
     expect(usage).toMatchObject({
       sends: 0,
       sendsLimit: 100_000,
@@ -191,22 +218,44 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
       },
     });
     await expect(
-      createCampaign({
+      push.createCampaign({
         organizationId,
         appId,
-        actor,
+        actorLabel,
         payload: { title: 'a', body: 'b' },
         audience: {},
       }),
     ).rejects.toMatchObject({ code: 'PUSH_LIMIT_REACHED' });
     await expect(
-      createCampaign({
+      push.createCampaign({
         organizationId,
         appId,
-        actor,
+        actorLabel,
         payload: { title: 'a', body: 'b' },
         audience: { userIds: ['nobody'] },
       }),
     ).rejects.toThrow(/No devices match/);
+  });
+
+  it('counts devices per workspace and removes the data of one app', async () => {
+    const app = { appId, organizationId };
+    // APNs tokens are stored lowercase, so this updates the existing device.
+    expect(
+      await push.registerDevice(app, { token: 'A'.repeat(64), platform: 'ios', topics: ['x'] }),
+    ).toMatchObject({ accepted: true, created: false });
+
+    const otherAppId = randomUUID();
+    expect(
+      await push.registerDevice(
+        { appId: otherAppId, organizationId },
+        { token: 'other-token', platform: 'android' },
+      ),
+    ).toMatchObject({ accepted: true, created: true });
+    expect(await push.getUsage(organizationId)).toMatchObject({ devices: 5 });
+
+    await push.deleteAppData(appId);
+    expect(await db.pushDevice.count({ where: { appId } })).toBe(0);
+    expect(await db.pushCredential.count({ where: { appId } })).toBe(0);
+    expect(await db.pushDevice.count({ where: { organizationId } })).toBe(1);
   });
 });

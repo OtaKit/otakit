@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-import { deliverDueBatches } from '@/lib/push/deliver';
+import { push } from '@/lib/push/service';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -28,7 +28,7 @@ async function run(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized cron call' }, { status: 401 });
   }
-  const stats = await deliverDueBatches();
+  const stats = await push.deliverDueBatches();
   return NextResponse.json({ success: true, ...stats });
 }
 

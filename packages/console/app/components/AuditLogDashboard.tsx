@@ -31,6 +31,8 @@ type AuditLogPayload = {
 const ACTION_LABELS: Record<string, string> = {
   'organization.created': 'Workspace created',
   'organization.renamed': 'Workspace renamed',
+  'organization.push_enabled': 'Push notifications turned on',
+  'organization.push_disabled': 'Push notifications turned off',
   'app.created': 'App created',
   'bundle.uploaded': 'Bundle uploaded',
   'bundle.deleted': 'Bundle deleted',
@@ -129,7 +131,10 @@ export function AuditLogDashboard({ initialData }: { initialData: DashboardIniti
 
   return (
     <div className="m-3 min-h-screen border border-border bg-background">
-      <DashboardHeader activeSection="settings" />
+      <DashboardHeader
+        activeSection="settings"
+        showPush={initialData.activeOrganization.pushEnabled}
+      />
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
         <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">

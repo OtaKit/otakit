@@ -1,4 +1,4 @@
-import type { PlanKey } from '@prisma/client';
+import type { PushPlan } from './host';
 
 export type PushLimits = {
   /** Registered devices across all apps of the organization. */
@@ -9,15 +9,15 @@ export type PushLimits = {
 
 // Founder-approved proposal (plans/roadmap-2026-q4/03): generous free tier as a
 // marketing hook; Apple and Google charge nothing to send.
-const PUSH_LIMITS: Record<PlanKey, PushLimits> = {
+const PUSH_LIMITS: Record<PushPlan, PushLimits> = {
   free: { devices: 10_000, sendsPerMonth: 100_000 },
   starter: { devices: 50_000, sendsPerMonth: 1_000_000 },
   pro: { devices: 250_000, sendsPerMonth: 5_000_000 },
   enterprise: { devices: Number.MAX_SAFE_INTEGER, sendsPerMonth: Number.MAX_SAFE_INTEGER },
 };
 
-export function getPushLimits(planKey: PlanKey): PushLimits {
-  return PUSH_LIMITS[planKey];
+export function getPushLimits(plan: PushPlan): PushLimits {
+  return PUSH_LIMITS[plan];
 }
 
 /** Start of the push usage period: the billing period if known, else the calendar month (UTC). */

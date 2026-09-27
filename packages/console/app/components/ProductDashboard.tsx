@@ -1080,6 +1080,7 @@ export function ProductDashboard({
     <div className={cn('m-3 min-h-screen border border-border bg-background', shellClassName)}>
       <DashboardHeader
         activeSection="dashboard"
+        showPush={initialData.activeOrganization.pushEnabled}
         brandHref={brandHref}
         dashboardHref={dashboardHref}
         settingsHref={settingsHref}

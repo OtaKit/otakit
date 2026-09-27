@@ -28,7 +28,7 @@ export default function SelfHostPage() {
       <P>
         There is no all-in-one Docker image yet. The control plane is a standard Next.js app, so it
         runs anywhere Node.js runs — a VPS behind nginx, your own container, or Vercel — plus a
-        Postgres database and an S3-compatible bucket. That's the whole required stack.
+        Postgres database and an S3-compatible bucket. That&apos;s the whole required stack.
       </P>
 
       <Separator className="my-10" />
@@ -48,8 +48,8 @@ export default function SelfHostPage() {
         </li>
         <li>
           <strong>Everything else is optional.</strong> Analytics, email, billing, rate limiting,
-          and CDN purge all degrade gracefully when their env vars are unset. You can start with
-          the minimal stack and add pieces later.
+          and CDN purge all degrade gracefully when their env vars are unset. You can start with the
+          minimal stack and add pieces later.
         </li>
       </Ul>
 
@@ -75,8 +75,8 @@ export default function SelfHostPage() {
           and bundles from here.
         </li>
         <li>
-          <strong>One sign-in method</strong> — Google, Apple, or GitHub OAuth credentials, or
-          email OTP (needs Resend in production).
+          <strong>One sign-in method</strong> — Google, Apple, or GitHub OAuth credentials, or email
+          OTP (needs Resend in production).
         </li>
       </Ul>
 
@@ -92,16 +92,15 @@ export default function SelfHostPage() {
           for production; see below.
         </li>
         <li>
-          <strong>Resend</strong> — transactional email (OTP codes, invites). Without it, emails
-          are logged to the server console.
+          <strong>Resend</strong> — transactional email (OTP codes, invites). Without it, emails are
+          logged to the server console.
         </li>
         <li>
           <strong>Cloudflare cache purge</strong> — instant CDN invalidation after a release.
           Without it, manifests may be stale until the CDN TTL (minutes) expires.
         </li>
         <li>
-          <strong>Upstash Redis</strong> — API rate limiting. Without it, rate limiting is
-          disabled.
+          <strong>Upstash Redis</strong> — API rate limiting. Without it, rate limiting is disabled.
         </li>
         <li>
           <strong>Polar</strong> — billing. Leave it unset when self-hosting: all organizations get
@@ -109,13 +108,13 @@ export default function SelfHostPage() {
         </li>
         <li>
           <strong>Public site</strong> (<Code>packages/site</Code>) — the marketing site and docs
-          you're reading now. You don't need it.
+          you&apos;re reading now. You don&apos;t need it.
         </li>
       </Ul>
       <P>
-        The <strong>CLI</strong> (<Code>packages/cli</Code>) and <strong>Capacitor plugin</strong>{' '}
-        (<Code>packages/capacitor-plugin</Code>) run on your machine and inside your app — you
-        point them at your instance in steps 6 and 7.
+        The <strong>CLI</strong> (<Code>packages/cli</Code>) and <strong>Capacitor plugin</strong> (
+        <Code>packages/capacitor-plugin</Code>) run on your machine and inside your app — you point
+        them at your instance in steps 6 and 7.
       </P>
 
       <Separator className="my-10" />
@@ -128,16 +127,16 @@ pnpm install`}</Pre>
 
       <H2 className="mt-10">Step 2 — Create the database</H2>
       <P>
-        Any PostgreSQL 14+ works — a managed database (Neon, RDS, Supabase) or your own server.
-        Note the connection string; you'll set it as <Code>DATABASE_URL</Code> in step 4.
+        Any PostgreSQL 14+ works — a managed database (Neon, RDS, Supabase) or your own server. Note
+        the connection string; you&apos;ll set it as <Code>DATABASE_URL</Code> in step 4.
       </P>
 
       <H2 className="mt-10">Step 3 — Create the storage bucket and CDN</H2>
       <P>
-        Create a bucket on Cloudflare R2 or AWS S3 and put a public CDN domain in front of it
-        (e.g. R2 custom domain, or CloudFront for S3). Generate S3 API credentials with read/write
-        access to the bucket. The public domain becomes <Code>CDN_BASE_URL</Code> — devices will
-        fetch manifests and bundles from it, so it must be publicly readable.
+        Create a bucket on Cloudflare R2 or AWS S3 and put a public CDN domain in front of it (e.g.
+        R2 custom domain, or CloudFront for S3). Generate S3 API credentials with read/write access
+        to the bucket. The public domain becomes <Code>CDN_BASE_URL</Code> — devices will fetch
+        manifests and bundles from it, so it must be publicly readable.
       </P>
 
       <H2 className="mt-10">Step 4 — Configure the console</H2>
@@ -178,7 +177,7 @@ CDN_BASE_URL=https://cdn.your-domain.com`}</Pre>
 
       <H2 className="mt-10">Step 5 — Migrate, build, start</H2>
       <Pre>{`cd packages/console
-npx prisma migrate deploy
+pnpm db:migrate
 pnpm build
 pnpm start`}</Pre>
       <P>
@@ -188,22 +187,22 @@ pnpm start`}</Pre>
 
       <H2 className="mt-10">Step 6 — Sign in and create your app</H2>
       <P>
-        Open your console URL, sign in, and create an app. Copy its <Code>appId</Code> and create
-        an API token (<Code>otakit_sk_...</Code>) for the CLI.
+        Open your console URL, sign in, and create an app. Copy its <Code>appId</Code> and create an
+        API token (<Code>otakit_sk_...</Code>) for the CLI.
       </P>
 
       <H2 className="mt-10">Step 7 — Point the CLI at your instance</H2>
       <Pre>{`export OTAKIT_SERVER_URL=https://console.your-domain.com
 export OTAKIT_TOKEN=otakit_sk_...`}</Pre>
       <P>
-        Alternatively set <Code>serverUrl</Code> in the plugin config (next step) — the CLI reads
-        it from <Code>capacitor.config.*</Code> automatically — and authenticate with{' '}
+        Alternatively set <Code>serverUrl</Code> in the plugin config (next step) — the CLI reads it
+        from <Code>capacitor.config.*</Code> automatically — and authenticate with{' '}
         <Code>otakit login</Code> instead of an env token.
       </P>
 
       <H2 className="mt-10">Step 8 — Configure the plugin</H2>
       <P>
-        In your app's <Code>capacitor.config.ts</Code>:
+        In your app&apos;s <Code>capacitor.config.ts</Code>:
       </P>
       <Pre>{`plugins: {
   OtaKit: {
@@ -221,10 +220,10 @@ export OTAKIT_TOKEN=otakit_sk_...`}</Pre>
       <Pre>{`# build your web assets, then:
 otakit upload --release`}</Pre>
       <P>
-        Confirm the release appears in your dashboard, and that the manifest is publicly readable
-        at <Code>{'{CDN_BASE_URL}/manifests/{appId}/__base__/__default__/manifest.json'}</Code>.
-        Then launch your app: on start or resume the plugin fetches that manifest, downloads the
-        new bundle, and applies it. Your self-hosted pipeline is live.
+        Confirm the release appears in your dashboard, and that the manifest is publicly readable at{' '}
+        <Code>{'{CDN_BASE_URL}/manifests/{appId}/__base__/__default__/manifest.json'}</Code>. Then
+        launch your app: on start or resume the plugin fetches that manifest, downloads the new
+        bundle, and applies it. Your self-hosted pipeline is live.
       </P>
 
       <Separator className="my-10" />
@@ -237,7 +236,7 @@ otakit upload --release`}</Pre>
       <Pre>{`otakit generate-signing-key`}</Pre>
       <P>
         Put the private key in the console env (<Code>MANIFEST_SIGNING_KID</Code>,{' '}
-        <Code>MANIFEST_SIGNING_KEY</Code>) and the public key in the plugin config's{' '}
+        <Code>MANIFEST_SIGNING_KEY</Code>) and the public key in the plugin config&apos;s{' '}
         <Code>manifestKeys</Code>. To run without signing, set{' '}
         <Code>MANIFEST_SIGNING_DISABLED=true</Code>.
       </P>
@@ -245,8 +244,8 @@ otakit upload --release`}</Pre>
       <H2 className="mt-10">Optional: analytics (Ingest Worker + Tinybird)</H2>
       <P>
         Device events (downloaded, applied, rolled back) flow from the plugin to a Cloudflare
-        Worker, which batches them into Tinybird. The dashboard reads its charts and download
-        counts from Tinybird pipes.
+        Worker, which batches them into Tinybird. The dashboard reads its charts and download counts
+        from Tinybird pipes.
       </P>
       <Pre>{`# 1. Deploy the Tinybird project (datasources + pipes)
 cd tinybird
@@ -258,8 +257,8 @@ cd packages/ingest
 npx wrangler secret put TINYBIRD_EVENTS_TOKEN   # Tinybird append token
 npx wrangler deploy`}</Pre>
       <P>
-        See <Code>packages/ingest/README.md</Code> for the Worker's queue and rate-limit bindings
-        in <Code>wrangler.jsonc</Code>. Then set <Code>TINYBIRD_API_HOST</Code> and{' '}
+        See <Code>packages/ingest/README.md</Code> for the Worker&apos;s queue and rate-limit
+        bindings in <Code>wrangler.jsonc</Code>. Then set <Code>TINYBIRD_API_HOST</Code> and{' '}
         <Code>TINYBIRD_READ_TOKEN</Code> in the console env, and <Code>ingestUrl</Code> in the
         plugin config.
       </P>
@@ -272,11 +271,11 @@ npx wrangler deploy`}</Pre>
         </li>
         <li>
           <strong>Auto-revert</strong> — releases published with the auto-revert flag are reverted
-          automatically when too many devices roll back within 24 hours. Requires analytics
-          (above) plus any scheduler calling <Code>POST /api/cron/auto-revert</Code> every ~10
-          minutes. If <Code>CRON_SECRET</Code> is set, pass it as a Bearer header or{' '}
-          <Code>?secret=</Code> query param; if unset, the endpoint is open (the sweep is
-          idempotent and only reverts releases whose own thresholds trip).
+          automatically when too many devices roll back within 24 hours. Requires analytics (above)
+          plus any scheduler calling <Code>POST /api/cron/auto-revert</Code> every ~10 minutes. If{' '}
+          <Code>CRON_SECRET</Code> is set, pass it as a Bearer header or <Code>?secret=</Code> query
+          param; if unset, the endpoint is open (the sweep is idempotent and only reverts releases
+          whose own thresholds trip).
         </li>
         <li>
           <strong>CDN purge</strong> — set <Code>CF_ZONE_ID</Code> and <Code>CF_API_TOKEN</Code>{' '}
@@ -287,8 +286,8 @@ npx wrangler deploy`}</Pre>
           <Code>UPSTASH_REDIS_REST_TOKEN</Code> to rate-limit the API.
         </li>
         <li>
-          <strong>Billing</strong> — Polar integration powers the hosted service's plans. Leave the{' '}
-          <Code>POLAR_*</Code> vars unset for unlimited usage with no billing UI.
+          <strong>Billing</strong> — Polar integration powers the hosted service&apos;s plans. Leave
+          the <Code>POLAR_*</Code> vars unset for unlimited usage with no billing UI.
         </li>
       </Ul>
       <P>
@@ -317,7 +316,9 @@ function P({ children }: { children: React.ReactNode }) {
 }
 
 function Ul({ children }: { children: React.ReactNode }) {
-  return <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{children}</ul>;
+  return (
+    <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">{children}</ul>
+  );
 }
 
 function Code({ children }: { children: React.ReactNode }) {

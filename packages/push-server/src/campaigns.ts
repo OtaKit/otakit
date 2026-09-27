@@ -1,10 +1,7 @@
-import { Prisma, type PushCampaignStatus } from '@prisma/client';
-
-import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
-import { db } from '@/lib/db';
-import { OtaKitServiceError } from '@/lib/services/errors';
-
 import { audienceSchema, audienceWhere, countAudience, type Audience } from './audience';
+import { Prisma, type PushCampaignStatus, pushDb } from './db';
+import { invalidInput, PushError } from './errors';
+import type { PushHost } from './host';
 import { getPushLimits, pushPeriodStart } from './limits';
 import { assertPayloadFits, pushPayloadSchema, type PushPayload } from './payload';
 
@@ -46,10 +43,6 @@ export function toCampaignSummary(row: CampaignRow): CampaignSummary {
   };
 }
 
-function invalidInput(message: string): OtaKitServiceError {
-  return new OtaKitServiceError('INVALID_INPUT', message, 400);
-}
-
 export function parseCampaignInput(input: { payload: unknown; audience: unknown }): {
   payload: PushPayload;
   audience: Audience;
@@ -77,7 +70,7 @@ export async function previewCampaign(input: {
 }) {
   const { payload, audience } = parseCampaignInput(input);
   const counts = await countAudience(input.appId, audience);
-  const credentials = await db.pushCredential.findMany({
+  const credentials = await pushDb().pushCredential.findMany({
     where: { appId: input.appId },
     select: { provider: true },
   });
@@ -94,15 +87,23 @@ export async function previewCampaign(input: {
   return { payload, audience, audienceCount: counts, warnings };
 }
 
-export async function createCampaign(input: {
-  organizationId: string;
-  appId: string;
-  actor: AuditActor;
-  payload: unknown;
-  audience: unknown;
-  expectedAudience?: number;
-  idempotencyKey?: string;
-}): Promise<CampaignSummary> {
+/**
+ * Queues a campaign. `created` is false when the idempotency key matched an earlier
+ * campaign, which is returned unchanged.
+ */
+export async function createCampaign(
+  host: PushHost,
+  input: {
+    organizationId: string;
+    appId: string;
+    actorLabel: string;
+    payload: unknown;
+    audience: unknown;
+    expectedAudience?: number;
+    idempotencyKey?: string;
+  },
+): Promise<{ campaign: CampaignSummary; created: boolean }> {
+  const db = pushDb();
   const { payload, audience } = parseCampaignInput(input);
   const idempotencyKey = input.idempotencyKey?.trim().slice(0, 128) || null;
 
@@ -110,19 +111,16 @@ export async function createCampaign(input: {
     const existing = await db.pushCampaign.findUnique({
       where: { appId_idempotencyKey: { appId: input.appId, idempotencyKey } },
     });
-    if (existing) return toCampaignSummary(existing);
+    if (existing) return { campaign: toCampaignSummary(existing), created: false };
   }
 
-  const [organization, credentials] = await Promise.all([
-    db.organization.findUniqueOrThrow({
-      where: { id: input.organizationId },
-      select: { planKey: true, usagePeriodStart: true },
-    }),
+  const [workspace, credentials] = await Promise.all([
+    host.getWorkspace(input.organizationId),
     db.pushCredential.findMany({ where: { appId: input.appId }, select: { provider: true } }),
   ]);
   const providers = new Set(credentials.map((credential) => credential.provider));
   if (providers.size === 0) {
-    throw new OtaKitServiceError(
+    throw new PushError(
       'PUSH_NOT_CONFIGURED',
       'Upload an APNs key or a Firebase service account before sending.',
       409,
@@ -138,12 +136,12 @@ export async function createCampaign(input: {
     AND: [audienceWhere(input.appId, audience), { platform: { in: [...reachablePlatforms] } }],
   };
 
-  const periodStart = pushPeriodStart(organization.usagePeriodStart);
+  const periodStart = pushPeriodStart(workspace.periodStart);
   const usage = await db.pushUsage.findUnique({
     where: { organizationId_periodStart: { organizationId: input.organizationId, periodStart } },
     select: { sends: true },
   });
-  const limit = getPushLimits(organization.planKey).sendsPerMonth;
+  const limit = getPushLimits(workspace.plan).sendsPerMonth;
 
   const campaign = await db.$transaction(
     async (tx) => {
@@ -156,7 +154,7 @@ export async function createCampaign(input: {
         throw invalidInput('No devices match this audience.');
       }
       if (input.expectedAudience !== undefined && input.expectedAudience !== devices.length) {
-        throw new OtaKitServiceError(
+        throw new PushError(
           'INVALID_INPUT',
           `The audience changed: expected ${input.expectedAudience} devices, found ${devices.length}.`,
           409,
@@ -164,7 +162,7 @@ export async function createCampaign(input: {
         );
       }
       if ((usage?.sends ?? 0) + devices.length > limit) {
-        throw new OtaKitServiceError(
+        throw new PushError(
           'PUSH_LIMIT_REACHED',
           `This would exceed your plan's ${limit.toLocaleString('en-US')} notifications this month.`,
           402,
@@ -180,7 +178,7 @@ export async function createCampaign(input: {
           audience: audience as Prisma.InputJsonValue,
           targeted: devices.length,
           idempotencyKey,
-          createdBy: input.actor.actorLabel,
+          createdBy: input.actorLabel,
         },
       });
       const batches = [];
@@ -196,19 +194,11 @@ export async function createCampaign(input: {
     { maxWait: 10_000, timeout: 60_000 },
   );
 
-  await recordAuditLog({
-    organizationId: input.organizationId,
-    actor: input.actor,
-    action: 'push_campaign.created',
-    targetType: 'push_campaign',
-    targetId: campaign.id,
-    metadata: { appId: input.appId, targeted: campaign.targeted, title: payload.title },
-  });
-  return toCampaignSummary(campaign);
+  return { campaign: toCampaignSummary(campaign), created: true };
 }
 
 export async function listCampaigns(appId: string, limit = 50): Promise<CampaignSummary[]> {
-  const rows = await db.pushCampaign.findMany({
+  const rows = await pushDb().pushCampaign.findMany({
     where: { appId },
     orderBy: { createdAt: 'desc' },
     take: Math.min(Math.max(limit, 1), 100),
@@ -217,24 +207,24 @@ export async function listCampaigns(appId: string, limit = 50): Promise<Campaign
 }
 
 export async function getCampaign(appId: string, campaignId: string): Promise<CampaignSummary> {
-  const row = await db.pushCampaign.findFirst({ where: { id: campaignId, appId } });
-  if (!row) {
-    throw new OtaKitServiceError('PUSH_CAMPAIGN_NOT_FOUND', 'Campaign not found', 404);
-  }
+  const row = await pushDb().pushCampaign.findFirst({ where: { id: campaignId, appId } });
+  if (!row) throw new PushError('PUSH_CAMPAIGN_NOT_FOUND', 'Campaign not found', 404);
   return toCampaignSummary(row);
 }
 
+/** `canceled` is false when the campaign had already finished. */
 export async function cancelCampaign(input: {
-  organizationId: string;
   appId: string;
   campaignId: string;
-  actor: AuditActor;
-}): Promise<CampaignSummary> {
+}): Promise<{ campaign: CampaignSummary; canceled: boolean }> {
+  const db = pushDb();
   const row = await db.pushCampaign.findFirst({
     where: { id: input.campaignId, appId: input.appId },
   });
-  if (!row) throw new OtaKitServiceError('PUSH_CAMPAIGN_NOT_FOUND', 'Campaign not found', 404);
-  if (row.status !== 'queued' && row.status !== 'sending') return toCampaignSummary(row);
+  if (!row) throw new PushError('PUSH_CAMPAIGN_NOT_FOUND', 'Campaign not found', 404);
+  if (row.status !== 'queued' && row.status !== 'sending') {
+    return { campaign: toCampaignSummary(row), canceled: false };
+  }
 
   const updated = await db.$transaction(async (tx) => {
     await tx.pushSendBatch.updateMany({
@@ -246,13 +236,5 @@ export async function cancelCampaign(input: {
       data: { status: 'canceled', completedAt: new Date() },
     });
   });
-  await recordAuditLog({
-    organizationId: input.organizationId,
-    actor: input.actor,
-    action: 'push_campaign.canceled',
-    targetType: 'push_campaign',
-    targetId: row.id,
-    metadata: { appId: input.appId },
-  });
-  return toCampaignSummary(updated);
+  return { campaign: toCampaignSummary(updated), canceled: true };
 }

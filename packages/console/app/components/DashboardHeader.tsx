@@ -11,12 +11,15 @@ export function DashboardHeader({
   dashboardHref = '/dashboard',
   settingsHref = '/dashboard/settings',
   docsHref = 'https://otakit.app/docs',
+  showPush = false,
 }: {
   activeSection: DashboardSection;
   brandHref?: string;
   dashboardHref?: string;
   settingsHref?: string;
   docsHref?: string;
+  /** The push add-on is switched on in Settings per workspace. */
+  showPush?: boolean;
 }) {
   const navItems = [
     {
@@ -25,7 +28,9 @@ export function DashboardHeader({
       href: dashboardHref,
       icon: LayoutDashboard,
     },
-    { section: 'push' as const, label: 'Push', href: '/dashboard/push', icon: Bell },
+    ...(showPush || activeSection === 'push'
+      ? [{ section: 'push' as const, label: 'Push', href: '/dashboard/push', icon: Bell }]
+      : []),
     { section: 'settings' as const, label: 'Settings', href: settingsHref, icon: Settings },
   ];
 

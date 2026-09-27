@@ -6,6 +6,8 @@ import type { SessionContext } from './session';
 export type AuditAction =
   | 'organization.created'
   | 'organization.renamed'
+  | 'organization.push_enabled'
+  | 'organization.push_disabled'
   | 'onboarding.updated'
   | 'onboarding.completed'
   | 'onboarding.skipped'
