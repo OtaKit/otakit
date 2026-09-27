@@ -1,6 +1,6 @@
 {
   "name": "@otakit/cli",
-  "mcpName": "io.github.otakit/otakit",
+  "mcpName": "io.github.OtaKit/otakit",
   "version": "1.6.0",
   "description": "CLI for uploading and releasing OtaKit OTA bundles",
   "type": "module",

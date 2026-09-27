@@ -1,6 +1,6 @@
 # @otakit/cli
 
-<!-- mcp-name: io.github.otakit/otakit -->
+<!-- mcp-name: io.github.OtaKit/otakit -->
 
 Upload and release CLI for OtaKit.
 
