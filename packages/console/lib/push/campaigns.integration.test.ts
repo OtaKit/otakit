@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import type { ApnsResult } from './apns';
 import { createCampaign } from './campaigns';
 import { claimBatches, processBatch } from './deliver';
+import { getDeviceOverview, getPushUsage, listDevices } from './device-admin';
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 
@@ -163,6 +164,22 @@ databaseDescribe('push campaigns (PostgreSQL integration)', () => {
     const failed = await db.pushCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(failed.status).toBe('failed');
     expect(failed.failureReason).toMatch(/Apple rejected the credentials/);
+  });
+
+  it('summarizes devices by platform, channel and topic', async () => {
+    const overview = await getDeviceOverview(appId);
+    expect(overview).toMatchObject({ total: 4, ios: 3, android: 1, iosSandbox: 0 });
+    expect(overview.topics).toEqual([{ topic: 'news', count: 3 }]);
+    const found = await listDevices({ appId, search: 'a'.repeat(12) });
+    expect(found).toHaveLength(1);
+    expect(found[0].tokenPreview).toBe(`${'a'.repeat(10)}…`);
+    const usage = await getPushUsage(organizationId);
+    expect(usage).toMatchObject({
+      sends: 0,
+      sendsLimit: 100_000,
+      devices: 4,
+      devicesLimit: 10_000,
+    });
   });
 
   it('refuses to send past the monthly limit and when nothing matches', async () => {

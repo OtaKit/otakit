@@ -11,6 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+import { PushCampaigns } from './PushCampaigns';
+import { PushComposer } from './PushComposer';
+import { PushDevices } from './PushDevices';
 
 type Provider = 'apns' | 'fcm';
 
@@ -44,6 +49,8 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
   const [appId, setAppId] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('send');
+  const [sentCount, setSentCount] = useState(0);
 
   useEffect(() => {
     const fromUrl = new URL(window.location.href).searchParams.get('app');
@@ -103,7 +110,7 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
               <div className="flex flex-col gap-0.5">
                 <h2 className="text-[15px] font-semibold leading-tight">Push notifications</h2>
                 <p className="text-xs leading-tight text-muted-foreground">
-                  Apple and Google credentials for sending
+                  Send to your app&apos;s users on iOS and Android
                 </p>
               </div>
             </div>
@@ -125,32 +132,65 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
 
           {apps.length === 0 ? (
             <EmptyState title="No apps yet" body="Create an app in the dashboard first." />
-          ) : !canManage ? (
-            <EmptyState
-              title="Admins only"
-              body="Only workspace owners and admins can manage push credentials."
-              locked
-            />
           ) : loading || !appId ? (
             <div className="flex items-center justify-center py-24">
               <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="divide-y divide-border">
-              <ApnsCard
-                key={`apns:${appId}:${apns?.updatedAt ?? 'none'}`}
-                appId={appId}
-                defaultBundleId={selectedApp?.slug ?? ''}
-                credential={apns}
-                onChanged={() => loadCredentials(appId, { quiet: true })}
-              />
-              <FcmCard
-                key={`fcm:${appId}:${fcm?.updatedAt ?? 'none'}`}
-                appId={appId}
-                credential={fcm}
-                onChanged={() => loadCredentials(appId, { quiet: true })}
-              />
-            </div>
+            <Tabs
+              value={credentials.length === 0 && tab === 'send' ? 'setup' : tab}
+              onValueChange={setTab}
+            >
+              <div className="border-b border-border px-5 py-3">
+                <TabsList>
+                  <TabsTrigger value="send">Send</TabsTrigger>
+                  <TabsTrigger value="campaigns">Sent</TabsTrigger>
+                  <TabsTrigger value="devices">Devices</TabsTrigger>
+                  <TabsTrigger value="setup">Setup</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="send">
+                <PushComposer
+                  appId={appId}
+                  onSent={() => {
+                    setSentCount((value) => value + 1);
+                    setTab('campaigns');
+                  }}
+                />
+              </TabsContent>
+              <TabsContent value="campaigns">
+                <PushCampaigns appId={appId} refreshKey={sentCount} />
+              </TabsContent>
+              <TabsContent value="devices">
+                <PushDevices appId={appId} />
+              </TabsContent>
+              <TabsContent value="setup">
+                {!canManage ? (
+                  <EmptyState
+                    title="Admins only"
+                    body="Only workspace owners and admins can manage push credentials."
+                    locked
+                  />
+                ) : (
+                  <div className="divide-y divide-border">
+                    <ApnsCard
+                      key={`apns:${appId}:${apns?.updatedAt ?? 'none'}`}
+                      appId={appId}
+                      defaultBundleId={selectedApp?.slug ?? ''}
+                      credential={apns}
+                      onChanged={() => loadCredentials(appId, { quiet: true })}
+                    />
+                    <FcmCard
+                      key={`fcm:${appId}:${fcm?.updatedAt ?? 'none'}`}
+                      appId={appId}
+                      credential={fcm}
+                      onChanged={() => loadCredentials(appId, { quiet: true })}
+                    />
+                    <InstallSnippet appId={appId} />
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </div>
       </main>
@@ -453,6 +493,31 @@ function FcmCard({
         )}
       </div>
       {fileName && <p className="text-xs text-muted-foreground">Selected: {fileName}</p>}
+    </section>
+  );
+}
+
+function InstallSnippet({ appId }: { appId: string }) {
+  const code = `npm install @capacitor/push-notifications @otakit/push
+
+import { PushNotifications } from '@capacitor/push-notifications';
+import { OtaKitPush } from '@otakit/push';
+
+OtaKitPush.init({ appId: '${appId}' });
+PushNotifications.addListener('registration', ({ value }) => OtaKitPush.syncToken(value));
+if ((await PushNotifications.requestPermissions()).receive === 'granted') {
+  await PushNotifications.register();
+}`;
+  return (
+    <section className="space-y-2 px-5 py-6">
+      <h3 className="text-sm font-semibold">Add it to your app</h3>
+      <p className="text-xs text-muted-foreground">
+        On iOS, enable the Push Notifications capability and add the two AppDelegate methods from
+        the Capacitor push guide. On Android, add google-services.json.
+      </p>
+      <pre className="overflow-x-auto rounded-lg border border-border bg-muted px-4 py-3 font-mono text-[11px] leading-5">
+        {code}
+      </pre>
     </section>
   );
 }
