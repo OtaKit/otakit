@@ -297,16 +297,28 @@ export default function LandingPage() {
 
         <div className="relative mx-auto max-w-screen-xl p-10">
           <div className="max-w-3xl xl:max-w-4xl">
-            <Link
-              href="/ai-agents"
-              className="group mb-8 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/[0.12] sm:gap-2 sm:text-sm"
-            >
-              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
-                New
-              </span>
-              <span className="font-medium">Ship with AI agents</span>
-              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            <div className="mb-8 flex flex-wrap items-center gap-2">
+              <Link
+                href="/ai-agents"
+                className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/[0.12] sm:gap-2 sm:text-sm"
+              >
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
+                  New
+                </span>
+                <span className="font-medium">Ship with AI agents</span>
+                <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+              <Link
+                href="/push"
+                className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-amber-500/45 hover:bg-amber-500/[0.12] sm:gap-2 sm:text-sm"
+              >
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
+                  New
+                </span>
+                <span className="font-medium">Free push notifications</span>
+                <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </div>
             <h1 className="text-6xl font-bold xl:text-[4.25rem]">
               Ship app updates instantly
               {/* <br />
