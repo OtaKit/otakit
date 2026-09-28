@@ -574,7 +574,6 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             title="Product"
             links={[
               { label: 'Pricing', href: '#pricing' },
-              { label: 'AI agents', href: '/ai-agents' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
               { label: 'Sign up', href: `${site.console}/login` },
               { label: 'Security', href: '/docs/security' },

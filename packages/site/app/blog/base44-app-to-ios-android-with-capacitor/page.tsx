@@ -79,7 +79,7 @@ npx cap add android`}</Pre>
         Building with an AI coding agent? Let it ship the updates too:{' '}
         <A href="/blog/claude-code-capacitor-releases">Claude Code</A> and{' '}
         <A href="/blog/codex-capacitor-ota-updates">Codex</A> can release over the air with your
-        approval. See the <A href="/ai-agents">AI agents page</A>.
+        approval. Setup for every agent is in <A href="/docs/agents">MCP &amp; Agent Skills</A>.
       </p>
     </BlogArticle>
   );
