@@ -105,7 +105,7 @@ npx -y @otakit/cli@latest upload --release staging`}</Pre>
         Every write is attributed in the audit log, whether a person or an agent made it. For the
         same flow in Claude Code, see{' '}
         <A href="/blog/claude-code-capacitor-releases">Claude Code for Capacitor releases</A>; for
-        all agents, the <A href="/ai-agents">AI agents page</A>.
+        all agents, <A href="/docs/agents">MCP &amp; Agent Skills</A>.
       </p>
     </BlogArticle>
   );

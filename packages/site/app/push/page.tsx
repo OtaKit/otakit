@@ -24,7 +24,7 @@ import { CopyEmailLink } from '@/components/CopyEmailLink';
 import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
 import { site } from '@/lib/site';
 
-// Same skeleton as the homepage (app/page.tsx), /ai-agents and the /vs landing pages.
+// Same skeleton as the homepage (app/page.tsx) and the /vs landing pages.
 
 export const metadata = {
   title: { absolute: 'Free Push Notifications for Capacitor Apps — OtaKit' },
@@ -218,7 +218,7 @@ export default function PushLandingPage() {
                   </Button>
                 </Link>
                 <p className="mt-1 text-xs text-muted-foreground/60 text-center hidden sm:block">
-                  100,000 notifications a month on Free.
+                  Free up to 100k a month.
                 </p>
               </div>
               <Link href="/docs/push">
@@ -513,7 +513,6 @@ export default function PushLandingPage() {
             title="Product"
             links={[
               { label: 'Pricing', href: '/#pricing' },
-              { label: 'AI agents', href: '/ai-agents' },
               { label: 'Push notifications', href: '/push' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
               { label: 'Sign up', href: `${site.console}/login` },

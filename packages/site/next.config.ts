@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: repoRoot,
   },
+  async redirects() {
+    return [
+      // The AI agents landing page was folded into the blog and docs (2026-09-28).
+      {
+        source: '/ai-agents',
+        destination: '/blog/claude-code-capacitor-releases',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

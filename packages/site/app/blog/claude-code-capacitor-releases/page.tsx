@@ -157,8 +157,7 @@ Approve? This goes live for every device on that lane.`}</Pre>
       <p>
         Native releases still go through the stores on your schedule. Everything in between, the
         copy fix, the broken button, the checkout bug, becomes a sentence to your agent and one
-        approval. Setup for other agents (Codex, VS Code) is on the{' '}
-        <A href="/ai-agents">AI agents page</A>, and every tool is documented in{' '}
+        approval. Setup for other agents (Codex, VS Code) and every tool are documented in{' '}
         <A href="/docs/agents">MCP &amp; Agent Skills</A>. For Codex specifically, see{' '}
         <A href="/blog/codex-capacitor-ota-updates">shipping Capacitor fixes from Codex</A>.
       </p>
