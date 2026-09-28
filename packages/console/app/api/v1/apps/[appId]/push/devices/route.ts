@@ -13,11 +13,16 @@ export async function GET(
   const gate = await requirePushAccess(request, appId);
   if (!gate.ok) return gate.response;
   try {
-    const search = request.nextUrl.searchParams.get('search');
-    const limit = Number(request.nextUrl.searchParams.get('limit') ?? 50);
+    const params = request.nextUrl.searchParams;
     const [overview, devices, usage] = await Promise.all([
       push.getDeviceOverview(appId),
-      push.listDevices({ appId, search, limit }),
+      push.listDevices({
+        appId,
+        search: params.get('search'),
+        platform: params.get('platform'),
+        channel: params.get('channel'),
+        limit: Number(params.get('limit') ?? 50),
+      }),
       push.getUsage(gate.access.organizationId),
     ]);
     return NextResponse.json({ overview, devices, usage });

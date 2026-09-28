@@ -1,6 +1,6 @@
 import crypto, { randomUUID } from 'node:crypto';
 
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApnsResult } from './apns';
 import { pushDb } from './db';
@@ -16,9 +16,14 @@ const host: PushHost = { getWorkspace: async () => ({ plan: 'free', periodStart:
 const push = createPushService(host);
 
 databaseDescribe('push campaigns (PostgreSQL integration)', () => {
-  const db = pushDb();
+  // Created in a hook so the suite can be collected (and skipped) without a database.
+  let db: ReturnType<typeof pushDb>;
   let organizationId: string;
   let appId: string;
+
+  beforeAll(() => {
+    db = pushDb();
+  });
 
   beforeEach(async () => {
     process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString('base64');

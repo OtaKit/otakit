@@ -1,12 +1,17 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { LoaderCircle } from 'lucide-react';
+import { Ban, LoaderCircle, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Table,
   TableBody,
@@ -16,12 +21,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { TABLE_CLASS } from './SectionHeader';
+import { formatDateOnly, formatTimeOnly, StatusPill, TABLE_CLASS } from './SectionHeader';
 
 type Campaign = {
   id: string;
   status: 'queued' | 'sending' | 'completed' | 'failed' | 'canceled';
   payload: { title: string; body: string; url?: string };
+  audience: {
+    platforms?: string[];
+    topics?: string[];
+    channels?: string[];
+    userIds?: string[];
+    deviceIds?: string[];
+  };
   targeted: number;
   accepted: number;
   failed: number;
@@ -32,35 +44,55 @@ type Campaign = {
   createdAt: string;
 };
 
-const STATUS_STYLE: Record<Campaign['status'], string> = {
-  queued: 'bg-muted text-muted-foreground',
-  sending: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200',
-  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
-  canceled: 'bg-muted text-muted-foreground',
+const STATUS: Record<
+  Campaign['status'],
+  { tone: 'green' | 'blue' | 'red' | 'muted'; label: string }
+> = {
+  queued: { tone: 'blue', label: 'queued' },
+  sending: { tone: 'blue', label: 'sending' },
+  completed: { tone: 'green', label: 'sent' },
+  failed: { tone: 'red', label: 'failed' },
+  canceled: { tone: 'muted', label: 'canceled' },
 };
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+function describeAudience(audience: Campaign['audience']): string {
+  const parts: string[] = [];
+  if (audience.platforms?.length === 1) {
+    parts.push(audience.platforms[0] === 'ios' ? 'iOS' : 'Android');
+  }
+  if (audience.topics?.length) parts.push(`Topic: ${audience.topics.join(', ')}`);
+  if (audience.channels?.length) parts.push(`Channel: ${audience.channels.join(', ')}`);
+  if (audience.userIds?.length) {
+    parts.push(
+      audience.userIds.length === 1
+        ? `User: ${audience.userIds[0]}`
+        : `${audience.userIds.length} users`,
+    );
+  }
+  if (audience.deviceIds?.length) parts.push(`${audience.deviceIds.length} devices`);
+  return parts.length > 0 ? parts.join(' · ') : 'All devices';
+}
+
+function deliveryTitle(campaign: Campaign): string {
+  return [
+    `Accepted by Apple/Google: ${campaign.accepted}`,
+    `Failed: ${campaign.failed}`,
+    `Invalid tokens removed: ${campaign.invalidRemoved}`,
+    ...Object.entries(campaign.errorSummary ?? {}).map(([reason, count]) => `${reason}: ${count}`),
+  ].join('\n');
 }
 
 export function PushCampaigns({ appId, refreshKey }: { appId: string; refreshKey: number }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const response = await fetch(`/api/v1/apps/${appId}/push/campaigns?limit=50`);
-      if (!response.ok) throw new Error('Failed to load campaigns');
+      if (!response.ok) throw new Error('Failed to load notifications');
       const data = (await response.json()) as { campaigns: Campaign[] };
       setCampaigns(data.campaigns);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load campaigns');
+      toast.error(error instanceof Error ? error.message : 'Failed to load notifications');
     }
   }, [appId]);
 
@@ -82,7 +114,8 @@ export function PushCampaigns({ appId, refreshKey }: { appId: string; refreshKey
     const response = await fetch(`/api/v1/apps/${appId}/push/campaigns/${id}/cancel`, {
       method: 'POST',
     });
-    if (!response.ok) toast.error('Could not cancel');
+    if (response.ok) toast.success('Canceled');
+    else toast.error('Could not cancel');
     void load();
   }
 
@@ -93,84 +126,99 @@ export function PushCampaigns({ appId, refreshKey }: { appId: string; refreshKey
       </div>
     );
   }
+
   if (campaigns.length === 0) {
-    return <p className="px-6 py-10 text-sm text-muted-foreground">Nothing sent yet.</p>;
+    return (
+      <div className="p-5">
+        <div className="rounded-lg border border-dashed py-8 text-center">
+          <p className="text-sm text-muted-foreground">Nothing sent yet</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <Table className={TABLE_CLASS}>
+    <div className="overflow-auto">
+      <Table className={TABLE_CLASS} style={{ minWidth: '760px' }}>
+        <colgroup>
+          <col style={{ width: '110px' }} />
+          <col />
+          <col style={{ width: '200px' }} />
+          <col style={{ width: '100px' }} />
+          <col style={{ width: '110px' }} />
+          <col style={{ width: '56px' }} />
+        </colgroup>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-36">Sent</TableHead>
+            <TableHead>Sent</TableHead>
             <TableHead>Notification</TableHead>
-            <TableHead className="w-28 text-right">Delivered</TableHead>
-            <TableHead className="w-28">Status</TableHead>
+            <TableHead>Audience</TableHead>
+            <TableHead className="text-right">Delivered</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {campaigns.map((campaign) => (
-            <Fragment key={campaign.id}>
-              <TableRow
-                className="cursor-pointer"
-                onClick={() => setOpen(open === campaign.id ? null : campaign.id)}
-              >
-                <TableCell className="text-muted-foreground">
-                  {formatDate(campaign.createdAt)}
+          {campaigns.map((campaign) => {
+            const status = STATUS[campaign.status];
+            const inFlight = campaign.status === 'queued' || campaign.status === 'sending';
+            return (
+              <TableRow key={campaign.id}>
+                <TableCell className="text-xs text-muted-foreground">
+                  <div className="leading-tight">{formatDateOnly(campaign.createdAt)}</div>
+                  <div className="leading-tight">{formatTimeOnly(campaign.createdAt)}</div>
                 </TableCell>
-                <TableCell className="max-w-0 truncate">
-                  <span className="font-medium">{campaign.payload.title}</span>
-                  <span className="text-muted-foreground"> · {campaign.payload.body}</span>
+                <TableCell>
+                  <div className="truncate font-medium" title={campaign.payload.title}>
+                    {campaign.payload.title}
+                  </div>
+                  {campaign.failureReason ? (
+                    <div className="truncate text-destructive" title={campaign.failureReason}>
+                      {campaign.failureReason}
+                    </div>
+                  ) : (
+                    <div className="truncate text-muted-foreground" title={campaign.payload.body}>
+                      {campaign.payload.body}
+                    </div>
+                  )}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="truncate text-muted-foreground">
+                  {describeAudience(campaign.audience ?? {})}
+                </TableCell>
+                <TableCell className="text-right tabular-nums" title={deliveryTitle(campaign)}>
                   {campaign.accepted.toLocaleString()} / {campaign.targeted.toLocaleString()}
                 </TableCell>
                 <TableCell>
-                  <Badge className={STATUS_STYLE[campaign.status]}>{campaign.status}</Badge>
+                  <StatusPill tone={status.tone} pulse={inFlight}>
+                    {status.label}
+                  </StatusPill>
+                </TableCell>
+                <TableCell className="text-right">
+                  {inFlight ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="size-7 p-0">
+                          <MoreHorizontal className="size-3.5" />
+                          <span className="sr-only">Actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => void cancel(campaign.id)}
+                        >
+                          <Ban className="size-3.5" />
+                          Cancel remaining
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : null}
                 </TableCell>
               </TableRow>
-              {open === campaign.id ? (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="whitespace-normal">
-                    <CampaignDetails
-                      campaign={campaign}
-                      onCancel={() => void cancel(campaign.id)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ) : null}
-            </Fragment>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
-    </div>
-  );
-}
-
-function CampaignDetails({ campaign, onCancel }: { campaign: Campaign; onCancel: () => void }) {
-  const active = campaign.status === 'queued' || campaign.status === 'sending';
-  return (
-    <div className="space-y-1.5 py-2 text-xs text-muted-foreground">
-      <p className="text-foreground">{campaign.payload.body}</p>
-      <p>
-        Targeted {campaign.targeted} · accepted by Apple/Google {campaign.accepted} · failed{' '}
-        {campaign.failed} · invalid tokens removed {campaign.invalidRemoved}
-        {campaign.payload.url ? ` · opens ${campaign.payload.url}` : ''}
-      </p>
-      {campaign.failureReason ? <p className="text-destructive">{campaign.failureReason}</p> : null}
-      {campaign.errorSummary && Object.keys(campaign.errorSummary).length > 0 ? (
-        <p className="font-mono">
-          {Object.entries(campaign.errorSummary)
-            .map(([reason, count]) => `${reason}: ${count}`)
-            .join(' · ')}
-        </p>
-      ) : null}
-      <p>Sent by {campaign.createdBy}</p>
-      {active ? (
-        <Button size="sm" variant="outline" className="mt-1" onClick={onCancel}>
-          Cancel remaining
-        </Button>
-      ) : null}
     </div>
   );
 }

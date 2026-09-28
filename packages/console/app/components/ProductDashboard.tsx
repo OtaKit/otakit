@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo, useState, useEffect, useCallback, type ElementType } from 'react';
 import { useRouter } from 'next/navigation';
@@ -32,6 +31,7 @@ import {
 import { toast } from 'sonner';
 
 import { DashboardHeader } from '@/app/components/DashboardHeader';
+import { PlatformIcon } from '@/app/components/PlatformIcon';
 import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
@@ -158,20 +158,6 @@ const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
 };
 
 /* ─── Platform Icons ──────────────────────────────────────────────── */
-
-function PlatformIcon({ platform, className }: { platform: Platform; className?: string }) {
-  const src = platform === 'ios' ? '/apple.svg' : '/android.svg';
-  const alt = platform === 'ios' ? 'iOS' : 'Android';
-  return (
-    <Image
-      src={src}
-      alt={alt}
-      width={16}
-      height={16}
-      className={`dark:invert ${platform === 'android' ? 'opacity-60' : ''} ${className ?? ''}`}
-    />
-  );
-}
 
 /* ─── Helpers ──────────────────────────────────────────────────────── */
 
