@@ -55,11 +55,17 @@ export function PushDashboard({ initialData }: { initialData: DashboardInitialDa
     <div className="m-3 min-h-screen border border-border bg-background">
       <DashboardHeader activeSection="push" showPush />
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
-        {initialData.activeOrganization.pushEnabled ? (
-          <PushWorkspace initialData={initialData} />
-        ) : (
-          <PushAddonOff canManage={canManageWorkspace(initialData)} />
-        )}
+        {/* Side borders around the content column, as on the main dashboard. */}
+        <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">
+          <div className="h-full w-full max-w-screen-xl border-x border-border" />
+        </div>
+        <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
+          {initialData.activeOrganization.pushEnabled ? (
+            <PushWorkspace initialData={initialData} />
+          ) : (
+            <PushAddonOff canManage={canManageWorkspace(initialData)} />
+          )}
+        </div>
       </main>
     </div>
   );
