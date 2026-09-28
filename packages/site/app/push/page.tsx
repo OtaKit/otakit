@@ -43,17 +43,15 @@ function Code({ children }: { children: React.ReactNode }) {
   );
 }
 
-const APP_CODE = `import { PushNotifications } from '@capacitor/push-notifications';
-import { OtaKitPush } from '@otakit/push';
+const APP_CODE = `import { OtaKitPush } from '@otakit/push';
 
-OtaKitPush.init({ appId: 'YOUR_OTAKIT_APP_ID' });
+OtaKitPush.init({ appId: 'YOUR_APP_ID' });
 
-PushNotifications.addListener('registration', ({ value }) => {
-  OtaKitPush.syncToken(value, { userId: user?.id ?? null, topics: ['news'] });
-});
+PushNotifications.addListener('registration',
+  ({ value }) => OtaKitPush.syncToken(value));
 
-const { receive } = await PushNotifications.requestPermissions();
-if (receive === 'granted') await PushNotifications.register();`;
+await PushNotifications.requestPermissions();
+await PushNotifications.register();`;
 
 const SEND_CODE = `otakit push send \\
   --title "Your order shipped" \\
