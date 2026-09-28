@@ -57,12 +57,19 @@ export async function getDeviceOverview(appId: string) {
 export async function listDevices(input: {
   appId: string;
   search?: string | null;
+  platform?: string | null;
+  channel?: string | null;
   limit?: number;
 }): Promise<DeviceSummary[]> {
   const search = input.search?.trim();
+  const platform =
+    input.platform === 'ios' || input.platform === 'android' ? input.platform : undefined;
+  const channel = input.channel?.trim();
   const rows = await pushDb().pushDevice.findMany({
     where: {
       appId: input.appId,
+      ...(platform ? { platform } : {}),
+      ...(channel ? { channel } : {}),
       ...(search
         ? {
             OR: [
