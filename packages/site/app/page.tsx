@@ -694,6 +694,17 @@ export default function LandingPage() {
               Instant over-the-air updates for Capacitor apps. Open source, CDN-delivered, and free
               to start.
             </p>
+            <p className="mt-3 max-w-xs text-sm text-muted-foreground">
+              Need a Mac for iOS builds?{' '}
+              <a
+                href="https://nomac.app/?utm_source=otakit&utm_medium=footer&utm_campaign=friends"
+                target="_blank"
+                rel="noopener"
+                className="text-foreground underline underline-offset-4 transition-colors hover:text-muted-foreground"
+              >
+                Try NoMac
+              </a>
+            </p>
             <div className="mt-6 flex gap-5 text-sm text-muted-foreground">
               <a
                 href={site.github}
@@ -738,6 +749,7 @@ export default function LandingPage() {
             title="Product"
             links={[
               { label: 'Pricing', href: '#pricing' },
+              { label: 'Push notifications', href: '/push' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
               { label: 'Sign up', href: `${site.console}/login` },
               { label: 'Security', href: '/docs/security' },
@@ -786,12 +798,6 @@ export default function LandingPage() {
             <Link href="/policy" className="transition-colors hover:text-foreground">
               Privacy
             </Link>
-            <a
-              href="https://nomac.app/?utm_source=otakit&utm_medium=footer&utm_campaign=friends"
-              className="transition-colors hover:text-foreground"
-            >
-              Friends: NoMac
-            </a>
           </div>
         </div>
       </footer>
