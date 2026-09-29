@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 const MANIFEST_PAYLOAD_HEADER = 'MANIFEST';
+const ROLLOUT_PAYLOAD_HEADER = 'ROLLOUT';
 const DEFAULT_MANIFEST_TTL_SECONDS = 31_536_000; // 1 year
 
 export type ManifestStrategy = 'zip' | 'deltas';
@@ -26,6 +27,15 @@ export interface ManifestSignatureInput {
   forceImmediate?: boolean;
   /** Bundle encryption parameters, or null when the bundle is not encrypted. */
   encryption?: ManifestEncryptionInput | null;
+}
+
+export interface RolloutSignatureInput extends ManifestSignatureInput {
+  /** Share of devices (1-99) that take the rolling release. */
+  percent: number;
+  /** Rolling release ID; devices derive their bucket from it. */
+  releaseId: string;
+  /** sha256 of the manifest's top-level (stable) bundle this block belongs to. */
+  stableSha256: string;
 }
 
 export interface ManifestSignature {
@@ -108,6 +118,44 @@ export function buildCanonicalPayload(
 ): string {
   return [
     MANIFEST_PAYLOAD_HEADER,
+    ...bundlePayloadLines(fields),
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
+/**
+ * Canonical payload of a manifest's `rollout` block (plugin 3.1+).
+ *
+ * The same bundle lines as v2 under its own header, followed by the rollout
+ * lines. The header keeps a rollout signature from ever verifying as a
+ * top-level manifest (and the reverse); `stableSha256` binds the block to the
+ * manifest it was published in. `notesSha256` is reserved for release notes
+ * and is `null` until they exist. Must match ManifestVerifier.swift /
+ * ManifestVerifier.java byte-for-byte.
+ */
+export function buildRolloutPayload(
+  fields: RolloutSignatureInput,
+  kid: string,
+  iat: number,
+  exp: number,
+): string {
+  return [
+    ROLLOUT_PAYLOAD_HEADER,
+    ...bundlePayloadLines(fields),
+    `percent:${fields.percent}`,
+    `releaseId:${fields.releaseId}`,
+    `stableSha256:${fields.stableSha256}`,
+    'notesSha256:null',
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
+function bundlePayloadLines(fields: ManifestSignatureInput): string[] {
+  return [
     `appId:${fields.appId}`,
     `channel:${fields.channel ?? 'null'}`,
     `version:${fields.version}`,
@@ -117,10 +165,7 @@ export function buildCanonicalPayload(
     `strategy:${fields.strategy ?? 'zip'}`,
     `forceImmediate:${fields.forceImmediate ? 'true' : 'false'}`,
     `encryption:${encodeEncryptionForPayload(fields.encryption)}`,
-    `kid:${kid}`,
-    `iat:${iat}`,
-    `exp:${exp}`,
-  ].join('\n');
+  ];
 }
 
 /**
@@ -129,13 +174,24 @@ export function buildCanonicalPayload(
  * Returns null only when manifest signing is explicitly disabled.
  */
 export function signManifest(fields: ManifestSignatureInput): ManifestSignature | null {
+  return signPayload((kid, iat, exp) => buildCanonicalPayload(fields, kid, iat, exp));
+}
+
+/** Sign a `rollout` block with the manifest key; null when signing is disabled. */
+export function signRollout(fields: RolloutSignatureInput): ManifestSignature | null {
+  return signPayload((kid, iat, exp) => buildRolloutPayload(fields, kid, iat, exp));
+}
+
+function signPayload(
+  buildPayload: (kid: string, iat: number, exp: number) => string,
+): ManifestSignature | null {
   const key = getSigningKey();
   if (!key) return null;
 
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + DEFAULT_MANIFEST_TTL_SECONDS;
 
-  const payload = buildCanonicalPayload(fields, key.kid, iat, exp);
+  const payload = buildPayload(key.kid, iat, exp);
   const payloadBuffer = Buffer.from(payload, 'utf-8');
 
   const signature = crypto.sign('sha256', payloadBuffer, key.privateKey);

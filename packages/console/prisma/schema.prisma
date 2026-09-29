@@ -291,6 +291,7 @@ enum UploadSessionStatus {
 enum ReleaseMutationOperation {
   publish
   revert
+  rollout
 }
 
 enum ReleaseMutationStatus {
@@ -459,6 +460,10 @@ model Release {
   autoRevert               Boolean   @default(false)
   autoRevertRatePercent    Int       @default(20)
   autoRevertMinSample      Int       @default(50)
+  // Share of devices (1-100) that receive this release. Below 100 it is an
+  // active rollout: only the lane-current release can be rolling, and the
+  // release below it stays the manifest's stable release. 100 is final.
+  rolloutPercent           Int       @default(100)
   promotedAt               DateTime  @default(now())
   promotedBy               String?
   revertedAt               DateTime?

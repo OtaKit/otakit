@@ -3,14 +3,28 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { db } from '@/lib/db';
+import { syncManifestFileForLane } from '@/lib/manifest-files';
 
 import {
   prepareRelease,
   prepareRevert,
   publishRelease,
+  publishReleaseLegacy,
   reconcilePendingReleaseMutations,
   revertRelease,
+  updateRollout,
 } from './releases';
+
+vi.mock('@/lib/storage', () => ({
+  buildFileObjectKey: (appId: string, sha256: string) => `files/${appId}/${sha256}`,
+  buildPublicObjectUrl: (key: string) => `https://cdn.test/${key}`,
+  deleteStorageObject: vi.fn(),
+  getTextObject: vi.fn(),
+  listStorageKeys: vi.fn(),
+  putTextObject: vi.fn(),
+}));
+vi.mock('@/lib/cdn-purge', () => ({ purgeCdnUrls: vi.fn() }));
+vi.stubEnv('MANIFEST_SIGNING_DISABLED', 'true');
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 
@@ -382,5 +396,227 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
     await expect(
       db.releaseMutation.findUniqueOrThrow({ where: { id: pending.operationId } }),
     ).resolves.toMatchObject({ status: 'published', errorMessage: null });
+  });
+
+  describe('percentage rollouts', () => {
+    const syncManifest = vi.fn().mockResolvedValue(undefined);
+
+    async function publish(bundleIndex: number, options: Record<string, unknown> = {}) {
+      return publishRelease(
+        {
+          organizationId,
+          actor,
+          appId,
+          bundleId: bundleIds[bundleIndex],
+          channel: 'production',
+          idempotencyKey: randomUUID(),
+          ...options,
+        },
+        { syncManifest },
+      );
+    }
+
+    async function setPercent(releaseId: string, percent: number, expectedPercent?: number) {
+      return updateRollout(
+        {
+          organizationId,
+          actor,
+          appId,
+          releaseId,
+          percent,
+          expectedPercent,
+          idempotencyKey: randomUUID(),
+        },
+        { syncManifest },
+      );
+    }
+
+    beforeEach(() => {
+      syncManifest.mockClear();
+    });
+
+    it('starts a rollout on top of the stable release, changes it, and completes it', async () => {
+      const stable = await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+
+      expect(rolling.release).toMatchObject({ rolloutPercent: 10, previousBundleId: bundleIds[0] });
+      expect(rolling.previousRelease?.id).toBe(stable.release.id);
+
+      const raised = await setPercent(rolling.release.id, 25, 10);
+      expect(raised).toMatchObject({
+        publicationStatus: 'published',
+        previousPercent: 10,
+        release: { id: rolling.release.id, rolloutPercent: 25 },
+      });
+      const lowered = await setPercent(rolling.release.id, 5, 25);
+      expect(lowered.release.rolloutPercent).toBe(5);
+      const completed = await setPercent(rolling.release.id, 100, 5);
+      expect(completed.release.rolloutPercent).toBe(100);
+      expect(syncManifest).toHaveBeenCalledTimes(5);
+      expect(syncManifest).toHaveBeenLastCalledWith(
+        appId,
+        'production',
+        'ios-1',
+        expect.anything(),
+      );
+
+      await expect(setPercent(rolling.release.id, 50)).rejects.toMatchObject({
+        code: 'ROLLOUT_NOT_ACTIVE',
+        status: 409,
+      });
+      const audit = await db.auditLog.findMany({
+        where: { organizationId, action: 'release.rollout_updated' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(audit.map((entry) => entry.metadata)).toEqual([
+        expect.objectContaining({ fromPercent: 10, toPercent: 25, bundleVersion: '1.0.1' }),
+        expect.objectContaining({ fromPercent: 25, toPercent: 5 }),
+        expect.objectContaining({ fromPercent: 5, toPercent: 100 }),
+      ]);
+      await expect(
+        db.auditLog.findFirstOrThrow({
+          where: { organizationId, action: 'release.created', targetId: rolling.release.id },
+        }),
+      ).resolves.toMatchObject({ metadata: expect.objectContaining({ rolloutPercent: 10 }) });
+    });
+
+    it('sends the first release on a lane to every device', async () => {
+      await expect(publish(0, { rolloutPercent: 50 })).rejects.toMatchObject({
+        code: 'ROLLOUT_NEEDS_STABLE',
+        status: 409,
+      });
+      await expect(db.release.count({ where: { appId } })).resolves.toBe(0);
+    });
+
+    it('blocks a publish during a rollout unless it replaces the rollout', async () => {
+      const stable = await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+
+      await expect(publish(2)).rejects.toMatchObject({ code: 'ROLLOUT_IN_PROGRESS', status: 409 });
+      await expect(publish(0, { replaceRollout: true })).rejects.toMatchObject({
+        code: 'STALE_RELEASE_STATE',
+      });
+
+      const replacement = await publish(2, { replaceRollout: true, rolloutPercent: 20 });
+      expect(replacement.release).toMatchObject({
+        rolloutPercent: 20,
+        previousBundleId: bundleIds[0],
+      });
+      expect(replacement.previousRelease?.id).toBe(stable.release.id);
+      expect(replacement.replacedRelease).toMatchObject({
+        id: rolling.release.id,
+        revertedBy: 'system:rollout-replaced',
+      });
+      await expect(
+        db.release.findUniqueOrThrow({ where: { id: rolling.release.id } }),
+      ).resolves.toMatchObject({ revertedBy: 'system:rollout-replaced' });
+      await expect(
+        db.auditLog.findFirstOrThrow({
+          where: { organizationId, action: 'release.created', targetId: replacement.release.id },
+        }),
+      ).resolves.toMatchObject({
+        metadata: expect.objectContaining({ replacedReleaseId: rolling.release.id }),
+      });
+    });
+
+    it('rejects stale and unchanged percentages and replays retries', async () => {
+      await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+
+      await expect(setPercent(rolling.release.id, 50, 25)).rejects.toMatchObject({
+        code: 'STALE_RELEASE_STATE',
+      });
+      await expect(setPercent(rolling.release.id, 10)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+      await expect(setPercent(rolling.release.id, 0)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+
+      const input = {
+        organizationId,
+        actor,
+        appId,
+        releaseId: rolling.release.id,
+        percent: 50,
+        expectedPercent: 10,
+        idempotencyKey: randomUUID(),
+      };
+      const first = await updateRollout(input, { syncManifest });
+      const replay = await updateRollout(input, { syncManifest });
+      expect(replay).toEqual(first);
+      await expect(
+        updateRollout({ ...input, percent: 60 }, { syncManifest }),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
+      await expect(
+        db.auditLog.count({ where: { organizationId, action: 'release.rollout_updated' } }),
+      ).resolves.toBe(1);
+    });
+
+    it('cancels a rollout by reverting it, which returns the lane to stable', async () => {
+      const stable = await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+
+      const preview = await prepareRevert({ organizationId, appId, releaseId: rolling.release.id });
+      expect(preview.resultingRelease?.id).toBe(stable.release.id);
+      const cancelled = await revertRelease(
+        {
+          organizationId,
+          actor,
+          appId,
+          releaseId: rolling.release.id,
+          expectedCurrentReleaseId: rolling.release.id,
+          idempotencyKey: randomUUID(),
+        },
+        { syncManifest },
+      );
+      expect(cancelled.currentRelease?.id).toBe(stable.release.id);
+      await expect(setPercent(rolling.release.id, 50)).rejects.toMatchObject({
+        code: 'ROLLOUT_NOT_ACTIVE',
+      });
+      const next = await publish(2);
+      expect(next.release.previousBundleId).toBe(bundleIds[0]);
+    });
+
+    it('keeps the legacy publish path at 100% and off rolling lanes', async () => {
+      await expect(
+        publishReleaseLegacy(
+          {
+            organizationId,
+            actor,
+            appId,
+            bundleId: bundleIds[0],
+            channel: 'production',
+            rolloutPercent: 10,
+          },
+          { syncManifest },
+        ),
+      ).rejects.toMatchObject({ code: 'ROLLOUTS_UNAVAILABLE' });
+
+      await publish(0);
+      await publish(1, { rolloutPercent: 10 });
+      await expect(
+        publishReleaseLegacy(
+          { organizationId, actor, appId, bundleId: bundleIds[2], channel: 'production' },
+          { syncManifest },
+        ),
+      ).rejects.toMatchObject({ code: 'ROLLOUT_IN_PROGRESS' });
+    });
+
+    it('writes the stable and rolling releases into the lane manifest', async () => {
+      await publish(0);
+      await publish(1, { rolloutPercent: 10 });
+      const { putTextObject } = await import('@/lib/storage');
+      vi.mocked(putTextObject).mockClear();
+
+      await syncManifestFileForLane(appId, 'production', 'ios-1');
+
+      const manifest = JSON.parse(vi.mocked(putTextObject).mock.calls[0][0].body);
+      expect(manifest).toMatchObject({
+        version: '1.0.0',
+        releaseId: expect.any(String),
+        rollout: { version: '1.0.1', percent: 10, stableSha256: '0'.padStart(64, '0') },
+      });
+    });
   });
 });

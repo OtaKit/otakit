@@ -96,6 +96,7 @@ export async function GET(
       channel: true,
       promotedAt: true,
       revertedAt: true,
+      rolloutPercent: true,
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
   });
@@ -140,9 +141,16 @@ export async function GET(
     }
   }
 
-  const latestByTarget = new Map<
+  // Newest first: a lane's current release is live, and while it rolls out
+  // the stable release below it stays live for the remaining devices.
+  const liveByTarget = new Map<
     string,
-    { channel: string | null; runtimeVersion: string | null; bundleId: string }
+    Array<{
+      channel: string | null;
+      runtimeVersion: string | null;
+      bundleId: string;
+      rolloutPercent: number;
+    }>
   >();
 
   for (const release of releases) {
@@ -166,16 +174,22 @@ export async function GET(
       });
     }
 
-    if (!latestByTarget.has(targetKey) && release.revertedAt === null) {
-      latestByTarget.set(targetKey, {
+    const live = liveByTarget.get(targetKey) ?? [];
+    if (
+      release.revertedAt === null &&
+      (live.length === 0 || (live.length === 1 && live[0].rolloutPercent < 100))
+    ) {
+      live.push({
         channel: target.channel,
         runtimeVersion: target.runtimeVersion,
         bundleId: release.bundleId,
+        rolloutPercent: release.rolloutPercent,
       });
+      liveByTarget.set(targetKey, live);
     }
   }
 
-  for (const latest of latestByTarget.values()) {
+  for (const latest of Array.from(liveByTarget.values()).flat()) {
     const bundle = bundleById.get(latest.bundleId);
     if (!bundle) continue;
 
