@@ -152,6 +152,14 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               desc: 'With --release: devices apply and reload this release on their next check (emergency fixes).',
             },
             {
+              flag: '--rollout <percent>',
+              desc: 'With --release: release to this share of devices first (1-100, default 100). See Percentage rollouts.',
+            },
+            {
+              flag: '--replace-rollout',
+              desc: "With --release: cancel the channel's active rollout and release this bundle in its place.",
+            },
+            {
               flag: '--encrypt',
               desc: 'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).',
             },
@@ -179,8 +187,38 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               flag: '--force-immediate',
               desc: 'Devices apply and reload this release on their next check (emergency fixes).',
             },
+            {
+              flag: '--rollout <percent>',
+              desc: 'Release to this share of devices first (1-100, default 100). The channel needs a previous release.',
+            },
+            {
+              flag: '--replace-rollout',
+              desc: "Cancel the channel's active rollout and release this bundle in its place.",
+            },
           ]}
-          example="otakit release --channel production"
+          example="otakit release --channel production --rollout 10"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit rollout"
+          args="[releaseId]"
+          description="Show active rollouts, or raise, lower, complete, or cancel one. Without a release ID it acts on the rollout of the selected channel."
+          options={[
+            { flag: '--channel <channel>', desc: 'Channel of the rollout.' },
+            { flag: '--base', desc: 'The rollout on the base channel.' },
+            {
+              flag: '--percent <percent>',
+              desc: 'Set the share of devices (1-100; 100 completes the rollout).',
+            },
+            { flag: '--complete', desc: 'Release to every device.' },
+            {
+              flag: '--cancel',
+              desc: 'Revert the rolling release; every device returns to the previous release.',
+            },
+          ]}
+          example="otakit rollout --channel production --percent 50"
         />
 
         <Separator />

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { Separator } from '@/components/ui/separator';
 import { Pre } from '@/app/docs/CodeBlock';
 
@@ -129,6 +131,17 @@ otakit release <bundle-id> --channel production`}</Pre>
         <li>
           <strong>Beta + production</strong> — use channels like <Code>beta</Code> and{' '}
           <Code>production</Code> to split audiences.
+        </li>
+        <li>
+          <strong>Gradual production release</strong> — release to <Code>production</Code> with{' '}
+          <Code>--rollout 10</Code>, then raise the share. See{' '}
+          <Link
+            href="/docs/rollouts"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Percentage Rollouts
+          </Link>
+          .
         </li>
         <li>
           <strong>New store baseline:</strong> — bump <Code>runtimeVersion</Code> so the new native

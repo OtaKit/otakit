@@ -117,7 +117,9 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           auth="Bearer"
           body={`{
   "bundleId": "uuid",
-  "channel": "staging"   // optional; omit or null for base channel
+  "channel": "staging",    // optional; omit or null for base channel
+  "rolloutPercent": 10,    // optional; 1-100, default 100
+  "replaceRollout": true   // optional; cancel the active rollout first
 }`}
           response={`{
   "release": {
@@ -126,11 +128,27 @@ Authorization: Bearer otakit_sk_...`}</Pre>
     "runtimeVersion": "2026.04",
     "bundleId": "uuid",
     "bundleVersion": "1.0.1",
+    "rolloutPercent": 10,
     "promotedAt": "ISO timestamp"
   },
   "previousRelease": { ... } | null
 }`}
-          description="Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion)."
+          description="Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion). A rolloutPercent below 100 releases to that share of devices; it needs a previous release on the lane. While a rollout is active, another release returns 409 ROLLOUT_IN_PROGRESS unless replaceRollout is true."
+        />
+        <Endpoint
+          method="PATCH"
+          path="/api/v1/apps/:appId/releases/:releaseId/rollout"
+          auth="Bearer"
+          body={`{
+  "percent": 50,           // 1-100; 100 completes the rollout
+  "expectedPercent": 10    // optional; rejects the change if the rollout moved
+}`}
+          response={`{
+  "release": { ..., "rolloutPercent": 50 },
+  "previousPercent": 10,
+  "publicationStatus": "published"
+}`}
+          description="Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert."
         />
         <Endpoint
           method="GET"

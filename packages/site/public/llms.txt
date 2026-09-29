@@ -14,6 +14,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Next.js Guide: /docs/guide
 - React Guide: /docs/react
 - Channels: /docs/channels
+- Rollouts: /docs/rollouts
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - Push Notifications: /docs/push
@@ -244,6 +245,8 @@ Options
 - `--release [channel]`: Release after upload. Omit channel to release to the base channel.
 - `--strategy <strategy>`: Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects; devices download only what changed).
 - `--force-immediate`: With --release: devices apply and reload this release on their next check (emergency fixes).
+- `--rollout <percent>`: With --release: release to this share of devices first (1-100, default 100). See Percentage rollouts.
+- `--replace-rollout`: With --release: cancel the channel's active rollout and release this bundle in its place.
 - `--encrypt`: Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).
 - `--fail-on-incompatible`: Exit non-zero when the native compatibility check finds changes that need a store build.
 - `--ignore-compat`: Skip the native compatibility check.
@@ -261,11 +264,30 @@ Release a bundle to the base channel or a named channel. The bundle already carr
 Options
 - `--channel <channel>`: Target named channel. Omit it to use the base channel.
 - `--force-immediate`: Devices apply and reload this release on their next check (emergency fixes).
+- `--rollout <percent>`: Release to this share of devices first (1-100, default 100). The channel needs a previous release.
+- `--replace-rollout`: Cancel the channel's active rollout and release this bundle in its place.
 
 Example
 
 ```txt
-otakit release --channel production
+otakit release --channel production --rollout 10
+```
+
+### otakit rollout [releaseId]
+
+Show active rollouts, or raise, lower, complete, or cancel one. Without a release ID it acts on the rollout of the selected channel.
+
+Options
+- `--channel <channel>`: Channel of the rollout.
+- `--base`: The rollout on the base channel.
+- `--percent <percent>`: Set the share of devices (1-100; 100 completes the rollout).
+- `--complete`: Release to every device.
+- `--cancel`: Revert the rolling release; every device returns to the previous release.
+
+Example
+
+```txt
+otakit rollout --channel production --percent 50
 ```
 
 ### otakit compatibility
@@ -641,7 +663,7 @@ plugins: {
   }
 }
 ```
-- `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, and builtin version.
+- `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, and the active percentage rollout seen by the last check (plugin 3.1+).
 - `check()` -> `CheckResult`: Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available.
 - `download()` -> `DownloadResult`: Ensure the latest bundle is staged for later activation. Returns no_update or staged.
 - `update()` -> `void`: Convenience helper for manual flows. It runs the same native immediate-flow operation used by automatic immediate policies. Terminal operation: if an update is applied, it does not resolve back into the old JS context.
@@ -744,6 +766,15 @@ interface OtaKitState {
   fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
+  rollout: RolloutState | null; // plugin 3.1+
+}
+
+interface RolloutState {
+  releaseId: string;
+  version: string;
+  percent: number;   // share of devices (1-99)
+  bucket: number;    // this device's number (1-100) for this rollout
+  included: boolean; // bucket <= percent
 }
 
 interface LatestVersion {
@@ -892,7 +923,7 @@ Response
 
 ### POST /api/v1/apps/:appId/releases
 
-Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion).
+Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion). A rolloutPercent below 100 releases to that share of devices; it needs a previous release on the lane. While a rollout is active, another release returns 409 ROLLOUT_IN_PROGRESS unless replaceRollout is true.
 - Auth: Bearer
 
 Request body
@@ -900,7 +931,9 @@ Request body
 ```txt
 {
   "bundleId": "uuid",
-  "channel": "staging"   // optional; omit or null for base channel
+  "channel": "staging",    // optional; omit or null for base channel
+  "rolloutPercent": 10,    // optional; 1-100, default 100
+  "replaceRollout": true   // optional; cancel the active rollout first
 }
 ```
 
@@ -914,9 +947,34 @@ Response
     "runtimeVersion": "2026.04",
     "bundleId": "uuid",
     "bundleVersion": "1.0.1",
+    "rolloutPercent": 10,
     "promotedAt": "ISO timestamp"
   },
   "previousRelease": { ... } | null
+}
+```
+
+### PATCH /api/v1/apps/:appId/releases/:releaseId/rollout
+
+Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert.
+- Auth: Bearer
+
+Request body
+
+```txt
+{
+  "percent": 50,           // 1-100; 100 completes the rollout
+  "expectedPercent": 10    // optional; rejects the change if the rollout moved
+}
+```
+
+Response
+
+```txt
+{
+  "release": { ..., "rolloutPercent": 50 },
+  "previousPercent": 10,
+  "publicationStatus": "published"
 }
 ```
 
@@ -1349,7 +1407,74 @@ With that config:
 ### Common setups
 - Single stream — no channel, no runtime version. Everything goes to the base channel.
 - Beta + production — use channels like `beta` and `production` to split audiences.
+- Gradual production release — release to `production` with `--rollout 10`, then raise the share. See Percentage Rollouts .
 - New store baseline: — bump `runtimeVersion` so the new native build starts a fresh OTA lane.
+
+## Rollouts
+
+Route: /docs/rollouts
+
+Release a bundle to a share of devices first, watch its health, then raise the share or complete it.
+
+Release a bundle to a share of devices first — for example 10% of production — check its health, then raise the share or complete the rollout. If it misbehaves, cancel it and every device returns to the previous release.
+
+Rollouts need `@otakit/capacitor-updater` 3.1 or later on the device. Channels choose who gets a release (testers, beta, production); rollouts choose how many of them get it.
+
+### How devices are selected
+- Each installation keeps a random secret that never leaves the device. For every rollout it derives a number from 1 to 100 and takes the rolling release when that number is within the percentage.
+- The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering it moves the extra devices back to the previous release on their next check.
+- Each rollout draws new numbers, so the same devices are not always first.
+- No device identifiers are collected. The percentage and the rolling release are part of the signed manifest.
+- Devices on plugin versions before 3.1 ignore rollouts and stay on the previous release until the rollout completes.
+- The first release on a channel goes to every device, since there is nothing to fall back to.
+
+### Start a rollout
+
+Pass `--rollout` when you release. In the dashboard, choose the share under Roll out to in the release dialog.
+
+```txt
+# Upload and release to 10% of production
+otakit upload --release production --rollout 10
+
+# Or roll out a bundle you already uploaded
+otakit release <bundle-id> --channel production --rollout 10
+```
+
+### Raise, complete, or cancel
+
+```txt
+otakit rollout                                    # show active rollouts
+otakit rollout --channel production --percent 50  # raise or lower the share
+otakit rollout --channel production --complete    # every device gets it
+otakit rollout --channel production --cancel      # everyone returns to the previous release
+```
+
+In the dashboard, open the channel badge of the rolling bundle for Change percentage, Complete rollout, and Cancel rollout. A completed rollout is final; to undo it, revert the release.
+
+### Releasing during a rollout
+
+A channel has one rollout at a time. Releasing another bundle while one is rolling out is refused, so a rollout is never replaced by accident. Complete or cancel it first, or pass `--replace-rollout` to cancel it and release the new bundle in its place:
+
+```txt
+otakit upload --release production --replace-rollout --rollout 10
+```
+
+### Health and auto-revert
+
+Devices on the rolling release report events with its own release ID, so its health counts only those devices. Auto-revert works on rolling releases and returns every device to the previous release. At low percentages it takes longer to reach the minimum sample, so small apps should start at 5% or more.
+
+### On the device
+
+`getState().rollout` shows what the last check saw, which helps when testing a rollout on a phone:
+
+```txt
+const { rollout } = await OtaKit.getState();
+// { releaseId, version, percent: 10, bucket: 57, included: false }, or null
+```
+
+### API and agents
+
+The REST API takes `rolloutPercent` and `replaceRollout` when releasing and has an endpoint to change the percentage; see the REST API . Agents use `publish_release` with `rolloutPercent` and `set_rollout_percent`; see MCP & Agent Skills .
 
 ## Update Strategies
 
