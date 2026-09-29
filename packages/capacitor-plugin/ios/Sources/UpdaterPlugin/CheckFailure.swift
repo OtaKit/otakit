@@ -31,6 +31,16 @@ struct CheckFailure {
     return CheckFailure(phase: "check", detail: "manifest_check_failed")
   }
 
+  /// Why a manifest's `rollout` block was ignored. Signature problems keep
+  /// the verifier's detail under a `rollout_` prefix; anything else is a
+  /// malformed block.
+  static func rollout(_ error: Error) -> CheckFailure {
+    if let failure = from(error), failure.phase == "signature" {
+      return CheckFailure(phase: "signature", detail: "rollout_\(failure.detail)")
+    }
+    return CheckFailure(phase: "check", detail: "rollout_invalid")
+  }
+
   static func observe<T>(_ operation: () async throws -> T, report: (CheckFailure) throws -> Void) async throws -> T {
     do { return try await operation() }
     catch {

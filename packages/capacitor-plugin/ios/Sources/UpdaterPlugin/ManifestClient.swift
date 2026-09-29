@@ -41,6 +41,20 @@ struct ManifestSignature {
   let exp: Int
 }
 
+/// A rolling release offered to `percent` of devices (plugin 3.1+).
+struct ManifestRollout {
+  let manifest: LatestManifest
+  let percent: Int
+}
+
+struct ParsedManifest {
+  /// The release every device may take.
+  let stable: LatestManifest
+  let rollout: ManifestRollout?
+  /// Why a rollout block was ignored; devices then stay on `stable`.
+  let rolloutFailure: CheckFailure?
+}
+
 enum ManifestClientError: Error {
   case invalidURL
   case invalidResponse
@@ -70,7 +84,7 @@ enum ManifestClient {
     runtimeVersion: String?,
     allowInsecureUrls: Bool = false,
     manifestKeys: [ManifestKey] = []
-  ) async throws -> LatestManifest? {
+  ) async throws -> ParsedManifest? {
     let sanitizedBase = cdnUrl.replacingOccurrences(
       of: "/+$",
       with: "",
@@ -111,8 +125,111 @@ enum ManifestClient {
       throw ManifestClientError.httpStatus(httpResponse.statusCode)
     }
 
+    return try parse(
+      data: data,
+      appId: appId,
+      channel: channel,
+      allowInsecureUrls: allowInsecureUrls,
+      manifestKeys: manifestKeys
+    )
+  }
+
+  /// Parse and verify a manifest body. The top level must be valid; an
+  /// optional `rollout` block that fails parsing or verification is dropped
+  /// (reported in `rolloutFailure`) so a bad block can never block updates.
+  static func parse(
+    data: Data,
+    appId: String,
+    channel: String?,
+    allowInsecureUrls: Bool = false,
+    manifestKeys: [ManifestKey] = []
+  ) throws -> ParsedManifest {
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ManifestClientError.invalidResponse
+    }
+    let (stable, signature) = try parseEntry(object, allowInsecureUrls: allowInsecureUrls)
+
+    if manifestKeys.isEmpty {
+      print("[OtaKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
+    }
+
+    if !manifestKeys.isEmpty {
+      guard let signature else {
+        throw ManifestVerifierError.missingSignature
+      }
+
+      try ManifestVerifier.verify(
+        appId: appId,
+        channel: channel,
+        version: stable.version,
+        sha256: stable.sha256,
+        size: stable.size,
+        runtimeVersion: stable.runtimeVersion,
+        strategy: stable.strategy,
+        forceImmediate: stable.forceImmediate,
+        encryption: stable.encryption,
+        signature: signature,
+        trustedKeys: manifestKeys
+      )
+    }
+
+    guard let rawRollout = object["rollout"], !(rawRollout is NSNull) else {
+      return ParsedManifest(stable: stable, rollout: nil, rolloutFailure: nil)
+    }
+    do {
+      let rollout = try parseRollout(
+        rawRollout,
+        stable: stable,
+        appId: appId,
+        channel: channel,
+        allowInsecureUrls: allowInsecureUrls,
+        manifestKeys: manifestKeys
+      )
+      return ParsedManifest(stable: stable, rollout: rollout, rolloutFailure: nil)
+    } catch {
+      return ParsedManifest(stable: stable, rollout: nil, rolloutFailure: CheckFailure.rollout(error))
+    }
+  }
+
+  private static func parseRollout(
+    _ rawValue: Any,
+    stable: LatestManifest,
+    appId: String,
+    channel: String?,
+    allowInsecureUrls: Bool,
+    manifestKeys: [ManifestKey]
+  ) throws -> ManifestRollout {
+    guard let object = rawValue as? [String: Any],
+          let percent = object["percent"] as? Int,
+          (1...99).contains(percent),
+          let stableSha256 = object["stableSha256"] as? String,
+          stableSha256 == stable.sha256 else {
+      throw ManifestClientError.invalidResponse
+    }
+    let (manifest, signature) = try parseEntry(object, allowInsecureUrls: allowInsecureUrls)
+    let rollout = ManifestRollout(manifest: manifest, percent: percent)
+    if !manifestKeys.isEmpty {
+      guard let signature else {
+        throw ManifestVerifierError.missingSignature
+      }
+      try ManifestVerifier.verifyRollout(
+        appId: appId,
+        channel: channel,
+        rollout: rollout,
+        stableSha256: stableSha256,
+        signature: signature,
+        trustedKeys: manifestKeys
+      )
+    }
+    return rollout
+  }
+
+  /// Bundle fields shared by the top level and the `rollout` block.
+  private static func parseEntry(
+    _ object: [String: Any],
+    allowInsecureUrls: Bool
+  ) throws -> (LatestManifest, ManifestSignature?) {
     guard
-      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
       let version = object["version"] as? String,
       let sha256 = object["sha256"] as? String,
       let size = object["size"] as? Int
@@ -149,31 +266,7 @@ enum ManifestClient {
       try requireHTTPS(url: dlURL, allowInsecure: allowInsecureUrls)
     }
 
-    if manifestKeys.isEmpty {
-      print("[OtaKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
-    }
-
-    if !manifestKeys.isEmpty {
-      guard let signature else {
-        throw ManifestVerifierError.missingSignature
-      }
-
-      try ManifestVerifier.verify(
-        appId: appId,
-        channel: channel,
-        version: version,
-        sha256: sha256,
-        size: size,
-        runtimeVersion: runtimeVersion,
-        strategy: strategy,
-        forceImmediate: forceImmediate,
-        encryption: encryption,
-        signature: signature,
-        trustedKeys: manifestKeys
-      )
-    }
-
-    return LatestManifest(
+    let manifest = LatestManifest(
       version: version,
       url: downloadUrl,
       sha256: sha256,
@@ -185,6 +278,7 @@ enum ManifestClient {
       encryption: encryption,
       files: files
     )
+    return (manifest, signature)
   }
 
   private static func parseFiles(

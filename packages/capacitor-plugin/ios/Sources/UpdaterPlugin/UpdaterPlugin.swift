@@ -59,6 +59,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private let trialDeadline = ForegroundDeadline()
   private var checkIntervalMs: Int = 600_000
   private var foregroundObserver: NSObjectProtocol?
+  private let rolloutLock = NSLock()
+  private var lastRollout: RolloutState?
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
@@ -372,6 +374,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       "builtinVersion": snapshot.builtinVersion,
     ]
     payload["staged"] = snapshot.staged?.toDictionary() ?? NSNull()
+    payload["rollout"] = rolloutState()?.toDictionary() ?? NSNull()
     call.resolve(payload)
   }
 
@@ -530,7 +533,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     let checkId = "check-\(UUID().uuidString)"
-    return try await CheckFailure.observe({
+    let parsed = try await CheckFailure.observe({
       let latest = try await ManifestClient.fetchLatest(
         cdnUrl: self.cdnUrl, appId: appId, channel: channel,
         runtimeVersion: self.runtimeVersion, allowInsecureUrls: self.allowInsecureUrls,
@@ -543,6 +546,26 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       self.sendDeviceEvent(action: .checkError, runtimeVersion: self.runtimeVersion, channel: channel,
         detail: failure.detail, attemptId: checkId, phase: failure.phase)
     })
+    if let failure = parsed?.rolloutFailure {
+      // The stable release still applies; report why the rollout was ignored.
+      sendDeviceEvent(action: .checkError, runtimeVersion: runtimeVersion, channel: channel,
+        detail: failure.detail, attemptId: checkId, phase: failure.phase)
+    }
+    let selection = parsed.map { Rollout.select($0, secret: store.assignmentSecret()) }
+    rememberRollout(selection?.state)
+    return selection?.manifest
+  }
+
+  private func rememberRollout(_ state: RolloutState?) {
+    rolloutLock.lock()
+    defer { rolloutLock.unlock() }
+    lastRollout = state
+  }
+
+  private func rolloutState() -> RolloutState? {
+    rolloutLock.lock()
+    defer { rolloutLock.unlock() }
+    return lastRollout
   }
 
   private func checkLatest(

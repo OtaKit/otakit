@@ -5,6 +5,7 @@ import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.ArrayList;
 import java.util.List;
 
 final class ManifestVerifier {
@@ -51,19 +52,64 @@ final class ManifestVerifier {
     List<KeyEntry> trustedKeys
   ) throws Exception {
     String payload = buildCanonicalPayload(
+      "MANIFEST",
+      bundlePayloadLines(
+        appId,
+        channel,
+        version,
+        sha256,
+        size,
+        runtimeVersion,
+        strategy,
+        forceImmediate,
+        encryption
+      ),
+      signature
+    );
+    verifyCanonicalPayload(payload, signature, trustedKeys);
+  }
+
+  /**
+   * Verify a manifest's rollout block (plugin 3.1+). Same key and format as the top level under
+   * its own header, plus the rollout lines; must match the server's buildRolloutPayload
+   * byte-for-byte.
+   */
+  static void verifyRollout(
+    String appId,
+    String channel,
+    ManifestClient.ManifestRollout rollout,
+    String stableSha256,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
+    ManifestClient.LatestManifest manifest = rollout.manifest;
+    List<String> lines = bundlePayloadLines(
       appId,
       channel,
-      version,
-      sha256,
-      size,
-      runtimeVersion,
-      strategy,
-      forceImmediate,
-      encryption,
-      signature.kid,
-      signature.iat,
-      signature.exp
+      manifest.version,
+      manifest.sha256,
+      manifest.size,
+      manifest.runtimeVersion,
+      manifest.strategy,
+      manifest.forceImmediate,
+      manifest.encryption
     );
+    lines.add("percent:" + rollout.percent);
+    lines.add("releaseId:" + manifest.releaseId);
+    lines.add("stableSha256:" + stableSha256);
+    lines.add("notesSha256:null");
+    verifyCanonicalPayload(
+      buildCanonicalPayload("ROLLOUT", lines, signature),
+      signature,
+      trustedKeys
+    );
+  }
+
+  private static void verifyCanonicalPayload(
+    String payload,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
     try {
       verifyPayload(payload, signature, trustedKeys);
     } catch (VerificationException error) {
@@ -137,10 +183,24 @@ final class ManifestVerifier {
   }
 
   /**
-   * Canonical payload v2 — must match the server's buildCanonicalPayload
+   * Canonical payload v2 — must match the server's buildCanonicalPayload / buildRolloutPayload
    * (console/lib/manifest-signing.ts) and the iOS mirror byte-for-byte.
    */
-  private static String buildCanonicalPayload(
+  static String buildCanonicalPayload(
+    String header,
+    List<String> bundleLines,
+    ManifestClient.ManifestSignature signature
+  ) {
+    List<String> lines = new ArrayList<>();
+    lines.add(header);
+    lines.addAll(bundleLines);
+    lines.add("kid:" + signature.kid);
+    lines.add("iat:" + signature.iat);
+    lines.add("exp:" + signature.exp);
+    return String.join("\n", lines);
+  }
+
+  static List<String> bundlePayloadLines(
     String appId,
     String channel,
     String version,
@@ -149,49 +209,19 @@ final class ManifestVerifier {
     String runtimeVersion,
     String strategy,
     boolean forceImmediate,
-    ManifestClient.ManifestEncryption encryption,
-    String kid,
-    int iat,
-    int exp
+    ManifestClient.ManifestEncryption encryption
   ) {
-    return (
-      "MANIFEST\n" +
-      "appId:" +
-      appId +
-      "\n" +
-      "channel:" +
-      (channel != null ? channel : "null") +
-      "\n" +
-      "version:" +
-      version +
-      "\n" +
-      "sha256:" +
-      sha256 +
-      "\n" +
-      "size:" +
-      size +
-      "\n" +
-      "runtimeVersion:" +
-      (runtimeVersion != null ? runtimeVersion : "null") +
-      "\n" +
-      "strategy:" +
-      strategy +
-      "\n" +
-      "forceImmediate:" +
-      (forceImmediate ? "true" : "false") +
-      "\n" +
-      "encryption:" +
-      encodeEncryptionForPayload(encryption) +
-      "\n" +
-      "kid:" +
-      kid +
-      "\n" +
-      "iat:" +
-      iat +
-      "\n" +
-      "exp:" +
-      exp
-    );
+    List<String> lines = new ArrayList<>();
+    lines.add("appId:" + appId);
+    lines.add("channel:" + (channel != null ? channel : "null"));
+    lines.add("version:" + version);
+    lines.add("sha256:" + sha256);
+    lines.add("size:" + size);
+    lines.add("runtimeVersion:" + (runtimeVersion != null ? runtimeVersion : "null"));
+    lines.add("strategy:" + strategy);
+    lines.add("forceImmediate:" + (forceImmediate ? "true" : "false"));
+    lines.add("encryption:" + encodeEncryptionForPayload(encryption));
+    return lines;
   }
 
   private static byte[] base64UrlDecode(String input) {

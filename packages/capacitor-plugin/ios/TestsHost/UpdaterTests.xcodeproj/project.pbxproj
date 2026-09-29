@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		325EC9CB5FB38E6297A25A69 /* EventOutboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B9BF979A98C5415B4B9D48 /* EventOutboxTests.swift */; };
 		37ADC9201460753C27B3445B /* CheckFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA726BAD1656EA4DB11E541F /* CheckFailureTests.swift */; };
+		4E7C2A79E63DB5B3869F1B8D /* RolloutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E9B68BD825FAE166281582 /* RolloutTests.swift */; };
 		5CE593933D2AFE831F7573C9 /* DeltaCacheIntegrityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8404717EFE9E9F51221A1C53 /* DeltaCacheIntegrityTests.swift */; };
 		6C658DAC299278DF4DF9B09B /* DocumentReadyBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC8777A1EE843A51974C5DA /* DocumentReadyBridgeTests.swift */; };
 		7787F42F699921A379B7D508 /* BundleCryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E5287FDB9E163692C5D238 /* BundleCryptoTests.swift */; };
@@ -36,6 +37,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		23E9B68BD825FAE166281582 /* RolloutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolloutTests.swift; sourceTree = "<group>"; };
 		2953F5F476ED4A1EE237CFA1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		34380D3CC26FE36DE6AFD77A /* EventDeliveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDeliveryTests.swift; sourceTree = "<group>"; };
 		45B580B8F44B16A91DBAABE9 /* ZipUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipUtilsTests.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				F8B9BF979A98C5415B4B9D48 /* EventOutboxTests.swift */,
 				C1C4C78F31977B1482135091 /* ForegroundDeadlineTests.swift */,
 				F07130731747353452B859E1 /* ManifestKeyConfigTests.swift */,
+				23E9B68BD825FAE166281582 /* RolloutTests.swift */,
 				4B35686D0174D073FCA3D7D4 /* UpdateOwnerTests.swift */,
 				E2C00EDE0F6DDE6186074F9A /* UpdaterCoordinatorTests.swift */,
 				45B580B8F44B16A91DBAABE9 /* ZipUtilsTests.swift */,
@@ -215,6 +218,7 @@
 				325EC9CB5FB38E6297A25A69 /* EventOutboxTests.swift in Sources */,
 				7AC163C3DCC34E3D49E54BF8 /* ForegroundDeadlineTests.swift in Sources */,
 				EC59989B021B565DBD561351 /* ManifestKeyConfigTests.swift in Sources */,
+				4E7C2A79E63DB5B3869F1B8D /* RolloutTests.swift in Sources */,
 				8C9AB249FBEBCBF6ECC2ECE1 /* UpdateOwnerTests.swift in Sources */,
 				C09D2D1F3B222627519A64F5 /* UpdaterCoordinatorTests.swift in Sources */,
 				9769BA7BFFFE5E89F580F7E8 /* ZipUtilsTests.swift in Sources */,

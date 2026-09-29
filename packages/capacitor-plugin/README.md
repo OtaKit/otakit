@@ -264,6 +264,23 @@ of splitting it into separate `download()` and `apply()` calls.
 - they do not resolve back into the old JS context
 - call `notifyAppReady()` from normal startup after the reloaded app boots
 
+## Percentage rollouts
+
+A release can go to a share of devices first (plugin 3.1 or later). Each
+installation keeps a random secret that never leaves the device and derives a
+number from 1 to 100 for each rollout; the device takes the rolling release when
+its number is within the percent. The number stays the same for the whole
+rollout and is independent between rollouts, so the same devices are not always
+first. Older plugin versions ignore rollouts and receive the release when the
+rollout completes.
+
+`getState().rollout` shows what the last check in this session saw:
+
+```ts
+const { rollout } = await OtaKit.getState();
+// { releaseId, version, percent: 10, bucket: 57, included: false }, or null
+```
+
 ## Events
 
 The plugin emits lifecycle events alongside the pull APIs:

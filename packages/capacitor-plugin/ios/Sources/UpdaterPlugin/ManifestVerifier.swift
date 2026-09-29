@@ -38,19 +38,63 @@ enum ManifestVerifier {
     trustedKeys: [ManifestKey]
   ) throws {
     let payload = buildCanonicalPayload(
-      appId: appId,
-      channel: channel,
-      version: version,
-      sha256: sha256,
-      size: size,
-      runtimeVersion: runtimeVersion,
-      strategy: strategy,
-      forceImmediate: forceImmediate,
-      encryption: encryption,
-      kid: signature.kid,
-      iat: signature.iat,
-      exp: signature.exp
+      header: "MANIFEST",
+      bundleLines: bundlePayloadLines(
+        appId: appId,
+        channel: channel,
+        version: version,
+        sha256: sha256,
+        size: size,
+        runtimeVersion: runtimeVersion,
+        strategy: strategy,
+        forceImmediate: forceImmediate,
+        encryption: encryption
+      ),
+      signature: signature
     )
+    try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
+  /// Verify a manifest's `rollout` block (plugin 3.1+). Same key and format
+  /// as the top level under its own header, plus the rollout lines; must
+  /// match the server's `buildRolloutPayload` byte-for-byte.
+  static func verifyRollout(
+    appId: String,
+    channel: String?,
+    rollout: ManifestRollout,
+    stableSha256: String,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
+    let manifest = rollout.manifest
+    let payload = buildCanonicalPayload(
+      header: "ROLLOUT",
+      bundleLines: bundlePayloadLines(
+        appId: appId,
+        channel: channel,
+        version: manifest.version,
+        sha256: manifest.sha256,
+        size: manifest.size,
+        runtimeVersion: manifest.runtimeVersion,
+        strategy: manifest.strategy,
+        forceImmediate: manifest.forceImmediate,
+        encryption: manifest.encryption
+      ) + [
+        "percent:\(rollout.percent)",
+        "releaseId:\(manifest.releaseId)",
+        "stableSha256:\(stableSha256)",
+        "notesSha256:null"
+      ],
+      signature: signature
+    )
+    try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
+  private static func verifyCanonicalPayload(
+    _ payload: String,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
     do {
       try verifyPayload(payload, signature: signature, trustedKeys: trustedKeys)
     } catch let error as ManifestVerifierError {
@@ -106,8 +150,21 @@ enum ManifestVerifier {
   }
 
   /// Canonical payload v2 — must match the server's `buildCanonicalPayload`
-  /// (console/lib/manifest-signing.ts) and the Android mirror byte-for-byte.
-  private static func buildCanonicalPayload(
+  /// / `buildRolloutPayload` (console/lib/manifest-signing.ts) and the
+  /// Android mirror byte-for-byte.
+  static func buildCanonicalPayload(
+    header: String,
+    bundleLines: [String],
+    signature: ManifestSignature
+  ) -> String {
+    return ([header] + bundleLines + [
+      "kid:\(signature.kid)",
+      "iat:\(signature.iat)",
+      "exp:\(signature.exp)"
+    ]).joined(separator: "\n")
+  }
+
+  static func bundlePayloadLines(
     appId: String,
     channel: String?,
     version: String,
@@ -116,13 +173,9 @@ enum ManifestVerifier {
     runtimeVersion: String?,
     strategy: String,
     forceImmediate: Bool,
-    encryption: ManifestEncryption?,
-    kid: String,
-    iat: Int,
-    exp: Int
-  ) -> String {
+    encryption: ManifestEncryption?
+  ) -> [String] {
     return [
-      "MANIFEST",
       "appId:\(appId)",
       "channel:\(channel ?? "null")",
       "version:\(version)",
@@ -131,11 +184,8 @@ enum ManifestVerifier {
       "runtimeVersion:\(runtimeVersion ?? "null")",
       "strategy:\(strategy)",
       "forceImmediate:\(forceImmediate ? "true" : "false")",
-      "encryption:\(encodeEncryptionForPayload(encryption))",
-      "kid:\(kid)",
-      "iat:\(iat)",
-      "exp:\(exp)",
-    ].joined(separator: "\n")
+      "encryption:\(encodeEncryptionForPayload(encryption))"
+    ]
   }
 
   private static func base64UrlDecode(_ string: String) -> Data? {
