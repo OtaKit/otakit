@@ -11,6 +11,7 @@ import {
   paginationShape,
   releaseIdSchema,
   releaseOptionsShape,
+  rolloutPercentSchema,
   runtimeVersionSchema,
   uploadShape,
   type OtaKitMcpMode,
@@ -290,6 +291,25 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       expectedCurrentReleaseId: releaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
       forceImmediate: z.boolean().optional(),
+    }),
+    annotations: destructive,
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'set_rollout_percent',
+    title: 'Change an OtaKit rollout percentage',
+    description:
+      "Raise, lower, or complete (100) the active rollout of a lane's current release. Requires the reviewed current percentage and an idempotency key. To cancel a rollout, revert the release instead.",
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      releaseId: releaseIdSchema,
+      percent: rolloutPercentSchema,
+      expectedPercent: rolloutPercentSchema.describe(
+        'Rollout percentage shown by get_release_state when the change was reviewed',
+      ),
+      idempotencyKey: idempotencyKeySchema,
     }),
     annotations: destructive,
     oauthScopes: ['otakit:release:write'],

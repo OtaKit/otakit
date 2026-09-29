@@ -155,6 +155,8 @@ export type UploadWorkflowOptions = {
   autoRevert?: boolean;
   autoRevertRatePercent?: number;
   autoRevertMinSample?: number;
+  rolloutPercent?: number;
+  replaceRollout?: boolean;
   expectedCurrentReleaseId?: string | null;
   idempotencyKey?: string;
   compatibilityDecision?: 'block' | 'proceed' | 'skip';
@@ -220,6 +222,8 @@ export async function runUploadWorkflow(
     autoRevert,
     autoRevertRatePercent,
     autoRevertMinSample,
+    rolloutPercent,
+    replaceRollout,
     expectedCurrentReleaseId,
     idempotencyKey,
     compatibilityDecision,
@@ -312,6 +316,8 @@ export async function runUploadWorkflow(
         autoRevert,
         autoRevertRatePercent,
         autoRevertMinSample,
+        rolloutPercent,
+        replaceRollout,
         expectedCurrentReleaseId,
         idempotencyKey,
         compatibilityDecision,
@@ -428,6 +434,8 @@ async function runDeltaUploadWorkflow(
     autoRevert,
     autoRevertRatePercent,
     autoRevertMinSample,
+    rolloutPercent,
+    replaceRollout,
     expectedCurrentReleaseId,
     idempotencyKey,
     compatibilityDecision,
@@ -521,6 +529,8 @@ async function runDeltaUploadWorkflow(
       autoRevert,
       autoRevertRatePercent,
       autoRevertMinSample,
+      rolloutPercent,
+      replaceRollout,
       expectedCurrentReleaseId,
       idempotencyKey,
       compatibilityDecision,

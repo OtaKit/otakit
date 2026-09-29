@@ -7,11 +7,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   checkCompatibilityAgainstChannel: vi.fn(),
+  findCurrentLaneRelease: vi.fn(),
   runUploadWorkflow: vi.fn(),
 }));
 
 vi.mock('../lib/compat-check.js', () => ({
   checkCompatibilityAgainstChannel: mocks.checkCompatibilityAgainstChannel,
+  findCurrentLaneRelease: mocks.findCurrentLaneRelease,
 }));
 vi.mock('../lib/upload-workflow.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/upload-workflow.js')>();
@@ -227,5 +229,44 @@ describe('local OtaKit MCP adapter', () => {
     expect(result.warnings).toEqual([
       'No native-package baseline was available for this exact release lane.',
     ]);
+  });
+
+  it('blocks an upload before it starts when publishing would collide with a rollout', async () => {
+    const root = await fixture();
+    mocks.findCurrentLaneRelease.mockResolvedValue({
+      id: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2',
+      channel: 'staging',
+      runtimeVersion: 'ios-1',
+      bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+      bundleVersion: '1.4.2',
+      rolloutPercent: 10,
+      promotedAt: '2026-09-29T00:00:00.000Z',
+      revertedAt: null,
+    });
+    mocks.checkCompatibilityAgainstChannel.mockResolvedValue({
+      status: 'compatible',
+      findings: [],
+    });
+    const adapter = new LocalOtaKitToolAdapter(connection(root));
+
+    await expect(
+      adapter.invoke(
+        'upload_and_publish_bundle',
+        {
+          appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+          version: '1.0.0',
+          channel: 'staging',
+          expectedCurrentReleaseId: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2',
+          idempotencyKey: 'release-attempt-1',
+        },
+        {
+          mcpReq: { _meta: {}, notify: vi.fn(), signal: new AbortController().signal },
+        } as never,
+      ),
+    ).rejects.toMatchObject({ code: 'ROLLOUT_IN_PROGRESS' });
+    expect(mocks.checkCompatibilityAgainstChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ currentRelease: expect.objectContaining({ rolloutPercent: 10 }) }),
+    );
+    expect(mocks.runUploadWorkflow).not.toHaveBeenCalled();
   });
 });

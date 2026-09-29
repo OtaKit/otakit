@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 
-import { ApiClient } from '../lib/api.js';
+import { ApiClient, isActiveRollout } from '../lib/api.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import { normalizeChannel, parsePositiveInteger } from '../lib/validate.js';
@@ -65,8 +65,13 @@ export const releasesCommand = new Command('releases')
       for (const release of response.releases) {
         const bundleVersion = release.bundleVersion ? ` (${release.bundleVersion})` : '';
         const forceLabel = release.forceImmediate ? ' [force-immediate]' : '';
+        const rolloutLabel = release.revertedAt
+          ? ' [reverted]'
+          : isActiveRollout(release)
+            ? ` [rolling out ${release.rolloutPercent}%]`
+            : '';
         console.log(
-          `${formatReleaseLane(release.channel, release.runtimeVersion)}: ${release.bundleId}${bundleVersion}${forceLabel} at ${release.promotedAt}`,
+          `${formatReleaseLane(release.channel, release.runtimeVersion)}: ${release.bundleId}${bundleVersion}${forceLabel}${rolloutLabel} at ${release.promotedAt}`,
         );
       }
       console.log(`Total: ${response.total}`);
