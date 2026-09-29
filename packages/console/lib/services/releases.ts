@@ -7,10 +7,16 @@ import type {
   ReleaseMutationOperation,
 } from '@prisma/client';
 
-import { recordAuditLog, type AuditAction, type AuditActor } from '@/lib/audit-log';
+import {
+  recordAuditLog,
+  type AuditAction,
+  type AuditActor,
+  type AuditLogEntry,
+} from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
 import { revertCurrentRelease } from '@/lib/releases';
+import { FULL_ROLLOUT_PERCENT, isRolling, isRolloutPercent } from '@/lib/rollouts';
 import {
   createEmptyEventCounts,
   getReleaseEventCountsWithStatus,
@@ -26,7 +32,6 @@ import {
 
 const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RELEASE_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
-const FULL_ROLLOUT_PERCENT = 100;
 const ROLLOUT_REPLACED_BY = 'system:rollout-replaced';
 
 const releaseWithBundlesInclude = {
@@ -171,6 +176,8 @@ export type RevertReleaseInput = {
   expectedCurrentReleaseId?: string | null;
   idempotencyKey?: string;
   revertedBy?: string;
+  /** Cancelling a rollout: refuse the revert unless the release is still at this share. */
+  expectedRolloutPercent?: number;
   auditAction?: AuditAction;
   auditMetadata?: Record<string, unknown>;
   autoRevertAlertPayload?: Record<string, unknown>;
@@ -337,14 +344,6 @@ function validateReleaseOptions(input: PublishReleaseInput): void {
   }
 }
 
-export function isRolloutPercent(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 100;
-}
-
-function isRolling(release: { rolloutPercent: number } | null | undefined): boolean {
-  return release !== null && release !== undefined && release.rolloutPercent < FULL_ROLLOUT_PERCENT;
-}
-
 function validateLane(channel: string | null, runtimeVersion?: string | null): void {
   if (channel !== null && !isValidChannelName(channel)) {
     throw new OtaKitServiceError(
@@ -436,6 +435,26 @@ async function findCurrentRelease(
 ): Promise<ReleaseWithBundles | null> {
   const [current] = await findLaneReleases(database, appId, channel, runtimeVersion, 1);
   return current ?? null;
+}
+
+/**
+ * The lane's current release and its stable release: the one every device
+ * outside an active rollout runs, which is the release below a rolling one.
+ */
+async function findLaneState(
+  database: PrismaClient | Prisma.TransactionClient,
+  appId: string,
+  channel: string | null,
+  runtimeVersion: string | null,
+): Promise<{ current: ReleaseWithBundles | null; stable: ReleaseWithBundles | null }> {
+  const [current = null, below = null] = await findLaneReleases(
+    database,
+    appId,
+    channel,
+    runtimeVersion,
+    2,
+  );
+  return { current, stable: isRolling(current) ? below : current };
 }
 
 /** The lane's newest non-reverted releases; the first is the current release. */
@@ -536,7 +555,7 @@ export async function prepareRelease(
     throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
   }
 
-  const currentRelease = await findCurrentRelease(
+  const { current: currentRelease, stable } = await findLaneState(
     database,
     input.appId,
     input.channel,
@@ -544,7 +563,7 @@ export async function prepareRelease(
   );
   const compatibility = releaseCompatibility(
     bundle.nativePackages,
-    currentRelease?.bundle.nativePackages ?? null,
+    stable?.bundle.nativePackages ?? null,
     input.compatibilityDecision,
   );
 
@@ -591,15 +610,105 @@ export async function getReleaseState(
   };
 }
 
+type MutationBookkeeping = 'operationId' | 'idempotencyKey' | 'publicationStatus';
+
+/**
+ * Run one durable, idempotent release change. `apply` makes the database
+ * change under the idempotency lock and takes the lane lock itself. The result
+ * is stored with the mutation, so a retry with the same key replays it; the
+ * audit entry is written once; the lane manifest is synced after commit and a
+ * failed sync is reported as manifest_sync_pending for later repair.
+ */
+async function runReleaseMutation<T extends ReleaseMutationResult>(args: {
+  dependencies: ServiceDependencies;
+  organizationId: string;
+  appId: string;
+  actor: AuditActor;
+  operation: ReleaseMutationOperation;
+  idempotencyKey: string;
+  requestHash: string;
+  apply: (tx: Prisma.TransactionClient) => Promise<{
+    result: Omit<T, MutationBookkeeping>;
+    lane: { releaseId: string; channel: string | null; runtimeVersion: string | null };
+  }>;
+  audit: (result: T) => Omit<AuditLogEntry, 'organizationId' | 'actor'>;
+}): Promise<T> {
+  const database = args.dependencies.database ?? db;
+  const syncManifest = args.dependencies.syncManifest ?? syncManifestFileForLane;
+  const keyActor = actorKey(args.actor);
+
+  const transactionResult = await database.$transaction(async (tx) => {
+    await lockTransaction(
+      tx,
+      `release-mutation:${args.organizationId}:${keyActor}:${args.operation}:${args.idempotencyKey}`,
+    );
+    let existing = await tx.releaseMutation.findUnique({
+      where: {
+        organizationId_actorKey_operation_idempotencyKey: {
+          organizationId: args.organizationId,
+          actorKey: keyActor,
+          operation: args.operation,
+          idempotencyKey: args.idempotencyKey,
+        },
+      },
+    });
+    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
+      await tx.releaseMutation.delete({ where: { id: existing.id } });
+      existing = null;
+    }
+    if (existing) {
+      assertIdempotencyHash(existing, args.requestHash);
+      return { mutation: existing, created: false };
+    }
+
+    const { result, lane } = await args.apply(tx);
+    const mutationId = randomUUID();
+    const initialResult = {
+      operationId: mutationId,
+      idempotencyKey: args.idempotencyKey,
+      publicationStatus: 'manifest_sync_pending',
+      ...result,
+    } as T;
+    const mutation = await tx.releaseMutation.create({
+      data: {
+        id: mutationId,
+        organizationId: args.organizationId,
+        actorKey: keyActor,
+        operation: args.operation,
+        idempotencyKey: args.idempotencyKey,
+        requestHash: args.requestHash,
+        status: 'database_committed',
+        appId: args.appId,
+        releaseId: lane.releaseId,
+        channel: lane.channel,
+        runtimeVersion: lane.runtimeVersion,
+        result: jsonValue(initialResult),
+        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
+      },
+    });
+    return { mutation, created: true };
+  }, RELEASE_TRANSACTION_OPTIONS);
+
+  const result = storedResult<T>(transactionResult.mutation);
+  if (transactionResult.mutation.status === 'published') {
+    return result;
+  }
+  if (transactionResult.created) {
+    await recordAuditLog({
+      organizationId: args.organizationId,
+      actor: args.actor,
+      ...args.audit(result),
+    });
+  }
+  return finishManifestSync(database, transactionResult.mutation, result, syncManifest);
+}
+
 export async function publishRelease(
   input: PublishReleaseInput,
   dependencies: ServiceDependencies = {},
 ): Promise<PublishReleaseResult> {
   validateReleaseOptions(input);
-  const database = dependencies.database ?? db;
-  const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  const operation: ReleaseMutationOperation = 'publish';
   const rolloutPercent = input.rolloutPercent ?? FULL_ROLLOUT_PERCENT;
   const requestHash = stableHash({
     appId: input.appId,
@@ -618,166 +727,124 @@ export async function publishRelease(
     ...(input.replaceRollout ? { replaceRollout: true } : {}),
   });
 
-  const transactionResult = await database.$transaction(async (tx) => {
-    const keyActor = actorKey(input.actor);
-    await lockTransaction(
-      tx,
-      `release-mutation:${input.organizationId}:${keyActor}:${operation}:${idempotencyKey}`,
-    );
-
-    let existing = await tx.releaseMutation.findUnique({
-      where: {
-        organizationId_actorKey_operation_idempotencyKey: {
-          organizationId: input.organizationId,
-          actorKey: keyActor,
-          operation,
-          idempotencyKey,
+  return runReleaseMutation<PublishReleaseResult>({
+    dependencies,
+    organizationId: input.organizationId,
+    appId: input.appId,
+    actor: input.actor,
+    operation: 'publish',
+    idempotencyKey,
+    requestHash,
+    apply: async (tx) => {
+      const bundle = await tx.bundle.findFirst({
+        where: {
+          id: input.bundleId,
+          appId: input.appId,
+          app: { organizationId: input.organizationId },
         },
-      },
-    });
-    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
-      await tx.releaseMutation.delete({ where: { id: existing.id } });
-      existing = null;
-    }
-    if (existing) {
-      assertIdempotencyHash(existing, requestHash);
-      return { mutation: existing, created: false };
-    }
+        select: {
+          id: true,
+          version: true,
+          runtimeVersion: true,
+          nativePackages: true,
+        },
+      });
+      if (!bundle) {
+        throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
+      }
 
-    const bundle = await tx.bundle.findFirst({
-      where: {
-        id: input.bundleId,
-        appId: input.appId,
-        app: { organizationId: input.organizationId },
-      },
-      select: {
-        id: true,
-        version: true,
-        runtimeVersion: true,
-        nativePackages: true,
-      },
-    });
-    if (!bundle) {
-      throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
-    }
-
-    await lockTransaction(tx, laneLockKey(input.appId, input.channel, bundle.runtimeVersion));
-    const [currentRelease = null, releaseBelowCurrent = null] = await findLaneReleases(
-      tx,
-      input.appId,
-      input.channel,
-      bundle.runtimeVersion,
-      2,
-    );
-    assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
-    const compatibility = releaseCompatibility(
-      bundle.nativePackages,
-      currentRelease?.bundle.nativePackages ?? null,
-      input.compatibilityDecision,
-    );
-    if (input.enforceCompatibility) {
-      enforceReleaseCompatibility(compatibility, input.compatibilityDecision);
-    }
-    if (currentRelease?.bundleId === bundle.id) {
-      throw new OtaKitServiceError(
-        'STALE_RELEASE_STATE',
-        'Bundle is already current for this release lane',
-        409,
-        'Read the current release state before publishing again.',
+      await lockTransaction(tx, laneLockKey(input.appId, input.channel, bundle.runtimeVersion));
+      const { current: currentRelease, stable: stableRelease } = await findLaneState(
+        tx,
+        input.appId,
+        input.channel,
+        bundle.runtimeVersion,
       );
-    }
+      assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
+      if (currentRelease?.bundleId === bundle.id) {
+        throw new OtaKitServiceError(
+          'STALE_RELEASE_STATE',
+          'Bundle is already current for this release lane',
+          409,
+          'Read the current release state before publishing again.',
+        );
+      }
 
-    // A rolling release is always the lane's current release, and the one
-    // below it is the stable release every other device runs.
-    const rollingRelease = isRolling(currentRelease) ? currentRelease : null;
-    const stableRelease = rollingRelease ? releaseBelowCurrent : currentRelease;
-    if (rollingRelease && !input.replaceRollout) {
-      throw new OtaKitServiceError(
-        'ROLLOUT_IN_PROGRESS',
-        `Release ${rollingRelease.bundle.version} is rolling out to ${rollingRelease.rolloutPercent}% of this lane`,
-        409,
-        'Complete or cancel the rollout first, or publish with replaceRollout to revert it and release this bundle instead.',
+      const rollingRelease = isRolling(currentRelease) ? currentRelease : null;
+      if (rollingRelease && !input.replaceRollout) {
+        throw new OtaKitServiceError(
+          'ROLLOUT_IN_PROGRESS',
+          `Release ${rollingRelease.bundle.version} is rolling out to ${rollingRelease.rolloutPercent}% of this lane`,
+          409,
+          'Complete or cancel the rollout first, or publish with replaceRollout to revert it and release this bundle instead.',
+        );
+      }
+      if (rollingRelease && stableRelease?.bundleId === bundle.id) {
+        throw new OtaKitServiceError(
+          'STALE_RELEASE_STATE',
+          'Bundle is already the stable release of this lane',
+          409,
+          'Cancel the rollout to return every device to it.',
+        );
+      }
+      if (rolloutPercent < FULL_ROLLOUT_PERCENT && !stableRelease) {
+        throw new OtaKitServiceError(
+          'ROLLOUT_NEEDS_STABLE',
+          'The first release on a lane goes to every device',
+          409,
+          'Publish this bundle at 100%; later releases on this lane can roll out gradually.',
+        );
+      }
+
+      // Compare with the stable release: most devices run it, and it is what
+      // this release falls back to (a replaced rollout is discarded).
+      const compatibility = releaseCompatibility(
+        bundle.nativePackages,
+        stableRelease?.bundle.nativePackages ?? null,
+        input.compatibilityDecision,
       );
-    }
-    if (rollingRelease && stableRelease?.bundleId === bundle.id) {
-      throw new OtaKitServiceError(
-        'STALE_RELEASE_STATE',
-        'Bundle is already the stable release of this lane',
-        409,
-        'Cancel the rollout to return every device to it.',
-      );
-    }
-    if (rolloutPercent < FULL_ROLLOUT_PERCENT && !stableRelease) {
-      throw new OtaKitServiceError(
-        'ROLLOUT_NEEDS_STABLE',
-        'The first release on a lane goes to every device',
-        409,
-        'Publish this bundle at 100%; later releases on this lane can roll out gradually.',
-      );
-    }
+      if (input.enforceCompatibility) {
+        enforceReleaseCompatibility(compatibility, input.compatibilityDecision);
+      }
 
-    const replacedRelease = rollingRelease
-      ? await tx.release.update({
-          where: { id: rollingRelease.id },
-          data: { revertedAt: new Date(), revertedBy: ROLLOUT_REPLACED_BY },
-          include: releaseWithBundlesInclude,
-        })
-      : null;
-    const release = await tx.release.create({
-      data: {
-        appId: input.appId,
-        bundleId: bundle.id,
-        previousBundleId: stableRelease?.bundleId ?? null,
-        channel: input.channel,
-        forceImmediate: input.forceImmediate ?? false,
-        autoRevert: input.autoRevert ?? false,
-        autoRevertRatePercent: input.autoRevertRatePercent ?? 20,
-        autoRevertMinSample: input.autoRevertMinSample ?? 50,
-        rolloutPercent,
-        promotedBy: input.actor.actorLabel,
-      },
-      include: releaseWithBundlesInclude,
-    });
+      const replacedRelease = rollingRelease
+        ? await tx.release.update({
+            where: { id: rollingRelease.id },
+            data: { revertedAt: new Date(), revertedBy: ROLLOUT_REPLACED_BY },
+            include: releaseWithBundlesInclude,
+          })
+        : null;
+      const release = await tx.release.create({
+        data: {
+          appId: input.appId,
+          bundleId: bundle.id,
+          previousBundleId: stableRelease?.bundleId ?? null,
+          channel: input.channel,
+          forceImmediate: input.forceImmediate ?? false,
+          autoRevert: input.autoRevert ?? false,
+          autoRevertRatePercent: input.autoRevertRatePercent ?? 20,
+          autoRevertMinSample: input.autoRevertMinSample ?? 50,
+          rolloutPercent,
+          promotedBy: input.actor.actorLabel,
+        },
+        include: releaseWithBundlesInclude,
+      });
 
-    const mutationId = randomUUID();
-    const initialResult: PublishReleaseResult = {
-      operationId: mutationId,
-      idempotencyKey,
-      publicationStatus: 'manifest_sync_pending',
-      release: toReleaseSummary(release),
-      previousRelease: stableRelease ? toReleaseSummary(stableRelease) : null,
-      ...(replacedRelease ? { replacedRelease: toReleaseSummary(replacedRelease) } : {}),
-      ...(input.enforceCompatibility ? { compatibility } : {}),
-    };
-    const mutation = await tx.releaseMutation.create({
-      data: {
-        id: mutationId,
-        organizationId: input.organizationId,
-        actorKey: keyActor,
-        operation,
-        idempotencyKey,
-        requestHash,
-        status: 'database_committed',
-        appId: input.appId,
-        releaseId: release.id,
-        channel: input.channel,
-        runtimeVersion: bundle.runtimeVersion,
-        result: jsonValue(initialResult),
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
-      },
-    });
-    return { mutation, created: true };
-  }, RELEASE_TRANSACTION_OPTIONS);
-
-  let result = storedResult<PublishReleaseResult>(transactionResult.mutation);
-  if (transactionResult.mutation.status === 'published') {
-    return result;
-  }
-
-  if (transactionResult.created) {
-    await recordAuditLog({
-      organizationId: input.organizationId,
-      actor: input.actor,
+      return {
+        lane: {
+          releaseId: release.id,
+          channel: input.channel,
+          runtimeVersion: bundle.runtimeVersion,
+        },
+        result: {
+          release: toReleaseSummary(release),
+          previousRelease: stableRelease ? toReleaseSummary(stableRelease) : null,
+          ...(replacedRelease ? { replacedRelease: toReleaseSummary(replacedRelease) } : {}),
+          ...(input.enforceCompatibility ? { compatibility } : {}),
+        },
+      };
+    },
+    audit: (result) => ({
       action: 'release.created',
       targetType: 'release',
       targetId: result.release.id,
@@ -813,11 +880,8 @@ export async function publishRelease(
           : {}),
         ...input.auditMetadata,
       },
-    });
-  }
-
-  result = await finishManifestSync(database, transactionResult.mutation, result, syncManifest);
-  return result;
+    }),
+  });
 }
 
 /**
@@ -831,10 +895,9 @@ export async function publishReleaseLegacy(
   dependencies: Pick<ServiceDependencies, 'database' | 'syncManifest'> = {},
 ): Promise<PublishReleaseResult> {
   validateReleaseOptions(input);
-  if (
-    (input.rolloutPercent ?? FULL_ROLLOUT_PERCENT) < FULL_ROLLOUT_PERCENT ||
-    input.replaceRollout
-  ) {
+  // replaceRollout needs no guard: this path never replaces a rollout, and a
+  // lane that still has one is refused below.
+  if ((input.rolloutPercent ?? FULL_ROLLOUT_PERCENT) < FULL_ROLLOUT_PERCENT) {
     throw rolloutsUnavailable();
   }
   const database = dependencies.database ?? db;
@@ -1049,10 +1112,17 @@ export async function revertRelease(
   input: RevertReleaseInput,
   dependencies: ServiceDependencies = {},
 ): Promise<RevertReleaseResult> {
-  const database = dependencies.database ?? db;
-  const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
+  if (
+    input.expectedRolloutPercent !== undefined &&
+    !isRolloutPercent(input.expectedRolloutPercent)
+  ) {
+    throw new OtaKitServiceError(
+      'INVALID_INPUT',
+      'expectedRolloutPercent must be an integer between 1 and 100',
+      400,
+    );
+  }
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  const operation: ReleaseMutationOperation = 'revert';
   const requestHash = stableHash({
     appId: input.appId,
     releaseId: input.releaseId,
@@ -1060,129 +1130,104 @@ export async function revertRelease(
     expectedCurrentReleaseId: input.expectedCurrentReleaseId ?? null,
     revertedBy: input.revertedBy ?? input.actor.actorLabel,
     autoRevertAlertPayload: input.autoRevertAlertPayload ?? null,
+    ...(input.expectedRolloutPercent !== undefined
+      ? { expectedRolloutPercent: input.expectedRolloutPercent }
+      : {}),
   });
 
-  const transactionResult = await database.$transaction(async (tx) => {
-    const keyActor = actorKey(input.actor);
-    await lockTransaction(
-      tx,
-      `release-mutation:${input.organizationId}:${keyActor}:${operation}:${idempotencyKey}`,
-    );
-    let existing = await tx.releaseMutation.findUnique({
-      where: {
-        organizationId_actorKey_operation_idempotencyKey: {
-          organizationId: input.organizationId,
-          actorKey: keyActor,
-          operation,
-          idempotencyKey,
+  return runReleaseMutation<RevertReleaseResult>({
+    dependencies,
+    organizationId: input.organizationId,
+    appId: input.appId,
+    actor: input.actor,
+    operation: 'revert',
+    idempotencyKey,
+    requestHash,
+    apply: async (tx) => {
+      const release = await tx.release.findFirst({
+        where: {
+          id: input.releaseId,
+          appId: input.appId,
+          app: { organizationId: input.organizationId },
         },
-      },
-    });
-    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
-      await tx.releaseMutation.delete({ where: { id: existing.id } });
-      existing = null;
-    }
-    if (existing) {
-      assertIdempotencyHash(existing, requestHash);
-      return { mutation: existing, created: false };
-    }
-
-    const release = await tx.release.findFirst({
-      where: {
-        id: input.releaseId,
-        appId: input.appId,
-        app: { organizationId: input.organizationId },
-      },
-      include: releaseWithBundlesInclude,
-    });
-    if (!release) {
-      throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
-    }
-
-    await lockTransaction(
-      tx,
-      laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
-    );
-    const currentRelease = await findCurrentRelease(
-      tx,
-      input.appId,
-      release.channel,
-      release.bundle.runtimeVersion,
-    );
-    assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
-    if (release.revertedAt || currentRelease?.id !== release.id) {
-      throw new OtaKitServiceError(
-        'RELEASE_NOT_CURRENT',
-        release.revertedAt
-          ? 'Release is already reverted'
-          : 'Release is no longer current on this lane',
-        409,
-      );
-    }
-
-    const revertedAt = new Date();
-    const revertedRelease = await tx.release.update({
-      where: { id: release.id },
-      data: {
-        revertedAt,
-        revertedBy: input.revertedBy ?? input.actor.actorLabel,
-        ...(input.autoRevertAlertPayload
-          ? { autoRevertAlertPayload: jsonValue(input.autoRevertAlertPayload) }
-          : {}),
-      },
-      include: releaseWithBundlesInclude,
-    });
-    let resultingRelease = await findCurrentRelease(
-      tx,
-      input.appId,
-      release.channel,
-      release.bundle.runtimeVersion,
-    );
-    if (input.forceImmediate !== undefined && resultingRelease) {
-      resultingRelease = await tx.release.update({
-        where: { id: resultingRelease.id },
-        data: { forceImmediate: input.forceImmediate },
         include: releaseWithBundlesInclude,
       });
-    }
+      if (!release) {
+        throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
+      }
 
-    const mutationId = randomUUID();
-    const initialResult: RevertReleaseResult = {
-      operationId: mutationId,
-      idempotencyKey,
-      publicationStatus: 'manifest_sync_pending',
-      release: toReleaseSummary(revertedRelease),
-      currentRelease: resultingRelease ? toReleaseSummary(resultingRelease) : null,
-    };
-    const mutation = await tx.releaseMutation.create({
-      data: {
-        id: mutationId,
-        organizationId: input.organizationId,
-        actorKey: keyActor,
-        operation,
-        idempotencyKey,
-        requestHash,
-        status: 'database_committed',
-        appId: input.appId,
-        releaseId: release.id,
-        channel: release.channel,
-        runtimeVersion: release.bundle.runtimeVersion,
-        result: jsonValue(initialResult),
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
-      },
-    });
-    return { mutation, created: true };
-  }, RELEASE_TRANSACTION_OPTIONS);
+      await lockTransaction(
+        tx,
+        laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
+      );
+      // `release` was read before the lane lock; `currentRelease` is read
+      // under it, so decisions about the lane's state use it.
+      const currentRelease = await findCurrentRelease(
+        tx,
+        input.appId,
+        release.channel,
+        release.bundle.runtimeVersion,
+      );
+      assertExpectedCurrent(input.expectedCurrentReleaseId, currentRelease?.id ?? null);
+      if (!currentRelease || currentRelease.id !== release.id) {
+        throw new OtaKitServiceError(
+          'RELEASE_NOT_CURRENT',
+          release.revertedAt
+            ? 'Release is already reverted'
+            : 'Release is no longer current on this lane',
+          409,
+        );
+      }
+      if (
+        input.expectedRolloutPercent !== undefined &&
+        currentRelease.rolloutPercent !== input.expectedRolloutPercent
+      ) {
+        throw new OtaKitServiceError(
+          'STALE_RELEASE_STATE',
+          `The rollout is at ${currentRelease.rolloutPercent}%, not ${input.expectedRolloutPercent}%`,
+          409,
+          'Read the release state again before cancelling.',
+        );
+      }
 
-  let result = storedResult<RevertReleaseResult>(transactionResult.mutation);
-  if (transactionResult.mutation.status === 'published') {
-    return result;
-  }
+      const revertedRelease = await tx.release.update({
+        where: { id: release.id },
+        data: {
+          revertedAt: new Date(),
+          revertedBy: input.revertedBy ?? input.actor.actorLabel,
+          ...(input.autoRevertAlertPayload
+            ? { autoRevertAlertPayload: jsonValue(input.autoRevertAlertPayload) }
+            : {}),
+        },
+        include: releaseWithBundlesInclude,
+      });
+      let resultingRelease = await findCurrentRelease(
+        tx,
+        input.appId,
+        release.channel,
+        release.bundle.runtimeVersion,
+      );
+      if (input.forceImmediate !== undefined && resultingRelease) {
+        resultingRelease = await tx.release.update({
+          where: { id: resultingRelease.id },
+          data: { forceImmediate: input.forceImmediate },
+          include: releaseWithBundlesInclude,
+        });
+      }
 
-  if (transactionResult.created) {
-    await recordAuditLog({
-      organizationId: input.organizationId,
-      actor: input.actor,
+      return {
+        lane: {
+          releaseId: release.id,
+          channel: release.channel,
+          runtimeVersion: release.bundle.runtimeVersion,
+        },
+        result: {
+          release: toReleaseSummary(revertedRelease),
+          currentRelease: resultingRelease ? toReleaseSummary(resultingRelease) : null,
+        },
+      };
+    },
+    audit: (result) => ({
       action: input.auditAction ?? 'release.reverted',
       targetType: 'release',
       targetId: result.release.id,
@@ -1195,11 +1240,8 @@ export async function revertRelease(
         idempotencyKey,
         ...input.auditMetadata,
       },
-    });
-  }
-
-  result = await finishManifestSync(database, transactionResult.mutation, result, syncManifest);
-  return result;
+    }),
+  });
 }
 
 /**
@@ -1225,10 +1267,7 @@ export async function updateRollout(
       400,
     );
   }
-  const database = dependencies.database ?? db;
-  const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  const operation: ReleaseMutationOperation = 'rollout';
   const requestHash = stableHash({
     appId: input.appId,
     releaseId: input.releaseId,
@@ -1236,124 +1275,84 @@ export async function updateRollout(
     expectedPercent: input.expectedPercent ?? null,
   });
 
-  const transactionResult = await database.$transaction(async (tx) => {
-    const keyActor = actorKey(input.actor);
-    await lockTransaction(
-      tx,
-      `release-mutation:${input.organizationId}:${keyActor}:${operation}:${idempotencyKey}`,
-    );
-    let existing = await tx.releaseMutation.findUnique({
-      where: {
-        organizationId_actorKey_operation_idempotencyKey: {
-          organizationId: input.organizationId,
-          actorKey: keyActor,
-          operation,
-          idempotencyKey,
+  return runReleaseMutation<UpdateRolloutResult>({
+    dependencies,
+    organizationId: input.organizationId,
+    appId: input.appId,
+    actor: input.actor,
+    operation: 'rollout',
+    idempotencyKey,
+    requestHash,
+    apply: async (tx) => {
+      const release = await tx.release.findFirst({
+        where: {
+          id: input.releaseId,
+          appId: input.appId,
+          app: { organizationId: input.organizationId },
         },
-      },
-    });
-    if (existing && existing.expiresAt <= new Date() && existing.status !== 'database_committed') {
-      await tx.releaseMutation.delete({ where: { id: existing.id } });
-      existing = null;
-    }
-    if (existing) {
-      assertIdempotencyHash(existing, requestHash);
-      return { mutation: existing, created: false };
-    }
+        include: releaseWithBundlesInclude,
+      });
+      if (!release) {
+        throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
+      }
 
-    const release = await tx.release.findFirst({
-      where: {
-        id: input.releaseId,
-        appId: input.appId,
-        app: { organizationId: input.organizationId },
-      },
-      include: releaseWithBundlesInclude,
-    });
-    if (!release) {
-      throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
-    }
-
-    await lockTransaction(
-      tx,
-      laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
-    );
-    const currentRelease = await findCurrentRelease(
-      tx,
-      input.appId,
-      release.channel,
-      release.bundle.runtimeVersion,
-    );
-    if (release.revertedAt || currentRelease?.id !== release.id || !isRolling(release)) {
-      throw new OtaKitServiceError(
-        'ROLLOUT_NOT_ACTIVE',
-        release.revertedAt
-          ? 'Release is reverted'
-          : currentRelease?.id !== release.id
-            ? 'Release is no longer current on this lane'
-            : 'This release already reaches every device',
-        409,
-        'Only the current release of a lane can change its rollout while it is below 100%.',
+      await lockTransaction(
+        tx,
+        laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
       );
-    }
-    if (input.expectedPercent !== undefined && input.expectedPercent !== release.rolloutPercent) {
-      throw new OtaKitServiceError(
-        'STALE_RELEASE_STATE',
-        `The rollout is at ${release.rolloutPercent}%, not ${input.expectedPercent}%`,
-        409,
-        'Read the release state again and review the new percentage.',
+      // `release` was read before the lane lock and may be stale (a concurrent
+      // change can have completed or moved the rollout); decide on the lane's
+      // current release as read under the lock.
+      const current = await findCurrentRelease(
+        tx,
+        input.appId,
+        release.channel,
+        release.bundle.runtimeVersion,
       );
-    }
-    if (input.percent === release.rolloutPercent) {
-      throw new OtaKitServiceError(
-        'INVALID_INPUT',
-        `The rollout is already at ${release.rolloutPercent}%`,
-        400,
-      );
-    }
+      if (!current || current.id !== release.id || !isRolling(current)) {
+        throw new OtaKitServiceError(
+          'ROLLOUT_NOT_ACTIVE',
+          current?.id === release.id
+            ? 'This release already reaches every device'
+            : 'Release is no longer current on this lane',
+          409,
+          'Only the current release of a lane can change its rollout while it is below 100%.',
+        );
+      }
+      if (input.expectedPercent !== undefined && input.expectedPercent !== current.rolloutPercent) {
+        throw new OtaKitServiceError(
+          'STALE_RELEASE_STATE',
+          `The rollout is at ${current.rolloutPercent}%, not ${input.expectedPercent}%`,
+          409,
+          'Read the release state again and review the new percentage.',
+        );
+      }
+      if (input.percent === current.rolloutPercent) {
+        throw new OtaKitServiceError(
+          'ROLLOUT_UNCHANGED',
+          `The rollout is already at ${current.rolloutPercent}%`,
+          409,
+        );
+      }
 
-    const updatedRelease = await tx.release.update({
-      where: { id: release.id },
-      data: { rolloutPercent: input.percent },
-      include: releaseWithBundlesInclude,
-    });
-
-    const mutationId = randomUUID();
-    const initialResult: UpdateRolloutResult = {
-      operationId: mutationId,
-      idempotencyKey,
-      publicationStatus: 'manifest_sync_pending',
-      release: toReleaseSummary(updatedRelease),
-      previousPercent: release.rolloutPercent,
-    };
-    const mutation = await tx.releaseMutation.create({
-      data: {
-        id: mutationId,
-        organizationId: input.organizationId,
-        actorKey: keyActor,
-        operation,
-        idempotencyKey,
-        requestHash,
-        status: 'database_committed',
-        appId: input.appId,
-        releaseId: release.id,
-        channel: release.channel,
-        runtimeVersion: release.bundle.runtimeVersion,
-        result: jsonValue(initialResult),
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
-      },
-    });
-    return { mutation, created: true };
-  }, RELEASE_TRANSACTION_OPTIONS);
-
-  let result = storedResult<UpdateRolloutResult>(transactionResult.mutation);
-  if (transactionResult.mutation.status === 'published') {
-    return result;
-  }
-
-  if (transactionResult.created) {
-    await recordAuditLog({
-      organizationId: input.organizationId,
-      actor: input.actor,
+      const updatedRelease = await tx.release.update({
+        where: { id: current.id },
+        data: { rolloutPercent: input.percent },
+        include: releaseWithBundlesInclude,
+      });
+      return {
+        lane: {
+          releaseId: current.id,
+          channel: current.channel,
+          runtimeVersion: current.bundle.runtimeVersion,
+        },
+        result: {
+          release: toReleaseSummary(updatedRelease),
+          previousPercent: current.rolloutPercent,
+        },
+      };
+    },
+    audit: (result) => ({
       action: 'release.rollout_updated',
       targetType: 'release',
       targetId: result.release.id,
@@ -1367,11 +1366,8 @@ export async function updateRollout(
         idempotencyKey,
         ...input.auditMetadata,
       },
-    });
-  }
-
-  result = await finishManifestSync(database, transactionResult.mutation, result, syncManifest);
-  return result;
+    }),
+  });
 }
 
 export function rolloutsUnavailable(): OtaKitServiceError {
@@ -1393,6 +1389,19 @@ export async function revertReleaseLegacy(input: RevertReleaseInput): Promise<Re
       'The current release changed after it was reviewed',
       409,
     );
+  }
+  if (input.expectedRolloutPercent !== undefined) {
+    const release = await db.release.findFirst({
+      where: { id: input.releaseId, appId: input.appId },
+      select: { rolloutPercent: true },
+    });
+    if (release && release.rolloutPercent !== input.expectedRolloutPercent) {
+      throw new OtaKitServiceError(
+        'STALE_RELEASE_STATE',
+        `The rollout is at ${release.rolloutPercent}%, not ${input.expectedRolloutPercent}%`,
+        409,
+      );
+    }
   }
   const outcome = await revertCurrentRelease({
     appId: input.appId,

@@ -36,6 +36,7 @@ import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
+import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import type {
   ApiError,
@@ -263,10 +264,6 @@ function parseIntegerInRange(raw: string, min: number, max: number): number | nu
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return value >= min && value <= max ? value : null;
-}
-
-function isActiveRollout(release: ReleaseHistoryItem | null | undefined): boolean {
-  return release != null && release.revertedAt === null && release.rolloutPercent < 100;
 }
 
 /** The chosen rollout percentage, or null while a custom value is invalid. */
@@ -686,7 +683,7 @@ export function ProductDashboard({
           getReleaseTargetKey(releaseSelectedTarget.channel, releaseSelectedTarget.runtimeVersion),
         ) ?? null)
       : null;
-  const releaseLaneRollout = isActiveRollout(releaseLaneCurrent) ? releaseLaneCurrent : null;
+  const releaseLaneRollout = isRolling(releaseLaneCurrent) ? releaseLaneCurrent : null;
   // The first release on a lane has nothing to fall back to, so it goes to everyone.
   const releaseCanRollOut = releaseLaneCurrent !== null;
   const releaseRolloutValue = !releaseConfirm
@@ -971,7 +968,7 @@ export function ProductDashboard({
                 autoRevertMinSample: autoRevert.minSample,
               }
             : {}),
-          ...(rollout.percent < 100 ? { rolloutPercent: rollout.percent } : {}),
+          ...(rollout.percent < FULL_ROLLOUT_PERCENT ? { rolloutPercent: rollout.percent } : {}),
           ...(rollout.replace ? { replaceRollout: true } : {}),
         }),
       });
@@ -987,7 +984,7 @@ export function ProductDashboard({
         );
       } else {
         toast.success(
-          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}${rollout.percent < 100 ? ` for ${rollout.percent}% of devices` : ''}`,
+          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}${rollout.percent < FULL_ROLLOUT_PERCENT ? ` for ${rollout.percent}% of devices` : ''}`,
         );
       }
       trackConversion('release_created');
@@ -1041,7 +1038,7 @@ export function ProductDashboard({
       currentVersion: row.bundleVersion,
       previousVersion: row.previousBundleVersion ?? null,
       forceImmediate: false,
-      rolloutPercent: isActiveRollout(row) ? row.rolloutPercent : null,
+      rolloutPercent: isRolling(row) ? row.rolloutPercent : null,
     });
   }
 
@@ -1085,7 +1082,7 @@ export function ProductDashboard({
         );
       } else {
         toast.success(
-          rolloutChangeValue === 100
+          rolloutChangeValue === FULL_ROLLOUT_PERCENT
             ? `${release.bundleVersion} now goes to every device`
             : `${release.bundleVersion} now goes to ${rolloutChangeValue}% of devices`,
         );
@@ -1114,6 +1111,10 @@ export function ProductDashboard({
           },
           body: JSON.stringify({
             expectedCurrentReleaseId: revertConfirm.releaseId,
+            // Cancelling a rollout: refused if it completed or changed meanwhile.
+            ...(revertConfirm.rolloutPercent !== null
+              ? { expectedRolloutPercent: revertConfirm.rolloutPercent }
+              : {}),
             ...(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
           }),
         },
@@ -1566,9 +1567,9 @@ export function ProductDashboard({
                                                   const laneCurrent = laneCurrentByKey.get(tKey);
                                                   const isLaneCurrent =
                                                     rel != null && laneCurrent?.id === rel.id;
-                                                  const rolling = isActiveRollout(rel) ? rel : null;
+                                                  const rolling = isRolling(rel) ? rel : null;
                                                   const rollingAbove =
-                                                    !isLaneCurrent && isActiveRollout(laneCurrent)
+                                                    !isLaneCurrent && isRolling(laneCurrent)
                                                       ? laneCurrent
                                                       : null;
                                                   const detail = `Channel: ${entry.channel ?? 'base'}${rolling ? ` · rolling out to ${rolling.rolloutPercent}% of devices` : ''}${rollingAbove ? ` · other devices while ${rollingAbove.bundleVersion} rolls out` : ''}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}${rel?.autoRevert ? ` · auto-revert at ≥${rel.autoRevertRatePercent}% of ≥${rel.autoRevertMinSample} devices` : ''}`;
@@ -2316,7 +2317,7 @@ export function ProductDashboard({
                 hint={
                   !releaseCanRollOut
                     ? 'The first release on a channel goes to every device.'
-                    : releaseRolloutValue !== null && releaseRolloutValue < 100
+                    : releaseRolloutValue !== null && releaseRolloutValue < FULL_ROLLOUT_PERCENT
                       ? 'Devices on OtaKit plugin 3.1 or later are picked at random. Older plugin versions get this release when the rollout completes.'
                       : null
                 }
@@ -2600,11 +2601,11 @@ export function ProductDashboard({
                   )
                 }
                 hint={
-                  rolloutChangeValue === 100
+                  rolloutChangeValue === FULL_ROLLOUT_PERCENT
                     ? 'Every device receives this release, including older plugin versions.'
                     : rolloutChangeValue !== null &&
                         rolloutChangeValue < rolloutChange.release.rolloutPercent
-                      ? 'Devices outside the new share return to the previous release on their next check.'
+                      ? 'Devices outside the new share return to the previous release after their next check. A device that already downloaded this bundle may run it once more first.'
                       : null
                 }
               />
@@ -2631,7 +2632,7 @@ export function ProductDashboard({
                   <LoaderCircle className="size-3.5 animate-spin" />
                   Saving...
                 </>
-              ) : rolloutChangeValue === 100 ? (
+              ) : rolloutChangeValue === FULL_ROLLOUT_PERCENT ? (
                 <>
                   <Check className="size-3.5" />
                   Complete rollout

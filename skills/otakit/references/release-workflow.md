@@ -49,8 +49,9 @@ completes. The first release on a lane must be 100%.
   the rolling release. Ask before replacing; `prepare_release` warns about it.
 - Change the share with `set_rollout_percent`, passing the percentage you showed
   as `expectedPercent`. 100 completes the rollout; a completed rollout is final.
-- Cancel a rollout with `prepare_revert` and `revert_release`; every device
-  returns to the previous release.
+- Cancel a rollout with `prepare_revert` and `revert_release`, passing the
+  reviewed percentage as `expectedRolloutPercent` so a rollout that completed
+  meanwhile is not reverted; every device returns to the previous release.
 - When a rolling release looks healthy, propose the next step (for example
   10% → 25% → 100%) and wait for approval. At low percentages auto-revert and
   health need longer to reach their minimum sample.

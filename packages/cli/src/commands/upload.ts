@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 
 import { ApiClient } from '../lib/api.js';
-import { checkCompatibilityAgainstChannel, findCurrentLaneRelease } from '../lib/compat-check.js';
+import { checkCompatibilityAgainstChannel, findLaneState } from '../lib/compat-check.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import {
@@ -170,9 +170,9 @@ export const uploadCommand = new Command('upload')
       // upload without --release is checked against the base channel.
       const targetChannel = releaseChannel === undefined ? null : releaseChannel;
       const checksCompatibility = nativePackages !== undefined && !options.ignoreCompat;
-      const currentRelease =
+      const lane =
         checksCompatibility || releaseChannel !== undefined
-          ? await findCurrentLaneRelease(api, targetChannel, config.runtimeVersion)
+          ? await findLaneState(api, targetChannel, config.runtimeVersion)
           : null;
 
       if (nativePackages && checksCompatibility) {
@@ -181,7 +181,7 @@ export const uploadCommand = new Command('upload')
           channel: targetChannel,
           runtimeVersion: config.runtimeVersion,
           nativePackages,
-          currentRelease,
+          baseline: lane?.stable ?? null,
         });
 
         if (result.status === 'incompatible') {
@@ -221,9 +221,16 @@ export const uploadCommand = new Command('upload')
           ? undefined
           : parseRolloutPercent(options.rollout, '--rollout');
       const replaceRollout = options.replaceRollout === true && releaseChannel !== undefined;
-      if (releaseChannel !== undefined) {
-        const conflict = findRolloutConflict(currentRelease, { rolloutPercent, replaceRollout });
+      if (releaseChannel !== undefined && lane) {
+        const conflict = findRolloutConflict(lane, { rolloutPercent, replaceRollout });
         if (conflict) throw rolloutConflictError(conflict, releaseChannel);
+      }
+      if (rolloutPercent !== undefined && rolloutPercent < 100) {
+        if ((await api.supportsRollouts()) === false) {
+          throw new CliError(
+            'This OtaKit server does not have percentage rollouts enabled (OTAKIT_RELEASE_RELIABILITY_ENABLED). Release without --rollout.',
+          );
+        }
       }
       const autoRevertRatePercent = parseAutoRevertThreshold(
         options.autoRevertRate,

@@ -956,7 +956,7 @@ Response
 
 ### PATCH /api/v1/apps/:appId/releases/:releaseId/rollout
 
-Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert.
+Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert, optionally with expectedRolloutPercent so the revert is refused if the rollout completed or changed meanwhile.
 - Auth: Bearer
 
 Request body
@@ -1422,7 +1422,7 @@ Rollouts need `@otakit/capacitor-updater` 3.1 or later on the device. Channels c
 
 ### How devices are selected
 - Each installation keeps a random secret that never leaves the device. For every rollout it derives a number from 1 to 100 and takes the rolling release when that number is within the percentage.
-- The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering it moves the extra devices back to the previous release on their next check.
+- The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering it moves the extra devices back to the previous release after their next check. A device that already downloaded the rolling bundle may run it once more before switching back, which also applies when a rollout is cancelled.
 - Each rollout draws new numbers, so the same devices are not always first.
 - No device identifiers are collected. The percentage and the rolling release are part of the signed manifest.
 - Devices on plugin versions before 3.1 ignore rollouts and stay on the previous release until the rollout completes.

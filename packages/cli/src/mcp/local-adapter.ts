@@ -4,6 +4,8 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   PublicToolError,
   getToolDefinition,
+  rolloutChangeSummary,
+  rolloutShareText,
   rolloutWarnings,
   toolEnvelope,
   type OtaKitToolAdapter,
@@ -14,7 +16,7 @@ import {
 import type { ServerContext } from '@modelcontextprotocol/server';
 
 import { ApiClient, OtaKitApiError, type ReleaseResult } from '../lib/api.js';
-import { checkCompatibilityAgainstChannel, findCurrentLaneRelease } from '../lib/compat-check.js';
+import { checkCompatibilityAgainstChannel, findLaneState } from '../lib/compat-check.js';
 import {
   readProjectConfig,
   resolveConfigSnapshot,
@@ -553,11 +555,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private releaseResultEnvelope(result: ReleaseResult, appId: string): ToolEnvelope {
     const pending = result.publicationStatus === 'manifest_sync_pending';
-    const percent = result.release.rolloutPercent ?? 100;
     return toolEnvelope(
       pending
         ? `Release ${result.release.id} is recorded, but manifest synchronization is pending.`
-        : `Published release ${result.release.id}${percent < 100 ? ` to ${percent}% of devices` : ''}.`,
+        : `Published release ${result.release.id}${rolloutShareText(result.release.rolloutPercent)}.`,
       json(result),
       {
         warnings: pending
@@ -647,20 +648,12 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
   private async revertRelease(input: JsonObject): Promise<ToolEnvelope> {
     this.requireReliableReleaseWrites();
     const appId = this.resolveAppId(input);
-    const releaseId = stringInput(input, 'releaseId');
-    const result = await this.api(appId).request<
-      JsonObject & { publicationStatus: 'published' | 'manifest_sync_pending'; operationId: string }
-    >(
-      `/api/v1/apps/${encodeURIComponent(appId)}/releases/${encodeURIComponent(releaseId)}/revert`,
-      {
-        method: 'POST',
-        headers: { 'Idempotency-Key': stringInput(input, 'idempotencyKey') },
-        body: JSON.stringify({
-          expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
-          forceImmediate: booleanInput(input, 'forceImmediate'),
-        }),
-      },
-    );
+    const result = await this.api(appId).revertRelease(stringInput(input, 'releaseId'), {
+      expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
+      expectedRolloutPercent: numberInput(input, 'expectedRolloutPercent'),
+      forceImmediate: booleanInput(input, 'forceImmediate'),
+      idempotencyKey: stringInput(input, 'idempotencyKey'),
+    });
     const pending = result.publicationStatus === 'manifest_sync_pending';
     return toolEnvelope(
       pending
@@ -686,21 +679,12 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       idempotencyKey: stringInput(input, 'idempotencyKey'),
     });
     const pending = result.publicationStatus === 'manifest_sync_pending';
-    const percent = result.release.rolloutPercent;
-    return toolEnvelope(
-      pending
-        ? 'Rollout change is recorded, but manifest synchronization is pending.'
-        : percent === 100
-          ? `Completed the rollout of ${result.release.bundleVersion}; every device now receives it.`
-          : `Rollout of ${result.release.bundleVersion} changed from ${result.previousPercent}% to ${percent}%.`,
-      json(result),
-      {
-        warnings: pending
-          ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
-          : [],
-        links: [this.appLink(appId, 'View rollout')],
-      },
-    );
+    return toolEnvelope(rolloutChangeSummary(result), json(result), {
+      warnings: pending
+        ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
+        : [],
+      links: [this.appLink(appId, 'View rollout')],
+    });
   }
 
   private async inspectProject(): Promise<ToolEnvelope> {
@@ -814,9 +798,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       ? (optionalString(input, 'compatibilityDecision') ?? 'block')
       : undefined;
     const api = this.api(appId);
-    const currentRelease = publish
-      ? await findCurrentLaneRelease(api, channel, runtimeVersion)
-      : null;
+    const lane = publish ? await findLaneState(api, channel, runtimeVersion) : null;
     const compatibility = publish
       ? compatibilityDecision === 'skip'
         ? ({ status: 'skipped', findings: [] } as const)
@@ -825,7 +807,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
             channel,
             runtimeVersion,
             nativePackages,
-            currentRelease,
+            baseline: lane?.stable ?? null,
           })
       : ({ status: 'not_checked', reason: 'upload_only', findings: [] } as const);
     if (publish && compatibility.status === 'incompatible' && compatibilityDecision !== 'proceed') {
@@ -835,9 +817,9 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         'Review check_compatibility. Use compatibilityDecision="proceed" only with explicit approval, or "skip" only when the user explicitly asks to bypass the check.',
       );
     }
-    if (publish) {
+    if (lane) {
       const options = this.releaseOptions(input);
-      const conflict = findRolloutConflict(currentRelease, {
+      const conflict = findRolloutConflict(lane, {
         rolloutPercent: options.rolloutPercent,
         replaceRollout: options.replaceRollout === true,
       });
@@ -929,7 +911,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       publish
         ? pending
           ? `Uploaded ${result.bundle.version}; release is recorded but manifest synchronization is pending.`
-          : `Uploaded and published bundle ${result.bundle.version}${(release?.release.rolloutPercent ?? 100) < 100 ? ` to ${release?.release.rolloutPercent}% of devices` : ''}.`
+          : `Uploaded and published bundle ${result.bundle.version}${rolloutShareText(release?.release.rolloutPercent)}.`
         : `Uploaded bundle ${result.bundle.version} without publishing it.`,
       json({
         bundle: result.bundle,

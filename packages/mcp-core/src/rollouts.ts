@@ -1,5 +1,25 @@
 type LaneRelease = { bundleVersion?: string; rolloutPercent?: number } | null | undefined;
 
+/** " to 10% of devices" for a rollout; empty when the release reaches every device. */
+export function rolloutShareText(percent: number | undefined): string {
+  return percent !== undefined && percent < 100 ? ` to ${percent}% of devices` : '';
+}
+
+/** The summary line for a rollout percentage change. */
+export function rolloutChangeSummary(result: {
+  publicationStatus: string;
+  previousPercent: number;
+  release: { bundleVersion?: string; rolloutPercent?: number };
+}): string {
+  const version = result.release.bundleVersion ?? 'the release';
+  if (result.publicationStatus === 'manifest_sync_pending') {
+    return 'Rollout change is recorded, but manifest synchronization is pending.';
+  }
+  return result.release.rolloutPercent === 100
+    ? `Completed the rollout of ${version}; every device now receives it.`
+    : `Rollout of ${version} changed from ${result.previousPercent}% to ${result.release.rolloutPercent}%.`;
+}
+
 /** Rollout consequences a reviewer must see before approving a publish. */
 export function rolloutWarnings(
   currentRelease: LaneRelease,

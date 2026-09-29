@@ -148,7 +148,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "previousPercent": 10,
   "publicationStatus": "published"
 }`}
-          description="Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert."
+          description="Change the percentage of an active rollout. Only the current release of a lane can change while it is below 100%, and a completed rollout stays complete. To cancel a rollout, revert the release: POST /api/v1/apps/:appId/releases/:releaseId/revert, optionally with expectedRolloutPercent so the revert is refused if the rollout completed or changed meanwhile."
         />
         <Endpoint
           method="GET"

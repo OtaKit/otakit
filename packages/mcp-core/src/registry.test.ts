@@ -79,6 +79,21 @@ describe('OtaKit MCP tool catalog', () => {
     expect(byName.get('set_rollout_percent')?.inputSchema.safeParse(rolloutChange).success).toBe(
       true,
     );
+    const cancel = {
+      appId: rolloutChange.appId,
+      releaseId: rolloutChange.releaseId,
+      expectedCurrentReleaseId: rolloutChange.releaseId,
+      idempotencyKey: 'cancel-attempt-1',
+    };
+    expect(byName.get('revert_release')?.inputSchema.safeParse(cancel).success).toBe(true);
+    expect(
+      byName.get('revert_release')?.inputSchema.safeParse({ ...cancel, expectedRolloutPercent: 10 })
+        .success,
+    ).toBe(true);
+    expect(
+      byName.get('revert_release')?.inputSchema.safeParse({ ...cancel, expectedRolloutPercent: 0 })
+        .success,
+    ).toBe(false);
     for (const invalid of [
       { ...rolloutChange, percent: 0 },
       { ...rolloutChange, percent: 101 },

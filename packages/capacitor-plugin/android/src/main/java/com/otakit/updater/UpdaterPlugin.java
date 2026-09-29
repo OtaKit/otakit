@@ -629,6 +629,8 @@ public class UpdaterPlugin extends Plugin {
     Object raw = call.getData().opt("channel");
     if (raw == null || raw == org.json.JSONObject.NULL) {
       store.setOverrideChannel(null);
+      // The last check's rollout belongs to the previous channel.
+      lastRollout = null;
       call.resolve();
       return;
     }
@@ -646,6 +648,7 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     store.setOverrideChannel(name);
+    lastRollout = null;
     call.resolve();
   }
 

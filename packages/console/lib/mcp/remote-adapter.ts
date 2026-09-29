@@ -1,6 +1,8 @@
 import {
   PublicToolError,
   getToolDefinition,
+  rolloutChangeSummary,
+  rolloutShareText,
   rolloutWarnings,
   toolEnvelope,
   type OtaKitToolAdapter,
@@ -450,12 +452,10 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       auditMetadata: invocationMetadata(this.connection),
     });
     const pending = result.publicationStatus === 'manifest_sync_pending';
-    const share =
-      result.release.rolloutPercent < 100 ? ` to ${result.release.rolloutPercent}% of devices` : '';
     return toolEnvelope(
       pending
         ? 'Release is recorded, but manifest synchronization is pending.'
-        : `Published release ${result.release.id}${share}.`,
+        : `Published release ${result.release.id}${rolloutShareText(result.release.rolloutPercent)}.`,
       json(result),
       {
         warnings: pending
@@ -554,6 +554,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
       idempotencyKey: stringInput(input, 'idempotencyKey'),
       forceImmediate: booleanInput(input, 'forceImmediate'),
+      expectedRolloutPercent: numberInput(input, 'expectedRolloutPercent'),
       auditMetadata: invocationMetadata(this.connection),
     });
     const pending = result.publicationStatus === 'manifest_sync_pending';
@@ -586,19 +587,10 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       auditMetadata: invocationMetadata(this.connection),
     });
     const pending = result.publicationStatus === 'manifest_sync_pending';
-    const percent = result.release.rolloutPercent;
-    return toolEnvelope(
-      pending
-        ? 'Rollout change is recorded, but manifest synchronization is pending.'
-        : percent === 100
-          ? `Completed the rollout of ${result.release.bundleVersion}; every device now receives it.`
-          : `Rollout of ${result.release.bundleVersion} changed from ${result.previousPercent}% to ${percent}%.`,
-      json(result),
-      {
-        warnings: pending
-          ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
-          : [],
-      },
-    );
+    return toolEnvelope(rolloutChangeSummary(result), json(result), {
+      warnings: pending
+        ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
+        : [],
+    });
   }
 }

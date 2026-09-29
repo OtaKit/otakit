@@ -283,7 +283,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     name: 'revert_release',
     title: 'Revert an OtaKit release',
     description:
-      'Revert the reviewed current release for its exact lane. Requires expected state and an idempotency key and reports pending manifest synchronization truthfully.',
+      'Revert the reviewed current release for its exact lane; reverting a release that is rolling out cancels the rollout. Requires expected state and an idempotency key and reports pending manifest synchronization truthfully.',
     modes: both,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
@@ -291,6 +291,11 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       expectedCurrentReleaseId: releaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
       forceImmediate: z.boolean().optional(),
+      expectedRolloutPercent: rolloutPercentSchema
+        .optional()
+        .describe(
+          'When cancelling a rollout: the rollout percentage that was reviewed. The revert is refused if the rollout changed or completed meanwhile.',
+        ),
     }),
     annotations: destructive,
     oauthScopes: ['otakit:release:write'],

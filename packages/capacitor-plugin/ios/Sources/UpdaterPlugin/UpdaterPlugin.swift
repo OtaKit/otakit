@@ -483,6 +483,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     let raw = call.options["channel"]
     if raw == nil || raw is NSNull {
       store.setOverrideChannel(nil)
+      // The last check's rollout belongs to the previous channel.
+      rememberRollout(nil)
       call.resolve()
       return
     }
@@ -497,6 +499,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return
     }
     store.setOverrideChannel(name)
+    rememberRollout(nil)
     call.resolve()
   }
 

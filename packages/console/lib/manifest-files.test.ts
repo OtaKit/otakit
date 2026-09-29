@@ -5,16 +5,21 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const storage = vi.hoisted(() => ({
   putTextObject: vi.fn(),
   getTextObject: vi.fn(),
+  listStorageKeys: vi.fn(),
+}));
+const database = vi.hoisted(() => ({
+  app: { findUnique: vi.fn() },
+  release: { findMany: vi.fn() },
 }));
 
-vi.mock('@/lib/db', () => ({ db: {} }));
+vi.mock('@/lib/db', () => ({ db: database }));
 vi.mock('@/lib/cdn-purge', () => ({ purgeCdnUrls: vi.fn() }));
 vi.mock('@/lib/storage', () => ({
   buildFileObjectKey: (appId: string, sha256: string) => `files/${appId}/${sha256}`,
   buildPublicObjectUrl: (key: string) => `https://cdn.test/${key}`,
   deleteStorageObject: vi.fn(),
   getTextObject: storage.getTextObject,
-  listStorageKeys: vi.fn(),
+  listStorageKeys: storage.listStorageKeys,
   putTextObject: storage.putTextObject,
 }));
 
@@ -23,7 +28,8 @@ vi.stubEnv('MANIFEST_SIGNING_DISABLED', '');
 vi.stubEnv('MANIFEST_SIGNING_KID', 'test-kid');
 vi.stubEnv('MANIFEST_SIGNING_KEY', privateKey.export({ type: 'pkcs8', format: 'pem' }) as string);
 
-const { resolveLaneManifest, writeManifestFile } = await import('./manifest-files');
+const { resolveLaneManifest, restoreManifestFilesForApp, writeManifestFile } =
+  await import('./manifest-files');
 const { buildCanonicalPayload, buildRolloutPayload } = await import('./manifest-signing');
 
 type Signature = { kid: string; sig: string; iat: number; exp: number };
@@ -211,5 +217,25 @@ describe('writeManifestFile', () => {
       ],
     });
     expect(manifest.rollout).not.toHaveProperty('url');
+  });
+});
+
+describe('restoreManifestFilesForApp', () => {
+  it('restores every healthy lane even when one lane cannot be published', async () => {
+    storage.putTextObject.mockReset();
+    storage.listStorageKeys.mockResolvedValue([]);
+    database.app.findUnique.mockResolvedValue({ organization: { usageBlocked: false } });
+    database.release.findMany.mockResolvedValue([
+      { ...release('r', 10), channel: 'broken' },
+      { ...release('s', 100), channel: 'production' },
+    ]);
+
+    await expect(restoreManifestFilesForApp('app-1')).rejects.toThrow(
+      /Could not restore 1 manifest\(s\) for app app-1: .*without a stable release/,
+    );
+    expect(storage.putTextObject).toHaveBeenCalledTimes(1);
+    expect(storage.putTextObject.mock.calls[0][0]).toMatchObject({
+      storageKey: 'manifests/app-1/production/rt-1/manifest.json',
+    });
   });
 });

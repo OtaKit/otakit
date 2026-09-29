@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { db } from '@/lib/db';
 import { signManifest, signRollout } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
+import { isRolling } from '@/lib/rollouts';
 import { type DeltaFileEntry } from '@/lib/delta-files';
 import {
   buildFileObjectKey,
@@ -101,7 +102,7 @@ export function resolveLaneManifest<T extends ManifestRelease>(
   if (!current) {
     return null;
   }
-  if (current.rolloutPercent >= 100) {
+  if (!isRolling(current)) {
     return { stable: current, rolling: null };
   }
   if (!previous) {
@@ -299,8 +300,6 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
     return;
   }
 
-  await deleteAllManifestFilesForApp(appId);
-
   const releases = await db.release.findMany({
     where: {
       appId,
@@ -312,16 +311,41 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
 
   // Newest first, so each lane's list starts with its current release; a
   // lane manifest never needs more than its two newest releases.
-  const lanes = new Map<string, typeof releases>();
+  const laneReleases = new Map<string, typeof releases>();
   for (const release of releases) {
     const laneKey = `${getManifestChannelKey(release.channel)}:${getManifestRuntimeVersionKey(release.bundle.runtimeVersion)}`;
-    const laneReleases = lanes.get(laneKey) ?? [];
-    if (laneReleases.length < 2) laneReleases.push(release);
-    lanes.set(laneKey, laneReleases);
+    const list = laneReleases.get(laneKey) ?? [];
+    if (list.length < 2) list.push(release);
+    laneReleases.set(laneKey, list);
   }
-  for (const laneReleases of lanes.values()) {
-    const lane = resolveLaneManifest(laneReleases);
-    if (!lane) continue;
-    await writeManifestFile(appId, lane.stable.channel, lane.stable.bundle.runtimeVersion, lane);
+
+  // One broken lane must not leave every other lane of the app without a
+  // manifest: resolve all lanes before deleting, write each independently,
+  // and report the failures together.
+  const failures: string[] = [];
+  const lanes: Array<{ channel: string | null; manifest: LaneManifest }> = [];
+  for (const list of laneReleases.values()) {
+    try {
+      const manifest = resolveLaneManifest(list);
+      if (manifest) lanes.push({ channel: list[0].channel, manifest });
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  await deleteAllManifestFilesForApp(appId);
+
+  for (const { channel, manifest } of lanes) {
+    try {
+      await writeManifestFile(appId, channel, manifest.stable.bundle.runtimeVersion, manifest);
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Could not restore ${failures.length} manifest(s) for app ${appId}: ${failures.join('; ')}`,
+    );
   }
 }

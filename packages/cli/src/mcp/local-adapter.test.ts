@@ -7,13 +7,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   checkCompatibilityAgainstChannel: vi.fn(),
-  findCurrentLaneRelease: vi.fn(),
+  findLaneState: vi.fn(),
   runUploadWorkflow: vi.fn(),
 }));
 
 vi.mock('../lib/compat-check.js', () => ({
   checkCompatibilityAgainstChannel: mocks.checkCompatibilityAgainstChannel,
-  findCurrentLaneRelease: mocks.findCurrentLaneRelease,
+  findLaneState: mocks.findLaneState,
 }));
 vi.mock('../lib/upload-workflow.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/upload-workflow.js')>();
@@ -233,15 +233,26 @@ describe('local OtaKit MCP adapter', () => {
 
   it('blocks an upload before it starts when publishing would collide with a rollout', async () => {
     const root = await fixture();
-    mocks.findCurrentLaneRelease.mockResolvedValue({
-      id: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2',
+    const stable = {
+      id: '0f5c1f55-9d3a-4a36-9b0e-6d7f2b1c0a01',
       channel: 'staging',
       runtimeVersion: 'ios-1',
-      bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
-      bundleVersion: '1.4.2',
-      rolloutPercent: 10,
-      promotedAt: '2026-09-29T00:00:00.000Z',
+      bundleId: '5cb6b30f-54c6-434f-8fe3-fc20a345852f',
+      bundleVersion: '1.4.1',
+      rolloutPercent: 100,
+      promotedAt: '2026-09-28T00:00:00.000Z',
       revertedAt: null,
+    };
+    mocks.findLaneState.mockResolvedValue({
+      current: {
+        ...stable,
+        id: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2',
+        bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+        bundleVersion: '1.4.2',
+        rolloutPercent: 10,
+      },
+      stable,
+      complete: true,
     });
     mocks.checkCompatibilityAgainstChannel.mockResolvedValue({
       status: 'compatible',
@@ -264,8 +275,9 @@ describe('local OtaKit MCP adapter', () => {
         } as never,
       ),
     ).rejects.toMatchObject({ code: 'ROLLOUT_IN_PROGRESS' });
+    // Native changes are compared with the stable release most devices run.
     expect(mocks.checkCompatibilityAgainstChannel).toHaveBeenCalledWith(
-      expect.objectContaining({ currentRelease: expect.objectContaining({ rolloutPercent: 10 }) }),
+      expect.objectContaining({ baseline: stable }),
     );
     expect(mocks.runUploadWorkflow).not.toHaveBeenCalled();
   });

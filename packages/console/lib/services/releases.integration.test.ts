@@ -527,7 +527,8 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
         code: 'STALE_RELEASE_STATE',
       });
       await expect(setPercent(rolling.release.id, 10)).rejects.toMatchObject({
-        code: 'INVALID_INPUT',
+        code: 'ROLLOUT_UNCHANGED',
+        status: 409,
       });
       await expect(setPercent(rolling.release.id, 0)).rejects.toMatchObject({
         code: 'INVALID_INPUT',
@@ -551,6 +552,94 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       await expect(
         db.auditLog.count({ where: { organizationId, action: 'release.rollout_updated' } }),
       ).resolves.toBe(1);
+    });
+
+    it('decides concurrent rollout changes on the state read under the lane lock', async () => {
+      await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+
+      const outcomes = await Promise.allSettled([
+        setPercent(rolling.release.id, 100, 10),
+        setPercent(rolling.release.id, 25, 10),
+      ]);
+
+      // Both reviewed 10%; only one change may apply, and a completed rollout
+      // must never be reopened by the other.
+      expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes.find((outcome) => outcome.status === 'rejected')).toMatchObject({
+        reason: expect.objectContaining({
+          code: expect.stringMatching(/^(ROLLOUT_NOT_ACTIVE|STALE_RELEASE_STATE)$/),
+        }),
+      });
+      const stored = await db.release.findUniqueOrThrow({ where: { id: rolling.release.id } });
+      const applied = outcomes.find((outcome) => outcome.status === 'fulfilled') as
+        | PromiseFulfilledResult<Awaited<ReturnType<typeof setPercent>>>
+        | undefined;
+      expect(stored.rolloutPercent).toBe(applied?.value.release.rolloutPercent);
+      await expect(
+        db.auditLog.count({ where: { organizationId, action: 'release.rollout_updated' } }),
+      ).resolves.toBe(1);
+    });
+
+    it('refuses to cancel a rollout that completed or changed after it was reviewed', async () => {
+      await publish(0);
+      const rolling = await publish(1, { rolloutPercent: 10 });
+      await setPercent(rolling.release.id, 100, 10);
+
+      await expect(
+        revertRelease(
+          {
+            organizationId,
+            actor,
+            appId,
+            releaseId: rolling.release.id,
+            expectedCurrentReleaseId: rolling.release.id,
+            expectedRolloutPercent: 10,
+            idempotencyKey: randomUUID(),
+          },
+          { syncManifest },
+        ),
+      ).rejects.toMatchObject({ code: 'STALE_RELEASE_STATE' });
+      await expect(
+        db.release.findUniqueOrThrow({ where: { id: rolling.release.id } }),
+      ).resolves.toMatchObject({ revertedAt: null, rolloutPercent: 100 });
+    });
+
+    it('checks native compatibility against the stable release during a rollout', async () => {
+      const nativeSet = (checksum: string) => [
+        { name: '@capacitor/core', version: '7.0.0', iosChecksum: checksum },
+      ];
+      await db.bundle.update({
+        where: { id: bundleIds[0] },
+        data: { nativePackages: nativeSet('store-build') },
+      });
+      await db.bundle.update({
+        where: { id: bundleIds[1] },
+        data: { nativePackages: nativeSet('changed') },
+      });
+      await db.bundle.update({
+        where: { id: bundleIds[2] },
+        data: { nativePackages: nativeSet('changed') },
+      });
+      await publish(0);
+      await publish(1, {
+        rolloutPercent: 10,
+        enforceCompatibility: true,
+        compatibilityDecision: 'proceed',
+      });
+
+      // Same native set as the rolling release, but not as the stable one the
+      // other 90% of devices run and this release would fall back to.
+      const preview = await prepareRelease({
+        organizationId,
+        appId,
+        bundleId: bundleIds[2],
+        channel: 'production',
+      });
+      expect(preview.compatibility.status).toBe('incompatible');
+      await expect(
+        publish(2, { replaceRollout: true, enforceCompatibility: true }),
+      ).rejects.toMatchObject({ code: 'INCOMPATIBLE_NATIVE_CHANGE' });
     });
 
     it('cancels a rollout by reverting it, which returns the lane to stable', async () => {
@@ -592,6 +681,21 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
           { syncManifest },
         ),
       ).rejects.toMatchObject({ code: 'ROLLOUTS_UNAVAILABLE' });
+
+      // replaceRollout on its own is harmless on a lane without a rollout.
+      await expect(
+        publishReleaseLegacy(
+          {
+            organizationId,
+            actor,
+            appId,
+            bundleId: bundleIds[0],
+            channel: 'legacy-lane',
+            replaceRollout: true,
+          },
+          { syncManifest },
+        ),
+      ).resolves.toMatchObject({ publicationStatus: 'published' });
 
       await publish(0);
       await publish(1, { rolloutPercent: 10 });

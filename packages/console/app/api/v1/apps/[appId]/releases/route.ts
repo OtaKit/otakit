@@ -5,12 +5,8 @@ import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
 import { serviceErrorResponse } from '@/lib/services/http';
-import {
-  isRolloutPercent,
-  listReleases,
-  publishRelease,
-  publishReleaseLegacy,
-} from '@/lib/services/releases';
+import { isRolloutPercent } from '@/lib/rollouts';
+import { listReleases, publishRelease, publishReleaseLegacy } from '@/lib/services/releases';
 import {
   isValidChannelName,
   normalizeOptionalChannel,

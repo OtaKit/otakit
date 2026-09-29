@@ -3,6 +3,7 @@ import type { EventCountSummary } from '@/app/components/dashboard-types';
 
 import { db } from '@/lib/db';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
+import { isRolling } from '@/lib/rollouts';
 import { createEmptyEventCounts, getBundleEventCounts } from '@/lib/tinybird/events';
 
 export const runtime = 'nodejs';
@@ -177,7 +178,7 @@ export async function GET(
     const live = liveByTarget.get(targetKey) ?? [];
     if (
       release.revertedAt === null &&
-      (live.length === 0 || (live.length === 1 && live[0].rolloutPercent < 100))
+      (live.length === 0 || (live.length === 1 && isRolling(live[0])))
     ) {
       live.push({
         channel: target.channel,

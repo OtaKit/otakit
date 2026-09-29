@@ -372,6 +372,22 @@ export class ApiClient {
     });
   }
 
+  /**
+   * Whether the server accepts percentage rollouts, or null when it cannot
+   * say (an older server without the context endpoint).
+   */
+  async supportsRollouts(): Promise<boolean | null> {
+    try {
+      const context = await this.request<{ capabilities?: { releaseReliability?: unknown } }>(
+        `/api/v1/context?${new URLSearchParams({ appId: this.appId }).toString()}`,
+      );
+      const supported = context.capabilities?.releaseReliability;
+      return typeof supported === 'boolean' ? supported : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Change an active rollout's percentage; 100 completes it. */
   async updateRollout(
     releaseId: string,
@@ -386,12 +402,22 @@ export class ApiClient {
 
   async revertRelease(
     releaseId: string,
-    options?: { expectedCurrentReleaseId?: string; idempotencyKey?: string },
+    options?: {
+      expectedCurrentReleaseId?: string;
+      /** Cancelling a rollout: refused unless the release is still at this share. */
+      expectedRolloutPercent?: number;
+      forceImmediate?: boolean;
+      idempotencyKey?: string;
+    },
   ): Promise<RevertResult> {
     return this.request(this.appPath(`/releases/${encodeURIComponent(releaseId)}/revert`), {
       method: 'POST',
       headers: { 'Idempotency-Key': options?.idempotencyKey ?? randomUUID() },
-      body: JSON.stringify({ expectedCurrentReleaseId: options?.expectedCurrentReleaseId }),
+      body: JSON.stringify({
+        expectedCurrentReleaseId: options?.expectedCurrentReleaseId,
+        expectedRolloutPercent: options?.expectedRolloutPercent,
+        forceImmediate: options?.forceImmediate,
+      }),
     });
   }
 
