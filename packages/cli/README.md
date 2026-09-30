@@ -115,6 +115,8 @@ release made with `--rollout <percent>` reaches that share of devices on plugin
 - `otakit upload --release --auto-revert [--auto-revert-rate <1-95>] [--auto-revert-min-sample <10-100000>]` — server reverts the release if too many devices roll back within 24h (defaults: 20% of ≥50)
 - `otakit release [bundleId] [--channel <channel>] [--rollout <percent>] [--replace-rollout]`
 - `otakit rollout [releaseId] [--channel <channel> | --base] [--percent <n> | --complete | --cancel]` — show or change active rollouts
+- `otakit preview [bundleId] [--expires <1h|24h|7d|30d>] [--scheme <scheme>]` — private link and QR code that open a bundle in the installed app (plugin 3.2+, `previewLinks: true`); `--list`, `--revoke <previewId>`
+- `otakit upload --preview` — upload, then print a preview link and QR code
 - `otakit releases [--channel <channel> | --base]`
 - `otakit list`
 - `otakit delete <bundleId> --force`
