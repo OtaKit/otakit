@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   buildPublicObjectUrl: vi.fn(),
   accessActor: vi.fn(),
   recordAuditLog: vi.fn(),
+  endBundlePreviews: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -26,6 +27,7 @@ vi.mock('@/lib/audit-log', () => ({
   accessActor: mocks.accessActor,
   recordAuditLog: mocks.recordAuditLog,
 }));
+vi.mock('./previews', () => ({ endBundlePreviews: mocks.endBundlePreviews }));
 
 import { deleteBundle } from './bundles';
 
@@ -73,6 +75,11 @@ describe('bundle services', () => {
     });
 
     expect(result).toEqual({ deleted: true, id: 'bundle-1', storageDeleted: true });
+    // Preview manifests point at the bundle's storage object, so they go first.
+    expect(mocks.endBundlePreviews).toHaveBeenCalledWith('bundle-1');
+    expect(mocks.endBundlePreviews.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.deleteBundleRow.mock.invocationCallOrder[0],
+    );
     expect(mocks.deleteBundleRow).toHaveBeenCalledWith({ where: { id: 'bundle-1' } });
     expect(mocks.recordAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: { appId: 'app-1', version: '1.0.0', client: 'mcp' } }),

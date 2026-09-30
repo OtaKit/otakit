@@ -17,6 +17,7 @@ import {
   rolloutConflictError,
   rolloutSuffix,
 } from '../lib/rollout.js';
+import { renderPreview } from '../lib/preview.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
 import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
 
@@ -37,6 +38,7 @@ type UploadOptions = {
   autoRevertMinSample?: string;
   rollout?: string;
   replaceRollout?: boolean;
+  preview?: boolean;
   encrypt?: boolean;
   strictArtifacts?: boolean;
 };
@@ -125,6 +127,10 @@ export const uploadCommand = new Command('upload')
   .option(
     '--replace-rollout',
     "With --release: cancel the channel's active rollout and release this bundle in its place",
+  )
+  .option(
+    '--preview',
+    'Also create a preview link and QR code for the uploaded bundle (see `otakit preview`)',
   )
   .option(
     '--encrypt',
@@ -296,6 +302,19 @@ export const uploadCommand = new Command('upload')
         );
       } else {
         spinner.succeed(`Uploaded ${bundle.version} (${bundle.id}).`);
+      }
+
+      if (options.preview) {
+        // The upload (and release) already succeeded; a missing preview link only warns.
+        try {
+          const { preview } = await api.createPreview(bundle.id);
+          console.log(await renderPreview(preview));
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          console.warn(
+            `Warning: the preview link was not created: ${reason}\nRetry with \`otakit preview ${bundle.id}\`.`,
+          );
+        }
       }
     });
   });

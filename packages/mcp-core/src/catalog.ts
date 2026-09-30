@@ -9,6 +9,7 @@ import {
   expectedCurrentReleaseIdSchema,
   idempotencyKeySchema,
   paginationShape,
+  previewIdSchema,
   releaseIdSchema,
   releaseOptionsShape,
   rolloutPercentSchema,
@@ -316,6 +317,45 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       ),
       idempotencyKey: idempotencyKeySchema,
     }),
+    annotations: destructive,
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'create_preview',
+    title: 'Create an OtaKit preview link',
+    description:
+      'Create a private link and QR code that open an uploaded bundle in the installed app on one phone (plugin 3.2+ with preview links enabled) until the tester exits or the link expires. Nothing is released and no other device is affected. Share the returned url.',
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      bundleId: bundleIdSchema,
+      expiresIn: z
+        .enum(['1h', '24h', '7d', '30d'])
+        .optional()
+        .describe('How long the link works (default 7d)'),
+      urlScheme: z
+        .string()
+        .trim()
+        .min(1)
+        .max(40)
+        .regex(/^[A-Za-z][A-Za-z0-9+.-]*(:\/\/)?$/)
+        .optional()
+        .describe(
+          "The app's custom URL scheme (for example myapp), needed once per app so the link can open it",
+        ),
+    }),
+    annotations: write,
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'revoke_preview',
+    title: 'Revoke an OtaKit preview link',
+    description:
+      'Revoke a preview link. Phones on it return to their normal release on their next update check.',
+    modes: both,
+    inputSchema: z.object({ appId: resolvedAppIdSchema, previewId: previewIdSchema }),
     annotations: destructive,
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,

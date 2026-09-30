@@ -56,6 +56,20 @@ completes. The first release on a lane must be 100%.
   10% → 25% → 100%) and wait for approval. At low percentages auto-revert and
   health need longer to reach their minimum sample.
 
+## Preview links
+
+A preview link opens one bundle in the installed app on a tester's phone
+without releasing it (plugin 3.2+, `previewLinks: true`, and a custom URL
+scheme in the app). No other device is affected, so no release approval is
+needed; still say which bundle the link opens and how long it lasts.
+
+- `create_preview` with the bundle ID; pass `urlScheme` the first time for an
+  app, and `expiresIn` (`1h`, `24h`, `7d` default, `30d`) when asked. Give the
+  user the returned `url`; it shows a QR code and the buttons that open the app.
+- Anyone with the link and a build that accepts previews can open it. Do not
+  post it anywhere public, and suggest `revoke_preview` when testing is done.
+- An app has at most 20 active links; `PREVIEW_LIMIT_REACHED` means revoke some.
+
 ## Revert
 
 Read the exact current state and call `prepare_revert`. Show the current release,

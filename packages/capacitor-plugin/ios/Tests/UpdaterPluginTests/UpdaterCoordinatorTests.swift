@@ -362,20 +362,20 @@ final class CoordinatorFixture {
     bundle.isBuiltin || indexExists(bundle.id)
   }
 
-  func stage(_ id: String) throws {
+  func stage(_ id: String, channel: String? = nil) throws {
     let directory = store.bundleDirectory(for: id)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     try Data(id.utf8).write(to: indexURL(id))
     let bundle = BundleInfo(
       id: id, version: id, runtimeVersion: nil, status: .pending, downloadedAt: Date(),
-      sha256: "hash-\(id)", path: directory.path, channel: nil, releaseId: "release-\(id)"
+      sha256: "hash-\(id)", path: directory.path, channel: channel, releaseId: "release-\(id)"
     )
     coordinator.cleanupBundles(try coordinator.stageDownloadedBundle(bundle))
   }
 
   @discardableResult
-  func apply(_ id: String) throws -> UpdaterCoordinator.ApplyPreparation {
-    try stage(id)
+  func apply(_ id: String, channel: String? = nil) throws -> UpdaterCoordinator.ApplyPreparation {
+    try stage(id, channel: channel)
     let result = try coordinator.prepareApplyStaged(
       isCompatibleRuntime: { _ in true }, isBundleUsable: isUsable
     )
@@ -384,8 +384,8 @@ final class CoordinatorFixture {
     return result
   }
 
-  func installHealthy(_ id: String) throws {
-    let applied = try apply(id)
+  func installHealthy(_ id: String, channel: String? = nil) throws {
+    let applied = try apply(id, channel: channel)
     XCTAssertTrue(applied.didApply)
     let ready = try coordinator.prepareNotifyAppReady(activationId: trial?.activationId)
     XCTAssertNotNil(ready.eventPayload)

@@ -67,7 +67,8 @@ class BundleInfo {
       object.put("sha256", sha256);
     }
     if (channel != null) {
-      object.put("channel", channel);
+      // JS may forward this to logs or analytics: never expose a preview token.
+      object.put("channel", Preview.reportedChannel(channel));
     }
     if (releaseId != null) {
       object.put("releaseId", releaseId);

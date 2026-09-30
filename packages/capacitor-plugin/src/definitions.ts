@@ -75,6 +75,14 @@ export interface RolloutState {
   included: boolean;
 }
 
+/** An active preview link (see `previewLinks`). */
+export interface PreviewInfo {
+  /** ISO timestamp when the preview was opened */
+  startedAt: string;
+  /** Version of the previewed bundle, once it is running */
+  version?: string;
+}
+
 export interface OtaKitState {
   current: BundleInfo;
   fallback: BundleInfo;
@@ -82,6 +90,8 @@ export interface OtaKitState {
   builtinVersion: string;
   /** The active rollout seen by the last check in this session, or null when there is none. */
   rollout: RolloutState | null;
+  /** The active preview link, or null when the app runs its normal release. */
+  preview: PreviewInfo | null;
 }
 
 export type OtaKitPolicy = 'off' | 'shadow' | 'apply-staged' | 'immediate';
@@ -163,6 +173,15 @@ export interface UpdateFailedEvent {
   reason: string;
 }
 
+/** A preview link could not be opened. */
+export interface PreviewFailedEvent {
+  /**
+   * `unavailable`: expired, revoked, or built for another runtime version.
+   * `busy`: another update operation did not finish in time; open the link again.
+   */
+  reason: 'unavailable' | 'download_failed' | 'busy';
+}
+
 /**
  * Update lifecycle events emitted by the plugin.
  *
@@ -176,7 +195,8 @@ export type OtaKitEventName =
   | 'updateStaged'
   | 'updateApplied'
   | 'downloadFailed'
-  | 'rollback';
+  | 'rollback'
+  | 'previewFailed';
 
 /**
  * Plugin configuration for capacitor.config.ts.
@@ -218,6 +238,13 @@ export interface OtaKitConfig {
   bundleKeys?: OtaKitBundleKey[];
   /** Allow HTTP only for localhost development. Defaults to false. */
   allowInsecureUrls?: boolean;
+  /**
+   * Open preview links (`<your-scheme>://otakit-preview?token=…`) from the
+   * dashboard, CLI or an agent: the app runs that bundle until the tester
+   * exits or the link expires. Needs a custom URL scheme. Defaults to false,
+   * so only builds that opt in accept previews.
+   */
+  previewLinks?: boolean;
 }
 
 export interface OtaKitPlugin {
@@ -313,6 +340,19 @@ export interface OtaKitPlugin {
     eventName: 'rollback',
     listenerFunc: (event: UpdateFailedEvent) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'previewFailed',
+    listenerFunc: (event: PreviewFailedEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * End the active preview link and return to the normal release.
+   *
+   * **WARNING: TERMINAL OPERATION** when a preview bundle is running: the
+   * WebView reloads into the release and this call does not resolve back
+   * into the old JS context.
+   */
+  stopPreview(): Promise<void>;
 
   /**
    * Remove all registered event listeners.
@@ -330,6 +370,7 @@ export interface OtaKitBridgePlugin {
   getLastFailure(): Promise<BundleInfo | null>;
   setChannel(options: { channel: string | null }): Promise<void>;
   getChannel(): Promise<ChannelInfo>;
+  stopPreview(): Promise<void>;
   addListener(
     eventName: OtaKitEventName,
     listenerFunc: (event: unknown) => void,

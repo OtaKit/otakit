@@ -29,6 +29,8 @@ final class BundleStore {
   private static final String KEY_LAST_RESOLVED_RUNTIME_KEY = "last_resolved_runtime_key";
   private static final String KEY_OVERRIDE_CHANNEL = "override_channel";
   private static final String KEY_ASSIGNMENT_SECRET = "assignment_secret";
+  private static final String KEY_PREVIEW = "preview";
+  private static final String KEY_PREVIEW_LAUNCH_TASK = "preview_launch_task";
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -307,6 +309,33 @@ final class BundleStore {
     secret = java.util.UUID.randomUUID().toString().replace("-", "");
     prefs.edit().putString(KEY_ASSIGNMENT_SECRET, secret).commit();
     return secret;
+  }
+
+  synchronized Preview.State getPreview() {
+    return Preview.State.fromJson(prefs.getString(KEY_PREVIEW, null));
+  }
+
+  synchronized void setPreview(Preview.State preview) {
+    SharedPreferences.Editor editor = prefs.edit();
+    try {
+      if (preview == null) {
+        editor.remove(KEY_PREVIEW);
+      } else {
+        editor.putString(KEY_PREVIEW, preview.toJson());
+      }
+    } catch (Exception error) {
+      editor.remove(KEY_PREVIEW);
+    }
+    editor.commit();
+  }
+
+  /** The task whose launch intent already opened its preview link; -1 when none. */
+  synchronized int getPreviewLaunchTask() {
+    return prefs.getInt(KEY_PREVIEW_LAUNCH_TASK, -1);
+  }
+
+  synchronized void setPreviewLaunchTask(int taskId) {
+    prefs.edit().putInt(KEY_PREVIEW_LAUNCH_TASK, taskId).commit();
   }
 
   synchronized String getLastResolvedRuntimeKey() {

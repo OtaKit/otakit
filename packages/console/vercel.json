@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/push",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/previews",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

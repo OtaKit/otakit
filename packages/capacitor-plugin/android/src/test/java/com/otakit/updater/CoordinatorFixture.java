@@ -77,6 +77,10 @@ final class CoordinatorFixture {
   }
 
   void stage(String id) throws Exception {
+    stage(id, null);
+  }
+
+  void stage(String id, String channel) throws Exception {
     File directory = store.bundleDirectory(id);
     assertTrue(directory.mkdirs() || directory.isDirectory());
     Files.write(indexFile(id).toPath(), id.getBytes(StandardCharsets.UTF_8));
@@ -88,14 +92,18 @@ final class CoordinatorFixture {
       System.currentTimeMillis(),
       "hash-" + id,
       directory.getAbsolutePath(),
-      null,
+      channel,
       "release-" + id
     );
     coordinator.cleanupBundles(coordinator.stageDownloadedBundle(bundle));
   }
 
   UpdaterCoordinator.ApplyPreparation apply(String id) throws Exception {
-    stage(id);
+    return apply(id, null);
+  }
+
+  UpdaterCoordinator.ApplyPreparation apply(String id, String channel) throws Exception {
+    stage(id, channel);
     var result = coordinator.prepareApplyStaged(bundle -> true, this::isUsable);
     if (result.trial != null) trial = result.trial;
     coordinator.cleanupBundles(result.cleanupBundleIds);
@@ -103,7 +111,11 @@ final class CoordinatorFixture {
   }
 
   void installHealthy(String id) throws Exception {
-    assertTrue(apply(id).didApply());
+    installHealthy(id, null);
+  }
+
+  void installHealthy(String id, String channel) throws Exception {
+    assertTrue(apply(id, channel).didApply());
     var ready = coordinator.prepareNotifyAppReady(trial.activationId);
     assertNotNull(ready.eventPayload);
     coordinator.cleanupBundles(ready.cleanupBundleIds);

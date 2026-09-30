@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isReleasableChannelName,
   isValidAppSlug,
   isValidChannelName,
   normalizeOptionalChannel,
@@ -14,6 +15,15 @@ describe('console validation', () => {
     expect(isValidChannelName('staging')).toBe(true);
     expect(isValidChannelName('base')).toBe(true);
     expect(isValidChannelName('default')).toBe(true);
+  });
+
+  it('reserves preview channels for preview links but still lets filters name them', () => {
+    expect(isReleasableChannelName('__preview')).toBe(false);
+    expect(isReleasableChannelName('__preview_abcdefghijklmnopqrstuvwxyz')).toBe(false);
+    expect(isReleasableChannelName('__PREVIEW_x')).toBe(false);
+    expect(isReleasableChannelName('preview')).toBe(true);
+    expect(isReleasableChannelName('_preview')).toBe(true);
+    expect(isValidChannelName('__preview')).toBe(true);
   });
 
   it('validates app slugs and positive integer fields', () => {

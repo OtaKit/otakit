@@ -18,6 +18,8 @@ export const OTAKIT_TOOL_NAMES = [
   'prepare_revert',
   'revert_release',
   'set_rollout_percent',
+  'create_preview',
+  'revoke_preview',
   'inspect_project',
   'check_compatibility',
   'upload_bundle',
@@ -82,6 +84,7 @@ export const resolvedAppIdSchema = appIdSchema
   );
 export const bundleIdSchema = z.string().uuid().describe('OtaKit bundle ID');
 export const releaseIdSchema = z.string().uuid().describe('OtaKit release ID');
+export const previewIdSchema = z.string().uuid().describe('OtaKit preview link ID');
 export const channelSchema = z
   .string()
   .regex(/^[A-Za-z0-9._-]{1,64}$/)

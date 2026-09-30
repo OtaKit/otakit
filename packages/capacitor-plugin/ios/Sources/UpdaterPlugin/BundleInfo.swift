@@ -46,7 +46,8 @@ struct BundleInfo: Codable {
       result["sha256"] = sha256
     }
     if let channel {
-      result["channel"] = channel
+      // JS may forward this to logs or analytics: never expose a preview token.
+      result["channel"] = PreviewLink.reportedChannel(channel)
     }
     if let releaseId {
       result["releaseId"] = releaseId

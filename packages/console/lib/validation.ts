@@ -43,6 +43,11 @@ export function isValidChannelName(channel: string): boolean {
   return CHANNEL_NAME_REGEX.test(channel);
 }
 
+/** Channels a release can target: `__preview…` names belong to preview links. */
+export function isReleasableChannelName(channel: string): boolean {
+  return isValidChannelName(channel) && !channel.toLowerCase().startsWith('__preview');
+}
+
 export function normalizeOptionalChannel(channel: unknown): string | null {
   if (typeof channel !== 'string') {
     return null;

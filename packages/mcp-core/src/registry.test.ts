@@ -9,11 +9,11 @@ import { createOtaKitMcpServer } from './registry';
 
 describe('OtaKit MCP tool catalog', () => {
   it('defines every planned tool exactly once and keeps local/remote mode boundaries', () => {
-    expect(OTAKIT_TOOL_CATALOG).toHaveLength(21);
-    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(21);
+    expect(OTAKIT_TOOL_CATALOG).toHaveLength(23);
+    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(23);
     expect(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).toEqual([...OTAKIT_TOOL_NAMES]);
-    expect(toolDefinitionsForMode('local')).toHaveLength(21);
-    expect(toolDefinitionsForMode('remote')).toHaveLength(17);
+    expect(toolDefinitionsForMode('local')).toHaveLength(23);
+    expect(toolDefinitionsForMode('remote')).toHaveLength(19);
     expect(toolDefinitionsForMode('remote').map((tool) => tool.name)).not.toContain(
       'inspect_project',
     );
@@ -47,6 +47,32 @@ describe('OtaKit MCP tool catalog', () => {
       destructiveHint: true,
       idempotentHint: true,
     });
+    expect(byName.get('create_preview')?.annotations).toMatchObject({
+      destructiveHint: false,
+      idempotentHint: false,
+    });
+    expect(byName.get('revoke_preview')?.annotations).toMatchObject({
+      destructiveHint: true,
+      idempotentHint: true,
+    });
+    const previewInput = {
+      appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+      bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+    };
+    for (const valid of [
+      previewInput,
+      { ...previewInput, expiresIn: '24h', urlScheme: 'myapp' },
+      { ...previewInput, urlScheme: 'MyApp://' },
+    ]) {
+      expect(byName.get('create_preview')?.inputSchema.safeParse(valid).success).toBe(true);
+    }
+    for (const invalid of [
+      { ...previewInput, expiresIn: '2d' },
+      { ...previewInput, urlScheme: '1app' },
+      { ...previewInput, urlScheme: 'my app' },
+    ]) {
+      expect(byName.get('create_preview')?.inputSchema.safeParse(invalid).success).toBe(false);
+    }
     expect(byName.get('upload_bundle')?.annotations).toMatchObject({
       destructiveHint: false,
       idempotentHint: false,
@@ -185,7 +211,7 @@ describe('OtaKit MCP registry transport', () => {
     const listed = await client.listTools();
     expect(client.getInstructions()).toContain('Uploading a bundle does not publish it.');
     expect(client.getInstructions()).toContain('remote connection');
-    expect(listed.tools).toHaveLength(17);
+    expect(listed.tools).toHaveLength(19);
     expect(listed.tools.find((tool) => tool.name === 'get_context')).toMatchObject({
       annotations: { readOnlyHint: true },
     });

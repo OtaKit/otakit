@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import { db } from '@/lib/db';
 import { signManifest, signRollout } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
+import { previewChannel } from '@/lib/preview-links';
 import { isRolling } from '@/lib/rollouts';
 import { type DeltaFileEntry } from '@/lib/delta-files';
 import {
@@ -46,21 +47,21 @@ export type LaneManifest = {
   rolling: ManifestRelease | null;
 };
 
+export const manifestBundleSelect = {
+  version: true,
+  sha256: true,
+  size: true,
+  runtimeVersion: true,
+  strategy: true,
+  storageKey: true,
+  encryption: true,
+} satisfies Prisma.BundleSelect;
+
 const manifestReleaseSelect = {
   id: true,
   forceImmediate: true,
   rolloutPercent: true,
-  bundle: {
-    select: {
-      version: true,
-      sha256: true,
-      size: true,
-      runtimeVersion: true,
-      strategy: true,
-      storageKey: true,
-      encryption: true,
-    },
-  },
+  bundle: { select: manifestBundleSelect },
 } satisfies Prisma.ReleaseSelect;
 
 export function getManifestChannelKey(channel: string | null): string {
@@ -215,6 +216,29 @@ async function buildManifestEntry(appId: string, release: ManifestRelease) {
   };
 }
 
+/**
+ * Publish a preview's bundle on its hidden channel: an ordinary signed
+ * manifest whose release ID names the preview, so device events identify it.
+ */
+export async function writePreviewManifestFile(
+  appId: string,
+  preview: { id: string; token: string },
+  bundle: ManifestBundle,
+): Promise<void> {
+  await writeManifestFile(appId, previewChannel(preview.token), bundle.runtimeVersion, {
+    stable: { id: `preview_${preview.id}`, forceImmediate: false, rolloutPercent: 100, bundle },
+    rolling: null,
+  });
+}
+
+export async function deletePreviewManifestFile(
+  appId: string,
+  preview: { token: string },
+  runtimeVersion: string | null,
+): Promise<void> {
+  await deleteManifestFile(appId, previewChannel(preview.token), runtimeVersion);
+}
+
 export async function deleteManifestFile(
   appId: string,
   channel: string | null,
@@ -338,6 +362,26 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
   for (const { channel, manifest } of lanes) {
     try {
       await writeManifestFile(appId, channel, manifest.stable.bundle.runtimeVersion, manifest);
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Active preview links were deleted with the app's manifests; bring them back.
+  const previews = await db.bundlePreview.findMany({
+    where: { appId, endedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true, token: true, bundle: { select: manifestBundleSelect } },
+  });
+  for (const preview of previews) {
+    try {
+      await writePreviewManifestFile(appId, preview, preview.bundle);
+      // A revoke or expiry that ran meanwhile already deleted this manifest.
+      const stillActive = await db.bundlePreview.count({
+        where: { id: preview.id, endedAt: null, expiresAt: { gt: new Date() } },
+      });
+      if (!stillActive) {
+        await deletePreviewManifestFile(appId, preview, preview.bundle.runtimeVersion);
+      }
     } catch (error) {
       failures.push(error instanceof Error ? error.message : String(error));
     }

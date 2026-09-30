@@ -310,6 +310,61 @@ final class UpdaterCoordinator {
     });
   }
 
+  /** True until the running bundle's trial has an outcome (ready or rolled back). */
+  boolean isCurrentInTrial() {
+    return withStateLock(() -> store.getCurrentBundle().status == BundleStatus.TRIAL);
+  }
+
+  static final class LeavePreviewPreparation {
+
+    /** Null activates the built-in bundle. */
+    final String activationPath;
+    final List<String> cleanupBundleIds;
+
+    LeavePreviewPreparation(String activationPath, List<String> cleanupBundleIds) {
+      this.activationPath = activationPath;
+      this.cleanupBundleIds = cleanupBundleIds;
+    }
+  }
+
+  /**
+   * Leave a preview bundle when the app's channel has nothing to stage: return to the bundle the
+   * device ran before the preview (kept as the fallback), or to the built-in bundle.
+   */
+  LeavePreviewPreparation prepareLeavePreview(BundlePredicate isBundleUsable) {
+    return withStateLock(() -> {
+      BundleInfo current = store.getCurrentBundle();
+      BundleInfo restored = store.builtinBundle();
+      String fallbackId = store.getFallbackBundleId();
+      BundleInfo fallback = fallbackId == null ? null : store.getBundle(fallbackId);
+      if (
+        fallback != null &&
+        !fallback.isBuiltin() &&
+        !fallback.id.equals(current.id) &&
+        fallback.status == BundleStatus.SUCCESS &&
+        !Preview.isPreviewChannel(fallback.channel) &&
+        isBundleUsable.test(fallback)
+      ) {
+        restored = fallback;
+      }
+      Set<String> ids = new LinkedHashSet<>();
+      for (String id : new String[] {
+        store.getCurrentBundleId(),
+        store.getFallbackBundleId(),
+        store.getStagedBundleId(),
+      }) {
+        if (id != null && !"builtin".equals(id) && !id.equals(restored.id)) ids.add(id);
+      }
+      String restoredId = restored.isBuiltin() ? null : restored.id;
+      store.setCoreState(restoredId, restoredId, null, store.getLastFailedBundle());
+      activeTrial = null;
+      return new LeavePreviewPreparation(
+        restored.isBuiltin() ? null : restored.path,
+        new ArrayList<>(ids)
+      );
+    });
+  }
+
   boolean isRuntimeUnresolved(String currentRuntimeKey) {
     return withStateLock(() ->
       !java.util.Objects.equals(store.getLastResolvedRuntimeKey(), currentRuntimeKey)
@@ -400,11 +455,21 @@ final class UpdaterCoordinator {
         return new ApplyPreparation(null, null, new ArrayList<>(cleanupBundleIds));
       }
 
-      String fallbackId = previousCurrent.isBuiltin()
-        ? null
-        : (previousCurrent.status == BundleStatus.SUCCESS
+      String fallbackId;
+      if (previousCurrent.isBuiltin()) {
+        fallbackId = null;
+      } else if (Preview.isPreviewChannel(previousCurrent.channel)) {
+        // A preview never becomes the fallback: keep the bundle from before it.
+        fallbackId = store.getFallbackBundleId();
+        if (!previousCurrent.id.equals(staged.id) && !previousCurrent.id.equals(fallbackId)) {
+          cleanupBundleIds.add(previousCurrent.id);
+        }
+      } else {
+        fallbackId =
+          previousCurrent.status == BundleStatus.SUCCESS
             ? previousCurrent.id
-            : store.getFallbackBundleId());
+            : store.getFallbackBundleId();
+      }
       if (staged.status == BundleStatus.PENDING) {
         staged = updateStatusLocked(staged, BundleStatus.TRIAL);
       }
@@ -434,11 +499,14 @@ final class UpdaterCoordinator {
       if (current.status == BundleStatus.TRIAL) {
         updateStatusLocked(current, BundleStatus.SUCCESS);
       }
-      store.setFallbackBundleId(current.id);
+      // A healthy preview keeps the bundle from before it as the fallback, so leaving the preview
+      // can return there.
+      boolean isPreview = Preview.isPreviewChannel(current.channel);
+      if (!isPreview) store.setFallbackBundleId(current.id);
       activeTrial = null;
 
       Set<String> cleanupBundleIds = new LinkedHashSet<>();
-      if (oldFallbackId != null && !oldFallbackId.equals(current.id)) {
+      if (!isPreview && oldFallbackId != null && !oldFallbackId.equals(current.id)) {
         cleanupBundleIds.add(oldFallbackId);
       }
 
