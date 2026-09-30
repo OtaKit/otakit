@@ -28,6 +28,7 @@ final class BundleStore {
   private static final String KEY_LAST_FAILED_BUNDLE_INFO = "last_failed_bundle_info";
   private static final String KEY_LAST_RESOLVED_RUNTIME_KEY = "last_resolved_runtime_key";
   private static final String KEY_OVERRIDE_CHANNEL = "override_channel";
+  private static final String KEY_ASSIGNMENT_SECRET = "assignment_secret";
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -292,6 +293,20 @@ final class BundleStore {
       editor.putString(KEY_OVERRIDE_CHANNEL, channel);
     }
     editor.commit();
+  }
+
+  /**
+   * Random per-installation secret that rollout buckets derive from. It is never sent anywhere
+   * or exposed to JavaScript; it survives app updates and resets on reinstall.
+   */
+  synchronized String assignmentSecret() {
+    String secret = prefs.getString(KEY_ASSIGNMENT_SECRET, null);
+    if (secret != null && !secret.isEmpty()) {
+      return secret;
+    }
+    secret = java.util.UUID.randomUUID().toString().replace("-", "");
+    prefs.edit().putString(KEY_ASSIGNMENT_SECRET, secret).commit();
+    return secret;
   }
 
   synchronized String getLastResolvedRuntimeKey() {

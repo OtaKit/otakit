@@ -17,6 +17,7 @@ export const OTAKIT_TOOL_NAMES = [
   'list_audit_log',
   'prepare_revert',
   'revert_release',
+  'set_rollout_percent',
   'inspect_project',
   'check_compatibility',
   'upload_bundle',
@@ -116,7 +117,27 @@ export const releaseOptionsShape = {
     .describe('Enable rollback-share based automatic revert for this release'),
   autoRevertRatePercent: z.number().int().min(1).max(95).optional(),
   autoRevertMinSample: z.number().int().min(10).max(100000).optional(),
+  rolloutPercent: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe(
+      'Share of devices (1-100, default 100) that receive this release; below 100 starts a gradual rollout on a lane that already has a release',
+    ),
+  replaceRollout: z
+    .boolean()
+    .optional()
+    .describe("Revert the lane's active rollout and publish this bundle in its place"),
 };
+
+export const rolloutPercentSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(100)
+  .describe('Rollout percentage (1-100); 100 completes the rollout');
 
 export const paginationShape = {
   cursor: cursorSchema,

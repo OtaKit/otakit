@@ -9,11 +9,11 @@ import { createOtaKitMcpServer } from './registry';
 
 describe('OtaKit MCP tool catalog', () => {
   it('defines every planned tool exactly once and keeps local/remote mode boundaries', () => {
-    expect(OTAKIT_TOOL_CATALOG).toHaveLength(20);
-    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(20);
+    expect(OTAKIT_TOOL_CATALOG).toHaveLength(21);
+    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(21);
     expect(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).toEqual([...OTAKIT_TOOL_NAMES]);
-    expect(toolDefinitionsForMode('local')).toHaveLength(20);
-    expect(toolDefinitionsForMode('remote')).toHaveLength(16);
+    expect(toolDefinitionsForMode('local')).toHaveLength(21);
+    expect(toolDefinitionsForMode('remote')).toHaveLength(17);
     expect(toolDefinitionsForMode('remote').map((tool) => tool.name)).not.toContain(
       'inspect_project',
     );
@@ -43,6 +43,10 @@ describe('OtaKit MCP tool catalog', () => {
       destructiveHint: true,
       idempotentHint: true,
     });
+    expect(byName.get('set_rollout_percent')?.annotations).toMatchObject({
+      destructiveHint: true,
+      idempotentHint: true,
+    });
     expect(byName.get('upload_bundle')?.annotations).toMatchObject({
       destructiveHint: false,
       idempotentHint: false,
@@ -61,8 +65,43 @@ describe('OtaKit MCP tool catalog', () => {
         autoRevert: true,
         autoRevertRatePercent: 20,
         autoRevertMinSample: 50,
+        rolloutPercent: 10,
+        replaceRollout: true,
       }).success,
     ).toBe(true);
+    const rolloutChange = {
+      appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+      releaseId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+      percent: 25,
+      expectedPercent: 10,
+      idempotencyKey: 'rollout-attempt-1',
+    };
+    expect(byName.get('set_rollout_percent')?.inputSchema.safeParse(rolloutChange).success).toBe(
+      true,
+    );
+    const cancel = {
+      appId: rolloutChange.appId,
+      releaseId: rolloutChange.releaseId,
+      expectedCurrentReleaseId: rolloutChange.releaseId,
+      idempotencyKey: 'cancel-attempt-1',
+    };
+    expect(byName.get('revert_release')?.inputSchema.safeParse(cancel).success).toBe(true);
+    expect(
+      byName.get('revert_release')?.inputSchema.safeParse({ ...cancel, expectedRolloutPercent: 10 })
+        .success,
+    ).toBe(true);
+    expect(
+      byName.get('revert_release')?.inputSchema.safeParse({ ...cancel, expectedRolloutPercent: 0 })
+        .success,
+    ).toBe(false);
+    for (const invalid of [
+      { ...rolloutChange, percent: 0 },
+      { ...rolloutChange, percent: 101 },
+      { ...rolloutChange, percent: 12.5 },
+      { ...rolloutChange, expectedPercent: undefined },
+    ]) {
+      expect(byName.get('set_rollout_percent')?.inputSchema.safeParse(invalid).success).toBe(false);
+    }
     expect(
       byName.get('get_release_state')?.inputSchema.safeParse({
         appId: '7bb828f1-797c-4d07-8254-068cac664f69',
@@ -146,7 +185,7 @@ describe('OtaKit MCP registry transport', () => {
     const listed = await client.listTools();
     expect(client.getInstructions()).toContain('Uploading a bundle does not publish it.');
     expect(client.getInstructions()).toContain('remote connection');
-    expect(listed.tools).toHaveLength(16);
+    expect(listed.tools).toHaveLength(17);
     expect(listed.tools.find((tool) => tool.name === 'get_context')).toMatchObject({
       annotations: { readOnlyHint: true },
     });

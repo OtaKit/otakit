@@ -38,6 +38,7 @@ const ACTION_LABELS: Record<string, string> = {
   'bundle.deleted': 'Bundle deleted',
   'release.created': 'Release created',
   'release.reverted': 'Release rolled back',
+  'release.rollout_updated': 'Rollout changed',
   'api_key.created': 'API key created',
   'api_key.revoked': 'API key revoked',
   'member.added': 'Member added',

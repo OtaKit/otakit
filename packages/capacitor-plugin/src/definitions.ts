@@ -58,11 +58,30 @@ export interface LatestVersion {
   forceImmediate?: boolean;
 }
 
+/**
+ * The lane's active percentage rollout, as seen by this device's last manifest
+ * check in this app session.
+ */
+export interface RolloutState {
+  /** Release ID of the rolling release */
+  releaseId: string;
+  /** Version of the rolling release */
+  version: string;
+  /** Share of devices (1-99) the rolling release goes to */
+  percent: number;
+  /** This device's number from 1 to 100 for this rollout */
+  bucket: number;
+  /** True when bucket <= percent, so this device follows the rolling release */
+  included: boolean;
+}
+
 export interface OtaKitState {
   current: BundleInfo;
   fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
+  /** The active rollout seen by the last check in this session, or null when there is none. */
+  rollout: RolloutState | null;
 }
 
 export type OtaKitPolicy = 'off' | 'shadow' | 'apply-staged' | 'immediate';

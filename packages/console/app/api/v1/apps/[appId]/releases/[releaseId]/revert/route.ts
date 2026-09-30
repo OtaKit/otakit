@@ -4,6 +4,7 @@ import { accessActor } from '@/lib/audit-log';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
+import { isRolloutPercent } from '@/lib/rollouts';
 import { serviceErrorResponse } from '@/lib/services/http';
 import { revertRelease, revertReleaseLegacy } from '@/lib/services/releases';
 
@@ -52,6 +53,14 @@ export async function POST(
       ? rawExpectedCurrentReleaseId.trim()
       : rawExpectedCurrentReleaseId;
 
+  const rawExpectedRolloutPercent = body.expectedRolloutPercent;
+  if (rawExpectedRolloutPercent !== undefined && !isRolloutPercent(rawExpectedRolloutPercent)) {
+    return NextResponse.json(
+      { error: 'expectedRolloutPercent must be an integer between 1 and 100' },
+      { status: 400 },
+    );
+  }
+
   const revertedBy = await resolveReleaseActor(access.access);
   try {
     const revert = isReleaseReliabilityEnabled() ? revertRelease : revertReleaseLegacy;
@@ -62,6 +71,7 @@ export async function POST(
       organizationId: access.access.organizationId,
       forceImmediate: rawForceImmediate,
       expectedCurrentReleaseId,
+      expectedRolloutPercent: rawExpectedRolloutPercent,
       idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
     });
 

@@ -1,6 +1,9 @@
 import {
   PublicToolError,
   getToolDefinition,
+  rolloutChangeSummary,
+  rolloutShareText,
+  rolloutWarnings,
   toolEnvelope,
   type OtaKitToolAdapter,
   type OtaKitToolAuthorization,
@@ -26,6 +29,7 @@ import {
   prepareRevert,
   publishRelease,
   revertRelease,
+  updateRollout,
   type ReleaseHealthWindow,
 } from '@/lib/services/releases';
 
@@ -102,6 +106,8 @@ function releaseOptions(input: JsonObject) {
     autoRevert: booleanInput(input, 'autoRevert'),
     autoRevertRatePercent: numberInput(input, 'autoRevertRatePercent'),
     autoRevertMinSample: numberInput(input, 'autoRevertMinSample'),
+    rolloutPercent: numberInput(input, 'rolloutPercent'),
+    replaceRollout: booleanInput(input, 'replaceRollout'),
   };
 }
 
@@ -131,7 +137,10 @@ function canUseTool(connection: RemoteMcpConnection, name: OtaKitToolName): bool
   if (definition.oauthScopes.some((scope) => !connection.scopes.has(scope))) {
     return false;
   }
-  if ((name === 'publish_release' || name === 'revert_release') && !isReleaseReliabilityEnabled()) {
+  if (
+    (name === 'publish_release' || name === 'revert_release' || name === 'set_rollout_percent') &&
+    !isReleaseReliabilityEnabled()
+  ) {
     return false;
   }
   return true;
@@ -203,6 +212,8 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.prepareRevert(input);
         case 'revert_release':
           return await this.revertRelease(input);
+        case 'set_rollout_percent':
+          return await this.setRolloutPercent(input);
         // Unreachable in practice: toolDefinitionsForMode('remote') never
         // registers these, so a caller gets a protocol-level unknown-tool
         // error first. Kept so the switch stays exhaustive over the shared
@@ -402,16 +413,20 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           | 'skip'
           | undefined) ?? 'block',
     });
+    const options = releaseOptions(input);
     return toolEnvelope(
       'Prepared the exact release state without changing it.',
       json({
         ...preview,
         options: {
-          ...releaseOptions(input),
+          ...options,
           compatibilityDecision: optionalString(input, 'compatibilityDecision') ?? 'block',
         },
       }),
-      { nextActions: ['Review this preview, then call publish_release with the same values.'] },
+      {
+        warnings: rolloutWarnings(preview.currentRelease, options),
+        nextActions: ['Review this preview, then call publish_release with the same values.'],
+      },
     );
   }
 
@@ -440,7 +455,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     return toolEnvelope(
       pending
         ? 'Release is recorded, but manifest synchronization is pending.'
-        : `Published release ${result.release.id}.`,
+        : `Published release ${result.release.id}${rolloutShareText(result.release.rolloutPercent)}.`,
       json(result),
       {
         warnings: pending
@@ -539,6 +554,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       expectedCurrentReleaseId: stringInput(input, 'expectedCurrentReleaseId'),
       idempotencyKey: stringInput(input, 'idempotencyKey'),
       forceImmediate: booleanInput(input, 'forceImmediate'),
+      expectedRolloutPercent: numberInput(input, 'expectedRolloutPercent'),
       auditMetadata: invocationMetadata(this.connection),
     });
     const pending = result.publicationStatus === 'manifest_sync_pending';
@@ -555,5 +571,26 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           : [],
       },
     );
+  }
+
+  private async setRolloutPercent(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await updateRollout({
+      organizationId: this.connection.access.organizationId,
+      actor: await accessActor(this.connection.access),
+      appId,
+      releaseId: stringInput(input, 'releaseId'),
+      percent: numberInput(input, 'percent') ?? Number.NaN,
+      expectedPercent: numberInput(input, 'expectedPercent'),
+      idempotencyKey: stringInput(input, 'idempotencyKey'),
+      auditMetadata: invocationMetadata(this.connection),
+    });
+    const pending = result.publicationStatus === 'manifest_sync_pending';
+    return toolEnvelope(rolloutChangeSummary(result), json(result), {
+      warnings: pending
+        ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
+        : [],
+    });
   }
 }

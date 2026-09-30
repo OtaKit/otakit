@@ -43,10 +43,19 @@ otakit upload --encrypt                 # requires OTAKIT_ENCRYPTION_KEY
 
 otakit release <bundleId> --channel production
 otakit release <bundleId>               # base channel
+otakit release <bundleId> --channel production --rollout 10   # 10% of devices first
+
+otakit rollout                                    # active rollouts
+otakit rollout --channel production --percent 50  # raise or lower the share
+otakit rollout --channel production --complete    # every device
+otakit rollout --channel production --cancel      # back to the previous release
 ```
 
 Flags that change device behavior, so show them before running:
 
+- `--rollout <percent>` — release to that share of devices on plugin 3.1+ first.
+- `--replace-rollout` — cancel the channel's active rollout and release this
+  bundle in its place.
 - `--force-immediate` — devices apply and reload on their next check.
 - `--fail-on-incompatible` — exit non-zero when native compatibility fails.
 - `--ignore-compat` — skip the check entirely. Only on explicit instruction.

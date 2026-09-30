@@ -11,6 +11,7 @@ import {
   paginationShape,
   releaseIdSchema,
   releaseOptionsShape,
+  rolloutPercentSchema,
   runtimeVersionSchema,
   uploadShape,
   type OtaKitMcpMode,
@@ -282,7 +283,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     name: 'revert_release',
     title: 'Revert an OtaKit release',
     description:
-      'Revert the reviewed current release for its exact lane. Requires expected state and an idempotency key and reports pending manifest synchronization truthfully.',
+      'Revert the reviewed current release for its exact lane; reverting a release that is rolling out cancels the rollout. Requires expected state and an idempotency key and reports pending manifest synchronization truthfully.',
     modes: both,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
@@ -290,6 +291,30 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       expectedCurrentReleaseId: releaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
       forceImmediate: z.boolean().optional(),
+      expectedRolloutPercent: rolloutPercentSchema
+        .optional()
+        .describe(
+          'When cancelling a rollout: the rollout percentage that was reviewed. The revert is refused if the rollout changed or completed meanwhile.',
+        ),
+    }),
+    annotations: destructive,
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'set_rollout_percent',
+    title: 'Change an OtaKit rollout percentage',
+    description:
+      "Raise, lower, or complete (100) the active rollout of a lane's current release. Requires the reviewed current percentage and an idempotency key. To cancel a rollout, revert the release instead.",
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      releaseId: releaseIdSchema,
+      percent: rolloutPercentSchema,
+      expectedPercent: rolloutPercentSchema.describe(
+        'Rollout percentage shown by get_release_state when the change was reviewed',
+      ),
+      idempotencyKey: idempotencyKeySchema,
     }),
     annotations: destructive,
     oauthScopes: ['otakit:release:write'],

@@ -237,7 +237,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="getState()"
           returns="OtaKitState"
-          description="Inspect the current updater state: current bundle, fallback bundle, staged bundle, and builtin version."
+          description="Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, and the active percentage rollout seen by the last check (plugin 3.1+)."
         />
         <Method
           name="check()"
@@ -395,6 +395,15 @@ interface OtaKitState {
   fallback: BundleInfo;
   staged: BundleInfo | null;
   builtinVersion: string;
+  rollout: RolloutState | null; // plugin 3.1+
+}
+
+interface RolloutState {
+  releaseId: string;
+  version: string;
+  percent: number;   // share of devices (1-99)
+  bucket: number;    // this device's number (1-100) for this rollout
+  included: boolean; // bucket <= percent
 }
 
 interface LatestVersion {

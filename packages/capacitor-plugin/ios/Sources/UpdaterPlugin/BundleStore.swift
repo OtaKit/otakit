@@ -11,6 +11,7 @@ final class BundleStore {
     static let lastFailedBundleInfo = "otakit_last_failed_bundle_info"
     static let lastResolvedRuntimeKey = "otakit_last_resolved_runtime_key"
     static let overrideChannel = "otakit_override_channel"
+    static let assignmentSecret = "otakit_assignment_secret"
   }
 
   private let defaults: UserDefaults
@@ -265,6 +266,20 @@ final class BundleStore {
     } else {
       defaults.removeObject(forKey: Keys.overrideChannel)
     }
+  }
+
+  /// Random per-installation secret that rollout buckets derive from. It is
+  /// never sent anywhere or exposed to JavaScript; it survives app updates
+  /// and resets on reinstall.
+  func assignmentSecret() -> String {
+    persistenceLock.lock()
+    defer { persistenceLock.unlock() }
+    if let secret = defaults.string(forKey: Keys.assignmentSecret), !secret.isEmpty {
+      return secret
+    }
+    let secret = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    defaults.set(secret, forKey: Keys.assignmentSecret)
+    return secret
   }
 
   func getLastResolvedRuntimeKey() -> String? {

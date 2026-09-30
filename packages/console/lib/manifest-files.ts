@@ -1,8 +1,9 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { db } from '@/lib/db';
-import { signManifest } from '@/lib/manifest-signing';
+import { signManifest, signRollout } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
+import { isRolling } from '@/lib/rollouts';
 import { type DeltaFileEntry } from '@/lib/delta-files';
 import {
   buildFileObjectKey,
@@ -32,7 +33,35 @@ type ManifestBundle = {
 type ManifestRelease = {
   id: string;
   forceImmediate: boolean;
+  rolloutPercent: number;
+  bundle: ManifestBundle;
 };
+
+/**
+ * What one lane manifest publishes: the release every device may take, and
+ * optionally a rolling release that only a share of devices takes.
+ */
+export type LaneManifest = {
+  stable: ManifestRelease;
+  rolling: ManifestRelease | null;
+};
+
+const manifestReleaseSelect = {
+  id: true,
+  forceImmediate: true,
+  rolloutPercent: true,
+  bundle: {
+    select: {
+      version: true,
+      sha256: true,
+      size: true,
+      runtimeVersion: true,
+      strategy: true,
+      storageKey: true,
+      encryption: true,
+    },
+  },
+} satisfies Prisma.ReleaseSelect;
 
 export function getManifestChannelKey(channel: string | null): string {
   return channel ?? BASE_CHANNEL_KEY;
@@ -58,67 +87,65 @@ export function buildManifestUrl(
   return buildPublicObjectUrl(buildManifestStorageKey(appId, channel, runtimeVersion));
 }
 
+/**
+ * Resolve a lane's manifest from its non-reverted releases, newest first.
+ *
+ * The current release is rolling when its rolloutPercent is below 100; the
+ * release below it then stays the stable release everyone else receives.
+ * Publishing guarantees that release exists, so a rolling release without
+ * one is refused rather than published to every device.
+ */
+export function resolveLaneManifest<T extends ManifestRelease>(
+  releases: readonly T[],
+): { stable: T; rolling: T | null } | null {
+  const [current, previous] = releases;
+  if (!current) {
+    return null;
+  }
+  if (!isRolling(current)) {
+    return { stable: current, rolling: null };
+  }
+  if (!previous) {
+    throw new Error(
+      `Release ${current.id} is rolling out without a stable release on its lane; refusing to publish its manifest`,
+    );
+  }
+  return { stable: previous, rolling: current };
+}
+
 export async function writeManifestFile(
   appId: string,
   channel: string | null,
   runtimeVersion: string | null,
-  release: ManifestRelease,
-  bundle: ManifestBundle,
+  lane: LaneManifest,
 ): Promise<void> {
   const storageKey = buildManifestStorageKey(appId, channel, runtimeVersion);
-  const strategy = bundle.strategy === 'deltas' ? 'deltas' : 'zip';
-  // Stored as validated at initiate; re-parse defensively. A malformed row
-  // must fail the sync loudly — silently publishing an unencrypted manifest
-  // for an encrypted object would make every device fail extraction.
-  const parsedEncryption = parseBundleEncryption(bundle.encryption);
-  if (parsedEncryption === null) {
-    throw new Error(
-      `Bundle ${bundle.version} has a malformed stored encryption envelope; refusing to publish its manifest`,
-    );
-  }
-  const encryption = parsedEncryption ?? null;
-  const signature = signManifest({
-    appId,
-    channel,
-    version: bundle.version,
-    sha256: bundle.sha256,
-    size: bundle.size,
-    runtimeVersion: bundle.runtimeVersion,
-    strategy,
-    forceImmediate: release.forceImmediate,
-    encryption,
-  });
+  const stable = await buildManifestEntry(appId, lane.stable);
 
   // Every field here that is also in the signed payload (strategy,
   // forceImmediate, encryption, sha256, size, …) must carry the exact same
-  // value passed to signManifest above, or verification fails on-device.
+  // value passed to the signer, or verification fails on-device.
   const manifest: Record<string, unknown> = {
-    version: bundle.version,
-    sha256: bundle.sha256,
-    size: bundle.size,
+    ...stable.fields,
     channel,
-    runtimeVersion: bundle.runtimeVersion,
-    releaseId: release.id,
-    strategy,
-    forceImmediate: release.forceImmediate,
-    encryption,
-    signature,
+    signature: signManifest({ appId, channel, ...stable.signed }),
+    ...stable.location,
   };
 
-  if (strategy === 'deltas') {
-    // The bundle's storage object is the canonical file list written at
-    // finalize; expand it into per-file CDN URLs. sha256 above == filesHash.
-    const fileListRaw = await getTextObject(bundle.storageKey);
-    const fileList = JSON.parse(fileListRaw) as { files: DeltaFileEntry[] };
-    manifest.filesHash = bundle.sha256;
-    manifest.files = fileList.files.map((file) => ({
-      path: file.path,
-      sha256: file.sha256,
-      size: file.size,
-      url: buildPublicObjectUrl(buildFileObjectKey(appId, file.sha256)),
-    }));
-  } else {
-    manifest.url = buildPublicObjectUrl(bundle.storageKey);
+  if (lane.rolling) {
+    // Plugins before 3.1 ignore this key and keep the stable release.
+    const rolling = await buildManifestEntry(appId, lane.rolling);
+    const rollout = {
+      percent: lane.rolling.rolloutPercent,
+      releaseId: lane.rolling.id,
+      stableSha256: lane.stable.bundle.sha256,
+    };
+    manifest.rollout = {
+      ...rolling.fields,
+      ...rollout,
+      signature: signRollout({ appId, channel, ...rolling.signed, ...rollout }),
+      ...rolling.location,
+    };
   }
 
   await putTextObject({
@@ -129,6 +156,63 @@ export async function writeManifestFile(
   });
 
   await purgeCdnUrls([buildPublicObjectUrl(storageKey)]);
+}
+
+async function buildManifestEntry(appId: string, release: ManifestRelease) {
+  const { bundle } = release;
+  const strategy = bundle.strategy === 'deltas' ? 'deltas' : 'zip';
+  // Stored as validated at initiate; re-parse defensively. A malformed row
+  // must fail the sync loudly — silently publishing an unencrypted manifest
+  // for an encrypted object would make every device fail extraction.
+  const parsedEncryption = parseBundleEncryption(bundle.encryption);
+  if (parsedEncryption === null) {
+    throw new Error(
+      `Bundle ${bundle.version} has a malformed stored encryption envelope; refusing to publish its manifest`,
+    );
+  }
+  const signed = {
+    version: bundle.version,
+    sha256: bundle.sha256,
+    size: bundle.size,
+    runtimeVersion: bundle.runtimeVersion,
+    strategy,
+    forceImmediate: release.forceImmediate,
+    encryption: parsedEncryption ?? null,
+  } as const;
+
+  let location: Record<string, unknown>;
+  if (strategy === 'deltas') {
+    // The bundle's storage object is the canonical file list written at
+    // finalize; expand it into per-file CDN URLs. sha256 above == filesHash.
+    const fileListRaw = await getTextObject(bundle.storageKey);
+    const fileList = JSON.parse(fileListRaw) as { files: DeltaFileEntry[] };
+    location = {
+      filesHash: bundle.sha256,
+      files: fileList.files.map((file) => ({
+        path: file.path,
+        sha256: file.sha256,
+        size: file.size,
+        url: buildPublicObjectUrl(buildFileObjectKey(appId, file.sha256)),
+      })),
+    };
+  } else {
+    location = { url: buildPublicObjectUrl(bundle.storageKey) };
+  }
+
+  return {
+    signed,
+    fields: {
+      version: signed.version,
+      sha256: signed.sha256,
+      size: signed.size,
+      runtimeVersion: signed.runtimeVersion,
+      releaseId: release.id,
+      strategy: signed.strategy,
+      forceImmediate: signed.forceImmediate,
+      encryption: signed.encryption,
+    },
+    location,
+  };
 }
 
 export async function deleteManifestFile(
@@ -174,39 +258,30 @@ export async function syncManifestFileForLane(
     return;
   }
 
-  const release = await database.release.findFirst({
-    where: {
-      appId,
-      channel,
-      revertedAt: null,
-      bundle: {
-        is: {
-          runtimeVersion,
+  const lane = resolveLaneManifest(
+    await database.release.findMany({
+      where: {
+        appId,
+        channel,
+        revertedAt: null,
+        bundle: {
+          is: {
+            runtimeVersion,
+          },
         },
       },
-    },
-    orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    include: {
-      bundle: {
-        select: {
-          version: true,
-          sha256: true,
-          size: true,
-          runtimeVersion: true,
-          strategy: true,
-          storageKey: true,
-          encryption: true,
-        },
-      },
-    },
-  });
+      orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+      take: 2,
+      select: manifestReleaseSelect,
+    }),
+  );
 
-  if (!release) {
+  if (!lane) {
     await deleteManifestFile(appId, channel, runtimeVersion);
     return;
   }
 
-  await writeManifestFile(appId, channel, runtimeVersion, release, release.bundle);
+  await writeManifestFile(appId, channel, runtimeVersion, lane);
 }
 
 export async function restoreManifestFilesForApp(appId: string): Promise<void> {
@@ -225,42 +300,52 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
     return;
   }
 
-  await deleteAllManifestFilesForApp(appId);
-
   const releases = await db.release.findMany({
     where: {
       appId,
       revertedAt: null,
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    include: {
-      bundle: {
-        select: {
-          version: true,
-          sha256: true,
-          size: true,
-          runtimeVersion: true,
-          strategy: true,
-          storageKey: true,
-          encryption: true,
-        },
-      },
-    },
+    select: { ...manifestReleaseSelect, channel: true },
   });
 
-  const seenLanes = new Set<string>();
+  // Newest first, so each lane's list starts with its current release; a
+  // lane manifest never needs more than its two newest releases.
+  const laneReleases = new Map<string, typeof releases>();
   for (const release of releases) {
     const laneKey = `${getManifestChannelKey(release.channel)}:${getManifestRuntimeVersionKey(release.bundle.runtimeVersion)}`;
-    if (seenLanes.has(laneKey)) {
-      continue;
+    const list = laneReleases.get(laneKey) ?? [];
+    if (list.length < 2) list.push(release);
+    laneReleases.set(laneKey, list);
+  }
+
+  // One broken lane must not leave every other lane of the app without a
+  // manifest: resolve all lanes before deleting, write each independently,
+  // and report the failures together.
+  const failures: string[] = [];
+  const lanes: Array<{ channel: string | null; manifest: LaneManifest }> = [];
+  for (const list of laneReleases.values()) {
+    try {
+      const manifest = resolveLaneManifest(list);
+      if (manifest) lanes.push({ channel: list[0].channel, manifest });
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
     }
-    seenLanes.add(laneKey);
-    await writeManifestFile(
-      appId,
-      release.channel,
-      release.bundle.runtimeVersion,
-      release,
-      release.bundle,
+  }
+
+  await deleteAllManifestFilesForApp(appId);
+
+  for (const { channel, manifest } of lanes) {
+    try {
+      await writeManifestFile(appId, channel, manifest.stable.bundle.runtimeVersion, manifest);
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Could not restore ${failures.length} manifest(s) for app ${appId}: ${failures.join('; ')}`,
     );
   }
 }

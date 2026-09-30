@@ -114,6 +114,7 @@ public class UpdaterPlugin extends Plugin {
   private String channel;
   private String runtimeVersion;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
+  private volatile Rollout.State lastRollout;
   private final java.util.Map<String, byte[]> bundleKeys = new java.util.HashMap<>();
   private long checkIntervalMs = 600_000;
   private boolean coldStartInProgress = false;
@@ -513,6 +514,8 @@ public class UpdaterPlugin extends Plugin {
     result.put("fallback", snapshot.fallback.toJSObject());
     result.put("builtinVersion", snapshot.builtinVersion);
     result.put("staged", snapshot.staged != null ? snapshot.staged.toJSObject() : null);
+    Rollout.State rollout = lastRollout;
+    result.put("rollout", rollout != null ? rollout.toJSObject() : org.json.JSONObject.NULL);
     call.resolve(result);
   }
 
@@ -626,6 +629,8 @@ public class UpdaterPlugin extends Plugin {
     Object raw = call.getData().opt("channel");
     if (raw == null || raw == org.json.JSONObject.NULL) {
       store.setOverrideChannel(null);
+      // The last check's rollout belongs to the previous channel.
+      lastRollout = null;
       call.resolve();
       return;
     }
@@ -643,6 +648,7 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     store.setOverrideChannel(name);
+    lastRollout = null;
     call.resolve();
   }
 
@@ -684,9 +690,9 @@ public class UpdaterPlugin extends Plugin {
     }
 
     String checkId = "check-" + java.util.UUID.randomUUID();
-    return CheckFailure.observe(
+    ManifestClient.ParsedManifest parsed = CheckFailure.observe(
       () -> {
-        ManifestClient.LatestManifest latest = ManifestClient.fetchLatest(
+        ManifestClient.ParsedManifest latest = ManifestClient.fetchLatest(
           cdnUrl,
           appId,
           channel,
@@ -711,6 +717,26 @@ public class UpdaterPlugin extends Plugin {
         );
       }
     );
+    if (parsed == null) {
+      lastRollout = null;
+      return null;
+    }
+    if (parsed.rolloutFailure != null) {
+      // The stable release still applies; report why the rollout was ignored.
+      sendDeviceEvent(
+        "check_error",
+        null,
+        runtimeVersion,
+        channel,
+        null,
+        parsed.rolloutFailure.detail,
+        checkId,
+        parsed.rolloutFailure.phase
+      );
+    }
+    Rollout.Selection selection = Rollout.select(parsed, store.assignmentSecret());
+    lastRollout = selection.state;
+    return selection.manifest;
   }
 
   private CheckResolution checkLatest(boolean respectInterval, String channel) throws Exception {

@@ -111,6 +111,44 @@ final class ManifestClient {
     }
   }
 
+  /** A rolling release offered to {@code percent} of devices (plugin 3.1+). */
+  static final class ManifestRollout {
+
+    final LatestManifest manifest;
+    final int percent;
+
+    ManifestRollout(LatestManifest manifest, int percent) {
+      this.manifest = manifest;
+      this.percent = percent;
+    }
+  }
+
+  static final class ParsedManifest {
+
+    /** The release every device may take. */
+    final LatestManifest stable;
+    final ManifestRollout rollout;
+    /** Why a rollout block was ignored; devices then stay on {@code stable}. */
+    final CheckFailure rolloutFailure;
+
+    ParsedManifest(LatestManifest stable, ManifestRollout rollout, CheckFailure rolloutFailure) {
+      this.stable = stable;
+      this.rollout = rollout;
+      this.rolloutFailure = rolloutFailure;
+    }
+  }
+
+  private static final class ParsedEntry {
+
+    final LatestManifest manifest;
+    final ManifestSignature signature;
+
+    ParsedEntry(LatestManifest manifest, ManifestSignature signature) {
+      this.manifest = manifest;
+      this.signature = signature;
+    }
+  }
+
   private ManifestClient() {}
 
   static void requireHTTPS(URL url, boolean allowInsecure) throws Exception {
@@ -123,7 +161,7 @@ final class ManifestClient {
     throw new IllegalStateException("URL must use HTTPS: " + url.toString());
   }
 
-  static LatestManifest fetchLatest(
+  static ParsedManifest fetchLatest(
     String cdnUrl,
     String appId,
     String channel,
@@ -169,91 +207,173 @@ final class ManifestClient {
       }
 
       String payload = readStream(connection.getInputStream());
-      JSONObject json = new JSONObject(payload);
+      return parse(payload, appId, channel, allowInsecureUrls, manifestKeys);
+    } finally {
+      connection.disconnect();
+    }
+  }
 
-      String version = json.getString("version");
-      String sha256 = json.getString("sha256");
-      int size = json.getInt("size");
+  /**
+   * Parse and verify a manifest body. The top level must be valid; an optional rollout block that
+   * fails parsing or verification is dropped (reported in {@code rolloutFailure}) so a bad block
+   * can never block updates.
+   */
+  static ParsedManifest parse(
+    String payload,
+    String appId,
+    String channel,
+    boolean allowInsecureUrls,
+    java.util.List<ManifestVerifier.KeyEntry> manifestKeys
+  ) throws Exception {
+    JSONObject json = new JSONObject(payload);
+    ParsedEntry stable = parseEntry(json, allowInsecureUrls);
 
-      String responseRuntimeVersion =
-        json.has("runtimeVersion") && !json.isNull("runtimeVersion")
-          ? json.getString("runtimeVersion").trim()
-          : null;
-      if (responseRuntimeVersion != null && responseRuntimeVersion.isEmpty()) {
-        responseRuntimeVersion = null;
+    if (manifestKeys == null || manifestKeys.isEmpty()) {
+      android.util.Log.w(
+        "OtaKit",
+        "No manifest signing keys configured — signature verification is disabled for this request."
+      );
+    }
+
+    if (manifestKeys != null && !manifestKeys.isEmpty()) {
+      if (stable.signature == null) {
+        throw new ManifestVerifier.VerificationException("signature_missing");
       }
 
-      ManifestSignature signature = parseSignature(json.optJSONObject("signature"));
+      ManifestVerifier.verify(
+        appId,
+        channel,
+        stable.manifest.version,
+        stable.manifest.sha256,
+        stable.manifest.size,
+        stable.manifest.runtimeVersion,
+        stable.manifest.strategy,
+        stable.manifest.forceImmediate,
+        stable.manifest.encryption,
+        stable.signature,
+        manifestKeys
+      );
+    }
 
-      String releaseId = null;
-      if (json.has("releaseId") && !json.isNull("releaseId")) {
-        releaseId = json.getString("releaseId").trim();
-      }
-      if (releaseId != null && releaseId.isEmpty()) {
-        releaseId = null;
-      }
-      if (releaseId == null) {
-        throw new IllegalStateException("Manifest response missing required releaseId");
-      }
+    if (!json.has("rollout") || json.isNull("rollout")) {
+      return new ParsedManifest(stable.manifest, null, null);
+    }
+    try {
+      ManifestRollout rollout = parseRollout(
+        json.get("rollout"),
+        stable.manifest,
+        appId,
+        channel,
+        allowInsecureUrls,
+        manifestKeys
+      );
+      return new ParsedManifest(stable.manifest, rollout, null);
+    } catch (Exception error) {
+      return new ParsedManifest(stable.manifest, null, CheckFailure.rollout(error));
+    }
+  }
 
-      String strategy = "zip";
-      if (json.has("strategy") && !json.isNull("strategy")) {
-        String rawStrategy = json.getString("strategy").trim();
-        if (!rawStrategy.isEmpty()) {
-          strategy = rawStrategy;
-        }
+  private static ManifestRollout parseRollout(
+    Object rawValue,
+    LatestManifest stable,
+    String appId,
+    String channel,
+    boolean allowInsecureUrls,
+    java.util.List<ManifestVerifier.KeyEntry> manifestKeys
+  ) throws Exception {
+    if (!(rawValue instanceof JSONObject)) {
+      throw new IllegalStateException("Rollout block is not an object");
+    }
+    JSONObject json = (JSONObject) rawValue;
+    // Strict types (no string or fraction coercion) to match the iOS parser.
+    Object rawPercent = json.opt("percent");
+    Object rawStableSha256 = json.opt("stableSha256");
+    if (
+      !(rawPercent instanceof Integer) ||
+      (Integer) rawPercent < 1 ||
+      (Integer) rawPercent > 99 ||
+      !stable.sha256.equals(rawStableSha256)
+    ) {
+      throw new IllegalStateException("Rollout block is invalid");
+    }
+    ParsedEntry entry = parseEntry(json, allowInsecureUrls);
+    ManifestRollout rollout = new ManifestRollout(entry.manifest, (Integer) rawPercent);
+    if (manifestKeys != null && !manifestKeys.isEmpty()) {
+      if (entry.signature == null) {
+        throw new ManifestVerifier.VerificationException("signature_missing");
       }
-      // Strict boolean (no string coercion) to match the iOS parser.
-      Object rawForceImmediate = json.opt("forceImmediate");
-      boolean forceImmediate = Boolean.TRUE.equals(rawForceImmediate);
-      ManifestEncryption encryption = parseEncryption(json);
+      ManifestVerifier.verifyRollout(
+        appId,
+        channel,
+        rollout,
+        stable.sha256,
+        entry.signature,
+        manifestKeys
+      );
+    }
+    return rollout;
+  }
 
-      String downloadUrl = null;
-      if (json.has("url") && !json.isNull("url")) {
-        String rawUrl = json.getString("url").trim();
-        if (!rawUrl.isEmpty()) {
-          downloadUrl = rawUrl;
-        }
+  /** Bundle fields shared by the top level and the rollout block. */
+  private static ParsedEntry parseEntry(JSONObject json, boolean allowInsecureUrls)
+    throws Exception {
+    String version = json.getString("version");
+    String sha256 = json.getString("sha256");
+    int size = json.getInt("size");
+
+    String responseRuntimeVersion =
+      json.has("runtimeVersion") && !json.isNull("runtimeVersion")
+        ? json.getString("runtimeVersion").trim()
+        : null;
+    if (responseRuntimeVersion != null && responseRuntimeVersion.isEmpty()) {
+      responseRuntimeVersion = null;
+    }
+
+    ManifestSignature signature = parseSignature(json.optJSONObject("signature"));
+
+    String releaseId = null;
+    if (json.has("releaseId") && !json.isNull("releaseId")) {
+      releaseId = json.getString("releaseId").trim();
+    }
+    if (releaseId != null && releaseId.isEmpty()) {
+      releaseId = null;
+    }
+    if (releaseId == null) {
+      throw new IllegalStateException("Manifest response missing required releaseId");
+    }
+
+    String strategy = "zip";
+    if (json.has("strategy") && !json.isNull("strategy")) {
+      String rawStrategy = json.getString("strategy").trim();
+      if (!rawStrategy.isEmpty()) {
+        strategy = rawStrategy;
       }
+    }
+    // Strict boolean (no string coercion) to match the iOS parser.
+    Object rawForceImmediate = json.opt("forceImmediate");
+    boolean forceImmediate = Boolean.TRUE.equals(rawForceImmediate);
+    ManifestEncryption encryption = parseEncryption(json);
 
-      java.util.List<ManifestFileEntry> files = null;
-      if ("deltas".equals(strategy)) {
-        files = parseFiles(json, allowInsecureUrls);
-      } else {
-        if (downloadUrl == null) {
-          throw new IllegalStateException("Manifest response missing required url");
-        }
-        requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
+    String downloadUrl = null;
+    if (json.has("url") && !json.isNull("url")) {
+      String rawUrl = json.getString("url").trim();
+      if (!rawUrl.isEmpty()) {
+        downloadUrl = rawUrl;
       }
+    }
 
-      if (manifestKeys == null || manifestKeys.isEmpty()) {
-        android.util.Log.w(
-          "OtaKit",
-          "No manifest signing keys configured — signature verification is disabled for this request."
-        );
+    java.util.List<ManifestFileEntry> files = null;
+    if ("deltas".equals(strategy)) {
+      files = parseFiles(json, allowInsecureUrls);
+    } else {
+      if (downloadUrl == null) {
+        throw new IllegalStateException("Manifest response missing required url");
       }
+      requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
+    }
 
-      if (manifestKeys != null && !manifestKeys.isEmpty()) {
-        if (signature == null) {
-          throw new ManifestVerifier.VerificationException("signature_missing");
-        }
-
-        ManifestVerifier.verify(
-          appId,
-          channel,
-          version,
-          sha256,
-          size,
-          responseRuntimeVersion,
-          strategy,
-          forceImmediate,
-          encryption,
-          signature,
-          manifestKeys
-        );
-      }
-
-      return new LatestManifest(
+    return new ParsedEntry(
+      new LatestManifest(
         version,
         downloadUrl,
         sha256,
@@ -264,10 +384,9 @@ final class ManifestClient {
         forceImmediate,
         encryption,
         files
-      );
-    } finally {
-      connection.disconnect();
-    }
+      ),
+      signature
+    );
   }
 
   private static java.util.List<ManifestFileEntry> parseFiles(

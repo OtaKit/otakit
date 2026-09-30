@@ -27,6 +27,7 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
       fallback: this.BUILTIN_BUNDLE,
       staged: null,
       builtinVersion: this.BUILTIN_BUNDLE.version,
+      rollout: null,
     };
   }
 

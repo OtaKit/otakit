@@ -5,6 +5,7 @@ import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { resolveReleaseActor } from '@/lib/release-audit';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
 import { serviceErrorResponse } from '@/lib/services/http';
+import { isRolloutPercent } from '@/lib/rollouts';
 import { listReleases, publishRelease, publishReleaseLegacy } from '@/lib/services/releases';
 import {
   isValidChannelName,
@@ -183,6 +184,18 @@ export async function POST(
       ? rawExpectedCurrentReleaseId.trim()
       : rawExpectedCurrentReleaseId;
 
+  const rawRolloutPercent = body.rolloutPercent;
+  if (rawRolloutPercent !== undefined && !isRolloutPercent(rawRolloutPercent)) {
+    return NextResponse.json(
+      { error: 'rolloutPercent must be an integer between 1 and 100' },
+      { status: 400 },
+    );
+  }
+  const rawReplaceRollout = body.replaceRollout;
+  if (rawReplaceRollout !== undefined && typeof rawReplaceRollout !== 'boolean') {
+    return NextResponse.json({ error: 'replaceRollout must be a boolean' }, { status: 400 });
+  }
+
   const rawCompatibilityDecision = body.compatibilityDecision;
   if (
     rawCompatibilityDecision !== undefined &&
@@ -206,6 +219,8 @@ export async function POST(
       autoRevert,
       autoRevertRatePercent,
       autoRevertMinSample,
+      rolloutPercent: rawRolloutPercent,
+      replaceRollout: rawReplaceRollout,
       expectedCurrentReleaseId,
       idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
       compatibilityDecision: rawCompatibilityDecision,

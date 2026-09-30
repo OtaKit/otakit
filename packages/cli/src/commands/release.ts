@@ -5,13 +5,16 @@ import ora from 'ora';
 import { ApiClient } from '../lib/api.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
-import { normalizeChannel } from '../lib/validate.js';
+import { explainRolloutConflict, rolloutSuffix } from '../lib/rollout.js';
+import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
 
 type ReleaseOptions = {
   appId?: string;
   server?: string;
   channel?: string;
   forceImmediate?: boolean;
+  rollout?: string;
+  replaceRollout?: boolean;
 };
 
 export const releaseCommand = new Command('release')
@@ -24,6 +27,14 @@ export const releaseCommand = new Command('release')
     '--force-immediate',
     'Devices apply and reload this release on their next check (emergency fixes)',
   )
+  .option(
+    '--rollout <percent>',
+    'Release to this share of devices first (1-100, default 100); needs a previous release on the channel',
+  )
+  .option(
+    '--replace-rollout',
+    "Cancel the channel's active rollout and release this bundle in its place",
+  )
   .action(async (bundleId: string | undefined, options: ReleaseOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -35,16 +46,33 @@ export const releaseCommand = new Command('release')
       const targetLabel = channel ?? 'base channel';
       const forceImmediate = options.forceImmediate === true;
       const forceLabel = forceImmediate ? ' (force immediate)' : '';
+      const releaseOptions = {
+        forceImmediate,
+        rolloutPercent:
+          options.rollout === undefined
+            ? undefined
+            : parseRolloutPercent(options.rollout, '--rollout'),
+        replaceRollout: options.replaceRollout === true ? true : undefined,
+      };
+      const release = async (id: string) => {
+        try {
+          return await api.release(channel, id, releaseOptions);
+        } catch (error) {
+          throw explainRolloutConflict(error, channel);
+        }
+      };
 
       if (bundleId) {
         const spinner = ora(`Releasing ${bundleId} to ${targetLabel}...`).start();
-        const result = await api.release(channel, bundleId, { forceImmediate });
+        const result = await release(bundleId);
         if (result.publicationStatus === 'manifest_sync_pending') {
           throw new CliError(
             `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
           );
         }
-        spinner.succeed(`Released ${bundleId} to ${targetLabel}${forceLabel}.`);
+        spinner.succeed(
+          `Released ${bundleId} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}.`,
+        );
         return;
       }
 
@@ -57,12 +85,14 @@ export const releaseCommand = new Command('release')
 
       const latest = bundles[0];
       spinner.text = `Releasing ${latest.version} to ${targetLabel}...`;
-      const result = await api.release(channel, latest.id, { forceImmediate });
+      const result = await release(latest.id);
       if (result.publicationStatus === 'manifest_sync_pending') {
         throw new CliError(
           `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
         );
       }
-      spinner.succeed(`Released ${latest.version} to ${targetLabel}${forceLabel}.`);
+      spinner.succeed(
+        `Released ${latest.version} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}.`,
+      );
     });
   });

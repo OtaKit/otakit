@@ -51,6 +51,8 @@ export interface Release {
   autoRevert?: boolean;
   autoRevertRatePercent?: number;
   autoRevertMinSample?: number;
+  /** Share of devices (1-100); below 100 on a non-reverted release is an active rollout. */
+  rolloutPercent?: number;
   promotedAt: string;
   promotedBy?: string;
   revertedAt?: string | null;
@@ -62,6 +64,28 @@ export interface ReleaseResult {
   publicationStatus: 'published' | 'manifest_sync_pending';
   release: Release;
   previousRelease: Release | null;
+  replacedRelease?: Release;
+}
+
+export interface RolloutResult {
+  operationId: string;
+  idempotencyKey: string;
+  publicationStatus: 'published' | 'manifest_sync_pending';
+  release: Release;
+  previousPercent: number;
+}
+
+export interface RevertResult {
+  operationId: string;
+  idempotencyKey: string;
+  publicationStatus: 'published' | 'manifest_sync_pending';
+  release: Release;
+  currentRelease: Release | null;
+}
+
+/** True for the lane-current release of an active rollout. */
+export function isActiveRollout(release: Release): boolean {
+  return !release.revertedAt && (release.rolloutPercent ?? 100) < 100;
 }
 
 export class OtaKitApiError extends Error {
@@ -315,6 +339,8 @@ export class ApiClient {
       autoRevert?: boolean;
       autoRevertRatePercent?: number;
       autoRevertMinSample?: number;
+      rolloutPercent?: number;
+      replaceRollout?: boolean;
       expectedCurrentReleaseId?: string | null;
       idempotencyKey?: string;
       compatibilityDecision?: 'block' | 'proceed' | 'skip';
@@ -332,6 +358,8 @@ export class ApiClient {
           : {}),
         forceImmediate: options?.forceImmediate ?? false,
         autoRevert,
+        rolloutPercent: options?.rolloutPercent,
+        replaceRollout: options?.replaceRollout,
         compatibilityDecision: options?.compatibilityDecision,
         // The server rejects threshold fields unless autoRevert is true.
         ...(autoRevert
@@ -340,6 +368,55 @@ export class ApiClient {
               autoRevertMinSample: options?.autoRevertMinSample,
             }
           : {}),
+      }),
+    });
+  }
+
+  /**
+   * Whether the server accepts percentage rollouts, or null when it cannot
+   * say (an older server without the context endpoint).
+   */
+  async supportsRollouts(): Promise<boolean | null> {
+    try {
+      const context = await this.request<{ capabilities?: { releaseReliability?: unknown } }>(
+        `/api/v1/context?${new URLSearchParams({ appId: this.appId }).toString()}`,
+      );
+      const supported = context.capabilities?.releaseReliability;
+      return typeof supported === 'boolean' ? supported : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Change an active rollout's percentage; 100 completes it. */
+  async updateRollout(
+    releaseId: string,
+    options: { percent: number; expectedPercent?: number; idempotencyKey?: string },
+  ): Promise<RolloutResult> {
+    return this.request(this.appPath(`/releases/${encodeURIComponent(releaseId)}/rollout`), {
+      method: 'PATCH',
+      headers: { 'Idempotency-Key': options.idempotencyKey ?? randomUUID() },
+      body: JSON.stringify({ percent: options.percent, expectedPercent: options.expectedPercent }),
+    });
+  }
+
+  async revertRelease(
+    releaseId: string,
+    options?: {
+      expectedCurrentReleaseId?: string;
+      /** Cancelling a rollout: refused unless the release is still at this share. */
+      expectedRolloutPercent?: number;
+      forceImmediate?: boolean;
+      idempotencyKey?: string;
+    },
+  ): Promise<RevertResult> {
+    return this.request(this.appPath(`/releases/${encodeURIComponent(releaseId)}/revert`), {
+      method: 'POST',
+      headers: { 'Idempotency-Key': options?.idempotencyKey ?? randomUUID() },
+      body: JSON.stringify({
+        expectedCurrentReleaseId: options?.expectedCurrentReleaseId,
+        expectedRolloutPercent: options?.expectedRolloutPercent,
+        forceImmediate: options?.forceImmediate,
       }),
     });
   }

@@ -81,4 +81,79 @@ describe('ApiClient release reliability contract', () => {
       expectedCurrentReleaseId: null,
     });
   });
+
+  it('sends rollout options only when they are set', async () => {
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse(publishedResult()));
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse(publishedResult()));
+    const api = new ApiClient(config);
+
+    await api.release('production', 'f32627ca-9e8c-4358-90d8-bde732400081');
+    await api.release('production', 'f32627ca-9e8c-4358-90d8-bde732400081', {
+      rolloutPercent: 10,
+      replaceRollout: true,
+    });
+
+    const [plain, rollout] = mocks.fetchCli.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)),
+    );
+    expect(plain).not.toHaveProperty('rolloutPercent');
+    expect(plain).not.toHaveProperty('replaceRollout');
+    expect(rollout).toMatchObject({ rolloutPercent: 10, replaceRollout: true });
+  });
+
+  it('changes a rollout with its reviewed percentage and an idempotency key', async () => {
+    mocks.fetchCli.mockResolvedValueOnce(
+      jsonResponse({ ...publishedResult(), previousPercent: 10 }),
+    );
+    const api = new ApiClient(config);
+
+    await api.updateRollout('0ee77672-f7de-4291-bcd2-fac9bda4b92b', {
+      percent: 25,
+      expectedPercent: 10,
+    });
+
+    const [url, options] = mocks.fetchCli.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      `https://console.example.test/api/v1/apps/${config.appId}/releases/0ee77672-f7de-4291-bcd2-fac9bda4b92b/rollout`,
+    );
+    expect(options.method).toBe('PATCH');
+    expect(new Headers(options.headers).get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(JSON.parse(String(options.body))).toEqual({ percent: 25, expectedPercent: 10 });
+  });
+
+  it('cancels a rollout only at the reviewed share', async () => {
+    mocks.fetchCli.mockResolvedValueOnce(
+      jsonResponse({ ...publishedResult(), currentRelease: null }),
+    );
+    const api = new ApiClient(config);
+
+    await api.revertRelease('0ee77672-f7de-4291-bcd2-fac9bda4b92b', {
+      expectedCurrentReleaseId: '0ee77672-f7de-4291-bcd2-fac9bda4b92b',
+      expectedRolloutPercent: 10,
+    });
+
+    const [url, options] = mocks.fetchCli.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/releases\/0ee77672-f7de-4291-bcd2-fac9bda4b92b\/revert$/);
+    expect(JSON.parse(String(options.body))).toEqual({
+      expectedCurrentReleaseId: '0ee77672-f7de-4291-bcd2-fac9bda4b92b',
+      expectedRolloutPercent: 10,
+    });
+  });
+
+  it('reads whether the server accepts rollouts, and says so when it cannot tell', async () => {
+    const api = new ApiClient(config);
+    mocks.fetchCli.mockResolvedValueOnce(
+      jsonResponse({ capabilities: { releaseReliability: true } }),
+    );
+    await expect(api.supportsRollouts()).resolves.toBe(true);
+    mocks.fetchCli.mockResolvedValueOnce(
+      jsonResponse({ capabilities: { releaseReliability: false } }),
+    );
+    await expect(api.supportsRollouts()).resolves.toBe(false);
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse({ error: 'Not found' }, 404));
+    await expect(api.supportsRollouts()).resolves.toBeNull();
+    expect(String(mocks.fetchCli.mock.calls[0][0])).toContain(
+      `/api/v1/context?appId=${config.appId}`,
+    );
+  });
 });

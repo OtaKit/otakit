@@ -20,8 +20,8 @@ the base channel or omit runtime version from a preview.
 4. Read the current release state and call `prepare_release` for the uploaded
    bundle and exact lane.
 5. Show the complete preview: current and proposed bundle, expected current
-   release, `forceImmediate`, auto-revert enabled/rate/minimum sample, and
-   compatibility result/decision.
+   release, rollout percentage, `forceImmediate`, auto-revert enabled/rate/minimum
+   sample, and compatibility result/decision.
 6. Ask for approval, then call `publish_release` with those exact values and a
    new idempotency key. If the lane changed after preview, stop and prepare again.
 7. Report whether manifest synchronization completed or is pending repair.
@@ -36,6 +36,25 @@ Use release health for bounded event counts and `list_events` for recent filtere
 diagnostic records. Say “events” and name the event types. Do not call the values
 devices, users, installations, adoption, success rate, or causal evidence. A
 missing analytics capability is “unavailable,” not zero.
+
+## Percentage rollouts
+
+`rolloutPercent` (1-100, default 100) releases to a share of devices on plugin
+3.1 or later; older plugins keep the previous release until the rollout
+completes. The first release on a lane must be 100%.
+
+- A lane has at most one rollout, and it is always the current release
+  (`rolloutPercent` below 100 in `get_release_state`). Publishing on that lane
+  fails with `ROLLOUT_IN_PROGRESS` unless `replaceRollout` is true, which reverts
+  the rolling release. Ask before replacing; `prepare_release` warns about it.
+- Change the share with `set_rollout_percent`, passing the percentage you showed
+  as `expectedPercent`. 100 completes the rollout; a completed rollout is final.
+- Cancel a rollout with `prepare_revert` and `revert_release`, passing the
+  reviewed percentage as `expectedRolloutPercent` so a rollout that completed
+  meanwhile is not reverted; every device returns to the previous release.
+- When a rolling release looks healthy, propose the next step (for example
+  10% → 25% → 100%) and wait for approval. At low percentages auto-revert and
+  health need longer to reach their minimum sample.
 
 ## Revert
 

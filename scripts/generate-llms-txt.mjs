@@ -17,6 +17,7 @@ const DOCS = [
   { label: 'Next.js Guide', route: '/docs/guide', file: 'packages/site/app/docs/guide/page.tsx' },
   { label: 'React Guide', route: '/docs/react', file: 'packages/site/app/docs/react/page.tsx' },
   { label: 'Channels', route: '/docs/channels', file: 'packages/site/app/docs/channels/page.tsx' },
+  { label: 'Rollouts', route: '/docs/rollouts', file: 'packages/site/app/docs/rollouts/page.tsx' },
   {
     label: 'Update Strategies',
     route: '/docs/update-strategies',

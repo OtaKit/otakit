@@ -37,6 +37,20 @@ final class CheckFailure {
     return new CheckFailure("check", "manifest_check_failed");
   }
 
+  /**
+   * Why a manifest's rollout block was ignored. Signature problems keep the verifier's detail
+   * under a {@code rollout_} prefix; anything else is a malformed block.
+   */
+  static CheckFailure rollout(Exception error) {
+    if (error instanceof ManifestVerifier.VerificationException) {
+      return new CheckFailure(
+        "signature",
+        "rollout_" + ((ManifestVerifier.VerificationException) error).reason
+      );
+    }
+    return new CheckFailure("check", "rollout_invalid");
+  }
+
   interface Reporter {
     void report(CheckFailure failure) throws Exception;
   }

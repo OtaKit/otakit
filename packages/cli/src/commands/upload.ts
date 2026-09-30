@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 
 import { ApiClient } from '../lib/api.js';
-import { checkCompatibilityAgainstChannel } from '../lib/compat-check.js';
+import { checkCompatibilityAgainstChannel, findLaneState } from '../lib/compat-check.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
 import {
@@ -11,8 +11,14 @@ import {
   formatCompatibilityReport,
   type NativePackage,
 } from '../lib/native-deps.js';
+import {
+  explainRolloutConflict,
+  findRolloutConflict,
+  rolloutConflictError,
+  rolloutSuffix,
+} from '../lib/rollout.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
-import { normalizeChannel } from '../lib/validate.js';
+import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
 
 type UploadOptions = {
   appId?: string;
@@ -29,6 +35,8 @@ type UploadOptions = {
   autoRevert?: boolean;
   autoRevertRate?: string;
   autoRevertMinSample?: string;
+  rollout?: string;
+  replaceRollout?: boolean;
   encrypt?: boolean;
   strictArtifacts?: boolean;
 };
@@ -111,6 +119,14 @@ export const uploadCommand = new Command('upload')
     'With --auto-revert: minimum applied+rollback events before the rate is trusted (10-100000, default 50)',
   )
   .option(
+    '--rollout <percent>',
+    'With --release: release to this share of devices first (1-100, default 100)',
+  )
+  .option(
+    '--replace-rollout',
+    "With --release: cancel the channel's active rollout and release this bundle in its place",
+  )
+  .option(
     '--encrypt',
     'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY (auto-enabled when the env var is set)',
   )
@@ -150,15 +166,22 @@ export const uploadCommand = new Command('upload')
         console.warn(`Skipping native dependency detection: ${message}`);
       }
 
-      if (nativePackages && !options.ignoreCompat) {
-        // Compare against the channel this bundle is headed for; a plain
-        // upload without --release is checked against the base channel.
-        const targetChannel = releaseChannel === undefined ? null : releaseChannel;
+      // Compare against the channel this bundle is headed for; a plain
+      // upload without --release is checked against the base channel.
+      const targetChannel = releaseChannel === undefined ? null : releaseChannel;
+      const checksCompatibility = nativePackages !== undefined && !options.ignoreCompat;
+      const lane =
+        checksCompatibility || releaseChannel !== undefined
+          ? await findLaneState(api, targetChannel, config.runtimeVersion)
+          : null;
+
+      if (nativePackages && checksCompatibility) {
         const result = await checkCompatibilityAgainstChannel({
           api,
           channel: targetChannel,
           runtimeVersion: config.runtimeVersion,
           nativePackages,
+          baseline: lane?.stable ?? null,
         });
 
         if (result.status === 'incompatible') {
@@ -186,6 +209,28 @@ export const uploadCommand = new Command('upload')
       }
       if (options.autoRevert === true && releaseChannel === undefined) {
         console.warn('--auto-revert has no effect without --release; ignoring.');
+      }
+      if (
+        (options.rollout !== undefined || options.replaceRollout === true) &&
+        releaseChannel === undefined
+      ) {
+        console.warn('--rollout and --replace-rollout have no effect without --release; ignoring.');
+      }
+      const rolloutPercent =
+        options.rollout === undefined || releaseChannel === undefined
+          ? undefined
+          : parseRolloutPercent(options.rollout, '--rollout');
+      const replaceRollout = options.replaceRollout === true && releaseChannel !== undefined;
+      if (releaseChannel !== undefined && lane) {
+        const conflict = findRolloutConflict(lane, { rolloutPercent, replaceRollout });
+        if (conflict) throw rolloutConflictError(conflict, releaseChannel);
+      }
+      if (rolloutPercent !== undefined && rolloutPercent < 100) {
+        if ((await api.supportsRollouts()) === false) {
+          throw new CliError(
+            'This OtaKit server does not have percentage rollouts enabled (OTAKIT_RELEASE_RELIABILITY_ENABLED). Release without --rollout.',
+          );
+        }
       }
       const autoRevertRatePercent = parseAutoRevertThreshold(
         options.autoRevertRate,
@@ -218,6 +263,8 @@ export const uploadCommand = new Command('upload')
             autoRevert: options.autoRevert === true,
             autoRevertRatePercent,
             autoRevertMinSample,
+            rolloutPercent,
+            replaceRollout: replaceRollout || undefined,
             encrypt: options.encrypt,
             strictArtifacts: options.strictArtifacts,
             onStatus: (message) => {
@@ -229,7 +276,9 @@ export const uploadCommand = new Command('upload')
           if (spinner.isSpinning) {
             spinner.fail('Upload failed.');
           }
-          throw error;
+          throw releaseChannel === undefined
+            ? error
+            : explainRolloutConflict(error, releaseChannel);
         }
       })();
       const bundle = uploadResult.bundle;
@@ -241,8 +290,9 @@ export const uploadCommand = new Command('upload')
       }
 
       if (releaseChannel !== undefined) {
+        const share = uploadResult.release ? rolloutSuffix(uploadResult.release.release) : '';
         spinner.succeed(
-          `Uploaded ${bundle.version} (${bundle.id}) and released to ${releaseChannel ?? 'base channel'}.`,
+          `Uploaded ${bundle.version} (${bundle.id}) and released to ${releaseChannel ?? 'base channel'}${share}.`,
         );
       } else {
         spinner.succeed(`Uploaded ${bundle.version} (${bundle.id}).`);

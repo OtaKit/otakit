@@ -36,6 +36,7 @@ import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
+import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import type {
   ApiError,
@@ -117,6 +118,8 @@ const NULL_RUNTIME_TARGET_KEY = '$runtime-null';
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v3';
+const ROLLOUT_PRESETS = ['100', '50', '25', '10', '5', '1'] as const;
+const CUSTOM_ROLLOUT = 'custom';
 const STAT_COLUMN_HINTS = {
   downloads: 'Devices that downloaded this update',
   applied: 'Devices that activated this update successfully',
@@ -261,6 +264,11 @@ function parseIntegerInRange(raw: string, min: number, max: number): number | nu
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return value >= min && value <= max ? value : null;
+}
+
+/** The chosen rollout percentage, or null while a custom value is invalid. */
+function rolloutPercentValue(choice: string, custom: string): number | null {
+  return parseIntegerInRange(choice === CUSTOM_ROLLOUT ? custom : choice, 1, 100);
 }
 
 function isValidChannelName(channel: string): boolean {
@@ -488,7 +496,17 @@ export function ProductDashboard({
     autoRevert: boolean;
     autoRevertRatePercent: string;
     autoRevertMinSample: string;
+    rollout: string;
+    rolloutCustom: string;
   } | null>(null);
+
+  // Rollout percentage change
+  const [rolloutChange, setRolloutChange] = useState<{
+    release: ReleaseHistoryItem;
+    rollout: string;
+    rolloutCustom: string;
+  } | null>(null);
+  const [rolloutChangeBusy, setRolloutChangeBusy] = useState(false);
 
   // Revert
   const [revertConfirm, setRevertConfirm] = useState<{
@@ -498,6 +516,8 @@ export function ProductDashboard({
     currentVersion: string;
     previousVersion: string | null;
     forceImmediate: boolean;
+    /** Set when the reverted release is an active rollout (cancelling it). */
+    rolloutPercent: number | null;
   } | null>(null);
   const [revertBusy, setRevertBusy] = useState(false);
 
@@ -647,6 +667,33 @@ export function ProductDashboard({
   const releaseAutoRevertInvalid =
     releaseConfirm?.autoRevert === true &&
     (releaseAutoRevertRateValue === null || releaseAutoRevertMinSampleValue === null);
+
+  // Each lane's current release: its newest non-reverted one (history is newest first).
+  const laneCurrentByKey = useMemo(() => {
+    const map = new Map<string, ReleaseHistoryItem>();
+    for (const release of releaseHistory) {
+      const key = getReleaseTargetKey(release.channel, release.runtimeVersion);
+      if (release.revertedAt === null && !map.has(key)) map.set(key, release);
+    }
+    return map;
+  }, [releaseHistory]);
+  const releaseLaneCurrent =
+    releaseSelectedTarget && !isCreatingNewReleaseChannel
+      ? (laneCurrentByKey.get(
+          getReleaseTargetKey(releaseSelectedTarget.channel, releaseSelectedTarget.runtimeVersion),
+        ) ?? null)
+      : null;
+  const releaseLaneRollout = isRolling(releaseLaneCurrent) ? releaseLaneCurrent : null;
+  // The first release on a lane has nothing to fall back to, so it goes to everyone.
+  const releaseCanRollOut = releaseLaneCurrent !== null;
+  const releaseRolloutValue = !releaseConfirm
+    ? null
+    : releaseCanRollOut
+      ? rolloutPercentValue(releaseConfirm.rollout, releaseConfirm.rolloutCustom)
+      : 100;
+  const rolloutChangeValue = rolloutChange
+    ? rolloutPercentValue(rolloutChange.rollout, rolloutChange.rolloutCustom)
+    : null;
 
   const eventBundleOptions = useMemo(() => bundles.map((bundle) => bundle.version), [bundles]);
 
@@ -871,6 +918,8 @@ export function ProductDashboard({
       autoRevert: false,
       autoRevertRatePercent: '20',
       autoRevertMinSample: '50',
+      rollout: '100',
+      rolloutCustom: '',
     });
   }
 
@@ -879,6 +928,7 @@ export function ProductDashboard({
     target: ReleaseTarget | null,
     forceImmediate = false,
     autoRevert: { ratePercent: number; minSample: number } | null = null,
+    rollout: { percent: number; replace: boolean } = { percent: 100, replace: false },
   ): Promise<boolean> {
     if (!selectedAppId || !target) return false;
     if (isCurrentOnTarget(bundle, target.channel, target.runtimeVersion)) {
@@ -918,6 +968,8 @@ export function ProductDashboard({
                 autoRevertMinSample: autoRevert.minSample,
               }
             : {}),
+          ...(rollout.percent < FULL_ROLLOUT_PERCENT ? { rolloutPercent: rollout.percent } : {}),
+          ...(rollout.replace ? { replaceRollout: true } : {}),
         }),
       });
       const data = await parseJson<
@@ -932,7 +984,7 @@ export function ProductDashboard({
         );
       } else {
         toast.success(
-          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}`,
+          `Released ${bundle.version} to ${formatReleaseTarget(target.channel, target.runtimeVersion)}${rollout.percent < FULL_ROLLOUT_PERCENT ? ` for ${rollout.percent}% of devices` : ''}`,
         );
       }
       trackConversion('release_created');
@@ -954,7 +1006,12 @@ export function ProductDashboard({
 
   async function confirmRelease() {
     if (!releaseConfirm) return;
-    if (releaseChannelError || releaseChannelMissing || releaseAutoRevertInvalid) {
+    if (
+      releaseChannelError ||
+      releaseChannelMissing ||
+      releaseAutoRevertInvalid ||
+      releaseRolloutValue === null
+    ) {
       return;
     }
     await releaseBundle(
@@ -969,6 +1026,7 @@ export function ProductDashboard({
             minSample: releaseAutoRevertMinSampleValue,
           }
         : null,
+      { percent: releaseRolloutValue, replace: releaseLaneRollout !== null },
     );
   }
 
@@ -980,7 +1038,63 @@ export function ProductDashboard({
       currentVersion: row.bundleVersion,
       previousVersion: row.previousBundleVersion ?? null,
       forceImmediate: false,
+      rolloutPercent: isRolling(row) ? row.rolloutPercent : null,
     });
+  }
+
+  function openRolloutChange(row: ReleaseHistoryItem, percent?: number) {
+    const preset =
+      percent === undefined
+        ? ([...ROLLOUT_PRESETS].reverse().find((value) => Number(value) > row.rolloutPercent) ??
+          '100')
+        : String(percent);
+    setRolloutChange({ release: row, rollout: preset, rolloutCustom: '' });
+  }
+
+  async function performRolloutChange() {
+    if (!selectedAppId || !rolloutChange || rolloutChangeBusy || rolloutChangeValue === null) {
+      return;
+    }
+    const { release } = rolloutChange;
+    setRolloutChangeBusy(true);
+    try {
+      const res = await fetch(
+        `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(release.id)}/rollout`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            percent: rolloutChangeValue,
+            expectedPercent: release.rolloutPercent,
+          }),
+        },
+      );
+      const data = await parseJson<
+        ApiError & { publicationStatus?: 'published' | 'manifest_sync_pending' }
+      >(res);
+      if (!res.ok) throw new Error(data.error ?? 'Rollout change failed');
+      if (data.publicationStatus === 'manifest_sync_pending') {
+        toast.warning(
+          'Rollout change saved, but it is not live on devices yet. OtaKit will keep retrying.',
+        );
+      } else {
+        toast.success(
+          rolloutChangeValue === FULL_ROLLOUT_PERCENT
+            ? `${release.bundleVersion} now goes to every device`
+            : `${release.bundleVersion} now goes to ${rolloutChangeValue}% of devices`,
+        );
+      }
+      setRolloutChange(null);
+      await Promise.all([loadBundles(selectedAppId), loadReleaseHistory(selectedAppId)]);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rollout change failed');
+    } finally {
+      setRolloutChangeBusy(false);
+    }
   }
 
   async function performRevert() {
@@ -997,6 +1111,10 @@ export function ProductDashboard({
           },
           body: JSON.stringify({
             expectedCurrentReleaseId: revertConfirm.releaseId,
+            // Cancelling a rollout: refused if it completed or changed meanwhile.
+            ...(revertConfirm.rolloutPercent !== null
+              ? { expectedRolloutPercent: revertConfirm.rolloutPercent }
+              : {}),
             ...(revertConfirm.forceImmediate ? { forceImmediate: true } : {}),
           }),
         },
@@ -1013,7 +1131,9 @@ export function ProductDashboard({
         );
       } else {
         toast.success(
-          `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`,
+          revertConfirm.rolloutPercent === null
+            ? `Reverted ${formatReleaseTarget(revertConfirm.channel, revertConfirm.runtimeVersion)}`
+            : `Cancelled the rollout of ${revertConfirm.currentVersion}`,
         );
       }
       setRevertConfirm(null);
@@ -1442,28 +1562,67 @@ export function ProductDashboard({
                                                   const rel = releaseByKey.get(
                                                     `${b.version}::${tKey}`,
                                                   );
-                                                  const canRevert =
-                                                    rel != null && rel.revertedAt === null;
-                                                  const detail = `Channel: ${entry.channel ?? 'base'}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}${rel?.autoRevert ? ` · auto-revert at ≥${rel.autoRevertRatePercent}% of ≥${rel.autoRevertMinSample} devices` : ''}`;
+                                                  // Only the lane's current release can change;
+                                                  // during a rollout that is the rolling one.
+                                                  const laneCurrent = laneCurrentByKey.get(tKey);
+                                                  const isLaneCurrent =
+                                                    rel != null && laneCurrent?.id === rel.id;
+                                                  const rolling = isRolling(rel) ? rel : null;
+                                                  const rollingAbove =
+                                                    !isLaneCurrent && isRolling(laneCurrent)
+                                                      ? laneCurrent
+                                                      : null;
+                                                  const detail = `Channel: ${entry.channel ?? 'base'}${rolling ? ` · rolling out to ${rolling.rolloutPercent}% of devices` : ''}${rollingAbove ? ` · other devices while ${rollingAbove.bundleVersion} rolls out` : ''}${rel ? ` · live since ${formatDate(rel.promotedAt)} · by ${formatReleasedBy(rel.promotedBy)}` : ''}${rel?.autoRevert ? ` · auto-revert at ≥${rel.autoRevertRatePercent}% of ≥${rel.autoRevertMinSample} devices` : ''}`;
                                                   return (
                                                     <DropdownMenu key={tKey}>
                                                       <DropdownMenuTrigger asChild>
                                                         <button
                                                           type="button"
                                                           title={detail}
-                                                          className="inline-flex max-w-full items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/30 transition-colors hover:bg-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25"
+                                                          className={cn(
+                                                            'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 transition-colors',
+                                                            rolling
+                                                              ? 'bg-sky-500/10 text-sky-700 ring-sky-500/30 hover:bg-sky-500/20 dark:bg-sky-500/15 dark:text-sky-400 dark:ring-sky-500/25'
+                                                              : 'bg-emerald-500/10 text-emerald-700 ring-emerald-500/30 hover:bg-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-400 dark:ring-emerald-500/25',
+                                                          )}
                                                         >
                                                           {rel?.autoRevert ? (
                                                             <span className="relative flex size-1.5 shrink-0">
-                                                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                                                              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                                                              <span
+                                                                className={cn(
+                                                                  'absolute inline-flex h-full w-full animate-ping rounded-full opacity-75',
+                                                                  rolling
+                                                                    ? 'bg-sky-500'
+                                                                    : 'bg-emerald-500',
+                                                                )}
+                                                              />
+                                                              <span
+                                                                className={cn(
+                                                                  'relative inline-flex size-1.5 rounded-full',
+                                                                  rolling
+                                                                    ? 'bg-sky-500'
+                                                                    : 'bg-emerald-500',
+                                                                )}
+                                                              />
                                                             </span>
                                                           ) : (
-                                                            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                                            <span
+                                                              className={cn(
+                                                                'size-1.5 shrink-0 rounded-full',
+                                                                rolling
+                                                                  ? 'bg-sky-500'
+                                                                  : 'bg-emerald-500',
+                                                              )}
+                                                            />
                                                           )}
                                                           <span className="truncate">
                                                             {entry.channel ?? 'base'}
                                                           </span>
+                                                          {rolling ? (
+                                                            <span className="shrink-0 tabular-nums">
+                                                              {rolling.rolloutPercent}%
+                                                            </span>
+                                                          ) : null}
                                                           <ChevronDown className="size-2.5 shrink-0 opacity-50" />
                                                         </button>
                                                       </DropdownMenuTrigger>
@@ -1504,6 +1663,31 @@ export function ProductDashboard({
                                                               </span>
                                                             </>
                                                           ) : null}
+                                                          {rolling ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Share
+                                                              </span>
+                                                              <span className="font-medium text-sky-600 dark:text-sky-400">
+                                                                {rolling.rolloutPercent}% of devices
+                                                                on plugin 3.1+
+                                                              </span>
+                                                            </>
+                                                          ) : null}
+                                                          {rollingAbove ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Share
+                                                              </span>
+                                                              <span>
+                                                                Other devices while{' '}
+                                                                <span className="font-mono">
+                                                                  {rollingAbove.bundleVersion}
+                                                                </span>{' '}
+                                                                rolls out
+                                                              </span>
+                                                            </>
+                                                          ) : null}
                                                           {rel?.forceImmediate ? (
                                                             <>
                                                               <span className="text-muted-foreground">
@@ -1528,7 +1712,38 @@ export function ProductDashboard({
                                                             </>
                                                           ) : null}
                                                         </div>
-                                                        {canRevert ? (
+                                                        {rolling ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              disabled={rolloutChange !== null}
+                                                              onClick={() =>
+                                                                openRolloutChange(rolling)
+                                                              }
+                                                            >
+                                                              <SlidersHorizontal className="size-3.5" />
+                                                              Change percentage
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                              disabled={rolloutChange !== null}
+                                                              onClick={() =>
+                                                                openRolloutChange(rolling, 100)
+                                                              }
+                                                            >
+                                                              <Check className="size-3.5" />
+                                                              Complete rollout
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                              disabled={revertConfirm !== null}
+                                                              onClick={() =>
+                                                                openRevertConfirm(rolling)
+                                                              }
+                                                            >
+                                                              <RotateCcw className="size-3.5" />
+                                                              Cancel rollout
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : isLaneCurrent ? (
                                                           <>
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem
@@ -2071,7 +2286,9 @@ export function ProductDashboard({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-muted-foreground">Current</span>
                   <code className="font-mono text-xs">
-                    {releaseCurrentVersion ?? 'Built-in app bundle'}
+                    {releaseLaneRollout
+                      ? `${releaseLaneRollout.previousBundleVersion ?? 'built-in'} · ${releaseLaneRollout.bundleVersion} at ${releaseLaneRollout.rolloutPercent}%`
+                      : (releaseCurrentVersion ?? 'Built-in app bundle')}
                   </code>
                 </div>
               ) : null}
@@ -2079,6 +2296,32 @@ export function ProductDashboard({
                 <span className="text-muted-foreground">Release to</span>
                 <code className="font-mono text-xs">{releaseConfirm.bundle.version}</code>
               </div>
+              {releaseLaneRollout ? (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                  {releaseLaneRollout.bundleVersion} is rolling out to{' '}
+                  {releaseLaneRollout.rolloutPercent}% of this channel. Releasing cancels that
+                  rollout and releases this bundle in its place.
+                </p>
+              ) : null}
+              <RolloutPercentField
+                id="release-rollout"
+                label="Roll out to"
+                choice={releaseCanRollOut ? releaseConfirm.rollout : '100'}
+                custom={releaseConfirm.rolloutCustom}
+                disabled={releaseConfirmBusy || !releaseCanRollOut}
+                onChange={(rollout, rolloutCustom) =>
+                  setReleaseConfirm((current) =>
+                    current ? { ...current, rollout, rolloutCustom } : current,
+                  )
+                }
+                hint={
+                  !releaseCanRollOut
+                    ? 'The first release on a channel goes to every device.'
+                    : releaseRolloutValue !== null && releaseRolloutValue < FULL_ROLLOUT_PERCENT
+                      ? 'Devices on OtaKit plugin 3.1 or later are picked at random. Older plugin versions get this release when the rollout completes.'
+                      : null
+                }
+              />
               <div className="flex items-start gap-2">
                 <Checkbox
                   id="release-force-immediate"
@@ -2202,7 +2445,8 @@ export function ProductDashboard({
                 releaseChannelMissing ||
                 releaseChannelError !== null ||
                 releaseAlreadyCurrent ||
-                releaseAutoRevertInvalid
+                releaseAutoRevertInvalid ||
+                releaseRolloutValue === null
               }
               onClick={() => void confirmRelease()}
             >
@@ -2233,10 +2477,12 @@ export function ProductDashboard({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="size-4" />
-              Confirm revert
+              {revertConfirm?.rolloutPercent != null ? 'Cancel rollout' : 'Confirm revert'}
             </DialogTitle>
             <DialogDescription>
-              Stop serving the currently active bundle on this channel.
+              {revertConfirm?.rolloutPercent != null
+                ? `Stop serving this bundle to ${revertConfirm.rolloutPercent}% of devices; every device returns to the previous release.`
+                : 'Stop serving the currently active bundle on this channel.'}
             </DialogDescription>
           </DialogHeader>
           {revertConfirm ? (
@@ -2286,7 +2532,7 @@ export function ProductDashboard({
           ) : null}
           <DialogFooter>
             <Button variant="outline" disabled={revertBusy} onClick={() => setRevertConfirm(null)}>
-              Cancel
+              {revertConfirm?.rolloutPercent != null ? 'Keep rollout' : 'Cancel'}
             </Button>
             <Button
               variant="destructive"
@@ -2301,7 +2547,100 @@ export function ProductDashboard({
               ) : (
                 <>
                   <RotateCcw className="size-3.5" />
-                  Revert
+                  {revertConfirm?.rolloutPercent != null ? 'Cancel rollout' : 'Revert'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Rollout Dialog */}
+      <Dialog
+        open={rolloutChange !== null}
+        onOpenChange={(open) => {
+          if (!open && !rolloutChangeBusy) setRolloutChange(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SlidersHorizontal className="size-4" />
+              Change rollout
+            </DialogTitle>
+            <DialogDescription>
+              Raise or lower the share of devices, or complete the rollout at 100%.
+            </DialogDescription>
+          </DialogHeader>
+          {rolloutChange ? (
+            <div className="space-y-4 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Channel</span>
+                <span className="font-medium">
+                  {formatReleaseTarget(
+                    rolloutChange.release.channel,
+                    rolloutChange.release.runtimeVersion,
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Rolling out</span>
+                <code className="font-mono text-xs">
+                  {rolloutChange.release.bundleVersion} at {rolloutChange.release.rolloutPercent}%
+                </code>
+              </div>
+              <RolloutPercentField
+                id="rollout-change"
+                label="Roll out to"
+                choice={rolloutChange.rollout}
+                custom={rolloutChange.rolloutCustom}
+                disabled={rolloutChangeBusy}
+                onChange={(rollout, rolloutCustom) =>
+                  setRolloutChange((current) =>
+                    current ? { ...current, rollout, rolloutCustom } : current,
+                  )
+                }
+                hint={
+                  rolloutChangeValue === FULL_ROLLOUT_PERCENT
+                    ? 'Every device receives this release, including older plugin versions.'
+                    : rolloutChangeValue !== null &&
+                        rolloutChangeValue < rolloutChange.release.rolloutPercent
+                      ? 'Devices outside the new share return to the previous release after their next check. A device that already downloaded this bundle may run it once more first.'
+                      : null
+                }
+              />
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={rolloutChangeBusy}
+              onClick={() => setRolloutChange(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                rolloutChangeBusy ||
+                rolloutChangeValue === null ||
+                rolloutChangeValue === rolloutChange?.release.rolloutPercent
+              }
+              onClick={() => void performRolloutChange()}
+            >
+              {rolloutChangeBusy ? (
+                <>
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : rolloutChangeValue === FULL_ROLLOUT_PERCENT ? (
+                <>
+                  <Check className="size-3.5" />
+                  Complete rollout
+                </>
+              ) : (
+                <>
+                  <SlidersHorizontal className="size-3.5" />
+                  Update rollout
                 </>
               )}
             </Button>
@@ -2403,6 +2742,67 @@ export function ProductDashboard({
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function RolloutPercentField({
+  id,
+  label,
+  choice,
+  custom,
+  disabled,
+  hint,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  choice: string;
+  custom: string;
+  disabled: boolean;
+  hint: string | null;
+  onChange: (choice: string, custom: string) => void;
+}) {
+  const customInvalid = choice === CUSTOM_ROLLOUT && rolloutPercentValue(choice, custom) === null;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-2">
+        <Select
+          value={choice}
+          onValueChange={(value) => onChange(value, custom)}
+          disabled={disabled}
+        >
+          <SelectTrigger id={id} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ROLLOUT_PRESETS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value === '100' ? 'All devices (100%)' : `${value}% of devices`}
+              </SelectItem>
+            ))}
+            <SelectItem value={CUSTOM_ROLLOUT}>Custom…</SelectItem>
+          </SelectContent>
+        </Select>
+        {choice === CUSTOM_ROLLOUT ? (
+          <Input
+            aria-label="Custom percentage"
+            className="w-24"
+            inputMode="numeric"
+            placeholder="%"
+            value={custom}
+            onChange={(event) => onChange(choice, event.target.value)}
+            disabled={disabled}
+            aria-invalid={customInvalid}
+          />
+        ) : null}
+      </div>
+      {customInvalid ? (
+        <p className="text-xs text-destructive">Whole percentage between 1 and 100.</p>
+      ) : hint ? (
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   );
 }

@@ -28,7 +28,8 @@ For a release:
 2. Check native compatibility when local project evidence is available.
 3. Upload without publishing when the user wants review first.
 4. Prepare the exact release and show its bundle, lane, expected current state,
-   force-immediate behavior, auto-revert thresholds, and compatibility decision.
+   rollout percentage, force-immediate behavior, auto-revert thresholds, and
+   compatibility decision.
 5. Ask for approval before publishing. Use the combined upload-and-publish tool
    only when the user explicitly requests a one-step release and the exact target
    and options are visible for approval.
@@ -45,9 +46,12 @@ Publish  com.acme.shop
   lane       base · runtime 2026.04
   from       1.4.0  ->  1.5.0
   native     compatible (12 packages unchanged)
-  immediate  no        auto-revert  on · 10% · min 100
+  rollout    100%      immediate  no        auto-revert  on · 10% · min 100
 Approve? This goes live for every device on that lane.
 ```
+
+For a rollout below 100%, say "for about N% of devices on plugin 3.1+" instead
+of "every device".
 
 Use `Revert` as the verb and name the exact target release or the built-in
 fallback when reverting. Say when `forceImmediate` will reload running apps.
