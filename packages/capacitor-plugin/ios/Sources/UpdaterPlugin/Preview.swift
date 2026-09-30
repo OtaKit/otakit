@@ -37,8 +37,10 @@ enum PreviewLink: Equatable {
     "\(channelPrefix)_\(token)"
   }
 
+  /// Exactly `__preview_<token>`; other channels that merely look similar are ordinary.
   static func isPreviewChannel(_ channel: String?) -> Bool {
-    channel?.hasPrefix(channelPrefix) ?? false
+    guard let channel, channel.hasPrefix(channelPrefix + "_") else { return false }
+    return isToken(String(channel.dropFirst(channelPrefix.count + 1)))
   }
 
   /// Device events report preview installs without the token.

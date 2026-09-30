@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { serviceErrorResponse } from '@/lib/services/http';
 import { prepareRelease } from '@/lib/services/releases';
-import { isValidChannelName, normalizeOptionalChannel } from '@/lib/validation';
+import { isReleasableChannelName, normalizeOptionalChannel } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 
@@ -47,7 +47,7 @@ export async function POST(
   if (
     typeof rawChannel === 'string' &&
     rawChannel.trim().length > 0 &&
-    (!channel || !isValidChannelName(channel))
+    (!channel || !isReleasableChannelName(channel))
   ) {
     return NextResponse.json({ error: 'Invalid channel' }, { status: 400 });
   }

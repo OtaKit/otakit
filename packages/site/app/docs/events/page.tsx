@@ -55,8 +55,8 @@ OtaKit.addListener('updateStaged', ({ bundle }) => {
         />
         <EventRow
           event="previewFailed"
-          payload="{ reason: 'unavailable' | 'download_failed' }"
-          description="A preview link could not be opened (plugin 3.2+). unavailable: the link expired, was revoked, or was built for another runtime version. The app keeps running its current bundle."
+          payload="{ reason: 'unavailable' | 'download_failed' | 'busy' }"
+          description="A preview link could not be opened (plugin 3.2+). unavailable: the link expired, was revoked, or was built for another runtime version. busy: another update did not finish in time. The app keeps running its current bundle."
         />
       </div>
 

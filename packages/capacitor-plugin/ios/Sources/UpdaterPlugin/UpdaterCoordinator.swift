@@ -200,18 +200,35 @@ final class UpdaterCoordinator {
     }
   }
 
-  /// Switch to the built-in bundle, dropping every installed OTA bundle from
-  /// the pointers. Used when leaving a preview on a channel with no release.
-  func prepareActivateBuiltin() throws -> [String] {
+  struct LeavePreviewPreparation {
+    /// nil activates the built-in bundle.
+    let activationPath: String?
+    let cleanupBundleIds: [String]
+  }
+
+  /// Leave a preview bundle when the app's channel has nothing to stage: return
+  /// to the bundle the device ran before the preview (kept as the fallback), or
+  /// to the built-in bundle.
+  func prepareLeavePreview(isBundleUsable: @escaping (BundleInfo) -> Bool) throws -> LeavePreviewPreparation {
     try withStateLock {
+      let current = store.getCurrentBundle()
+      var restored = store.builtinBundle()
+      if let fallbackId = store.getFallbackBundleId(),
+         let fallback = store.getBundle(id: fallbackId),
+         !fallback.isBuiltin, fallback.id != current.id, fallback.status == .success,
+         !PreviewLink.isPreviewChannel(fallback.channel), isBundleUsable(fallback) {
+        restored = fallback
+      }
       let ids = Set([store.getCurrentBundleId(), store.getFallbackBundleId(), store.getStagedBundleId()]
         .compactMap { $0 }
-        .filter { $0 != "builtin" })
+        .filter { $0 != "builtin" && $0 != restored.id })
+      let restoredId = restored.isBuiltin ? nil : restored.id
       try store.setCoreState(
-        currentId: nil, fallbackId: nil, stagedId: nil, lastFailed: store.getLastFailedBundle()
+        currentId: restoredId, fallbackId: restoredId, stagedId: nil,
+        lastFailed: store.getLastFailedBundle()
       )
       activeTrial = nil
-      return Array(ids)
+      return LeavePreviewPreparation(activationPath: restored.isBuiltin ? nil : restored.path, cleanupBundleIds: Array(ids))
     }
   }
 
@@ -305,8 +322,18 @@ final class UpdaterCoordinator {
         )
       }
 
-      let fallbackId = previousCurrent.isBuiltin ? nil :
-        (previousCurrent.status == .success ? previousCurrent.id : store.getFallbackBundleId())
+      let fallbackId: String?
+      if previousCurrent.isBuiltin {
+        fallbackId = nil
+      } else if PreviewLink.isPreviewChannel(previousCurrent.channel) {
+        // A preview never becomes the fallback: keep the bundle from before it.
+        fallbackId = store.getFallbackBundleId()
+        if previousCurrent.id != staged.id, previousCurrent.id != fallbackId {
+          cleanupBundleIds.insert(previousCurrent.id)
+        }
+      } else {
+        fallbackId = previousCurrent.status == .success ? previousCurrent.id : store.getFallbackBundleId()
+      }
       if staged.status == .pending {
         staged = try updateStatusLocked(staged, status: .trial)
       }
@@ -340,11 +367,16 @@ final class UpdaterCoordinator {
       if current.status == .trial {
         _ = try updateStatusLocked(current, status: .success)
       }
-      try store.setFallbackBundleId(current.id)
+      // A healthy preview keeps the bundle from before it as the fallback, so
+      // leaving the preview can return there.
+      let isPreview = PreviewLink.isPreviewChannel(current.channel)
+      if !isPreview {
+        try store.setFallbackBundleId(current.id)
+      }
       activeTrial = nil
 
       var cleanupBundleIds = Set<String>()
-      if let oldFallbackId,
+      if !isPreview, let oldFallbackId,
          oldFallbackId != current.id {
         cleanupBundleIds.insert(oldFallbackId)
       }

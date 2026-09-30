@@ -18,6 +18,9 @@ describe('preview links', () => {
     expect(isPreviewChannel('__preview')).toBe(true);
     expect(isPreviewChannel('production')).toBe(false);
     expect(isPreviewChannel(null)).toBe(false);
+    expect(isPreviewChannel('__previews')).toBe(false);
+    expect(isPreviewChannel('__preview-qa')).toBe(false);
+    expect(isPreviewChannel('__preview_short')).toBe(false);
     expect(previewDeepLink('myapp', token)).toBe(`myapp://otakit-preview?token=${token}`);
     expect(previewExitLink('myapp')).toBe('myapp://otakit-preview?exit=1');
   });

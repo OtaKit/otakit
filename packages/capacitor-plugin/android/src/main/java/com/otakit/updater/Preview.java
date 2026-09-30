@@ -55,8 +55,13 @@ final class Preview {
     return CHANNEL_PREFIX + "_" + token;
   }
 
+  /** Exactly {@code __preview_<token>}; other channels that merely look similar are ordinary. */
   static boolean isPreviewChannel(String channel) {
-    return channel != null && channel.startsWith(CHANNEL_PREFIX);
+    return (
+      channel != null &&
+      channel.startsWith(CHANNEL_PREFIX + "_") &&
+      isToken(channel.substring(CHANNEL_PREFIX.length() + 1))
+    );
   }
 
   /** Device events report preview installs without the token. */

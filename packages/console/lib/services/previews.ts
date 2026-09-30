@@ -26,6 +26,7 @@ import {
 } from '@/lib/preview-links';
 
 import { OtaKitServiceError } from './errors';
+import { lockTransaction } from './releases';
 
 export type PreviewSummary = {
   id: string;
@@ -128,7 +129,7 @@ export async function createPreview(input: {
   const now = new Date();
   const preview = await db.$transaction(async (tx) => {
     // Serialize creations per app so the active-preview limit holds.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`bundle-previews:${input.appId}`}, 0))`;
+    await lockTransaction(tx, `bundle-previews:${input.appId}`);
     const active = await tx.bundlePreview.count({
       where: { appId: input.appId, ...activeWhere(now) },
     });
@@ -157,18 +158,24 @@ export async function createPreview(input: {
 
   try {
     await writePreviewManifestFile(input.appId, preview, bundle);
-    // Blocking deletes every manifest of the app; a block that landed while
-    // this one was being written must not leave it behind.
-    const organization = await db.organization.findUnique({
-      where: { id: input.access.organizationId },
-      select: { usageBlocked: true },
+    // A block (which deletes every manifest of the app) or a bundle deletion
+    // that landed while this manifest was written must not leave it behind.
+    const current = await db.bundle.findUnique({
+      where: { id: bundle.id },
+      select: { app: { select: { organization: { select: { usageBlocked: true } } } } },
     });
-    if (organization?.usageBlocked) {
-      await deletePreviewManifestFile(input.appId, preview, bundle.runtimeVersion);
+    if (!current) {
+      throw new OtaKitServiceError('BUNDLE_NOT_FOUND', 'Bundle not found', 404);
+    }
+    if (current.app.organization.usageBlocked) {
       throw usageBlocked();
     }
   } catch (error) {
-    await db.bundlePreview.delete({ where: { id: preview.id } });
+    // The manifest may be live already: end the preview now, or leave it
+    // expired so the cron removes the manifest.
+    await endPreview(preview).catch(() =>
+      db.bundlePreview.updateMany({ where: { id: preview.id }, data: { expiresAt: new Date() } }),
+    );
     throw error;
   }
 

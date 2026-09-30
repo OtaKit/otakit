@@ -102,8 +102,8 @@ otakit preview --revoke <preview-id>`}</Pre>
           The app returns to its normal release when the tester taps <strong>Exit preview</strong>,
           when your code calls <Code>OtaKit.stopPreview()</Code>, or when the link expires or is
           revoked. The app notices that on its next update check (launch, resume, or{' '}
-          <Code>OtaKit.update()</Code>). If the channel has no release, it returns to the bundle
-          built into the app.
+          <Code>OtaKit.update()</Code>). If the channel has nothing to download, it returns to the
+          bundle it ran before the preview, or to the one built into the app.
         </li>
         <li>
           Nobody else is affected: a preview is not a release, does not appear as a channel, and
@@ -115,6 +115,7 @@ if (preview) showBanner(\`Preview \${preview.version}\`, () => OtaKit.stopPrevie
 
 OtaKit.addListener('previewFailed', ({ reason }) => {
   // 'unavailable': expired, revoked, or built for another runtime version
+  // 'busy': another update did not finish in time; open the link again
 });`}</Pre>
 
       <Separator className="my-10" />
@@ -123,8 +124,8 @@ OtaKit.addListener('previewFailed', ({ reason }) => {
       <P>
         Each link carries a random 130-bit token and works only for the bundle it was created for.
         Anyone with the link and a build that accepts previews can open it, so keep{' '}
-        <Code>previewLinks</Code> off in builds that should never show unreleased work, and revoke
-        links you no longer need.
+        <Code>previewLinks</Code> off in builds that should never show unreleased work (such a build
+        also ends a preview an earlier build started), and revoke links you no longer need.
       </P>
 
       <Separator className="my-10" />

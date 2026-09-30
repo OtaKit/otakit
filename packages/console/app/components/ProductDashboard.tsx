@@ -276,7 +276,12 @@ function rolloutPercentValue(choice: string, custom: string): number | null {
 }
 
 function isValidChannelName(channel: string): boolean {
-  return CHANNEL_NAME_REGEX.test(channel) && !RESERVED_CHANNEL_NAMES.has(channel.toLowerCase());
+  const name = channel.toLowerCase();
+  return (
+    CHANNEL_NAME_REGEX.test(channel) &&
+    !RESERVED_CHANNEL_NAMES.has(name) &&
+    !name.startsWith('__preview')
+  );
 }
 
 function isCurrentOnTarget(

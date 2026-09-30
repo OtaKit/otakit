@@ -308,12 +308,12 @@ plugins: {
 
 The plugin handles `myapp://otakit-preview?…` links itself; other links keep
 reaching your app. Leave `previewLinks` off in builds that should never open
-previews.
+previews; such a build also ends a preview that an earlier build started.
 
 ```ts
 const { preview } = await OtaKit.getState(); // { startedAt, version } or null
 if (preview) showPreviewBanner(preview.version, () => OtaKit.stopPreview());
-OtaKit.addListener('previewFailed', ({ reason }) => {}); // 'unavailable' | 'download_failed'
+OtaKit.addListener('previewFailed', ({ reason }) => {}); // 'unavailable' | 'download_failed' | 'busy'
 ```
 
 ## Events

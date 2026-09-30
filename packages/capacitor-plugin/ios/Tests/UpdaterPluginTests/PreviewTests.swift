@@ -43,6 +43,10 @@ final class PreviewTests: XCTestCase {
     XCTAssertTrue(PreviewLink.isPreviewChannel(channel))
     XCTAssertFalse(PreviewLink.isPreviewChannel("production"))
     XCTAssertFalse(PreviewLink.isPreviewChannel(nil))
+    for lookalike in ["__preview", "__previews", "__preview-qa", "__preview_short"] {
+      XCTAssertFalse(PreviewLink.isPreviewChannel(lookalike), lookalike)
+      XCTAssertEqual(PreviewLink.reportedChannel(lookalike), lookalike)
+    }
     XCTAssertEqual(PreviewLink.reportedChannel(channel), "__preview")
     XCTAssertEqual(PreviewLink.reportedChannel("production"), "production")
     XCTAssertNil(PreviewLink.reportedChannel(nil))
@@ -65,37 +69,79 @@ final class PreviewTests: XCTestCase {
     XCTAssertNil(fixture.reopenStore().getPreview())
   }
 
-  func testActivatingTheBuiltinBundleDropsEveryInstalledBundle() throws {
+  private static var previewChannel: String { PreviewLink.channel(for: token) }
+
+  func testAHealthyPreviewKeepsTheBundleFromBeforeItAsFallback() throws {
     let fixture = try CoordinatorFixture()
     defer { try? fixture.cleanup() }
     try fixture.installHealthy("A")
-    try fixture.apply("B")
-    XCTAssertTrue(fixture.coordinator.isCurrentInTrial())
-    try fixture.stage("C")
+    try fixture.installHealthy("P", channel: Self.previewChannel)
 
-    let cleanup = try fixture.coordinator.prepareActivateBuiltin()
-
-    XCTAssertEqual(Set(cleanup), ["A", "B", "C"])
-    XCTAssertTrue(fixture.store.getCurrentBundle().isBuiltin)
-    XCTAssertTrue(fixture.store.getFallbackBundle().isBuiltin)
-    XCTAssertNil(fixture.store.getStagedBundleId())
-    XCTAssertFalse(fixture.coordinator.isCurrentInTrial())
-    fixture.coordinator.cleanupBundles(cleanup)
-    XCTAssertFalse(fixture.indexExists("A"))
-    XCTAssertFalse(fixture.indexExists("B"))
-    XCTAssertFalse(fixture.indexExists("C"))
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "P")
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "A")
+    XCTAssertTrue(fixture.indexExists("A"))
   }
 
-  func testActivatingTheBuiltinBundleFailsClosedWhenStateCannotBeWritten() throws {
+  func testLeavingAPreviewReturnsToTheBundleFromBeforeIt() throws {
     let fixture = try CoordinatorFixture()
     defer { try? fixture.cleanup() }
     try fixture.installHealthy("A")
+    try fixture.installHealthy("P", channel: Self.previewChannel)
+    try fixture.stage("Q", channel: Self.previewChannel)
+
+    let leave = try fixture.coordinator.prepareLeavePreview(isBundleUsable: fixture.isUsable)
+
+    XCTAssertEqual(leave.activationPath, fixture.store.getBundle(id: "A")?.path)
+    XCTAssertEqual(Set(leave.cleanupBundleIds), ["P", "Q"])
+    XCTAssertEqual(fixture.store.getCurrentBundle().id, "A")
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "A")
+    XCTAssertNil(fixture.store.getStagedBundleId())
+    fixture.coordinator.cleanupBundles(leave.cleanupBundleIds)
+    XCTAssertTrue(fixture.indexExists("A"))
+    XCTAssertFalse(fixture.indexExists("P"))
+  }
+
+  func testLeavingAPreviewWithNothingBeforeItUsesTheBuiltinBundle() throws {
+    let fixture = try CoordinatorFixture()
+    defer { try? fixture.cleanup() }
+    try fixture.installHealthy("P", channel: Self.previewChannel)
+
+    let leave = try fixture.coordinator.prepareLeavePreview(isBundleUsable: fixture.isUsable)
+
+    XCTAssertNil(leave.activationPath)
+    XCTAssertEqual(leave.cleanupBundleIds, ["P"])
+    XCTAssertTrue(fixture.store.getCurrentBundle().isBuiltin)
+    XCTAssertTrue(fixture.store.getFallbackBundle().isBuiltin)
+  }
+
+  func testAReleaseAppliedOverAPreviewKeepsTheEarlierFallback() throws {
+    let fixture = try CoordinatorFixture()
+    defer { try? fixture.cleanup() }
+    try fixture.installHealthy("A")
+    try fixture.installHealthy("P", channel: Self.previewChannel)
+
+    let applied = try fixture.apply("R")
+    XCTAssertTrue(applied.didApply)
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "A")
+    XCTAssertFalse(fixture.indexExists("P"))
+
+    let ready = try fixture.coordinator.prepareNotifyAppReady(activationId: fixture.trial?.activationId)
+    fixture.coordinator.cleanupBundles(ready.cleanupBundleIds)
+    XCTAssertEqual(fixture.store.getFallbackBundle().id, "R")
+    XCTAssertFalse(fixture.indexExists("A"))
+  }
+
+  func testLeavingAPreviewFailsClosedWhenStateCannotBeWritten() throws {
+    let fixture = try CoordinatorFixture()
+    defer { try? fixture.cleanup() }
+    try fixture.installHealthy("A")
+    try fixture.installHealthy("P", channel: Self.previewChannel)
 
     try fixture.withReadOnlyState {
-      XCTAssertThrowsError(try fixture.coordinator.prepareActivateBuiltin())
+      XCTAssertThrowsError(try fixture.coordinator.prepareLeavePreview(isBundleUsable: fixture.isUsable))
     }
-    XCTAssertEqual(fixture.reopenStore().getCurrentBundle().id, "A")
-    XCTAssertTrue(fixture.indexExists("A"))
+    XCTAssertEqual(fixture.reopenStore().getCurrentBundle().id, "P")
+    XCTAssertTrue(fixture.indexExists("P"))
   }
 
   func testTrialIsOverOnceTheAppIsReady() throws {

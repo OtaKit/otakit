@@ -40,8 +40,12 @@ export function parseNonNegativeInteger(value: string | null, fallback: number):
 }
 
 export function isValidChannelName(channel: string): boolean {
-  // `__preview…` channels belong to preview links and are never user channels.
-  return CHANNEL_NAME_REGEX.test(channel) && !channel.toLowerCase().startsWith('__preview');
+  return CHANNEL_NAME_REGEX.test(channel);
+}
+
+/** Channels a release can target: `__preview…` names belong to preview links. */
+export function isReleasableChannelName(channel: string): boolean {
+  return isValidChannelName(channel) && !channel.toLowerCase().startsWith('__preview');
 }
 
 export function normalizeOptionalChannel(channel: unknown): string | null {

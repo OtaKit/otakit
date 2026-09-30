@@ -173,6 +173,15 @@ export interface UpdateFailedEvent {
   reason: string;
 }
 
+/** A preview link could not be opened. */
+export interface PreviewFailedEvent {
+  /**
+   * `unavailable`: expired, revoked, or built for another runtime version.
+   * `busy`: another update operation did not finish in time; open the link again.
+   */
+  reason: 'unavailable' | 'download_failed' | 'busy';
+}
+
 /**
  * Update lifecycle events emitted by the plugin.
  *
@@ -181,12 +190,6 @@ export interface UpdateFailedEvent {
  * while no listener was attached (e.g. a bundle staged in a previous
  * session, or a startup rollback).
  */
-/** A preview link could not be opened. */
-export interface PreviewFailedEvent {
-  /** `unavailable`: expired, revoked, or built for another runtime version. */
-  reason: 'unavailable' | 'download_failed';
-}
-
 export type OtaKitEventName =
   | 'updateAvailable'
   | 'updateStaged'

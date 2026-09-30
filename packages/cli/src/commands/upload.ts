@@ -305,13 +305,14 @@ export const uploadCommand = new Command('upload')
       }
 
       if (options.preview) {
+        // The upload (and release) already succeeded; a missing preview link only warns.
         try {
           const { preview } = await api.createPreview(bundle.id);
           console.log(await renderPreview(preview));
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          throw new CliError(
-            `Uploaded ${bundle.version}, but the preview link was not created: ${reason}\nRetry with \`otakit preview ${bundle.id}\`.`,
+          console.warn(
+            `Warning: the preview link was not created: ${reason}\nRetry with \`otakit preview ${bundle.id}\`.`,
           );
         }
       }

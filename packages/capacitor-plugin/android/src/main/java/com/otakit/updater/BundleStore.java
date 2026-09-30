@@ -30,6 +30,7 @@ final class BundleStore {
   private static final String KEY_OVERRIDE_CHANNEL = "override_channel";
   private static final String KEY_ASSIGNMENT_SECRET = "assignment_secret";
   private static final String KEY_PREVIEW = "preview";
+  private static final String KEY_PREVIEW_LAUNCH_TASK = "preview_launch_task";
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -326,6 +327,15 @@ final class BundleStore {
       editor.remove(KEY_PREVIEW);
     }
     editor.commit();
+  }
+
+  /** The task whose launch intent already opened its preview link; -1 when none. */
+  synchronized int getPreviewLaunchTask() {
+    return prefs.getInt(KEY_PREVIEW_LAUNCH_TASK, -1);
+  }
+
+  synchronized void setPreviewLaunchTask(int taskId) {
+    prefs.edit().putInt(KEY_PREVIEW_LAUNCH_TASK, taskId).commit();
   }
 
   synchronized String getLastResolvedRuntimeKey() {

@@ -22,7 +22,7 @@ import {
   getReleaseEventCountsWithStatus,
   getReleaseHealthWindowCounts,
 } from '@/lib/tinybird/events';
-import { isValidChannelName, isValidRuntimeVersion } from '@/lib/validation';
+import { isReleasableChannelName, isValidRuntimeVersion } from '@/lib/validation';
 
 import { OtaKitServiceError } from './errors';
 import {
@@ -227,7 +227,7 @@ function laneLockKey(appId: string, channel: string | null, runtimeVersion: stri
   return `release-lane:${appId}:${channel ?? '__base__'}:${runtimeVersion ?? '__default__'}`;
 }
 
-async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promise<void> {
+export async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promise<void> {
   // The PostgreSQL lock function returns the pseudo-type `void`, which Prisma
   // cannot deserialize through $queryRaw. Execute it without reading a result.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
@@ -345,7 +345,7 @@ function validateReleaseOptions(input: PublishReleaseInput): void {
 }
 
 function validateLane(channel: string | null, runtimeVersion?: string | null): void {
-  if (channel !== null && !isValidChannelName(channel)) {
+  if (channel !== null && !isReleasableChannelName(channel)) {
     throw new OtaKitServiceError(
       'INVALID_LANE',
       'Invalid channel. Use null for the base channel.',

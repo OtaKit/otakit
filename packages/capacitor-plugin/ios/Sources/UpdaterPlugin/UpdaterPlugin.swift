@@ -102,6 +102,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON())
     previewLinks = getConfig().getBoolean("previewLinks", false)
+    // A build without preview links never keeps a preview that another build
+    // started; the next update check returns a leftover preview bundle to the release.
+    if !previewLinks { store.setPreview(nil) }
 
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults
@@ -538,7 +541,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     ])
   }
 
-  /// Mirrors the server's isValidChannelName (console/lib/validation.ts):
+  /// Mirrors the server's isReleasableChannelName (console/lib/validation.ts):
   /// charset regex plus reserved names. The channel is interpolated into the
   /// manifest CDN path, so anything outside this charset (or a ".." sequence)
   /// is rejected before it is persisted or used.
@@ -551,7 +554,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     if name.contains("..") || name == "." {
       return false
     }
-    return !["base", "default"].contains(name.lowercased())
+    let lower = name.lowercased()
+    return !["base", "default"].contains(lower) && !lower.hasPrefix(PreviewLink.channelPrefix)
   }
 
   // MARK: - Preview links
@@ -587,6 +591,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     Task {
       guard await beginOperationWhenFree() else {
         print("[OtaKit] Preview not started: another update operation did not finish")
+        emitEvent("previewFailed", ["reason": "busy"])
         return
       }
       defer { coordinator.endOperation() }
@@ -661,24 +666,22 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return true
   }
 
-  /// Reload into the release of the app's channel, or the built-in bundle when
-  /// that channel has nothing to stage.
+  /// Reload into the release of the app's channel. When that channel has
+  /// nothing to stage, return to the bundle from before the preview, or the
+  /// built-in bundle.
   private func returnToRelease() async throws {
     try await waitUntilTrialSettles()
     if case .staged = try await downloadLatest(respectInterval: false, channel: nil) {
       try requireApplyStaged(reloadAfterApply: true)
       return
     }
-    try activateBuiltin()
-  }
-
-  private func activateBuiltin() throws {
     try runOnMainSynchronously { [self] in
       try updateOwner.run {
-        cleanupInBackground(try coordinator.prepareActivateBuiltin())
+        let leave = try coordinator.prepareLeavePreview(isBundleUsable: isBundleUsable)
         cancelTrialTimeout()
-        try applyServerBasePathSynchronously(nil)
+        try applyServerBasePathSynchronously(leave.activationPath)
         try reloadWebViewSynchronously()
+        cleanupInBackground(leave.cleanupBundleIds)
       }
     }
   }
@@ -1132,7 +1135,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private func applyStagedOnMain(reloadAfterApply: Bool) throws -> Bool {
     let preparation = try coordinator.prepareApplyStaged(
       isCompatibleRuntime: isCompatibleRuntime,
-      isBundleUsable: isBundleUsable
+      isBundleUsable: isApplicable
     )
     cleanupInBackground(preparation.cleanupBundleIds)
 
@@ -1507,7 +1510,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       data["runtimeVersion"] = runtimeVersion
     }
     if let channel = trimToNil(channel) {
-      data["channel"] = channel
+      data["channel"] = PreviewLink.reportedChannel(channel)
     }
     if let releaseId = trimToNil(releaseId) {
       data["releaseId"] = releaseId
@@ -1603,6 +1606,13 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       }
     }
     return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
+  }
+
+  /// A staged preview bundle applies only while its preview is active; otherwise
+  /// it is discarded (a start that failed after staging leaves one behind).
+  private func isApplicable(_ bundle: BundleInfo) -> Bool {
+    guard isBundleUsable(bundle) else { return false }
+    return !PreviewLink.isPreviewChannel(bundle.channel) || store.getPreview()?.channel == bundle.channel
   }
 
   private func isBundleUsable(_ bundle: BundleInfo) -> Bool {

@@ -184,6 +184,9 @@ public class UpdaterPlugin extends Plugin {
 
     manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON());
     previewLinks = getConfig().getBoolean("previewLinks", false);
+    // A build without preview links never keeps a preview that another build started; the next
+    // update check returns a leftover preview bundle to the release.
+    if (!previewLinks) store.setPreview(null);
 
     if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
@@ -251,15 +254,28 @@ public class UpdaterPlugin extends Plugin {
   @Override
   protected void handleOnNewIntent(Intent intent) {
     super.handleOnNewIntent(intent);
-    if (!previewLinks || intent == null) return;
-    // Reopening the app from Recents replays its launch intent, which must not restart a preview
-    // the tester already left.
-    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
-    if (pendingStartupPreparation != null) {
-      pendingLaunchLink = intent.getData();
-    } else {
+    if (!previewLinks || intent == null || Preview.parse(intent.getData()) == null) return;
+    if (pendingStartupPreparation == null) {
       handlePreviewLink(intent.getData());
+    } else if (!isReplayedLaunchIntent(intent)) {
+      pendingLaunchLink = intent.getData();
     }
+  }
+
+  /**
+   * The activity's launch intent comes back whenever the activity is recreated in its task: from
+   * Recents, after the process was killed, or on a configuration change. A replay must not restart
+   * a preview the tester already left, so each task opens its launch link once.
+   */
+  private boolean isReplayedLaunchIntent(Intent intent) {
+    if (!(getContext() instanceof android.app.Activity)) return false;
+    android.app.Activity activity = (android.app.Activity) getContext();
+    if (intent != activity.getIntent()) return false;
+    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return true;
+    int taskId = activity.getTaskId();
+    if (taskId == store.getPreviewLaunchTask()) return true;
+    store.setPreviewLaunchTask(taskId);
+    return false;
   }
 
   @Override
@@ -711,7 +727,7 @@ public class UpdaterPlugin extends Plugin {
   }
 
   /**
-   * Mirrors the server's isValidChannelName (console/lib/validation.ts):
+   * Mirrors the server's isReleasableChannelName (console/lib/validation.ts):
    * charset regex plus reserved names. The channel is interpolated into the
    * manifest CDN path, so anything outside this charset (or a ".." sequence)
    * is rejected before it is persisted or used.
@@ -724,7 +740,9 @@ public class UpdaterPlugin extends Plugin {
       return false;
     }
     String lower = name.toLowerCase(java.util.Locale.ROOT);
-    return !"base".equals(lower) && !"default".equals(lower);
+    return (
+      !"base".equals(lower) && !"default".equals(lower) && !lower.startsWith(Preview.CHANNEL_PREFIX)
+    );
   }
 
   // Preview links
@@ -765,7 +783,10 @@ public class UpdaterPlugin extends Plugin {
           throw error;
         }
       },
-      error -> emitPreviewFailed("download_failed")
+      error ->
+        emitPreviewFailed(
+          error instanceof java.util.concurrent.TimeoutException ? "busy" : "download_failed"
+        )
     );
   }
 
@@ -810,8 +831,8 @@ public class UpdaterPlugin extends Plugin {
   }
 
   /**
-   * Reload into the release of the app's channel, or the built-in bundle when that channel has
-   * nothing to stage.
+   * Reload into the release of the app's channel. When that channel has nothing to stage, return
+   * to the bundle from before the preview, or the built-in bundle.
    */
   private void returnToRelease() throws Exception {
     waitUntilTrialSettles();
@@ -819,15 +840,14 @@ public class UpdaterPlugin extends Plugin {
       requireApplyStaged();
       return;
     }
-    activateBuiltin();
-  }
-
-  private void activateBuiltin() throws Exception {
     runOnMainSynchronously(() ->
       updateOwner.run(() -> {
-        cleanupInBackground(coordinator.prepareActivateBuiltin());
+        UpdaterCoordinator.LeavePreviewPreparation leave = coordinator.prepareLeavePreview(
+          this::isBundleUsable
+        );
         cancelTrialTimeout();
-        applyServerBasePathSynchronously(null);
+        applyServerBasePathSynchronously(leave.activationPath);
+        cleanupInBackground(leave.cleanupBundleIds);
         return null;
       })
     );
@@ -875,7 +895,9 @@ public class UpdaterPlugin extends Plugin {
     if (!coordinator.tryBeginOperation()) {
       if (attemptsLeft <= 0) {
         onError.accept(
-          new IllegalStateException("Another update operation is already in progress")
+          new java.util.concurrent.TimeoutException(
+            "Another update operation is already in progress"
+          )
         );
         return;
       }
@@ -1312,7 +1334,7 @@ public class UpdaterPlugin extends Plugin {
     DocumentReadyBridge.preflight(bridge.getWebView(), bridge.getAppUrl());
     UpdaterCoordinator.ApplyPreparation preparation = coordinator.prepareApplyStaged(
       this::isCompatibleRuntime,
-      this::isBundleUsable
+      this::isApplicable
     );
     cleanupInBackground(preparation.cleanupBundleIds);
     if (!preparation.didApply()) {
@@ -1814,7 +1836,7 @@ public class UpdaterPlugin extends Plugin {
       data.put("runtimeVersion", runtimeVersion.trim());
     }
     if (trimToNull(channel) != null) {
-      data.put("channel", channel.trim());
+      data.put("channel", Preview.reportedChannel(channel.trim()));
     }
     if (trimToNull(releaseId) != null) {
       data.put("releaseId", releaseId.trim());
@@ -1926,6 +1948,17 @@ public class UpdaterPlugin extends Plugin {
 
   private boolean isCompatibleRuntime(BundleInfo bundle) {
     return isCompatibleRuntime(bundle.runtimeVersion);
+  }
+
+  /**
+   * A staged preview bundle applies only while its preview is active; otherwise it is discarded (a
+   * start that failed after staging leaves one behind).
+   */
+  private boolean isApplicable(BundleInfo bundle) {
+    if (!isBundleUsable(bundle)) return false;
+    if (!Preview.isPreviewChannel(bundle.channel)) return true;
+    Preview.State preview = store.getPreview();
+    return preview != null && preview.channel().equals(bundle.channel);
   }
 
   private boolean isBundleUsable(BundleInfo bundle) {

@@ -375,6 +375,13 @@ export async function restoreManifestFilesForApp(appId: string): Promise<void> {
   for (const preview of previews) {
     try {
       await writePreviewManifestFile(appId, preview, preview.bundle);
+      // A revoke or expiry that ran meanwhile already deleted this manifest.
+      const stillActive = await db.bundlePreview.count({
+        where: { id: preview.id, endedAt: null, expiresAt: { gt: new Date() } },
+      });
+      if (!stillActive) {
+        await deletePreviewManifestFile(appId, preview, preview.bundle.runtimeVersion);
+      }
     } catch (error) {
       failures.push(error instanceof Error ? error.message : String(error));
     }

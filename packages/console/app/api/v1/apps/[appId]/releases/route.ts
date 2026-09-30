@@ -8,6 +8,7 @@ import { serviceErrorResponse } from '@/lib/services/http';
 import { isRolloutPercent } from '@/lib/rollouts';
 import { listReleases, publishRelease, publishReleaseLegacy } from '@/lib/services/releases';
 import {
+  isReleasableChannelName,
   isValidChannelName,
   normalizeOptionalChannel,
   parseNonNegativeInteger,
@@ -110,7 +111,7 @@ export async function POST(
   if (
     typeof rawChannel === 'string' &&
     rawChannel.trim().length > 0 &&
-    (!channel || !isValidChannelName(channel))
+    (!channel || !isReleasableChannelName(channel))
   ) {
     return NextResponse.json({ error: 'Invalid channel' }, { status: 400 });
   }

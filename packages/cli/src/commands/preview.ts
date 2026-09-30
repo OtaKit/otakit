@@ -68,10 +68,16 @@ export const previewCommand = new Command('preview')
       }
 
       const spinner = options.json ? null : ora('Creating preview link...').start();
-      const { preview } = await api.createPreview(targetBundleId, {
-        expiresIn,
-        urlScheme: options.scheme,
-      });
+      let preview;
+      try {
+        ({ preview } = await api.createPreview(targetBundleId, {
+          expiresIn,
+          urlScheme: options.scheme,
+        }));
+      } catch (error) {
+        spinner?.fail('Could not create the preview link.');
+        throw error;
+      }
       spinner?.stop();
       console.log(options.json ? JSON.stringify(preview, null, 2) : await renderPreview(preview));
     });

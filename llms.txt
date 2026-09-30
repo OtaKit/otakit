@@ -1631,7 +1631,7 @@ The CLI prints the link and a QR code. Links last 7 days by default (1h, 24h, 7d
 ### What the tester sees
 - The link opens a page with the bundle version, expiry, a QR code on desktop, and the buttons Open in the app and Exit preview.
 - Opening it downloads the bundle like any update, with signature checks, and reloads the app. The app still calls `notifyAppReady()`; a bundle that fails to start rolls back and ends the preview.
-- The app returns to its normal release when the tester taps Exit preview, when your code calls `OtaKit.stopPreview()`, or when the link expires or is revoked. The app notices that on its next update check (launch, resume, or `OtaKit.update()`). If the channel has no release, it returns to the bundle built into the app.
+- The app returns to its normal release when the tester taps Exit preview, when your code calls `OtaKit.stopPreview()`, or when the link expires or is revoked. The app notices that on its next update check (launch, resume, or `OtaKit.update()`). If the channel has nothing to download, it returns to the bundle it ran before the preview, or to the one built into the app.
 - Nobody else is affected: a preview is not a release, does not appear as a channel, and does not count towards release health or auto-revert. Its downloads count as downloads.
 
 ```txt
@@ -1640,12 +1640,13 @@ if (preview) showBanner(`Preview ${preview.version}`, () => OtaKit.stopPreview()
 
 OtaKit.addListener('previewFailed', ({ reason }) => {
   // 'unavailable': expired, revoked, or built for another runtime version
+  // 'busy': another update did not finish in time; open the link again
 });
 ```
 
 ### Security
 
-Each link carries a random 130-bit token and works only for the bundle it was created for. Anyone with the link and a build that accepts previews can open it, so keep `previewLinks` off in builds that should never show unreleased work, and revoke links you no longer need.
+Each link carries a random 130-bit token and works only for the bundle it was created for. Anyone with the link and a build that accepts previews can open it, so keep `previewLinks` off in builds that should never show unreleased work (such a build also ends a preview an earlier build started), and revoke links you no longer need.
 
 ### API and agents
 
@@ -1714,7 +1715,7 @@ OtaKit.addListener('updateStaged', ({ bundle }) => {
 - `updateApplied` ({ bundle: BundleInfo }): A newly activated bundle was confirmed healthy — fires when notifyAppReady() confirms the trial bundle, in the reloaded JS context.
 - `downloadFailed` ({ version, runtimeVersion?, releaseId?, channel?, reason }): A download, verification, or extraction failed. Non-terminal: the app keeps running its current bundle and retries on a later cycle.
 - `rollback` ({ version, runtimeVersion?, releaseId?, channel?, reason }): An applied bundle failed its health check (notifyAppReady timeout) and was reverted to the previous bundle.
-- `previewFailed` ({ reason: 'unavailable' | 'download_failed' }): A preview link could not be opened (plugin 3.2+). unavailable: the link expired, was revoked, or was built for another runtime version. The app keeps running its current bundle.
+- `previewFailed` ({ reason: 'unavailable' | 'download_failed' | 'busy' }): A preview link could not be opened (plugin 3.2+). unavailable: the link expired, was revoked, or was built for another runtime version. busy: another update did not finish in time. The app keeps running its current bundle.
 
 ### Caveats
 - Events fire only while the app process is alive. Nothing is delivered for work that happened while the app was killed or before your listener attached — there is no buffering or replay.

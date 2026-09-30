@@ -29,9 +29,14 @@ export function previewChannel(token: string): string {
   return `${PREVIEW_CHANNEL_PREFIX}_${token}`;
 }
 
-/** True for preview channels and the bare `__preview` channel events report. */
+/** True for a preview channel and for the bare `__preview` channel device events report. */
 export function isPreviewChannel(channel: string | null | undefined): boolean {
-  return channel?.toLowerCase().startsWith(PREVIEW_CHANNEL_PREFIX) ?? false;
+  if (!channel) return false;
+  if (channel === PREVIEW_CHANNEL_PREFIX) return true;
+  return (
+    channel.startsWith(`${PREVIEW_CHANNEL_PREFIX}_`) &&
+    isPreviewToken(channel.slice(PREVIEW_CHANNEL_PREFIX.length + 1))
+  );
 }
 
 export function normalizeUrlScheme(value: unknown): string | null {

@@ -160,13 +160,39 @@ databaseDescribe('preview links (PostgreSQL integration)', () => {
     expect(storage.putTextObject).not.toHaveBeenCalled();
   });
 
-  it('removes the preview again when its manifest cannot be written', async () => {
+  it('ends the preview again when its manifest cannot be written', async () => {
     storage.putTextObject.mockRejectedValueOnce(new Error('storage unavailable'));
 
     await expect(createPreview({ access, appId, bundleId: bundleIds[0] })).rejects.toThrow(
       'storage unavailable',
     );
-    await expect(db.bundlePreview.count({ where: { appId } })).resolves.toBe(0);
+    await expect(db.bundlePreview.count({ where: { appId, endedAt: null } })).resolves.toBe(0);
+    expect(storage.deleteStorageObject).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`^manifests/${appId}/__preview_[a-z2-7]{26}/rt-7/`)),
+    );
+  });
+
+  it('ends a preview whose workspace was blocked while its manifest was written', async () => {
+    storage.putTextObject.mockImplementationOnce(async () => {
+      await db.organization.update({ where: { id: organizationId }, data: { usageBlocked: true } });
+    });
+
+    await expect(createPreview({ access, appId, bundleId: bundleIds[0] })).rejects.toMatchObject({
+      code: 'USAGE_BLOCKED',
+    });
+    await expect(db.bundlePreview.count({ where: { appId, endedAt: null } })).resolves.toBe(0);
+    expect(storage.deleteStorageObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves an expired preview for the cron when even the cleanup fails', async () => {
+    storage.putTextObject.mockRejectedValueOnce(new Error('storage unavailable'));
+    storage.deleteStorageObject.mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await expect(createPreview({ access, appId, bundleId: bundleIds[0] })).rejects.toThrow();
+    const [row] = await db.bundlePreview.findMany({ where: { appId } });
+    expect(row).toMatchObject({ endedAt: null });
+    expect(row.expiresAt.getTime()).toBeLessThanOrEqual(Date.now());
+    await expect(endExpiredPreviews()).resolves.toMatchObject({ ended: 1, failed: 0 });
   });
 
   it(`allows ${MAX_ACTIVE_PREVIEWS_PER_APP} active previews per app`, async () => {
@@ -249,12 +275,28 @@ databaseDescribe('preview links (PostgreSQL integration)', () => {
     const revoked = await createPreview({ access, appId, bundleId: bundleIds[1] });
     await revokePreview({ access, appId, previewId: revoked.id });
     storage.putTextObject.mockClear();
+    storage.deleteStorageObject.mockClear();
 
     await restoreManifestFilesForApp(appId);
 
     const { token } = await db.bundlePreview.findUniqueOrThrow({ where: { id: live.id } });
     expect(storage.putTextObject).toHaveBeenCalledTimes(1);
     expect(writtenManifest().storageKey).toBe(
+      `manifests/${appId}/__preview_${token}/rt-7/manifest.json`,
+    );
+    expect(storage.deleteStorageObject).not.toHaveBeenCalled();
+  });
+
+  it('does not bring back a preview revoked while the workspace was being restored', async () => {
+    const preview = await createPreview({ access, appId, bundleId: bundleIds[0] });
+    const { token } = await db.bundlePreview.findUniqueOrThrow({ where: { id: preview.id } });
+    storage.putTextObject.mockImplementationOnce(async () => {
+      await revokePreview({ access, appId, previewId: preview.id });
+    });
+
+    await restoreManifestFilesForApp(appId);
+
+    expect(storage.deleteStorageObject).toHaveBeenLastCalledWith(
       `manifests/${appId}/__preview_${token}/rt-7/manifest.json`,
     );
   });

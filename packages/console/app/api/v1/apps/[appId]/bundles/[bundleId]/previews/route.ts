@@ -17,12 +17,9 @@ export async function POST(
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  let body: Record<string, unknown> = {};
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    body = {};
-  }
+  // An empty or non-object body means "use the defaults".
+  const parsed: unknown = await request.json().catch(() => null);
+  const body = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
   if (body.expiresIn !== undefined && !isPreviewExpiry(body.expiresIn)) {
     return NextResponse.json({ error: 'expiresIn must be 1h, 24h, 7d or 30d' }, { status: 400 });
   }
