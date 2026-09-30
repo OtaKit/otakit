@@ -10,6 +10,7 @@ const storage = vi.hoisted(() => ({
 const database = vi.hoisted(() => ({
   app: { findUnique: vi.fn() },
   release: { findMany: vi.fn() },
+  bundlePreview: { findMany: vi.fn() },
 }));
 
 vi.mock('@/lib/db', () => ({ db: database }));
@@ -225,6 +226,7 @@ describe('restoreManifestFilesForApp', () => {
     storage.putTextObject.mockReset();
     storage.listStorageKeys.mockResolvedValue([]);
     database.app.findUnique.mockResolvedValue({ organization: { usageBlocked: false } });
+    database.bundlePreview.findMany.mockResolvedValue([]);
     database.release.findMany.mockResolvedValue([
       { ...release('r', 10), channel: 'broken' },
       { ...release('s', 100), channel: 'production' },

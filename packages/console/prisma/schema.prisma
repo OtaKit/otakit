@@ -409,15 +409,18 @@ model AuditLog {
 // ── App & bundles ───────────────────────────────────────────────────
 
 model App {
-  id              String           @id @default(uuid())
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId  String
-  slug            String
-  bundles         Bundle[]
-  releases        Release[]
-  uploadSessions  UploadSession[]
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id               String          @id @default(uuid())
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId   String
+  slug             String
+  // Custom URL scheme of the app (e.g. `myapp`), used to open preview links.
+  previewUrlScheme String?
+  bundles          Bundle[]
+  releases         Release[]
+  uploadSessions   UploadSession[]
+  previews         BundlePreview[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId, createdAt(sort: Desc)])
@@ -442,6 +445,7 @@ model Bundle {
   releases           Release[]       @relation("ReleaseBundle")
   previousInReleases Release[]       @relation("ReleasePreviousBundle")
   uploadSessions     UploadSession[]
+  previews           BundlePreview[]
 
   @@unique([appId, version])
   @@index([appId, createdAt(sort: Desc)])
@@ -475,6 +479,27 @@ model Release {
   @@index([appId, channel, promotedAt(sort: Desc)])
   @@index([bundleId, promotedAt(sort: Desc)])
   @@index([autoRevertAlertedAt, autoRevertAlertClaimedAt])
+}
+
+// A private preview link: while it is active, a signed manifest for the bundle
+// is served on the hidden channel `__preview_<token>`. The token is the
+// capability; ended previews have their manifest deleted.
+model BundlePreview {
+  id        String    @id @default(uuid())
+  app       App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId     String
+  bundle    Bundle    @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  bundleId  String
+  token     String    @unique
+  createdBy String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  // Revoked, or expired and cleaned up: the manifest no longer exists.
+  endedAt   DateTime?
+
+  @@index([appId, endedAt, expiresAt])
+  @@index([bundleId, endedAt])
+  @@index([endedAt, expiresAt])
 }
 
 model ReleaseMutation {

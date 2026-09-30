@@ -49,6 +49,11 @@ otakit rollout                                    # active rollouts
 otakit rollout --channel production --percent 50  # raise or lower the share
 otakit rollout --channel production --complete    # every device
 otakit rollout --channel production --cancel      # back to the previous release
+
+otakit upload --preview                 # upload, then print a preview link and QR code
+otakit preview <bundleId> --scheme myapp --expires 24h
+otakit preview --list
+otakit preview --revoke <previewId>
 ```
 
 Flags that change device behavior, so show them before running:

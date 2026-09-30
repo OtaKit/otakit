@@ -160,6 +160,10 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               desc: "With --release: cancel the channel's active rollout and release this bundle in its place.",
             },
             {
+              flag: '--preview',
+              desc: 'Also create a preview link and QR code for the uploaded bundle. See Preview links.',
+            },
+            {
               flag: '--encrypt',
               desc: 'Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).',
             },
@@ -219,6 +223,28 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             },
           ]}
           example="otakit rollout --channel production --percent 50"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit preview"
+          args="[bundleId]"
+          description="Create a private link and QR code that open a bundle in the installed app on one phone, without releasing it. Defaults to the latest upload. The app needs previewLinks: true and a custom URL scheme."
+          options={[
+            {
+              flag: '--expires <duration>',
+              desc: 'How long the link works: 1h, 24h, 7d (default) or 30d.',
+            },
+            {
+              flag: '--scheme <scheme>',
+              desc: "The app's custom URL scheme, such as myapp. Needed once; the app remembers it.",
+            },
+            { flag: '--list', desc: 'List active preview links.' },
+            { flag: '--revoke <previewId>', desc: 'Revoke a preview link.' },
+            { flag: '--json', desc: 'Print JSON output.' },
+          ]}
+          example="otakit preview --scheme myapp"
         />
 
         <Separator />

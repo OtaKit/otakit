@@ -16,6 +16,14 @@ describe('console validation', () => {
     expect(isValidChannelName('default')).toBe(true);
   });
 
+  it('reserves preview channels for preview links', () => {
+    expect(isValidChannelName('__preview')).toBe(false);
+    expect(isValidChannelName('__preview_abcdefghijklmnopqrstuvwxyz')).toBe(false);
+    expect(isValidChannelName('__PREVIEW_x')).toBe(false);
+    expect(isValidChannelName('preview')).toBe(true);
+    expect(isValidChannelName('_preview')).toBe(true);
+  });
+
   it('validates app slugs and positive integer fields', () => {
     expect(isValidAppSlug('com.example.app')).toBe(true);
     expect(isValidAppSlug('x')).toBe(false);

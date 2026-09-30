@@ -5,6 +5,7 @@ import type { OrganizationAccess } from '@/lib/organization-access';
 import { buildPublicObjectUrl, deleteBundleObject } from '@/lib/storage';
 
 import { OtaKitServiceError } from './errors';
+import { endBundlePreviews } from './previews';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 200;
@@ -110,6 +111,8 @@ export async function deleteBundle(input: {
     );
   }
 
+  // A preview's manifest points at this bundle's storage object.
+  await endBundlePreviews(bundle.id);
   await db.bundle.delete({ where: { id: bundle.id } });
   await recordAuditLog({
     organizationId: input.access.organizationId,

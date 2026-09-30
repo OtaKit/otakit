@@ -12,6 +12,7 @@ final class BundleStore {
     static let lastResolvedRuntimeKey = "otakit_last_resolved_runtime_key"
     static let overrideChannel = "otakit_override_channel"
     static let assignmentSecret = "otakit_assignment_secret"
+    static let preview = "otakit_preview"
   }
 
   private let defaults: UserDefaults
@@ -280,6 +281,18 @@ final class BundleStore {
     let secret = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     defaults.set(secret, forKey: Keys.assignmentSecret)
     return secret
+  }
+
+  func getPreview() -> PreviewState? {
+    defaults.data(forKey: Keys.preview).flatMap { try? decoder.decode(PreviewState.self, from: $0) }
+  }
+
+  func setPreview(_ preview: PreviewState?) {
+    if let preview, let data = try? encoder.encode(preview) {
+      defaults.set(data, forKey: Keys.preview)
+    } else {
+      defaults.removeObject(forKey: Keys.preview)
+    }
   }
 
   func getLastResolvedRuntimeKey() -> String? {

@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
-import { Analytics } from '@vercel/analytics/next';
 import { Toaster } from '@/components/ui/sonner';
-import { GoogleTag } from '@/app/components/GoogleTag';
+import { ConsoleAnalytics } from '@/app/components/ConsoleAnalytics';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,8 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         {children}
-        <Analytics />
-        <GoogleTag />
+        <ConsoleAnalytics />
         <Toaster position="bottom-right" />
       </body>
     </html>

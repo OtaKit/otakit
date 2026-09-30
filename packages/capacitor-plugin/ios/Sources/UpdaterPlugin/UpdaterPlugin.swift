@@ -34,6 +34,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "getLastFailure", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "setChannel", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getChannel", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "stopPreview", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -61,6 +62,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var foregroundObserver: NSObjectProtocol?
   private let rolloutLock = NSLock()
   private var lastRollout: RolloutState?
+  private var previewLinks = false
+  private var openURLObserver: NSObjectProtocol?
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
@@ -98,6 +101,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     checkIntervalMs = getConfig().getInt("checkInterval", 600_000)
 
     manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON())
+    previewLinks = getConfig().getBoolean("previewLinks", false)
 
     if manifestKeys.isEmpty && HostedManifestKeys.matchesManagedManifestURL(cdnUrl) {
       manifestKeys = HostedManifestKeys.defaults
@@ -143,6 +147,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     if let eventPayload = startup.eventPayload {
       sendDeviceEvent(eventPayload)
+      endPreviewIfRolledBack(eventPayload)
     }
 
     if let trial = startup.trial {
@@ -152,6 +157,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     dispatchColdStart()
+    observePreviewLinks()
 
     foregroundObserver = NotificationCenter.default.addObserver(
         forName: UIApplication.willEnterForegroundNotification,
@@ -165,6 +171,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   deinit {
     if let observer = foregroundObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    if let observer = openURLObserver {
       NotificationCenter.default.removeObserver(observer)
     }
   }
@@ -326,6 +335,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       defer { coordinator.endOperation() }
       do {
         try ensureOwnerActive()
+        if try await settlePreview() { return }
         try await operation()
       } catch is CancellationError {
         // The owning bridge went away; this is not a failed update attempt.
@@ -375,6 +385,15 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
     payload["staged"] = snapshot.staged?.toDictionary() ?? NSNull()
     payload["rollout"] = rolloutState()?.toDictionary() ?? NSNull()
+    if let preview = store.getPreview() {
+      var info: [String: Any] = ["startedAt": ISO8601DateFormatter().string(from: preview.startedAt)]
+      if snapshot.current.channel == preview.channel {
+        info["version"] = snapshot.current.version
+      }
+      payload["preview"] = info
+    } else {
+      payload["preview"] = NSNull()
+    }
     call.resolve(payload)
   }
 
@@ -439,6 +458,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     Task {
       defer { coordinator.endOperation() }
       do {
+        if try await settlePreview() { return }
         let result = try await downloadLatest(respectInterval: false, channel: nil)
         if case .staged = result {
           try requireApplyStaged(reloadAfterApply: true)
@@ -503,6 +523,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve()
   }
 
+  @objc func stopPreview(_ call: CAPPluginCall) {
+    exitPreview(call: call)
+  }
+
   @objc func getChannel(_ call: CAPPluginCall) {
     if let override = store.getOverrideChannel() {
       call.resolve(["channel": override, "source": "override"])
@@ -528,6 +552,164 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       return false
     }
     return !["base", "default"].contains(name.lowercased())
+  }
+
+  // MARK: - Preview links
+
+  private func observePreviewLinks() {
+    guard previewLinks else { return }
+    openURLObserver = NotificationCenter.default.addObserver(
+      forName: .capacitorOpenURL, object: nil, queue: .main
+    ) { [weak self] notification in
+      guard let url = (notification.object as? [String: Any])?["url"] as? URL else { return }
+      self?.handlePreviewLink(url)
+    }
+    // A cold start through a link can open it before this observer existed.
+    if let url = ApplicationDelegateProxy.shared.lastURL {
+      handlePreviewLink(url)
+    }
+  }
+
+  private func handlePreviewLink(_ url: URL) {
+    switch PreviewLink.parse(url) {
+    case let .start(token):
+      startPreview(token: token)
+    case .exit:
+      exitPreview(call: nil)
+    case nil:
+      return
+    }
+  }
+
+  /// Download the previewed bundle on its hidden channel, then commit the
+  /// preview and reload into it. Nothing is committed unless it staged.
+  private func startPreview(token: String) {
+    Task {
+      guard await beginOperationWhenFree() else {
+        print("[OtaKit] Preview not started: another update operation did not finish")
+        return
+      }
+      defer { coordinator.endOperation() }
+      do {
+        try ensureOwnerActive()
+        if store.getPreview()?.token == token {
+          return
+        }
+        try await waitUntilTrialSettles()
+        let channel = PreviewLink.channel(for: token)
+        guard case .staged = try await downloadLatest(respectInterval: false, channel: channel) else {
+          emitEvent("previewFailed", ["reason": "unavailable"])
+          return
+        }
+        store.setPreview(PreviewState(token: token, startedAt: Date()))
+        rememberRollout(nil)
+        do {
+          try requireApplyStaged(reloadAfterApply: true)
+        } catch {
+          store.setPreview(nil)
+          throw error
+        }
+      } catch is CancellationError {
+        return
+      } catch {
+        print("[OtaKit] Preview failed: \(error.localizedDescription)")
+        emitEvent("previewFailed", ["reason": "download_failed"])
+      }
+    }
+  }
+
+  /// End the preview (exit link or `stopPreview()`) and return to the release.
+  private func exitPreview(call: CAPPluginCall?) {
+    Task {
+      guard await beginOperationWhenFree() else {
+        call?.reject("Another update operation is already in progress")
+        return
+      }
+      defer { coordinator.endOperation() }
+      do {
+        try ensureOwnerActive()
+        store.setPreview(nil)
+        rememberRollout(nil)
+        if isRunningPreviewBundle() {
+          try await returnToRelease()
+        }
+        call?.resolve()
+      } catch {
+        call?.reject("stopPreview failed: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Runs before every automatic update: ends a preview whose link expired or
+  /// was revoked, and keeps a preview bundle running only while its preview is
+  /// active. Returns true when it reloaded the app.
+  private func settlePreview() async throws -> Bool {
+    if let preview = store.getPreview() {
+      if !preview.isTooOld() {
+        do {
+          // Only a missing manifest ends a preview, not a network failure.
+          guard try await fetchLatest(channel: preview.channel) == nil else { return false }
+        } catch {
+          return false
+        }
+      }
+      store.setPreview(nil)
+      rememberRollout(nil)
+    }
+    guard isRunningPreviewBundle() else { return false }
+    try await returnToRelease()
+    return true
+  }
+
+  /// Reload into the release of the app's channel, or the built-in bundle when
+  /// that channel has nothing to stage.
+  private func returnToRelease() async throws {
+    try await waitUntilTrialSettles()
+    if case .staged = try await downloadLatest(respectInterval: false, channel: nil) {
+      try requireApplyStaged(reloadAfterApply: true)
+      return
+    }
+    try activateBuiltin()
+  }
+
+  private func activateBuiltin() throws {
+    try runOnMainSynchronously { [self] in
+      try updateOwner.run {
+        cleanupInBackground(try coordinator.prepareActivateBuiltin())
+        cancelTrialTimeout()
+        try applyServerBasePathSynchronously(nil)
+        try reloadWebViewSynchronously()
+      }
+    }
+  }
+
+  private func isRunningPreviewBundle() -> Bool {
+    PreviewLink.isPreviewChannel(store.getCurrentBundle().channel)
+  }
+
+  /// A preview bundle that rolled back ends its preview; the rollback already
+  /// returned the app to its previous bundle.
+  private func endPreviewIfRolledBack(_ payload: UpdaterCoordinator.DeviceEventPayload) {
+    if payload.action == .rollback && PreviewLink.isPreviewChannel(payload.channel) {
+      store.setPreview(nil)
+    }
+  }
+
+  /// Links usually arrive while the launch check runs; wait for it (bounded).
+  private func beginOperationWhenFree() async -> Bool {
+    for _ in 0..<120 {
+      if coordinator.tryBeginOperation() { return true }
+      try? await Task.sleep(nanoseconds: 250_000_000)
+    }
+    return false
+  }
+
+  /// A just-applied bundle must confirm (or roll back) before another applies.
+  private func waitUntilTrialSettles() async throws {
+    let deadline = Date().addingTimeInterval(Double(appReadyTimeoutMs) / 1000 + 5)
+    while coordinator.isCurrentInTrial() && Date() < deadline {
+      try await Task.sleep(nanoseconds: 250_000_000)
+    }
   }
 
   private func fetchLatest(channel: String?) async throws -> LatestManifest? {
@@ -1021,6 +1203,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     cleanupInBackground(preparation.cleanupBundleIds)
     if let eventPayload = preparation.eventPayload {
       sendDeviceEvent(eventPayload)
+      endPreviewIfRolledBack(eventPayload)
       emitEvent(
         "rollback",
         failureEventData(
@@ -1399,7 +1582,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       platform: "ios",
       action: payload.action,
       bundleVersion: bundleVersion ?? "",
-      channel: payload.channel,
+      channel: PreviewLink.reportedChannel(payload.channel),
       runtimeVersion: trimToNil(payload.runtimeVersion),
       releaseId: releaseId ?? "",
       nativeBuild: nativeBuild,
@@ -1445,9 +1628,14 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return fileManager.fileExists(atPath: indexPath)
   }
 
+  /// Explicit channel, then an active preview, then `setChannel`, then config.
+  /// A preview never touches the override, so `getChannel()` stays accurate.
   private func resolveTargetChannel(_ channel: String?) -> String? {
     if let channel = trimToNil(channel) {
       return channel
+    }
+    if let preview = store.getPreview() {
+      return preview.channel
     }
     if let override = store.getOverrideChannel() {
       return override

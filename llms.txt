@@ -15,6 +15,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - React Guide: /docs/react
 - Channels: /docs/channels
 - Rollouts: /docs/rollouts
+- Previews: /docs/previews
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - Push Notifications: /docs/push
@@ -247,6 +248,7 @@ Options
 - `--force-immediate`: With --release: devices apply and reload this release on their next check (emergency fixes).
 - `--rollout <percent>`: With --release: release to this share of devices first (1-100, default 100). See Percentage rollouts.
 - `--replace-rollout`: With --release: cancel the channel's active rollout and release this bundle in its place.
+- `--preview`: Also create a preview link and QR code for the uploaded bundle. See Preview links.
 - `--encrypt`: Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).
 - `--fail-on-incompatible`: Exit non-zero when the native compatibility check finds changes that need a store build.
 - `--ignore-compat`: Skip the native compatibility check.
@@ -288,6 +290,23 @@ Example
 
 ```txt
 otakit rollout --channel production --percent 50
+```
+
+### otakit preview [bundleId]
+
+Create a private link and QR code that open a bundle in the installed app on one phone, without releasing it. Defaults to the latest upload. The app needs previewLinks: true and a custom URL scheme.
+
+Options
+- `--expires <duration>`: How long the link works: 1h, 24h, 7d (default) or 30d.
+- `--scheme <scheme>`: The app's custom URL scheme, such as myapp. Needed once; the app remembers it.
+- `--list`: List active preview links.
+- `--revoke <previewId>`: Revoke a preview link.
+- `--json`: Print JSON output.
+
+Example
+
+```txt
+otakit preview --scheme myapp
 ```
 
 ### otakit compatibility
@@ -594,6 +613,7 @@ plugins: {
 - `ingestUrl` (string): Optional event ingest base URL. Leave unset for the hosted default.
 - `serverUrl` (string): Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime uses cdnUrl and ingestUrl instead.
 - `manifestKeys` (array): Optional public verification keys for custom or self-hosted manifest signing.
+- `previewLinks` (boolean): Open preview links (myapp://otakit-preview?…) in this build (plugin 3.2+). Default: false. See Preview Links.
 - `allowInsecureUrls` (boolean): Allow HTTP only for localhost development. Default: false.
 
 Hosted OtaKit points at the managed CDN and ingest service automatically. Do not set `cdnUrl`, `ingestUrl`, or `manifestKeys` unless you intentionally want custom hosting or verification behavior.
@@ -663,13 +683,14 @@ plugins: {
   }
 }
 ```
-- `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, and the active percentage rollout seen by the last check (plugin 3.1+).
+- `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, the active percentage rollout seen by the last check (plugin 3.1+), and the active preview link (plugin 3.2+).
 - `check()` -> `CheckResult`: Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available.
 - `download()` -> `DownloadResult`: Ensure the latest bundle is staged for later activation. Returns no_update or staged.
 - `update()` -> `void`: Convenience helper for manual flows. It runs the same native immediate-flow operation used by automatic immediate policies. Terminal operation: if an update is applied, it does not resolve back into the old JS context.
 - `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context.
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
+- `stopPreview()` -> `void`: End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release.
 
 The plugin also emits lifecycle events — `updateAvailable`, `updateStaged`, `updateApplied`, `downloadFailed`, and `rollback` — via `OtaKit.addListener(...)`. See Events & Listeners for the full reference and the startup reconciliation pattern.
 
@@ -767,6 +788,12 @@ interface OtaKitState {
   staged: BundleInfo | null;
   builtinVersion: string;
   rollout: RolloutState | null; // plugin 3.1+
+  preview: PreviewInfo | null;  // plugin 3.2+
+}
+
+interface PreviewInfo {
+  startedAt: string; // ISO timestamp
+  version?: string;  // previewed bundle, once it is running
 }
 
 interface RolloutState {
@@ -993,6 +1020,65 @@ Response
   }],
   "total": 12
 }
+```
+
+### Preview links
+
+### POST /api/v1/apps/:appId/bundles/:bundleId/previews
+
+Create a preview link that opens the bundle in the installed app, without releasing it. Share url or qrUrl; deepLink is null until the app's URL scheme is known. An app can have 20 active links (409 PREVIEW_LIMIT_REACHED).
+- Auth: Bearer
+
+Request body
+
+```txt
+{
+  "expiresIn": "24h",      // optional; 1h, 24h, 7d (default) or 30d
+  "urlScheme": "myapp"     // optional; remembered for the app
+}
+```
+
+Response
+
+```txt
+{
+  "preview": {
+    "id": "uuid",
+    "bundleId": "uuid",
+    "bundleVersion": "1.0.1",
+    "runtimeVersion": "2026.04",
+    "expiresAt": "ISO timestamp",
+    "url": "https://console.otakit.app/p/<token>",
+    "qrUrl": "https://console.otakit.app/p/<token>/qr.png",
+    "deepLink": "myapp://otakit-preview?token=<token>" | null
+  }
+}
+```
+
+### GET /api/v1/apps/:appId/previews
+
+List active preview links, newest first, optionally for one bundle.
+- Auth: Bearer
+- Query: ?bundleId=uuid
+
+Response
+
+```txt
+{
+  "previews": [{ id, bundleId, bundleVersion, expiresAt, url, qrUrl, deepLink, ... }],
+  "urlScheme": "myapp" | null
+}
+```
+
+### DELETE /api/v1/apps/:appId/previews/:previewId
+
+Revoke a preview link. Phones on it return to their release on their next update check.
+- Auth: Bearer
+
+Response
+
+```txt
+{ "status": "revoked" | "already_ended", "previewId": "uuid" }
 ```
 
 ## Next.js Guide
@@ -1476,6 +1562,95 @@ const { rollout } = await OtaKit.getState();
 
 The REST API takes `rolloutPercent` and `replaceRollout` when releasing and has an endpoint to change the percentage; see the REST API . Agents use `publish_release` with `rolloutPercent` and `set_rollout_percent`; see MCP & Agent Skills .
 
+## Previews
+
+Route: /docs/previews
+
+Open an uploaded bundle in the installed app on a phone with a link or QR code, without releasing it.
+
+A preview link opens an uploaded bundle in the real app on one phone, without releasing it. Scan the QR code, tap Open in the app, and the app downloads that bundle and reloads into it. Use it to check a change on a device, get a client's sign-off, or let an agent share &ldquo;here is my change&rdquo;.
+
+Previews need `@otakit/capacitor-updater` 3.2 or later. Only web code can be previewed; native changes still need a store build.
+
+### Set up the app once
+
+Turn preview links on in the builds that should accept them, for example internal or staging builds:
+
+```txt
+// capacitor.config.ts
+plugins: {
+  OtaKit: {
+    appId: "YOUR_OTAKIT_APP_ID",
+    previewLinks: true
+  }
+}
+```
+
+The app also needs a custom URL scheme, such as `myapp`. Many apps already have one. On iOS add it to `Info.plist`:
+
+```txt
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array><string>myapp</string></array>
+  </dict>
+</array>
+```
+
+On Android add an intent filter to the main activity in `AndroidManifest.xml`:
+
+```txt
+<intent-filter>
+  <action android:name="android.intent.action.VIEW" />
+  <category android:name="android.intent.category.DEFAULT" />
+  <category android:name="android.intent.category.BROWSABLE" />
+  <data android:scheme="myapp" />
+</intent-filter>
+```
+
+The plugin handles `myapp://otakit-preview?…` links itself; no app code is needed, and other links keep reaching your app. On iOS it receives links through Capacitor's `ApplicationDelegateProxy`, which the default `AppDelegate` already forwards to.
+
+### Create a preview link
+
+From the dashboard: the QR button on a bundle row. The first link asks for the app's URL scheme and remembers it. From the CLI:
+
+```txt
+# Upload and create a link in one step
+otakit upload --preview
+
+# Or preview a bundle you already uploaded
+otakit preview <bundle-id> --expires 24h --scheme myapp
+
+otakit preview --list
+otakit preview --revoke <preview-id>
+```
+
+The CLI prints the link and a QR code. Links last 7 days by default (1h, 24h, 7d or 30d), and an app can have 20 active links.
+
+### What the tester sees
+- The link opens a page with the bundle version, expiry, a QR code on desktop, and the buttons Open in the app and Exit preview.
+- Opening it downloads the bundle like any update, with signature checks, and reloads the app. The app still calls `notifyAppReady()`; a bundle that fails to start rolls back and ends the preview.
+- The app returns to its normal release when the tester taps Exit preview, when your code calls `OtaKit.stopPreview()`, or when the link expires or is revoked. The app notices that on its next update check (launch, resume, or `OtaKit.update()`). If the channel has no release, it returns to the bundle built into the app.
+- Nobody else is affected: a preview is not a release, does not appear as a channel, and does not count towards release health or auto-revert. Its downloads count as downloads.
+
+```txt
+const { preview } = await OtaKit.getState(); // { startedAt, version } or null
+if (preview) showBanner(`Preview ${preview.version}`, () => OtaKit.stopPreview());
+
+OtaKit.addListener('previewFailed', ({ reason }) => {
+  // 'unavailable': expired, revoked, or built for another runtime version
+});
+```
+
+### Security
+
+Each link carries a random 130-bit token and works only for the bundle it was created for. Anyone with the link and a build that accepts previews can open it, so keep `previewLinks` off in builds that should never show unreleased work, and revoke links you no longer need.
+
+### API and agents
+
+See the REST API for the preview endpoints. Agents use `create_preview` and `revoke_preview`; see MCP & Agent Skills .
+
 ## Update Strategies
 
 Route: /docs/update-strategies
@@ -1539,6 +1714,7 @@ OtaKit.addListener('updateStaged', ({ bundle }) => {
 - `updateApplied` ({ bundle: BundleInfo }): A newly activated bundle was confirmed healthy — fires when notifyAppReady() confirms the trial bundle, in the reloaded JS context.
 - `downloadFailed` ({ version, runtimeVersion?, releaseId?, channel?, reason }): A download, verification, or extraction failed. Non-terminal: the app keeps running its current bundle and retries on a later cycle.
 - `rollback` ({ version, runtimeVersion?, releaseId?, channel?, reason }): An applied bundle failed its health check (notifyAppReady timeout) and was reverted to the previous bundle.
+- `previewFailed` ({ reason: 'unavailable' | 'download_failed' }): A preview link could not be opened (plugin 3.2+). unavailable: the link expired, was revoked, or was built for another runtime version. The app keeps running its current bundle.
 
 ### Caveats
 - Events fire only while the app process is alive. Nothing is delivered for work that happened while the app was killed or before your listener attached — there is no buffering or replay.

@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   PublicToolError,
   getToolDefinition,
+  previewEnvelopeParts,
   rolloutChangeSummary,
   rolloutShareText,
   rolloutWarnings,
@@ -15,7 +16,7 @@ import {
 } from '@otakit/mcp-core';
 import type { ServerContext } from '@modelcontextprotocol/server';
 
-import { ApiClient, OtaKitApiError, type ReleaseResult } from '../lib/api.js';
+import { ApiClient, OtaKitApiError, type PreviewExpiry, type ReleaseResult } from '../lib/api.js';
 import { checkCompatibilityAgainstChannel, findLaneState } from '../lib/compat-check.js';
 import {
   readProjectConfig,
@@ -286,6 +287,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.revertRelease(input);
         case 'set_rollout_percent':
           return await this.setRolloutPercent(input);
+        case 'create_preview':
+          return await this.createPreview(input);
+        case 'revoke_preview':
+          return await this.revokePreview(input);
         case 'inspect_project':
           return await this.inspectProject();
         case 'check_compatibility':
@@ -685,6 +690,27 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         : [],
       links: [this.appLink(appId, 'View rollout')],
     });
+  }
+
+  private async createPreview(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const { preview } = await this.api(appId).createPreview(stringInput(input, 'bundleId'), {
+      expiresIn: optionalString(input, 'expiresIn') as PreviewExpiry | undefined,
+      urlScheme: optionalString(input, 'urlScheme'),
+    });
+    const parts = previewEnvelopeParts(preview);
+    return toolEnvelope(parts.summary, json({ preview }), parts);
+  }
+
+  private async revokePreview(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const result = await this.api(appId).revokePreview(stringInput(input, 'previewId'));
+    return toolEnvelope(
+      result.status === 'revoked'
+        ? 'Revoked the preview link; phones on it return to their release on the next check.'
+        : 'The preview link had already ended.',
+      json(result),
+    );
   }
 
   private async inspectProject(): Promise<ToolEnvelope> {

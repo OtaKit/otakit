@@ -18,6 +18,7 @@ const DOCS = [
   { label: 'React Guide', route: '/docs/react', file: 'packages/site/app/docs/react/page.tsx' },
   { label: 'Channels', route: '/docs/channels', file: 'packages/site/app/docs/channels/page.tsx' },
   { label: 'Rollouts', route: '/docs/rollouts', file: 'packages/site/app/docs/rollouts/page.tsx' },
+  { label: 'Previews', route: '/docs/previews', file: 'packages/site/app/docs/previews/page.tsx' },
   {
     label: 'Update Strategies',
     route: '/docs/update-strategies',

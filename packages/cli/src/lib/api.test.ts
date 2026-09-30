@@ -156,4 +156,27 @@ describe('ApiClient release reliability contract', () => {
       `/api/v1/context?appId=${config.appId}`,
     );
   });
+
+  it('creates, lists, and revokes preview links', async () => {
+    const api = new ApiClient(config);
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse({ preview: { id: 'preview-1' } }, 201));
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse({ previews: [], urlScheme: null }));
+    mocks.fetchCli.mockResolvedValueOnce(jsonResponse({ status: 'revoked', previewId: 'p-1' }));
+
+    await api.createPreview('f32627ca-9e8c-4358-90d8-bde732400081', {
+      expiresIn: '24h',
+      urlScheme: 'myapp',
+    });
+    await api.listPreviews('f32627ca-9e8c-4358-90d8-bde732400081');
+    await api.revokePreview('p-1');
+
+    const calls = mocks.fetchCli.mock.calls as Array<[string, RequestInit]>;
+    const base = `https://console.example.test/api/v1/apps/${config.appId}`;
+    expect(calls[0][0]).toBe(`${base}/bundles/f32627ca-9e8c-4358-90d8-bde732400081/previews`);
+    expect(calls[0][1].method).toBe('POST');
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({ expiresIn: '24h', urlScheme: 'myapp' });
+    expect(calls[1][0]).toBe(`${base}/previews?bundleId=f32627ca-9e8c-4358-90d8-bde732400081`);
+    expect(calls[2][0]).toBe(`${base}/previews/p-1`);
+    expect(calls[2][1].method).toBe('DELETE');
+  });
 });

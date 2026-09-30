@@ -193,6 +193,28 @@ final class UpdaterCoordinator {
     }
   }
 
+  /// True until the running bundle's trial has an outcome (ready or rolled back).
+  func isCurrentInTrial() -> Bool {
+    withStateLock {
+      store.getCurrentBundle().status == .trial
+    }
+  }
+
+  /// Switch to the built-in bundle, dropping every installed OTA bundle from
+  /// the pointers. Used when leaving a preview on a channel with no release.
+  func prepareActivateBuiltin() throws -> [String] {
+    try withStateLock {
+      let ids = Set([store.getCurrentBundleId(), store.getFallbackBundleId(), store.getStagedBundleId()]
+        .compactMap { $0 }
+        .filter { $0 != "builtin" })
+      try store.setCoreState(
+        currentId: nil, fallbackId: nil, stagedId: nil, lastFailed: store.getLastFailedBundle()
+      )
+      activeTrial = nil
+      return Array(ids)
+    }
+  }
+
   func isRuntimeUnresolved(currentRuntimeKey: String) -> Bool {
     withStateLock {
       store.getLastResolvedRuntimeKey() != currentRuntimeKey

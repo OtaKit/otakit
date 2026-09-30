@@ -100,6 +100,11 @@ export default function PluginReferencePage() {
           description="Optional public verification keys for custom or self-hosted manifest signing."
         />
         <ConfigRow
+          field="previewLinks"
+          type="boolean"
+          description="Open preview links (myapp://otakit-preview?…) in this build (plugin 3.2+). Default: false. See Preview Links."
+        />
+        <ConfigRow
           field="allowInsecureUrls"
           type="boolean"
           description="Allow HTTP only for localhost development. Default: false."
@@ -237,7 +242,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="getState()"
           returns="OtaKitState"
-          description="Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, and the active percentage rollout seen by the last check (plugin 3.1+)."
+          description="Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, the active percentage rollout seen by the last check (plugin 3.1+), and the active preview link (plugin 3.2+)."
         />
         <Method
           name="check()"
@@ -268,6 +273,11 @@ await OtaKit.notifyAppReady();`}</Pre>
           name="getLastFailure()"
           returns="BundleInfo | null"
           description="Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred."
+        />
+        <Method
+          name="stopPreview()"
+          returns="void"
+          description="End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release."
         />
       </div>
       <P>
@@ -396,6 +406,12 @@ interface OtaKitState {
   staged: BundleInfo | null;
   builtinVersion: string;
   rollout: RolloutState | null; // plugin 3.1+
+  preview: PreviewInfo | null;  // plugin 3.2+
+}
+
+interface PreviewInfo {
+  startedAt: string; // ISO timestamp
+  version?: string;  // previewed bundle, once it is running
 }
 
 interface RolloutState {

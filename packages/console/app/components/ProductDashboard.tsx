@@ -21,6 +21,7 @@ import {
   Package,
   Plus,
   RefreshCw,
+  QrCode,
   Rocket,
   RotateCcw,
   ShieldAlert,
@@ -36,8 +37,10 @@ import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
+import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
+import { CopyButton } from '@/app/components/CopyButton';
 import type {
   ApiError,
   AppSummary,
@@ -45,6 +48,7 @@ import type {
   DashboardInitialData,
   DeviceEvent,
   Platform,
+  PreviewSummary,
   ReleaseHistoryItem,
 } from '@/app/components/dashboard-types';
 import { Button } from '@/components/ui/button';
@@ -157,7 +161,7 @@ const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
   applied: 64,
   errors: 64,
   rollbacks: 64,
-  action: 116,
+  action: 152,
 };
 
 /* ─── Platform Icons ──────────────────────────────────────────────── */
@@ -507,6 +511,17 @@ export function ProductDashboard({
     rolloutCustom: string;
   } | null>(null);
   const [rolloutChangeBusy, setRolloutChangeBusy] = useState(false);
+
+  // Preview links
+  const [previewDialog, setPreviewDialog] = useState<{
+    bundle: BundleSummaryItem;
+    expiresIn: '1h' | '24h' | '7d' | '30d';
+    urlScheme: string;
+    appScheme: string | null;
+    previews: PreviewSummary[];
+    loading: boolean;
+  } | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   // Revert
   const [revertConfirm, setRevertConfirm] = useState<{
@@ -1143,6 +1158,100 @@ export function ProductDashboard({
       toast.error(err instanceof Error ? err.message : 'Revert failed');
     } finally {
       setRevertBusy(false);
+    }
+  }
+
+  async function openPreviewDialog(bundle: BundleSummaryItem) {
+    if (!selectedAppId) return;
+    setPreviewDialog({
+      bundle,
+      expiresIn: '7d',
+      urlScheme: '',
+      appScheme: null,
+      previews: [],
+      loading: true,
+    });
+    try {
+      const res = await fetch(
+        `/api/v1/apps/${encodeURIComponent(selectedAppId)}/previews?bundleId=${encodeURIComponent(bundle.id)}`,
+      );
+      const data = await parseJson<
+        ApiError & { previews?: PreviewSummary[]; urlScheme?: string | null }
+      >(res);
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load preview links');
+      setPreviewDialog((current) =>
+        current?.bundle.id === bundle.id
+          ? {
+              ...current,
+              previews: data.previews ?? [],
+              appScheme: data.urlScheme ?? null,
+              loading: false,
+            }
+          : current,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load preview links');
+      setPreviewDialog((current) => (current ? { ...current, loading: false } : current));
+    }
+  }
+
+  async function createPreviewLink() {
+    if (!selectedAppId || !previewDialog || previewBusy) return;
+    const { bundle, expiresIn, appScheme, urlScheme } = previewDialog;
+    setPreviewBusy(true);
+    try {
+      const res = await fetch(
+        `/api/v1/apps/${encodeURIComponent(selectedAppId)}/bundles/${encodeURIComponent(bundle.id)}/previews`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expiresIn,
+            ...(appScheme ? {} : { urlScheme: urlScheme.trim() }),
+          }),
+        },
+      );
+      const data = await parseJson<ApiError & { preview?: PreviewSummary }>(res);
+      if (!res.ok || !data.preview)
+        throw new Error(data.error ?? 'Could not create the preview link');
+      const created = data.preview;
+      setPreviewDialog((current) =>
+        current
+          ? {
+              ...current,
+              appScheme: current.appScheme ?? normalizeUrlScheme(current.urlScheme),
+              previews: [created, ...current.previews],
+            }
+          : current,
+      );
+      toast.success('Preview link created');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create the preview link');
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function revokePreviewLink(preview: PreviewSummary) {
+    if (!selectedAppId || previewBusy) return;
+    setPreviewBusy(true);
+    try {
+      const res = await fetch(
+        `/api/v1/apps/${encodeURIComponent(selectedAppId)}/previews/${encodeURIComponent(preview.id)}`,
+        { method: 'DELETE' },
+      );
+      const data = await parseJson<ApiError>(res);
+      if (!res.ok) throw new Error(data.error ?? 'Could not revoke the preview link');
+      setPreviewDialog((current) =>
+        current
+          ? { ...current, previews: current.previews.filter((item) => item.id !== preview.id) }
+          : current,
+      );
+      toast.success('Preview link revoked');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not revoke the preview link');
+    } finally {
+      setPreviewBusy(false);
     }
   }
 
@@ -1835,7 +1944,18 @@ export function ProductDashboard({
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('action') ? (
-                                        <TableCell className="text-center">
+                                        <TableCell className="text-center whitespace-nowrap">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="mr-1.5 h-7 px-2"
+                                            title="Preview link: open this bundle on a phone without releasing it"
+                                            aria-label={`Preview link for ${b.version}`}
+                                            disabled={previewDialog !== null}
+                                            onClick={() => void openPreviewDialog(b)}
+                                          >
+                                            <QrCode className="size-3.5" />
+                                          </Button>
                                           <Button
                                             variant="default"
                                             size="sm"
@@ -2135,7 +2255,16 @@ export function ProductDashboard({
                                     )}
                                   </TableCell>
                                   <TableCell className="truncate text-xs text-muted-foreground">
-                                    {ev.channel ?? 'base'}
+                                    {isPreviewChannel(ev.channel) ? (
+                                      <span
+                                        className="rounded bg-violet-500/10 px-1.5 py-0.5 font-medium text-violet-700 dark:text-violet-300"
+                                        title="Opened through a preview link"
+                                      >
+                                        Preview
+                                      </span>
+                                    ) : (
+                                      (ev.channel ?? 'base')
+                                    )}
                                   </TableCell>
                                   <TableCell className="truncate font-mono text-xs text-muted-foreground">
                                     {ev.runtimeVersion ?? 'any'}
@@ -2641,6 +2770,172 @@ export function ProductDashboard({
                 <>
                   <SlidersHorizontal className="size-3.5" />
                   Update rollout
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Link Dialog */}
+      <Dialog
+        open={previewDialog !== null}
+        onOpenChange={(open) => {
+          if (!open && !previewBusy) setPreviewDialog(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="size-4" />
+              Preview link
+            </DialogTitle>
+            <DialogDescription>
+              Open {previewDialog?.bundle.version ?? 'this bundle'} in the installed app on one
+              phone, without releasing it.
+            </DialogDescription>
+          </DialogHeader>
+          {previewDialog ? (
+            <div className="space-y-4 text-sm">
+              {previewDialog.loading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                  Loading preview links...
+                </div>
+              ) : null}
+              {previewDialog.previews.map((preview, index) =>
+                index === 0 ? (
+                  <div key={preview.id} className="space-y-3 rounded-lg border p-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- generated per link */}
+                    <img
+                      src={preview.qrUrl}
+                      alt="QR code for this preview link"
+                      width={176}
+                      height={176}
+                      className="mx-auto size-44 rounded-md border bg-white p-1.5"
+                    />
+                    <div className="flex items-center gap-1">
+                      <code className="min-w-0 flex-1 truncate font-mono text-xs">
+                        {preview.url}
+                      </code>
+                      <CopyButton value={preview.url} label="preview link" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>Expires {formatDate(preview.expiresAt)}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={previewBusy}
+                        onClick={() => void revokePreviewLink(preview)}
+                      >
+                        Revoke
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    key={preview.id}
+                    className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                  >
+                    <span className="min-w-0 truncate">
+                      Link expiring {formatDate(preview.expiresAt)}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <CopyButton value={preview.url} label="preview link" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={previewBusy}
+                        onClick={() => void revokePreviewLink(preview)}
+                      >
+                        Revoke
+                      </Button>
+                    </span>
+                  </div>
+                ),
+              )}
+              {!previewDialog.loading && !previewDialog.appScheme ? (
+                <div className="space-y-2">
+                  <Label htmlFor="preview-url-scheme">App URL scheme</Label>
+                  <Input
+                    id="preview-url-scheme"
+                    placeholder="myapp"
+                    value={previewDialog.urlScheme}
+                    onChange={(event) =>
+                      setPreviewDialog((current) =>
+                        current ? { ...current, urlScheme: event.target.value } : current,
+                      )
+                    }
+                    disabled={previewBusy}
+                    aria-invalid={
+                      previewDialog.urlScheme.trim() !== '' &&
+                      normalizeUrlScheme(previewDialog.urlScheme) === null
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Your app&apos;s custom URL scheme; links open{' '}
+                    <code className="font-mono">
+                      {normalizeUrlScheme(previewDialog.urlScheme) ?? 'myapp'}://otakit-preview
+                    </code>
+                    . Saved for this app.
+                  </p>
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="preview-expiry">Link works for</Label>
+                <Select
+                  value={previewDialog.expiresIn}
+                  onValueChange={(value) =>
+                    setPreviewDialog((current) =>
+                      current
+                        ? { ...current, expiresIn: value as typeof current.expiresIn }
+                        : current,
+                    )
+                  }
+                  disabled={previewBusy}
+                >
+                  <SelectTrigger id="preview-expiry" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1h">1 hour</SelectItem>
+                    <SelectItem value="24h">24 hours</SelectItem>
+                    <SelectItem value="7d">7 days</SelectItem>
+                    <SelectItem value="30d">30 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Opens in builds of the app with OtaKit plugin 3.2 or later and{' '}
+                <code className="font-mono">previewLinks: true</code>. Nothing is released; the
+                phone returns to its release when the tester exits or the link expires.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={previewBusy} onClick={() => setPreviewDialog(null)}>
+              Close
+            </Button>
+            <Button
+              disabled={
+                previewBusy ||
+                previewDialog === null ||
+                previewDialog.loading ||
+                (!previewDialog.appScheme && normalizeUrlScheme(previewDialog.urlScheme) === null)
+              }
+              onClick={() => void createPreviewLink()}
+            >
+              {previewBusy ? (
+                <>
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                  Working...
+                </>
+              ) : (
+                <>
+                  <QrCode className="size-3.5" />
+                  {previewDialog?.previews.length ? 'Create another link' : 'Create link'}
                 </>
               )}
             </Button>

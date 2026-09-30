@@ -110,6 +110,19 @@ export type ReleaseHistoryItem = {
   eventCounts: EventCountSummary;
 };
 
+export type PreviewSummary = {
+  id: string;
+  bundleId: string;
+  bundleVersion: string;
+  runtimeVersion: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  expiresAt: string;
+  url: string;
+  qrUrl: string;
+  deepLink: string | null;
+};
+
 export type DashboardInitialData = {
   user: { id: string; name: string; email: string; createdAt: string };
   activeOrganization: { id: string; name: string; role: MemberRole; pushEnabled: boolean };

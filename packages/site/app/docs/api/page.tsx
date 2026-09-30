@@ -164,6 +164,52 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           description="List release history sorted newest first. Omit channel to list every stream, or pass an empty channel value to query only the base channel."
         />
       </div>
+
+      <Separator className="my-10" />
+
+      <H2>Preview links</H2>
+      <div className="space-y-8">
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/bundles/:bundleId/previews"
+          auth="Bearer"
+          body={`{
+  "expiresIn": "24h",      // optional; 1h, 24h, 7d (default) or 30d
+  "urlScheme": "myapp"     // optional; remembered for the app
+}`}
+          response={`{
+  "preview": {
+    "id": "uuid",
+    "bundleId": "uuid",
+    "bundleVersion": "1.0.1",
+    "runtimeVersion": "2026.04",
+    "expiresAt": "ISO timestamp",
+    "url": "https://console.otakit.app/p/<token>",
+    "qrUrl": "https://console.otakit.app/p/<token>/qr.png",
+    "deepLink": "myapp://otakit-preview?token=<token>" | null
+  }
+}`}
+          description="Create a preview link that opens the bundle in the installed app, without releasing it. Share url or qrUrl; deepLink is null until the app's URL scheme is known. An app can have 20 active links (409 PREVIEW_LIMIT_REACHED)."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/previews"
+          auth="Bearer"
+          queryParams="?bundleId=uuid"
+          response={`{
+  "previews": [{ id, bundleId, bundleVersion, expiresAt, url, qrUrl, deepLink, ... }],
+  "urlScheme": "myapp" | null
+}`}
+          description="List active preview links, newest first, optionally for one bundle."
+        />
+        <Endpoint
+          method="DELETE"
+          path="/api/v1/apps/:appId/previews/:previewId"
+          auth="Bearer"
+          response={'{ "status": "revoked" | "already_ended", "previewId": "uuid" }'}
+          description="Revoke a preview link. Phones on it return to their release on their next update check."
+        />
+      </div>
     </>
   );
 }

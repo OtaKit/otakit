@@ -1,7 +1,9 @@
 package com.otakit.updater;
 
+import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -115,6 +117,8 @@ public class UpdaterPlugin extends Plugin {
   private String runtimeVersion;
   private java.util.List<ManifestVerifier.KeyEntry> manifestKeys = new java.util.ArrayList<>();
   private volatile Rollout.State lastRollout;
+  private boolean previewLinks = false;
+  private Uri pendingLaunchLink;
   private final java.util.Map<String, byte[]> bundleKeys = new java.util.HashMap<>();
   private long checkIntervalMs = 600_000;
   private boolean coldStartInProgress = false;
@@ -179,6 +183,7 @@ public class UpdaterPlugin extends Plugin {
     this.runtimePolicy = resolvePolicy(getConfig().getString("runtimePolicy"), Policy.IMMEDIATE);
 
     manifestKeys = ManifestKeyConfig.parse(getConfig().getConfigJSON());
+    previewLinks = getConfig().getBoolean("previewLinks", false);
 
     if (manifestKeys.isEmpty() && HostedManifestKeys.matchesManagedManifestUrl(cdnUrl)) {
       manifestKeys.addAll(HostedManifestKeys.createDefaultKeys());
@@ -236,6 +241,25 @@ public class UpdaterPlugin extends Plugin {
   protected void handleOnStart() {
     super.handleOnStart();
     consumePendingStartupPreparation();
+    // Open a launch link after the startup check has begun, as on iOS, so the two never race.
+    Uri launchLink = pendingLaunchLink;
+    pendingLaunchLink = null;
+    if (launchLink != null) handlePreviewLink(launchLink);
+  }
+
+  /** Capacitor delivers the launch intent here too, before {@link #handleOnStart()}. */
+  @Override
+  protected void handleOnNewIntent(Intent intent) {
+    super.handleOnNewIntent(intent);
+    if (!previewLinks || intent == null) return;
+    // Reopening the app from Recents replays its launch intent, which must not restart a preview
+    // the tester already left.
+    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return;
+    if (pendingStartupPreparation != null) {
+      pendingLaunchLink = intent.getData();
+    } else {
+      handlePreviewLink(intent.getData());
+    }
   }
 
   @Override
@@ -310,6 +334,7 @@ public class UpdaterPlugin extends Plugin {
 
     if (startup.eventPayload != null) {
       sendDeviceEvent(startup.eventPayload);
+      endPreviewIfRolledBack(startup.eventPayload);
     }
 
     if (startup.trial != null) {
@@ -459,6 +484,7 @@ public class UpdaterPlugin extends Plugin {
     executor.execute(() -> {
       try {
         ensureOwnerActive();
+        if (settlePreview()) return;
         operation.run();
       } catch (java.util.concurrent.CancellationException ignored) {
         // The owning bridge went away; this is not a failed update attempt.
@@ -516,6 +542,17 @@ public class UpdaterPlugin extends Plugin {
     result.put("staged", snapshot.staged != null ? snapshot.staged.toJSObject() : null);
     Rollout.State rollout = lastRollout;
     result.put("rollout", rollout != null ? rollout.toJSObject() : org.json.JSONObject.NULL);
+    Preview.State preview = store.getPreview();
+    if (preview != null) {
+      JSObject info = new JSObject();
+      info.put("startedAt", DateUtils.toIsoString(preview.startedAtMs));
+      if (preview.channel().equals(snapshot.current.channel)) {
+        info.put("version", snapshot.current.version);
+      }
+      result.put("preview", info);
+    } else {
+      result.put("preview", org.json.JSONObject.NULL);
+    }
     call.resolve(result);
   }
 
@@ -578,6 +615,7 @@ public class UpdaterPlugin extends Plugin {
     }
     executor.execute(() -> {
       try {
+        if (settlePreview()) return;
         DownloadResolution result = downloadLatest(false, null);
         if ("staged".equals(result.kind)) {
           requireApplyStaged();
@@ -653,6 +691,11 @@ public class UpdaterPlugin extends Plugin {
   }
 
   @PluginMethod
+  public void stopPreview(PluginCall call) {
+    exitPreview(call);
+  }
+
+  @PluginMethod
   public void getChannel(PluginCall call) {
     JSObject result = new JSObject();
     String override = store.getOverrideChannel();
@@ -682,6 +725,184 @@ public class UpdaterPlugin extends Plugin {
     }
     String lower = name.toLowerCase(java.util.Locale.ROOT);
     return !"base".equals(lower) && !"default".equals(lower);
+  }
+
+  // Preview links
+
+  private void handlePreviewLink(Uri uri) {
+    if (!storageReady) return;
+    Preview.Link link = Preview.parse(uri);
+    if (link == null) return;
+    if (link.exit) {
+      exitPreview(null);
+    } else {
+      startPreview(link.token);
+    }
+  }
+
+  /**
+   * Download the previewed bundle on its hidden channel, then commit the preview and reload into
+   * it. Nothing is committed unless it staged.
+   */
+  private void startPreview(String token) {
+    runWhenFree(
+      "preview",
+      () -> {
+        Preview.State active = store.getPreview();
+        if (active != null && active.token.equals(token)) return;
+        waitUntilTrialSettles();
+        DownloadResolution result = downloadLatest(false, Preview.channel(token));
+        if (!"staged".equals(result.kind)) {
+          emitPreviewFailed("unavailable");
+          return;
+        }
+        store.setPreview(new Preview.State(token, System.currentTimeMillis()));
+        lastRollout = null;
+        try {
+          requireApplyStaged();
+        } catch (Exception error) {
+          store.setPreview(null);
+          throw error;
+        }
+      },
+      error -> emitPreviewFailed("download_failed")
+    );
+  }
+
+  /** End the preview (exit link or {@code stopPreview()}) and return to the release. */
+  private void exitPreview(PluginCall call) {
+    runWhenFree(
+      "stop preview",
+      () -> {
+        store.setPreview(null);
+        lastRollout = null;
+        if (isRunningPreviewBundle()) returnToRelease();
+        if (call != null) call.resolve();
+      },
+      error -> {
+        if (call != null) call.reject("stopPreview failed: " + error.getMessage());
+      }
+    );
+  }
+
+  /**
+   * Runs before every automatic update: ends a preview whose link expired or was revoked, and
+   * keeps a preview bundle running only while its preview is active. Returns true when it
+   * reloaded the app.
+   */
+  private boolean settlePreview() throws Exception {
+    Preview.State preview = store.getPreview();
+    if (preview != null) {
+      if (!preview.isTooOld(System.currentTimeMillis())) {
+        try {
+          // Only a missing manifest ends a preview, not a network failure.
+          if (fetchLatest(preview.channel()) != null) return false;
+        } catch (Exception error) {
+          return false;
+        }
+      }
+      store.setPreview(null);
+      lastRollout = null;
+    }
+    if (!isRunningPreviewBundle()) return false;
+    returnToRelease();
+    return true;
+  }
+
+  /**
+   * Reload into the release of the app's channel, or the built-in bundle when that channel has
+   * nothing to stage.
+   */
+  private void returnToRelease() throws Exception {
+    waitUntilTrialSettles();
+    if ("staged".equals(downloadLatest(false, null).kind)) {
+      requireApplyStaged();
+      return;
+    }
+    activateBuiltin();
+  }
+
+  private void activateBuiltin() throws Exception {
+    runOnMainSynchronously(() ->
+      updateOwner.run(() -> {
+        cleanupInBackground(coordinator.prepareActivateBuiltin());
+        cancelTrialTimeout();
+        applyServerBasePathSynchronously(null);
+        return null;
+      })
+    );
+  }
+
+  private boolean isRunningPreviewBundle() {
+    return Preview.isPreviewChannel(store.getCurrentBundle().channel);
+  }
+
+  /**
+   * A preview bundle that rolled back ends its preview; the rollback already returned the app to
+   * its previous bundle.
+   */
+  private void endPreviewIfRolledBack(UpdaterCoordinator.DeviceEventPayload payload) {
+    if ("rollback".equals(payload.action) && Preview.isPreviewChannel(payload.channel)) {
+      store.setPreview(null);
+    }
+  }
+
+  private void emitPreviewFailed(String reason) {
+    JSObject data = new JSObject();
+    data.put("reason", reason);
+    emitEvent("previewFailed", data);
+  }
+
+  /**
+   * Run on the update executor once no other update operation runs. Links usually arrive while
+   * the launch check runs, so retry for a while instead of dropping them. Waiting happens off the
+   * executor, which the running operation needs.
+   */
+  private void runWhenFree(
+    String label,
+    ThrowingRunnable task,
+    java.util.function.Consumer<Exception> onError
+  ) {
+    runWhenFree(label, task, onError, 120);
+  }
+
+  private void runWhenFree(
+    String label,
+    ThrowingRunnable task,
+    java.util.function.Consumer<Exception> onError,
+    int attemptsLeft
+  ) {
+    if (!coordinator.tryBeginOperation()) {
+      if (attemptsLeft <= 0) {
+        onError.accept(
+          new IllegalStateException("Another update operation is already in progress")
+        );
+        return;
+      }
+      mainHandler.postDelayed(() -> runWhenFree(label, task, onError, attemptsLeft - 1), 250);
+      return;
+    }
+    executor.execute(() -> {
+      try {
+        ensureOwnerActive();
+        task.run();
+      } catch (java.util.concurrent.CancellationException ignored) {
+        // The owning bridge went away.
+      } catch (Exception error) {
+        android.util.Log.w("OtaKit", label + " failed", error);
+        onError.accept(error);
+      } finally {
+        coordinator.endOperation();
+      }
+    });
+  }
+
+  /** A just-applied bundle must confirm (or roll back) before another applies. */
+  private void waitUntilTrialSettles() throws InterruptedException {
+    long deadline = System.currentTimeMillis() + appReadyTimeoutMs + 5_000L;
+    while (coordinator.isCurrentInTrial() && System.currentTimeMillis() < deadline) {
+      Thread.sleep(250);
+    }
   }
 
   private ManifestClient.LatestManifest fetchLatest(String channel) throws Exception {
@@ -1148,6 +1369,7 @@ public class UpdaterPlugin extends Plugin {
     cleanupInBackground(preparation.cleanupBundleIds);
     if (preparation.eventPayload != null) {
       sendDeviceEvent(preparation.eventPayload);
+      endPreviewIfRolledBack(preparation.eventPayload);
       emitEvent(
         "rollback",
         failureEventData(
@@ -1550,10 +1772,18 @@ public class UpdaterPlugin extends Plugin {
     return trimmed.isEmpty() ? null : trimmed;
   }
 
+  /**
+   * Explicit channel, then an active preview, then {@code setChannel}, then config. A preview
+   * never touches the override, so {@code getChannel()} stays accurate.
+   */
   private String resolveTargetChannel(String channel) {
     String resolved = trimToNull(channel);
     if (resolved != null) {
       return resolved;
+    }
+    Preview.State preview = store.getPreview();
+    if (preview != null) {
+      return preview.channel();
     }
     String override = store.getOverrideChannel();
     if (override != null) {
@@ -1675,7 +1905,7 @@ public class UpdaterPlugin extends Plugin {
       "android",
       payload.action,
       normalizedBundleVersion,
-      payload.channel,
+      Preview.reportedChannel(payload.channel),
       trimToNull(payload.runtimeVersion),
       normalizedReleaseId,
       nativeBuild,

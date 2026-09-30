@@ -83,6 +83,24 @@ export interface RevertResult {
   currentRelease: Release | null;
 }
 
+export type PreviewExpiry = '1h' | '24h' | '7d' | '30d';
+
+export interface Preview {
+  id: string;
+  bundleId: string;
+  bundleVersion: string;
+  runtimeVersion: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  expiresAt: string;
+  /** Page to share or scan. */
+  url: string;
+  /** PNG QR code of `url`. */
+  qrUrl: string;
+  /** Opens the app on this preview, once the app's URL scheme is known. */
+  deepLink: string | null;
+}
+
 /** True for the lane-current release of an active rollout. */
 export function isActiveRollout(release: Release): boolean {
   return !release.revertedAt && (release.rolloutPercent ?? 100) < 100;
@@ -369,6 +387,31 @@ export class ApiClient {
             }
           : {}),
       }),
+    });
+  }
+
+  async createPreview(
+    bundleId: string,
+    options: { expiresIn?: PreviewExpiry; urlScheme?: string } = {},
+  ): Promise<{ preview: Preview }> {
+    return this.request(this.appPath(`/bundles/${encodeURIComponent(bundleId)}/previews`), {
+      method: 'POST',
+      body: JSON.stringify({ expiresIn: options.expiresIn, urlScheme: options.urlScheme }),
+    });
+  }
+
+  async listPreviews(
+    bundleId?: string,
+  ): Promise<{ previews: Preview[]; urlScheme: string | null }> {
+    const query = bundleId ? `?${new URLSearchParams({ bundleId }).toString()}` : '';
+    return this.request(this.appPath(`/previews${query}`));
+  }
+
+  async revokePreview(
+    previewId: string,
+  ): Promise<{ status: 'revoked' | 'already_ended'; previewId: string }> {
+    return this.request(this.appPath(`/previews/${encodeURIComponent(previewId)}`), {
+      method: 'DELETE',
     });
   }
 

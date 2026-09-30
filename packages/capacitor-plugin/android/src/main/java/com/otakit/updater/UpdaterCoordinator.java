@@ -310,6 +310,31 @@ final class UpdaterCoordinator {
     });
   }
 
+  /** True until the running bundle's trial has an outcome (ready or rolled back). */
+  boolean isCurrentInTrial() {
+    return withStateLock(() -> store.getCurrentBundle().status == BundleStatus.TRIAL);
+  }
+
+  /**
+   * Switch to the built-in bundle, dropping every installed OTA bundle from the pointers. Used
+   * when leaving a preview on a channel with no release.
+   */
+  List<String> prepareActivateBuiltin() {
+    return withStateLock(() -> {
+      Set<String> ids = new LinkedHashSet<>();
+      for (String id : new String[] {
+        store.getCurrentBundleId(),
+        store.getFallbackBundleId(),
+        store.getStagedBundleId(),
+      }) {
+        if (id != null && !"builtin".equals(id)) ids.add(id);
+      }
+      store.setCoreState(null, null, null, store.getLastFailedBundle());
+      activeTrial = null;
+      return new ArrayList<>(ids);
+    });
+  }
+
   boolean isRuntimeUnresolved(String currentRuntimeKey) {
     return withStateLock(() ->
       !java.util.Objects.equals(store.getLastResolvedRuntimeKey(), currentRuntimeKey)

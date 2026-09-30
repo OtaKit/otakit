@@ -28,6 +28,7 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
       staged: null,
       builtinVersion: this.BUILTIN_BUNDLE.version,
       rollout: null,
+      preview: null,
     };
   }
 
@@ -52,6 +53,10 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
 
   async notifyAppReady(): Promise<void> {
     // No-op on web, but don't warn - apps should call this unconditionally
+  }
+
+  async stopPreview(): Promise<void> {
+    // Previews only exist in native builds.
   }
 
   async getLastFailure(): Promise<BundleInfo | null> {

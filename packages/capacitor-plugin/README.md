@@ -281,6 +281,41 @@ const { rollout } = await OtaKit.getState();
 // { releaseId, version, percent: 10, bucket: 57, included: false }, or null
 ```
 
+## Preview links
+
+A preview link opens an uploaded bundle in the installed app on one phone,
+without releasing it (plugin 3.2 or later). Create one with `otakit preview`,
+the dashboard, or an agent; the tester scans its QR code or opens the link and
+taps **Open in the app**. The app downloads that bundle and reloads into it.
+It returns to its normal release when the tester taps **Exit preview**, the
+preview bundle fails to start, or the link expires or is revoked (noticed on
+the next update check: launch, resume, or `update()`).
+
+Turn it on per build and give the app a custom URL scheme:
+
+```ts
+// capacitor.config.ts
+plugins: {
+  OtaKit: {
+    appId: 'YOUR_OTAKIT_APP_ID',
+    previewLinks: true,
+  },
+},
+```
+
+- iOS: add the scheme under `CFBundleURLTypes` in `Info.plist`.
+- Android: add an intent filter with `<data android:scheme="myapp" />` to the main activity.
+
+The plugin handles `myapp://otakit-preview?…` links itself; other links keep
+reaching your app. Leave `previewLinks` off in builds that should never open
+previews.
+
+```ts
+const { preview } = await OtaKit.getState(); // { startedAt, version } or null
+if (preview) showPreviewBanner(preview.version, () => OtaKit.stopPreview());
+OtaKit.addListener('previewFailed', ({ reason }) => {}); // 'unavailable' | 'download_failed'
+```
+
 ## Events
 
 The plugin emits lifecycle events alongside the pull APIs:

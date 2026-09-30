@@ -17,6 +17,8 @@ export type AuditAction =
   | 'release.created'
   | 'release.reverted'
   | 'release.rollout_updated'
+  | 'preview.created'
+  | 'preview.revoked'
   | 'release.auto_reverted'
   | 'release.auto_revert_suppressed'
   | 'api_key.created'

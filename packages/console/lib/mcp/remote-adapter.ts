@@ -1,6 +1,7 @@
 import {
   PublicToolError,
   getToolDefinition,
+  previewEnvelopeParts,
   rolloutChangeSummary,
   rolloutShareText,
   rolloutWarnings,
@@ -21,6 +22,8 @@ import { deleteBundle, getBundle, listBundles } from '@/lib/services/bundles';
 import { getConnectionContext } from '@/lib/services/context';
 import { isOtaKitServiceError } from '@/lib/services/errors';
 import { listEvents } from '@/lib/services/events';
+import { createPreview, revokePreview } from '@/lib/services/previews';
+import type { PreviewExpiry } from '@/lib/preview-links';
 import {
   getReleaseHealth,
   getReleaseState,
@@ -214,6 +217,10 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.revertRelease(input);
         case 'set_rollout_percent':
           return await this.setRolloutPercent(input);
+        case 'create_preview':
+          return await this.createPreview(input);
+        case 'revoke_preview':
+          return await this.revokePreview(input);
         // Unreachable in practice: toolDefinitionsForMode('remote') never
         // registers these, so a caller gets a protocol-level unknown-tool
         // error first. Kept so the switch stays exhaustive over the shared
@@ -592,5 +599,37 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
         ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
         : [],
     });
+  }
+
+  private async createPreview(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const preview = await createPreview({
+      access: this.connection.access,
+      appId,
+      bundleId: stringInput(input, 'bundleId'),
+      expiresIn: optionalString(input, 'expiresIn') as PreviewExpiry | undefined,
+      urlScheme: optionalString(input, 'urlScheme'),
+      auditMetadata: invocationMetadata(this.connection),
+    });
+    const parts = previewEnvelopeParts(preview);
+    return toolEnvelope(parts.summary, json({ preview }), parts);
+  }
+
+  private async revokePreview(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await revokePreview({
+      access: this.connection.access,
+      appId,
+      previewId: stringInput(input, 'previewId'),
+      auditMetadata: invocationMetadata(this.connection),
+    });
+    return toolEnvelope(
+      result.status === 'revoked'
+        ? 'Revoked the preview link; phones on it return to their release on the next check.'
+        : 'The preview link had already ended.',
+      json(result),
+    );
   }
 }
