@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { verifyGlobalAdminAuth } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { createDefaultNotificationDestination } from '@/lib/notifications/emit';
 import { generateOrganizationApiKey } from '@/lib/organization-keys';
 
 export const runtime = 'nodejs';
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
         createdAt: true,
       },
     });
+    await createDefaultNotificationDestination(tx, organization.id);
 
     const key = await tx.organizationApiKey.create({
       data: {
