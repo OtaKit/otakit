@@ -164,6 +164,29 @@ describe('OtaKit MCP tool catalog', () => {
       false,
     );
   });
+
+  it('takes release notes once on every release tool, and never on upload-only', () => {
+    const byName = new Map(OTAKIT_TOOL_CATALOG.map((tool) => [tool.name, tool]));
+    const release = {
+      appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+      bundleId: 'f32627ca-9e8c-4358-90d8-bde732400081',
+      channel: 'production',
+      expectedCurrentReleaseId: null,
+      idempotencyKey: 'release-attempt-1',
+    };
+    for (const name of ['prepare_release', 'publish_release', 'upload_and_publish_bundle']) {
+      const schema = byName.get(name)!.inputSchema;
+      expect(schema.parse({ ...release, notes: 'Faster checkout.' })).toHaveProperty(
+        'notes',
+        'Faster checkout.',
+      );
+      expect(schema.safeParse({ ...release, notes: null }).success).toBe(true);
+      expect(schema.safeParse({ ...release, notes: 'x'.repeat(2001) }).success).toBe(false);
+    }
+    expect(
+      byName.get('upload_bundle')?.inputSchema.parse({ appId: release.appId, notes: 'x' }),
+    ).not.toHaveProperty('notes');
+  });
 });
 
 describe('OtaKit MCP registry transport', () => {

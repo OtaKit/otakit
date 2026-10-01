@@ -8,6 +8,7 @@ import type {
   CheckResult,
   DownloadResult,
   OtaKitState,
+  ReleaseNotes,
 } from './definitions';
 
 /**
@@ -57,6 +58,15 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
 
   async stopPreview(): Promise<void> {
     // Previews only exist in native builds.
+  }
+
+  async getUnseenReleaseNotes(): Promise<ReleaseNotes | null> {
+    // Web builds are not updated over the air.
+    return null;
+  }
+
+  async markReleaseNotesSeen(): Promise<void> {
+    // Nothing to mark on web.
   }
 
   async getLastFailure(): Promise<BundleInfo | null> {

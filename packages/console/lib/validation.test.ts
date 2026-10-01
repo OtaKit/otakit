@@ -5,6 +5,7 @@ import {
   isValidAppSlug,
   isValidChannelName,
   normalizeOptionalChannel,
+  normalizeReleaseNotes,
   parsePositiveInteger,
 } from './validation';
 
@@ -32,5 +33,16 @@ describe('console validation', () => {
     expect(parsePositiveInteger(50)).toBe(50);
     expect(parsePositiveInteger(0)).toBeNull();
     expect(parsePositiveInteger(undefined, { optional: true })).toBeUndefined();
+  });
+
+  it('normalises release notes once, before they are stored and signed', () => {
+    expect(normalizeReleaseNotes(undefined)).toEqual({ notes: undefined });
+    expect(normalizeReleaseNotes(null)).toEqual({ notes: null });
+    expect(normalizeReleaseNotes('  \n ')).toEqual({ notes: null });
+    expect(normalizeReleaseNotes(' A\r\nB\rC\tD ')).toEqual({ notes: 'A\nB\nC\tD' });
+    expect(normalizeReleaseNotes('x'.repeat(2000))).toEqual({ notes: 'x'.repeat(2000) });
+    expect(normalizeReleaseNotes('x'.repeat(2001))).toHaveProperty('error');
+    expect(normalizeReleaseNotes('a\u0000b')).toHaveProperty('error');
+    expect(normalizeReleaseNotes(42)).toHaveProperty('error');
   });
 });

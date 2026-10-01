@@ -279,6 +279,16 @@ await OtaKit.notifyAppReady();`}</Pre>
           returns="void"
           description="End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release."
         />
+        <Method
+          name="getUnseenReleaseNotes()"
+          returns="ReleaseNotes | null"
+          description="The running release's notes, until markReleaseNotesSeen() is called (plugin 3.3+). Show them once in a What's new screen, rendered as text. See Release Notes."
+        />
+        <Method
+          name="markReleaseNotesSeen()"
+          returns="void"
+          description="Mark the running release's notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes."
+        />
       </div>
       <P>
         The plugin also emits lifecycle events — <Code>updateAvailable</Code>,{' '}
@@ -398,6 +408,13 @@ interface BundleInfo {
   sha256?: string;
   channel?: string;
   releaseId?: string;
+  notes?: string; // release notes, plugin 3.3+
+}
+
+interface ReleaseNotes {
+  text: string; // plain text: render it as text
+  version: string;
+  releaseId: string;
 }
 
 interface OtaKitState {

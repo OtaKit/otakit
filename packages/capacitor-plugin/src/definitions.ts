@@ -33,6 +33,18 @@ export interface BundleInfo {
   channel?: string;
   /** Release history ID associated with this bundle (if known) */
   releaseId?: string;
+  /** Release notes delivered with this bundle (plugin 3.3+). Plain text: render it as text. */
+  notes?: string;
+}
+
+/** Release notes the app has not shown yet (plugin 3.3+). */
+export interface ReleaseNotes {
+  /** Plain text with line breaks. Render it as text, never as HTML. */
+  text: string;
+  /** Version of the running bundle. */
+  version: string;
+  /** Release the notes belong to. */
+  releaseId: string;
 }
 
 export interface LatestVersion {
@@ -355,6 +367,16 @@ export interface OtaKitPlugin {
   stopPreview(): Promise<void>;
 
   /**
+   * Notes of the running release that the app has not marked seen, or null
+   * (plugin 3.3+). Show them once, for example in a "What's new" sheet, then
+   * call `markReleaseNotesSeen()`.
+   */
+  getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
+
+  /** Mark the running release's notes as shown (plugin 3.3+). */
+  markReleaseNotesSeen(): Promise<void>;
+
+  /**
    * Remove all registered event listeners.
    */
   removeAllListeners(): Promise<void>;
@@ -371,6 +393,8 @@ export interface OtaKitBridgePlugin {
   setChannel(options: { channel: string | null }): Promise<void>;
   getChannel(): Promise<ChannelInfo>;
   stopPreview(): Promise<void>;
+  getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
+  markReleaseNotesSeen(): Promise<void>;
   addListener(
     eventName: OtaKitEventName,
     listenerFunc: (event: unknown) => void,

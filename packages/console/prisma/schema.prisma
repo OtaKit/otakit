@@ -468,6 +468,9 @@ model Release {
   // active rollout: only the lane-current release can be rolling, and the
   // release below it stays the manifest's stable release. 100 is final.
   rolloutPercent           Int       @default(100)
+  // Plain-text notes for this release (max 2,000 characters). Devices receive
+  // them in a separately signed manifest block; editing republishes the lane.
+  notes                    String?
   promotedAt               DateTime  @default(now())
   promotedBy               String?
   revertedAt               DateTime?

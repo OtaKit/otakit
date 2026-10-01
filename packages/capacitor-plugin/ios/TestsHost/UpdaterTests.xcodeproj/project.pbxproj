@@ -20,6 +20,7 @@
 		9727BF67179C771D52F78E9A /* BundlePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F983AE74BB1C527825B02F /* BundlePersistenceTests.swift */; };
 		9769BA7BFFFE5E89F580F7E8 /* ZipUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B580B8F44B16A91DBAABE9 /* ZipUtilsTests.swift */; };
 		C09D2D1F3B222627519A64F5 /* UpdaterCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C00EDE0F6DDE6186074F9A /* UpdaterCoordinatorTests.swift */; };
+		CB87EC2CAB782084EB90815F /* ReleaseNotesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A2F2672201381E84F3FF46 /* ReleaseNotesTests.swift */; };
 		D46E7A1AFD62FFD8D1D973B5 /* PreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46043AE9A9CCCE4DCA5B23EF /* PreviewTests.swift */; };
 		DCE0AA71AD20AF238B67323A /* DownloadRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E8E9F587858B1860ACD53B /* DownloadRetryTests.swift */; };
 		DEE1B184887D1D26DF30CC9A /* OtakitCapacitorUpdater in Frameworks */ = {isa = PBXBuildFile; productRef = 91B9DAB6C51C87443AB0FF9B /* OtakitCapacitorUpdater */; };
@@ -56,6 +57,7 @@
 		E1E8E9F587858B1860ACD53B /* DownloadRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRetryTests.swift; sourceTree = "<group>"; };
 		E2C00EDE0F6DDE6186074F9A /* UpdaterCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterCoordinatorTests.swift; sourceTree = "<group>"; };
 		F07130731747353452B859E1 /* ManifestKeyConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManifestKeyConfigTests.swift; sourceTree = "<group>"; };
+		F5A2F2672201381E84F3FF46 /* ReleaseNotesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesTests.swift; sourceTree = "<group>"; };
 		F8B9BF979A98C5415B4B9D48 /* EventOutboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventOutboxTests.swift; sourceTree = "<group>"; };
 		FA726BAD1656EA4DB11E541F /* CheckFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckFailureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -96,6 +98,7 @@
 				C1C4C78F31977B1482135091 /* ForegroundDeadlineTests.swift */,
 				F07130731747353452B859E1 /* ManifestKeyConfigTests.swift */,
 				46043AE9A9CCCE4DCA5B23EF /* PreviewTests.swift */,
+				F5A2F2672201381E84F3FF46 /* ReleaseNotesTests.swift */,
 				23E9B68BD825FAE166281582 /* RolloutTests.swift */,
 				4B35686D0174D073FCA3D7D4 /* UpdateOwnerTests.swift */,
 				E2C00EDE0F6DDE6186074F9A /* UpdaterCoordinatorTests.swift */,
@@ -222,6 +225,7 @@
 				7AC163C3DCC34E3D49E54BF8 /* ForegroundDeadlineTests.swift in Sources */,
 				EC59989B021B565DBD561351 /* ManifestKeyConfigTests.swift in Sources */,
 				D46E7A1AFD62FFD8D1D973B5 /* PreviewTests.swift in Sources */,
+				CB87EC2CAB782084EB90815F /* ReleaseNotesTests.swift in Sources */,
 				4E7C2A79E63DB5B3869F1B8D /* RolloutTests.swift in Sources */,
 				8C9AB249FBEBCBF6ECC2ECE1 /* UpdateOwnerTests.swift in Sources */,
 				C09D2D1F3B222627519A64F5 /* UpdaterCoordinatorTests.swift in Sources */,

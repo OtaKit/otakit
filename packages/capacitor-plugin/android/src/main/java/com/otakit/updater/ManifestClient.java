@@ -85,6 +85,8 @@ final class ManifestClient {
     final ManifestEncryption encryption;
     /** Per-file entries for the deltas strategy; null for zip. */
     final java.util.List<ManifestFileEntry> files;
+    /** Verified release notes (plugin 3.3+), or null. */
+    final String notes;
 
     LatestManifest(
       String version,
@@ -96,7 +98,8 @@ final class ManifestClient {
       String strategy,
       boolean forceImmediate,
       ManifestEncryption encryption,
-      java.util.List<ManifestFileEntry> files
+      java.util.List<ManifestFileEntry> files,
+      String notes
     ) {
       this.version = version;
       this.url = url;
@@ -108,6 +111,7 @@ final class ManifestClient {
       this.forceImmediate = forceImmediate;
       this.encryption = encryption;
       this.files = files;
+      this.notes = notes;
     }
   }
 
@@ -226,7 +230,7 @@ final class ManifestClient {
     java.util.List<ManifestVerifier.KeyEntry> manifestKeys
   ) throws Exception {
     JSONObject json = new JSONObject(payload);
-    ParsedEntry stable = parseEntry(json, allowInsecureUrls);
+    ParsedEntry stable = parseEntry(json, appId, channel, allowInsecureUrls, manifestKeys);
 
     if (manifestKeys == null || manifestKeys.isEmpty()) {
       android.util.Log.w(
@@ -296,7 +300,7 @@ final class ManifestClient {
     ) {
       throw new IllegalStateException("Rollout block is invalid");
     }
-    ParsedEntry entry = parseEntry(json, allowInsecureUrls);
+    ParsedEntry entry = parseEntry(json, appId, channel, allowInsecureUrls, manifestKeys);
     ManifestRollout rollout = new ManifestRollout(entry.manifest, (Integer) rawPercent);
     if (manifestKeys != null && !manifestKeys.isEmpty()) {
       if (entry.signature == null) {
@@ -315,8 +319,13 @@ final class ManifestClient {
   }
 
   /** Bundle fields shared by the top level and the rollout block. */
-  private static ParsedEntry parseEntry(JSONObject json, boolean allowInsecureUrls)
-    throws Exception {
+  private static ParsedEntry parseEntry(
+    JSONObject json,
+    String appId,
+    String channel,
+    boolean allowInsecureUrls,
+    java.util.List<ManifestVerifier.KeyEntry> manifestKeys
+  ) throws Exception {
     String version = json.getString("version");
     String sha256 = json.getString("sha256");
     int size = json.getInt("size");
@@ -383,10 +392,48 @@ final class ManifestClient {
         strategy,
         forceImmediate,
         encryption,
-        files
+        files,
+        verifiedNotes(json.optJSONObject("notes"), appId, channel, releaseId, sha256, manifestKeys)
       ),
       signature
     );
+  }
+
+  /**
+   * One entry's release notes (plugin 3.3+). Anything missing, malformed or unverifiable yields
+   * null: notes never block an update. Without manifest keys (unsigned self-hosting) the text is
+   * accepted, like the manifest.
+   */
+  private static String verifiedNotes(
+    JSONObject notes,
+    String appId,
+    String channel,
+    String releaseId,
+    String sha256,
+    java.util.List<ManifestVerifier.KeyEntry> manifestKeys
+  ) {
+    if (notes == null) return null;
+    Object rawText = notes.opt("text");
+    if (!(rawText instanceof String) || ((String) rawText).isEmpty()) return null;
+    String text = (String) rawText;
+    if (manifestKeys == null || manifestKeys.isEmpty()) return text;
+    ManifestSignature signature = parseSignature(notes.optJSONObject("signature"));
+    if (signature == null) return null;
+    try {
+      ManifestVerifier.verifyNotes(
+        appId,
+        channel,
+        releaseId,
+        sha256,
+        text,
+        signature,
+        manifestKeys
+      );
+      return text;
+    } catch (Exception error) {
+      android.util.Log.w("OtaKit", "Ignoring release notes that failed verification", error);
+      return null;
+    }
   }
 
   private static java.util.List<ManifestFileEntry> parseFiles(

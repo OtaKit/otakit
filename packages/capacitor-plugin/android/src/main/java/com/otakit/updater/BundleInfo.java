@@ -15,6 +15,8 @@ class BundleInfo {
   final String path;
   final String channel;
   final String releaseId;
+  /** Release notes delivered with this bundle (plugin 3.3+), or null. */
+  final String notes;
 
   BundleInfo(
     String id,
@@ -27,6 +29,21 @@ class BundleInfo {
     String channel,
     String releaseId
   ) {
+    this(id, version, runtimeVersion, status, downloadedAt, sha256, path, channel, releaseId, null);
+  }
+
+  BundleInfo(
+    String id,
+    String version,
+    String runtimeVersion,
+    BundleStatus status,
+    Long downloadedAt,
+    String sha256,
+    String path,
+    String channel,
+    String releaseId,
+    String notes
+  ) {
     this.id = id;
     this.version = version;
     this.runtimeVersion = runtimeVersion;
@@ -36,6 +53,7 @@ class BundleInfo {
     this.path = path;
     this.channel = channel;
     this.releaseId = releaseId;
+    this.notes = notes;
   }
 
   boolean isBuiltin() {
@@ -73,6 +91,9 @@ class BundleInfo {
     if (releaseId != null) {
       object.put("releaseId", releaseId);
     }
+    if (notes != null) {
+      object.put("notes", notes);
+    }
     return object;
   }
 
@@ -99,6 +120,9 @@ class BundleInfo {
     if (path != null) {
       object.put("path", path);
     }
+    if (notes != null) {
+      object.put("notes", notes);
+    }
     return object;
   }
 
@@ -114,6 +138,7 @@ class BundleInfo {
     String channel = object.has("channel") ? object.optString("channel", null) : null;
     String releaseId = object.has("releaseId") ? object.optString("releaseId", null) : null;
     String path = object.has("path") ? object.optString("path", null) : null;
+    String notes = object.has("notes") ? object.optString("notes", null) : null;
     return new BundleInfo(
       id,
       version,
@@ -123,7 +148,8 @@ class BundleInfo {
       sha256,
       path,
       channel,
-      releaseId
+      releaseId,
+      notes
     );
   }
 
@@ -137,7 +163,8 @@ class BundleInfo {
       sha256,
       path,
       channel,
-      releaseId
+      releaseId,
+      notes
     );
   }
 }
