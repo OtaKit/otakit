@@ -11,6 +11,7 @@ import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
+import { createDefaultNotificationDestination } from './notifications/emit';
 import {
   selectedOAuthOrganizationId,
   shouldSelectOAuthOrganization,
@@ -253,6 +254,7 @@ export async function provisionUser(userId: string, email: string) {
       const organization = await tx.organization.create({
         data: { name: 'Personal account' },
       });
+      await createDefaultNotificationDestination(tx, organization.id);
       await tx.organizationMember.create({
         data: { organizationId: organization.id, userId, role: 'owner' },
       });

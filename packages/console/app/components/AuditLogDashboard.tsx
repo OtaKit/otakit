@@ -52,6 +52,10 @@ const ACTION_LABELS: Record<string, string> = {
   'push_credential.deleted': 'Push credential removed',
   'push_campaign.created': 'Push notification sent',
   'push_campaign.canceled': 'Push notification canceled',
+  'notification_destination.created': 'Notification destination added',
+  'notification_destination.updated': 'Notification destination changed',
+  'notification_destination.deleted': 'Notification destination removed',
+  'notification_destination.secret_rotated': 'Webhook secret rotated',
 };
 
 function formatDate(value: string): string {

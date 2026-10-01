@@ -366,8 +366,8 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       db.release.findUniqueOrThrow({ where: { id: second.release.id } }),
     ).resolves.toMatchObject({
       revertedBy: actor.actorLabel,
-      autoRevertAlertPayload: expect.objectContaining({ rollbacks: 12, attempts: 20 }),
-      autoRevertAlertedAt: null,
+      // The alert is a notification now (notifications.integration.test.ts).
+      autoRevertAlertPayload: null,
     });
   });
 
@@ -391,7 +391,10 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       { limit: 10 },
       { syncManifest: vi.fn().mockResolvedValue(undefined) },
     );
-    expect(stats).toMatchObject({ repaired: 1, pending: 0 });
+    // The reconcile is global and other test files publish in parallel, so it may
+    // also finish their in-flight mutations; this one is checked below.
+    expect(stats.repaired).toBeGreaterThanOrEqual(1);
+    expect(stats.pending).toBe(0);
     await expect(db.release.count({ where: { appId } })).resolves.toBe(1);
     await expect(
       db.releaseMutation.findUniqueOrThrow({ where: { id: pending.operationId } }),

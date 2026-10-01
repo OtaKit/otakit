@@ -1,6 +1,26 @@
 {
   "entries": [
     {
+      "slug": "webhooks-and-alerts",
+      "date": "2026-10-01",
+      "type": "feature",
+      "title": "Webhooks and alerts",
+      "areas": ["Dashboard", "API"],
+      "summary": "Get notified when releases go out, roll out, are reverted, or fail health checks: by email, in Slack or Discord, or as signed webhooks to your own systems.",
+      "highlights": [
+        "Add destinations in Settings → Notifications, choose the events, and optionally limit one to a single app.",
+        "Every release counts, whether it came from the dashboard, the CLI, CI, or an agent.",
+        "Webhooks follow the Standard Webhooks spec, so existing libraries verify them. Failed deliveries are retried for about a day.",
+        "Auto-revert and usage emails now run through the same system, so you can change who gets them."
+      ],
+      "links": [
+        {
+          "label": "Webhooks and alerts guide",
+          "href": "/docs/webhooks"
+        }
+      ]
+    },
+    {
       "slug": "preview-links",
       "date": "2026-09-30",
       "type": "feature",

@@ -30,6 +30,11 @@ const DOCS = [
     file: 'packages/site/app/docs/events/page.tsx',
   },
   {
+    label: 'Webhooks & Alerts',
+    route: '/docs/webhooks',
+    file: 'packages/site/app/docs/webhooks/page.tsx',
+  },
+  {
     label: 'Push Notifications',
     route: '/docs/push',
     file: 'packages/site/app/docs/push/page.tsx',

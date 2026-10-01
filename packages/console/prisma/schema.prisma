@@ -299,38 +299,53 @@ enum ReleaseMutationStatus {
   published
 }
 
+enum NotificationDestinationType {
+  email
+  webhook
+  slack
+  discord
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  sending
+  delivered
+  failed
+}
+
 // ── Organizations & membership ──────────────────────────────────────
 
 model Organization {
-  id                  String                  @id @default(uuid())
-  name                String
+  id                       String                    @id @default(uuid())
+  name                     String
   // Billing (Polar)
-  planKey             PlanKey                 @default(free)
+  planKey                  PlanKey                   @default(free)
   // Persists the Free-tier allowance an organization was granted. Existing
   // Free organizations are grandfathered at 100k; new organizations get 5k.
-  freeDownloadsLimit  Int                     @default(5000)
-  isActive            Boolean                 @default(false)
-  polarCustomerId     String?
-  polarSubscriptionId String?
-  usagePeriodStart    DateTime?
-  usageCalculatedAt   DateTime?
-  downloadsCount      Int                     @default(0)
-  usageBlocked        Boolean                 @default(false)
-  overageEnabled      Boolean                 @default(false)
-  warningSent         UsageWarningSent        @default(none)
+  freeDownloadsLimit       Int                       @default(5000)
+  isActive                 Boolean                   @default(false)
+  polarCustomerId          String?
+  polarSubscriptionId      String?
+  usagePeriodStart         DateTime?
+  usageCalculatedAt        DateTime?
+  downloadsCount           Int                       @default(0)
+  usageBlocked             Boolean                   @default(false)
+  overageEnabled           Boolean                   @default(false)
+  warningSent              UsageWarningSent          @default(none)
   // Add-ons (their data lives in their own packages and Postgres schemas)
-  pushEnabled         Boolean                 @default(false)
+  pushEnabled              Boolean                   @default(false)
   // Relations
-  apps                App[]
-  apiKeys             OrganizationApiKey[]
-  members             OrganizationMember[]
-  invites             OrganizationInvite[]
-  auditLogs           AuditLog[]
-  releaseMutations    ReleaseMutation[]
-  activeForUsers      User[]                  @relation("UserActiveOrganization")
-  onboarding          OrganizationOnboarding?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  apps                     App[]
+  apiKeys                  OrganizationApiKey[]
+  members                  OrganizationMember[]
+  invites                  OrganizationInvite[]
+  auditLogs                AuditLog[]
+  releaseMutations         ReleaseMutation[]
+  notificationDestinations NotificationDestination[]
+  activeForUsers           User[]                    @relation("UserActiveOrganization")
+  onboarding               OrganizationOnboarding?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 }
 
 model OrganizationOnboarding {
@@ -409,18 +424,19 @@ model AuditLog {
 // ── App & bundles ───────────────────────────────────────────────────
 
 model App {
-  id               String          @id @default(uuid())
-  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId   String
-  slug             String
+  id                       String                    @id @default(uuid())
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId           String
+  slug                     String
   // Custom URL scheme of the app (e.g. `myapp`), used to open preview links.
-  previewUrlScheme String?
-  bundles          Bundle[]
-  releases         Release[]
-  uploadSessions   UploadSession[]
-  previews         BundlePreview[]
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  previewUrlScheme         String?
+  bundles                  Bundle[]
+  releases                 Release[]
+  uploadSessions           UploadSession[]
+  previews                 BundlePreview[]
+  notificationDestinations NotificationDestination[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId, createdAt(sort: Desc)])
@@ -472,6 +488,8 @@ model Release {
   promotedBy               String?
   revertedAt               DateTime?
   revertedBy               String?
+  // Deprecated: auto-revert alerts are notifications now. No longer written or
+  // read; dropped once no deployment selects them.
   autoRevertAlertPayload   Json?
   autoRevertAlertClaimedAt DateTime?
   autoRevertAlertedAt      DateTime?
@@ -557,4 +575,68 @@ model UploadSession {
   @@index([appId, status, createdAt(sort: Desc)])
   @@index([expiresAt, status])
   @@index([bundleId])
+}
+
+// ── Notifications ───────────────────────────────────────────────────
+
+// Where a workspace's notifications go: email to members, Slack, Discord, or a
+// signed webhook. Events are notification type names (lib/notifications/events.ts).
+model NotificationDestination {
+  id                       String                      @id @default(uuid())
+  organization             Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId           String
+  // Only events of this app (plus workspace-wide ones); null = all apps.
+  app                      App?                        @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId                    String?
+  type                     NotificationDestinationType
+  name                     String
+  // Webhook, Slack and Discord URL.
+  url                      String?
+  // Email: { mode: 'owners_admins' } or { mode: 'members', userIds: [...] }.
+  emailRecipients          Json?
+  // Webhook signing secret (whsec_…), sealed with DATA_ENCRYPTION_KEY. After a
+  // rotation the previous secret also signs until previousSecretExpiresAt.
+  secretCiphertext         String?
+  previousSecretCiphertext String?
+  previousSecretExpiresAt  DateTime?
+  events                   String[]
+  enabled                  Boolean                     @default(true)
+  // Set when OtaKit disabled it: 'endpoint_gone' (HTTP 410) or 'failing'.
+  disabledReason           String?
+  consecutiveFailures      Int                         @default(0)
+  lastSuccessAt            DateTime?
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+  deliveries               NotificationDelivery[]
+
+  @@index([organizationId])
+  @@index([appId])
+}
+
+// One event for one destination: the outbox row, written in the same
+// transaction as the change it reports. Its id is the webhook-id header.
+model NotificationDelivery {
+  id             String                     @id @default(uuid())
+  destination    NotificationDestination    @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  destinationId  String
+  eventType      String
+  // Identifies the event, so replays and retries never create a second row.
+  eventKey       String
+  // The JSON body exactly as sent (text keeps its key order; JSONB would not).
+  payload        String
+  status         NotificationDeliveryStatus @default(pending)
+  attempts       Int                        @default(0)
+  nextAttemptAt  DateTime                   @default(now())
+  claimedAt      DateTime?
+  lastAttemptAt  DateTime?
+  lastStatusCode Int?
+  lastError      String?
+  lastDurationMs Int?
+  deliveredAt    DateTime?
+  createdAt      DateTime                   @default(now())
+
+  @@unique([destinationId, eventKey])
+  @@index([status, nextAttemptAt])
+  @@index([destinationId, createdAt(sort: Desc)])
+  @@index([createdAt])
 }

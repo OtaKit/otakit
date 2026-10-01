@@ -14,7 +14,8 @@ export type ChangelogEntry = {
   type: ChangelogType;
   title: string;
   areas: string[];
-  versions: Partial<Record<PackageKey, string>>;
+  /** Omitted for changes that ship with the hosted service, not a package. */
+  versions?: Partial<Record<PackageKey, string>>;
   /** Text may use `backticks` for inline code. */
   summary: string;
   highlights?: string[];
@@ -59,11 +60,12 @@ export function formatChangelogDate(value: string, month: 'short' | 'long' = 'sh
   });
 }
 
-/** "Plugin 3.2.0 · CLI 1.9.0" */
+/** "Plugin 3.2.0 · CLI 1.9.0", or none for a hosted-service change. */
 export function versionLabels(entry: ChangelogEntry): string[] {
+  const versions = entry.versions ?? {};
   return (Object.keys(PACKAGE_LABELS) as PackageKey[])
-    .filter((key) => entry.versions[key])
-    .map((key) => `${PACKAGE_LABELS[key]} ${entry.versions[key]}`);
+    .filter((key) => versions[key])
+    .map((key) => `${PACKAGE_LABELS[key]} ${versions[key]}`);
 }
 
 /** Inline `code` segments as alternating text and code parts. */

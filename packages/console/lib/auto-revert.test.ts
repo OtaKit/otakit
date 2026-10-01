@@ -3,25 +3,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   findReleases: vi.fn(),
   findRelease: vi.fn(),
+  findAuditLog: vi.fn(),
   getReleaseHealthWindowCounts: vi.fn(),
   revertRelease: vi.fn(),
+  findReleaseSummary: vi.fn(),
+  emitNotification: vi.fn(),
+  recordAuditLog: vi.fn(),
 }));
 
-vi.mock('./audit-log', () => ({ recordAuditLog: vi.fn() }));
+vi.mock('./audit-log', () => ({ recordAuditLog: mocks.recordAuditLog }));
 vi.mock('./db', () => ({
   db: {
     release: {
       findMany: mocks.findReleases,
       findFirst: mocks.findRelease,
     },
-    organizationMember: { findMany: vi.fn() },
-    auditLog: { findFirst: vi.fn() },
+    auditLog: { findFirst: mocks.findAuditLog },
   },
 }));
-vi.mock('./email', () => ({ sendAutoRevertEmail: vi.fn() }));
+vi.mock('./notifications/emit', () => ({ emitNotification: mocks.emitNotification }));
 vi.mock('./release-features', () => ({ isReleaseReliabilityEnabled: () => true }));
-vi.mock('./releases', () => ({ revertCurrentRelease: vi.fn() }));
-vi.mock('./services/releases', () => ({ revertRelease: mocks.revertRelease }));
+vi.mock('./services/releases', () => ({
+  findReleaseSummary: mocks.findReleaseSummary,
+  revertRelease: mocks.revertRelease,
+  revertReleaseLegacy: vi.fn(),
+}));
 vi.mock('./tinybird/events', () => ({
   getReleaseHealthWindowCounts: mocks.getReleaseHealthWindowCounts,
 }));
@@ -65,6 +71,45 @@ describe('auto-revert failure handling', () => {
 
     await expect(runAutoRevertSweep(new Date('2026-01-02T00:00:00Z'))).rejects.toThrow(
       'database unavailable',
+    );
+  });
+
+  it('queues the suppressed alert once, before the audit entry that marks it sent', async () => {
+    mocks.findRelease
+      .mockReset()
+      .mockResolvedValueOnce({ id: 'release-1' })
+      .mockResolvedValueOnce({
+        revertedBy: 'system:auto-revert',
+        revertedAt: new Date('2026-01-01T12:00:00Z'),
+      });
+    mocks.findAuditLog.mockResolvedValue(null);
+    mocks.findReleaseSummary.mockResolvedValue({ id: 'release-1', bundleVersion: '1.0.0' });
+
+    await expect(runAutoRevertSweep(new Date('2026-01-02T00:00:00Z'))).resolves.toMatchObject({
+      suppressed: 1,
+      reverted: 0,
+    });
+    expect(mocks.revertRelease).not.toHaveBeenCalled();
+    expect(mocks.emitNotification).toHaveBeenCalledWith(expect.anything(), {
+      type: 'release.auto_revert_suppressed',
+      key: 'release.auto_revert_suppressed:release-1',
+      organizationId: 'org-1',
+      appId: 'app-1',
+      actor: { actorType: 'system', actorLabel: 'auto-revert' },
+      data: {
+        release: { id: 'release-1', bundleVersion: '1.0.0' },
+        health: {
+          rollbacks: 10,
+          attempts: 20,
+          measuredRatePercent: 50,
+          ratePercent: 20,
+          minSample: 10,
+          windowHours: 24,
+        },
+      },
+    });
+    expect(mocks.emitNotification.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.recordAuditLog.mock.invocationCallOrder[0],
     );
   });
 

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { recordAuditLog } from '@/lib/audit-log';
+import { createDefaultNotificationDestination } from '@/lib/notifications/emit';
 
 export async function POST(request: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
 
   const organization = await db.$transaction(async (tx) => {
     const t = await tx.organization.create({ data: { name } });
+    await createDefaultNotificationDestination(tx, t.id);
 
     await tx.organizationMember.create({
       data: { organizationId: t.id, userId: session.user.id, role: 'owner' },
