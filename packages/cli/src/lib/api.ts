@@ -15,6 +15,47 @@ export interface Bundle {
   createdAt: string;
 }
 
+export type BundleDiffBundle = {
+  id: string;
+  version: string;
+  runtimeVersion: string | null;
+  strategy: string;
+  size: number;
+  encrypted: boolean;
+};
+
+export type BundleDiff = {
+  target: BundleDiffBundle;
+  base: BundleDiffBundle | null;
+  baseSource: 'against' | 'channel' | 'previous_upload';
+  status: 'ok' | 'target_unavailable' | 'base_unavailable';
+  unavailableReason: 'encrypted' | 'unreadable' | null;
+  comparable: boolean;
+  summary: {
+    added: number;
+    removed: number;
+    changed: number;
+    unchanged: number;
+    totalBefore: number | null;
+    totalAfter: number;
+    downloadBytes: number | null;
+  } | null;
+  changes: Array<{
+    path: string;
+    status: 'added' | 'removed' | 'changed';
+    sizeBefore: number | null;
+    sizeAfter: number | null;
+  }>;
+  unlistedChanges: number;
+  warnings: Array<{
+    code: string;
+    severity: 'warning' | 'note';
+    message: string;
+    paths: string[];
+    count: number;
+  }>;
+};
+
 export interface BundleDetail extends Bundle {
   nativePackages?: NativePackage[] | null;
 }
@@ -303,6 +344,20 @@ export class ApiClient {
 
   async getBundle(bundleId: string): Promise<BundleDetail> {
     return this.request(this.appPath(`/bundles/${encodeURIComponent(bundleId)}`));
+  }
+
+  /** Compare a bundle with `against`, with what `channel` runs (null: base), or the previous upload. */
+  async diffBundle(
+    bundleId: string,
+    options: { against?: string; channel?: string | null } = {},
+  ): Promise<BundleDiff> {
+    const params = new URLSearchParams();
+    if (options.against) params.set('against', options.against);
+    if (options.channel !== undefined) params.set('channel', options.channel ?? '');
+    const query = params.toString();
+    return this.request(
+      this.appPath(`/bundles/${encodeURIComponent(bundleId)}/diff${query ? `?${query}` : ''}`),
+    );
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {

@@ -141,6 +141,22 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     allowOrganizationKey: true,
   },
   {
+    name: 'diff_bundles',
+    title: 'Compare two OtaKit bundles',
+    description:
+      'Compare an uploaded bundle with another one: files added, changed and removed, unpacked size before and after, the bytes a device downloads, and warnings about content that should not ship (.env files, .git, node_modules, source maps, large new files). Compare with `against` (a bundle ID), with the bundle a channel runs (`channel`, null for the base channel), or by default with the previous upload of the same runtime version. Check your own upload with it before asking to release. Encrypted bundles cannot be inspected.',
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      bundleId: bundleIdSchema,
+      against: bundleIdSchema.optional(),
+      channel: channelSchema.optional(),
+    }),
+    annotations: readOnly,
+    oauthScopes: ['otakit:read'],
+    allowOrganizationKey: true,
+  },
+  {
     name: 'delete_bundle',
     title: 'Delete an unused OtaKit bundle',
     description:

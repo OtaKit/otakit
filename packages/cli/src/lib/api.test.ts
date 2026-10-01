@@ -179,4 +179,22 @@ describe('ApiClient release reliability contract', () => {
     expect(calls[2][0]).toBe(`${base}/previews/p-1`);
     expect(calls[2][1].method).toBe('DELETE');
   });
+
+  it('compares a bundle with a bundle, a channel, the base channel or its previous upload', async () => {
+    const api = new ApiClient(config);
+    mocks.fetchCli.mockImplementation(async () => jsonResponse({ status: 'ok' }));
+    await api.diffBundle('bundle-b', { against: 'bundle-a' });
+    await api.diffBundle('bundle-b', { channel: 'production' });
+    await api.diffBundle('bundle-b', { channel: null });
+    await api.diffBundle('bundle-b');
+
+    const urls = (mocks.fetchCli.mock.calls as Array<[string]>).map(([url]) => url);
+    const base = `https://console.example.test/api/v1/apps/${config.appId}/bundles/bundle-b/diff`;
+    expect(urls).toEqual([
+      `${base}?against=bundle-a`,
+      `${base}?channel=production`,
+      `${base}?channel=`,
+      base,
+    ]);
+  });
 });

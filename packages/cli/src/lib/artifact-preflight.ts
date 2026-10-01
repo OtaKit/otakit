@@ -7,6 +7,7 @@ import { validateBundleDirectory } from './zip.js';
 const MIB = 1024 * 1024;
 const MAX_UNPACKED_BYTES = 500_000_000;
 const INSTALLER = /\.(exe|msi|dmg|pkg|apk|ipa|appx|msix|deb|rpm)$/i;
+const ENV_FILE = /^\.env(\..+)?$/i;
 type Artifact = { path: string; bytes: number };
 
 export type ArtifactInspection = {
@@ -14,8 +15,18 @@ export type ArtifactInspection = {
   totalBytes: number;
   largestFiles: Artifact[];
   nativeArtifacts: Artifact[];
+  /** Likely mistakes; --strict-artifacts fails on them. */
   warnings: string[];
+  /** Worth a look, never fatal (for example source maps shipped on purpose). */
+  notes: string[];
 };
+
+function examples(files: Artifact[]): string {
+  const shown = files.slice(0, 3).map((file) => JSON.stringify(file.path));
+  return files.length > shown.length
+    ? `${shown.join(', ')} and ${files.length - shown.length} more`
+    : shown.join(', ');
+}
 
 /** Inspect metadata only; never remove or silently exclude application assets. */
 export function inspectArtifacts(
@@ -79,7 +90,46 @@ export function inspectArtifacts(
       `Large bundle: ${(totalBytes / MIB).toFixed(1)} MiB across ${files.length} files. Large downloads increase timeout, storage, and memory pressure. Largest files: ${examples}.`,
     );
   }
-  return { fileCount: files.length, totalBytes, largestFiles, nativeArtifacts, warnings };
+
+  // Content that should not ship: anyone with the app can read every bundle file.
+  const segmentsOf = (file: Artifact) => file.path.split('/');
+  const envFiles = files.filter((file) => ENV_FILE.test(segmentsOf(file).at(-1) ?? ''));
+  const gitFiles = files.filter((file) => segmentsOf(file).includes('.git'));
+  const moduleFiles = files.filter((file) => segmentsOf(file).includes('node_modules'));
+  if (envFiles.length > 0) {
+    warnings.push(
+      `Bundle contains environment file(s): ${examples(envFiles)}. They often hold secrets, and anyone with the app can read every bundle file. Remove them from the web build output.`,
+    );
+  }
+  if (gitFiles.length > 0) {
+    warnings.push(
+      `Bundle contains a .git directory (${gitFiles.length} files), which exposes your repository history. Remove it from the web build output.`,
+    );
+  }
+  if (moduleFiles.length > 0) {
+    warnings.push(
+      `Bundle contains node_modules (${moduleFiles.length} files). It belongs to the build, not the app; check that the bundle path is your web build output.`,
+    );
+  }
+  const notes: string[] = [];
+  const flagged = new Set([...envFiles, ...gitFiles, ...moduleFiles]);
+  const sourceMaps = files.filter(
+    (file) => !flagged.has(file) && file.path.toLowerCase().endsWith('.map'),
+  );
+  const hiddenFiles = files.filter(
+    (file) => !flagged.has(file) && segmentsOf(file).some((segment) => segment.startsWith('.')),
+  );
+  if (sourceMaps.length > 0) {
+    notes.push(
+      `Bundle contains ${sourceMaps.length} source map(s): ${examples(sourceMaps)}. They reveal your source code; remove them unless you ship them on purpose.`,
+    );
+  }
+  if (hiddenFiles.length > 0) {
+    notes.push(
+      `Bundle contains hidden file(s): ${examples(hiddenFiles)}. They are usually left over from the build machine.`,
+    );
+  }
+  return { fileCount: files.length, totalBytes, largestFiles, nativeArtifacts, warnings, notes };
 }
 
 export function preflightArtifacts(
@@ -94,7 +144,9 @@ export function preflightArtifacts(
   if (options.strict && inspection.warnings.length > 0) {
     throw new CliError(`Artifact preflight failed:\n${inspection.warnings.join('\n')}`);
   }
-  for (const warning of inspection.warnings) (options.onWarning ?? console.warn)(warning);
+  const warn = options.onWarning ?? console.warn;
+  for (const warning of inspection.warnings) warn(warning);
+  for (const note of inspection.notes) warn(`Note: ${note}`);
   return inspection;
 }
 

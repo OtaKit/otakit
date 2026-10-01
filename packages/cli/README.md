@@ -119,6 +119,7 @@ release made with `--rollout <percent>` reaches that share of devices on plugin
 - `otakit upload --preview` — upload, then print a preview link and QR code
 - `otakit releases [--channel <channel> | --base]`
 - `otakit list`
+- `otakit diff <bundleId> [--against <bundleId> | --channel <channel> | --base] [--json]` — files added, changed and removed, sizes, what devices download, and warnings about content that should not ship
 - `otakit delete <bundleId> --force`
 - `otakit push send --title <title> --body <body> [--url <path>] [--topic <t>] [--channel <c>] [--user <id>] [--yes]` — send a push notification (Push notifications add-on)
 - `otakit push campaigns` / `otakit push campaign <id>` — delivery status

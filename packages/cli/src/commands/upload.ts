@@ -1,3 +1,4 @@
+import { describeBundleDiff } from '@otakit/mcp-core';
 import { Command } from 'commander';
 
 import ora from 'ora';
@@ -93,7 +94,7 @@ export const uploadCommand = new Command('upload')
   .option('--strict-version', 'Require explicit version (--version or OTAKIT_VERSION)')
   .option(
     '--strict-artifacts',
-    'Fail before uploading on large bundles or native installer artifacts',
+    'Fail before uploading on large bundles, native installers, .env files, .git or node_modules',
   )
   .option('--release [channel]', 'Release after upload (base channel if omitted)')
   .option(
@@ -302,6 +303,19 @@ export const uploadCommand = new Command('upload')
         );
       } else {
         spinner.succeed(`Uploaded ${bundle.version} (${bundle.id}).`);
+      }
+
+      // What changed against the bundle the targeted lane runs; informational only.
+      const baseline = lane?.stable ?? null;
+      if (baseline && baseline.bundleId !== bundle.id) {
+        const laneLabel = `${targetChannel ?? 'base channel'} (${baseline.bundleVersion ?? baseline.bundleId})`;
+        try {
+          const diff = await api.diffBundle(bundle.id, { against: baseline.bundleId });
+          console.log(describeBundleDiff(diff, { baseLabel: laneLabel }));
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          console.warn(`Could not compare with ${laneLabel}: ${reason}`);
+        }
       }
 
       if (options.preview) {
