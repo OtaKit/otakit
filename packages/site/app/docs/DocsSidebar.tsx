@@ -23,6 +23,7 @@ const NAV = [
       { label: 'CLI Reference', href: '/docs/cli' },
       { label: 'Plugin API', href: '/docs/plugin' },
       { label: 'REST API', href: '/docs/api' },
+      { label: 'Changelog', href: '/changelog' },
     ],
   },
   {
