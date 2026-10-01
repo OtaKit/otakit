@@ -17,14 +17,18 @@ the base channel or omit runtime version from a preview.
    `proceed` only after the user explicitly accepts the native risk; use `skip`
    only when they intentionally choose not to compare.
 3. Upload the built web directory with `upload_bundle`. This must not publish it.
-4. Read the current release state and call `prepare_release` for the uploaded
+4. Call `diff_bundles` for the uploaded bundle with the target `channel`. Report the
+   summary (files added, changed, removed, what devices download) and every
+   warning, such as an `.env` file or `node_modules`. A warning means the build
+   output is probably wrong: fix it and upload again rather than releasing.
+5. Read the current release state and call `prepare_release` for the uploaded
    bundle and exact lane.
-5. Show the complete preview: current and proposed bundle, expected current
+6. Show the complete preview: current and proposed bundle, expected current
    release, rollout percentage, `forceImmediate`, auto-revert enabled/rate/minimum
-   sample, and compatibility result/decision.
-6. Ask for approval, then call `publish_release` with those exact values and a
+   sample, compatibility result/decision, and the diff summary.
+7. Ask for approval, then call `publish_release` with those exact values and a
    new idempotency key. If the lane changed after preview, stop and prepare again.
-7. Report whether manifest synchronization completed or is pending repair.
+8. Report whether manifest synchronization completed or is pending repair.
 
 Use `upload_and_publish_bundle` only for an explicitly requested one-step release.
 It preserves the same compatibility, lane, force-immediate, auto-revert,

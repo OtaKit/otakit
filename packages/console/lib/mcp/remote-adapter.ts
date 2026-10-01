@@ -1,5 +1,6 @@
 import {
   PublicToolError,
+  describeBundleDiff,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -21,6 +22,7 @@ import { listAuditLog } from '@/lib/services/audit';
 import { deleteBundle, getBundle, listBundles } from '@/lib/services/bundles';
 import { getConnectionContext } from '@/lib/services/context';
 import { isOtaKitServiceError } from '@/lib/services/errors';
+import { getBundleDiff } from '@/lib/services/bundle-diff';
 import { listEvents } from '@/lib/services/events';
 import { createPreview, revokePreview } from '@/lib/services/previews';
 import type { PreviewExpiry } from '@/lib/preview-links';
@@ -195,6 +197,8 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.listBundles(input);
         case 'get_bundle':
           return await this.getBundle(input);
+        case 'diff_bundles':
+          return await this.diffBundles(input);
         case 'delete_bundle':
           return await this.deleteBundle(input);
         case 'list_releases':
@@ -332,6 +336,23 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     await this.ensureApp(appId);
     const bundle = await getBundle(appId, stringInput(input, 'bundleId'));
     return toolEnvelope(`Read bundle ${bundle.version}.`, json({ bundle }));
+  }
+
+  private async diffBundles(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const diff = await getBundleDiff({
+      organizationId: this.connection.access.organizationId,
+      appId,
+      bundleId: stringInput(input, 'bundleId'),
+      against: optionalString(input, 'against'),
+      channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+    });
+    return toolEnvelope(describeBundleDiff(diff), json(diff), {
+      warnings: diff.warnings
+        .filter((warning) => warning.severity === 'warning')
+        .map((warning) => `${warning.message} ${warning.paths.join(', ')}`),
+    });
   }
 
   private async deleteBundle(input: JsonObject): Promise<ToolEnvelope> {

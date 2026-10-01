@@ -126,7 +126,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit upload"
           args="[path]"
-          description="Upload a bundle. Optionally release it immediately."
+          description="Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices download ≈ 38.0 KB”."
           options={[
             {
               flag: '[path]',
@@ -139,6 +139,10 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               desc: 'Version string. Otherwise OTAKIT_VERSION, then auto-generated.',
             },
             { flag: '--strict-version', desc: 'Require explicit or env-provided version.' },
+            {
+              flag: '--strict-artifacts',
+              desc: 'Fail before uploading when the bundle is very large or contains native installers, .env files, .git or node_modules. Source maps and hidden files are only noted.',
+            },
             {
               flag: '--release [channel]',
               desc: 'Release after upload. Omit channel to release to the base channel.',
@@ -276,6 +280,27 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
           description="List uploaded bundles."
           options={[{ flag: '--limit <n>', desc: 'Max results. Defaults to 20.' }]}
           example="otakit list --limit 20"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit diff"
+          args="<bundleId>"
+          description="Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices download, and warnings about content that should not ship. Encrypted bundles cannot be inspected."
+          options={[
+            {
+              flag: '--against <bundleId>',
+              desc: 'Compare with this bundle. Without --against, --channel or --base, the CLI compares with the previous upload of the same runtime version.',
+            },
+            { flag: '--channel <channel>', desc: 'Compare with the bundle this channel runs.' },
+            { flag: '--base', desc: 'Compare with the bundle the base channel runs.' },
+            {
+              flag: '--json',
+              desc: 'Print the full comparison as JSON, every changed file included.',
+            },
+          ]}
+          example="otakit diff 2ffbb928-96b1-4297-a5b7-c1633c104868 --channel production"
         />
 
         <Separator />

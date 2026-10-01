@@ -236,7 +236,7 @@ The CLI resolves values in a deterministic order.
 
 ### otakit upload [path]
 
-Upload a bundle. Optionally release it immediately.
+Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices download ≈ 38.0 KB”.
 
 Options
 - `[path]`: Bundle directory. If omitted, the CLI uses OTAKIT_BUILD_DIR or capacitor.config.* webDir.
@@ -244,6 +244,7 @@ Options
 - `--server <url>`: Server URL override.
 - `--version <version>`: Version string. Otherwise OTAKIT_VERSION, then auto-generated.
 - `--strict-version`: Require explicit or env-provided version.
+- `--strict-artifacts`: Fail before uploading when the bundle is very large or contains native installers, .env files, .git or node_modules. Source maps and hidden files are only noted.
 - `--release [channel]`: Release after upload. Omit channel to release to the base channel.
 - `--strategy <strategy>`: Upload strategy: "zip" (single archive, default) or "deltas" (per-file objects; devices download only what changed).
 - `--force-immediate`: With --release: devices apply and reload this release on their next check (emergency fixes).
@@ -336,6 +337,22 @@ Example
 
 ```txt
 otakit list --limit 20
+```
+
+### otakit diff <bundleId>
+
+Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices download, and warnings about content that should not ship. Encrypted bundles cannot be inspected.
+
+Options
+- `--against <bundleId>`: Compare with this bundle. Without --against, --channel or --base, the CLI compares with the previous upload of the same runtime version.
+- `--channel <channel>`: Compare with the bundle this channel runs.
+- `--base`: Compare with the bundle the base channel runs.
+- `--json`: Print the full comparison as JSON, every changed file included.
+
+Example
+
+```txt
+otakit diff 2ffbb928-96b1-4297-a5b7-c1633c104868 --channel production
 ```
 
 ### otakit releases
@@ -945,6 +962,33 @@ Response
 
 ```txt
 { "deleted": true, "id": "uuid" }
+```
+
+### GET /api/v1/apps/:appId/bundles/:bundleId/diff
+
+Compare a bundle with another one. Without against or channel, the base is the previous upload of the same runtime version. Zip bundles are read from the archive's central directory and delta bundles from their file list; encrypted bundles cannot be inspected. downloadBytes is what a device on the base downloads: the archive for zip updates, only content it does not have yet for delta updates, or null when that depends on the device. Warning codes: env_file, git_directory and node_modules (warnings); source_map, dotfile, native_installer, large_new_file and size_increase (notes).
+- Auth: Bearer
+- Query: ?against=<bundleId> or ?channel=<name> (empty for the base channel)
+
+Response
+
+```txt
+{
+  "target": { "id": "…", "version": "1.4.2", "strategy": "deltas", "size": 4508876 },
+  "base": { "id": "…", "version": "1.4.1", … },
+  "baseSource": "channel",          // "against" | "channel" | "previous_upload"
+  "status": "ok",                   // or "target_unavailable" | "base_unavailable"
+  "unavailableReason": null,        // "encrypted" | "unreadable"
+  "comparable": true,               // false: zip vs deltas, compared by size only
+  "summary": { "added": 3, "changed": 12, "removed": 1, "unchanged": 210,
+               "totalBefore": 4299161, "totalAfter": 4508876,
+               "downloadBytes": 38912 },
+  "changes": [{ "path": "assets/hero.png", "status": "added",
+                "sizeBefore": null, "sizeAfter": 3145728 }],
+  "unlistedChanges": 0,
+  "warnings": [{ "code": "env_file", "severity": "warning",
+                 "message": "…", "paths": [".env.production"], "count": 1 }]
+}
 ```
 
 ### Releases

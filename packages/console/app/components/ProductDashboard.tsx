@@ -12,6 +12,7 @@ import {
   ChevronsUpDown,
   CircleAlert,
   Clock,
+  FileDiff,
   Copy,
   Cpu,
   Download,
@@ -39,6 +40,7 @@ import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
+import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
 import type {
@@ -161,7 +163,7 @@ const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
   applied: 64,
   errors: 64,
   rollbacks: 64,
-  action: 152,
+  action: 192,
 };
 
 /* ─── Platform Icons ──────────────────────────────────────────────── */
@@ -516,6 +518,12 @@ export function ProductDashboard({
     rolloutCustom: string;
   } | null>(null);
   const [rolloutChangeBusy, setRolloutChangeBusy] = useState(false);
+
+  // Bundle changes: what a bundle changes against another one
+  const [changesFor, setChangesFor] = useState<{
+    bundle: { id: string; version: string };
+    against?: string | null;
+  } | null>(null);
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -1826,6 +1834,25 @@ export function ProductDashboard({
                                                             </>
                                                           ) : null}
                                                         </div>
+                                                        {rel ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              onClick={() =>
+                                                                setChangesFor({
+                                                                  bundle: {
+                                                                    id: rel.bundleId,
+                                                                    version: rel.bundleVersion,
+                                                                  },
+                                                                  against: rel.previousBundleId,
+                                                                })
+                                                              }
+                                                            >
+                                                              <FileDiff className="size-3.5" />
+                                                              Changes
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : null}
                                                         {rolling ? (
                                                           <>
                                                             <DropdownMenuSeparator />
@@ -1950,6 +1977,20 @@ export function ProductDashboard({
                                       ) : null}
                                       {hasBundleColumn('action') ? (
                                         <TableCell className="text-center whitespace-nowrap">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="mr-1.5 h-7 px-2"
+                                            title="Changes: compare with the previous upload"
+                                            aria-label={`Changes in ${b.version}`}
+                                            onClick={() =>
+                                              setChangesFor({
+                                                bundle: { id: b.id, version: b.version },
+                                              })
+                                            }
+                                          >
+                                            <FileDiff className="size-3.5" />
+                                          </Button>
                                           <Button
                                             variant="outline"
                                             size="sm"
@@ -2308,6 +2349,17 @@ export function ProductDashboard({
           )}
         </div>
       </main>
+
+      {changesFor && selectedAppId ? (
+        <BundleChangesDialog
+          key={`${changesFor.bundle.id}:${changesFor.against ?? ''}`}
+          appId={selectedAppId}
+          bundle={changesFor.bundle}
+          bundles={bundles}
+          against={changesFor.against}
+          onClose={() => setChangesFor(null)}
+        />
+      ) : null}
 
       <PricingDialog
         open={pricingDialogOpen}
