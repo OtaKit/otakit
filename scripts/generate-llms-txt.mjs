@@ -59,6 +59,10 @@ const ENTITY_MAP = new Map([
   ['&middot;', '·'],
 ]);
 
+const CHANGELOG_FILE = 'packages/site/lib/changelog.json';
+const CHANGELOG_TYPES = new Set(['launch', 'feature', 'improvement', 'fix']);
+const PACKAGE_LABELS = { plugin: 'Plugin', cli: 'CLI', push: 'Push SDK' };
+
 // JSX expression identifiers that leak into extracted text as-is.
 const CONSTANT_MAP = new Map([['SUPPORT_EMAIL', 'support@otakit.app']]);
 
@@ -74,7 +78,8 @@ async function main() {
     sections.push(await renderPage(page));
   }
 
-  const output = buildDocument(sections);
+  const changelog = await readChangelog();
+  const output = buildDocument(sections, changelog);
 
   for (const target of OUTPUTS) await emit(target, output);
 }
@@ -119,7 +124,124 @@ async function renderPage(page) {
   };
 }
 
-function buildDocument(sections) {
+async function readChangelog() {
+  const data = JSON.parse(await readFile(path.join(ROOT, CHANGELOG_FILE), 'utf8'));
+  validateChangelog(data);
+  return data;
+}
+
+/** The changelog page, its RSS feed and this file all read changelog.json; catch mistakes in CI. */
+function validateChangelog({ entries, packages }) {
+  const fail = (message) => {
+    throw new Error(`${CHANGELOG_FILE}: ${message}`);
+  };
+  const isDate = (value) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') && !Number.isNaN(Date.parse(value));
+  const isVersion = (value) => /^\d+\.\d+\.\d+$/.test(value ?? '');
+  if (!Array.isArray(entries) || entries.length === 0) fail('entries must be a non-empty array');
+  if (!Array.isArray(packages) || packages.length === 0) fail('packages must be a non-empty array');
+
+  const slugs = new Set();
+  const newestEntryVersion = {};
+  let previousDate = '9999-12-31';
+  for (const entry of entries) {
+    const where = `entry "${entry?.slug ?? entry?.title ?? '?'}"`;
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.slug ?? ''))
+      fail(`${where}: slug must be kebab-case`);
+    if (slugs.has(entry.slug)) fail(`${where}: duplicate slug`);
+    slugs.add(entry.slug);
+    if (!isDate(entry.date)) fail(`${where}: date must be YYYY-MM-DD`);
+    if (entry.date > previousDate) fail(`${where}: entries must be sorted newest first`);
+    previousDate = entry.date;
+    if (!CHANGELOG_TYPES.has(entry.type)) fail(`${where}: unknown type "${entry.type}"`);
+    for (const key of ['title', 'summary']) {
+      if (typeof entry[key] !== 'string' || entry[key].trim() === '')
+        fail(`${where}: ${key} is required`);
+    }
+    if (!Array.isArray(entry.areas) || entry.areas.length === 0)
+      fail(`${where}: areas is required`);
+    for (const [key, version] of Object.entries(entry.versions ?? {})) {
+      if (!(key in PACKAGE_LABELS) || !isVersion(version))
+        fail(`${where}: bad version ${key} ${version}`);
+      if (!newestEntryVersion[key] || compareVersions(version, newestEntryVersion[key]) > 0) {
+        newestEntryVersion[key] = version;
+      }
+    }
+    const texts = [
+      entry.summary,
+      ...(entry.highlights ?? []),
+      entry.requires ?? '',
+      ...(entry.upgrade ?? []),
+    ];
+    if (texts.some((text) => (text.match(/`/g) ?? []).length % 2 !== 0)) {
+      fail(`${where}: unbalanced backticks`);
+    }
+    for (const link of entry.links ?? []) {
+      if (!link.label || !/^(\/|https:\/\/)/.test(link.href ?? '')) {
+        fail(`${where}: links need a label and a "/" or "https://" href`);
+      }
+    }
+  }
+
+  for (const pkg of packages) {
+    if (!(pkg.key in PACKAGE_LABELS) || !pkg.name || !pkg.label || !pkg.install) {
+      fail(`package "${pkg.key}": key, name, label and install are required`);
+    }
+    if (!isVersion(pkg.version) || !isDate(pkg.date))
+      fail(`package "${pkg.key}": bad version or date`);
+    const newest = newestEntryVersion[pkg.key];
+    if (newest && compareVersions(newest, pkg.version) > 0) {
+      fail(`package "${pkg.key}" shows ${pkg.version}, but an entry mentions ${newest}`);
+    }
+  }
+}
+
+function compareVersions(a, b) {
+  const [x, y] = [a, b].map((value) => value.split('.').map(Number));
+  for (let index = 0; index < 3; index += 1) {
+    if (x[index] !== y[index]) return x[index] - y[index];
+  }
+  return 0;
+}
+
+function renderChangelog({ entries, packages }) {
+  const lines = [
+    '',
+    '## Changelog',
+    '',
+    'Route: /changelog',
+    '',
+    'New features, improvements and fixes, newest first. Plugin features need the plugin version shown.',
+    '',
+    `Latest versions: ${packages.map((pkg) => `${pkg.name} ${pkg.version} (${pkg.date})`).join(', ')}.`,
+  ];
+  for (const entry of entries) {
+    const versions = Object.entries(entry.versions ?? {}).map(
+      ([key, version]) => `${PACKAGE_LABELS[key]} ${version}`,
+    );
+    lines.push(
+      '',
+      `### ${entry.title} (${[entry.date, ...versions].join(', ')})`,
+      '',
+      entry.summary,
+    );
+    if (entry.highlights?.length) lines.push('', ...entry.highlights.map((item) => `- ${item}`));
+    if (entry.code) lines.push('', '```', entry.code, '```');
+    if (entry.requires) lines.push('', `Requires: ${entry.requires}`);
+    if (entry.upgrade?.length) {
+      lines.push('', 'Upgrade notes:', ...entry.upgrade.map((item) => `- ${item}`));
+    }
+    if (entry.links?.length) {
+      lines.push(
+        '',
+        `Docs: ${entry.links.map((link) => `${link.label} (${link.href})`).join(', ')}`,
+      );
+    }
+  }
+  return lines;
+}
+
+function buildDocument(sections, changelog) {
   const lines = [
     '# OtaKit Docs',
     '',
@@ -130,6 +252,7 @@ function buildDocument(sections) {
     '## Pages',
     '',
     ...sections.map((section) => `- ${section.label}: ${section.route}`),
+    '- Changelog: /changelog',
   ];
 
   for (const section of sections) {
@@ -141,6 +264,8 @@ function buildDocument(sections) {
       lines.push('', ...section.content);
     }
   }
+
+  lines.push(...renderChangelog(changelog));
 
   lines.push(
     '',

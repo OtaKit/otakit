@@ -1,0 +1,404 @@
+{
+  "entries": [
+    {
+      "slug": "preview-links",
+      "date": "2026-09-30",
+      "type": "feature",
+      "title": "Preview links",
+      "areas": ["Plugin", "CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.2.0",
+        "cli": "1.9.0"
+      },
+      "summary": "Open any uploaded bundle in the installed app on one phone, without releasing it. Share a link or QR code, tap Open in the app, and the app loads that bundle while every other device stays on its release.",
+      "highlights": [
+        "Create links in the dashboard, with `otakit preview` or `otakit upload --preview`, over the REST API, or with the `create_preview` agent tool.",
+        "Links last from 1 hour to 30 days and can be revoked at any time. Each carries a random 130-bit token.",
+        "The app returns to its release when the tester exits, the link ends, or the preview fails to start."
+      ],
+      "code": "otakit upload --preview",
+      "requires": "Plugin 3.2+, `previewLinks: true` and a custom URL scheme in a native build.",
+      "links": [
+        {
+          "label": "Preview links guide",
+          "href": "/docs/previews"
+        }
+      ]
+    },
+    {
+      "slug": "percentage-rollouts",
+      "date": "2026-09-30",
+      "type": "feature",
+      "title": "Percentage rollouts",
+      "areas": ["Plugin", "CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.1.0",
+        "cli": "1.8.0"
+      },
+      "summary": "Release a bundle to a share of devices first, watch its health, then raise the share or complete it. Cancel, and every device returns to the previous release.",
+      "highlights": [
+        "Start with `otakit release --rollout 10`, then change it with `otakit rollout --percent 50`, `--complete` or `--cancel`.",
+        "Each device draws its own stable number for every rollout. No device identifier is stored or sent.",
+        "Available on every plan, in the dashboard, and to agents through `set_rollout_percent`."
+      ],
+      "code": "otakit release --channel production --rollout 10",
+      "requires": "Plugin 3.1+. Older plugins stay on the previous release until the rollout completes.",
+      "links": [
+        {
+          "label": "Percentage rollouts guide",
+          "href": "/docs/rollouts"
+        }
+      ]
+    },
+    {
+      "slug": "push-notifications",
+      "date": "2026-09-27",
+      "type": "feature",
+      "title": "Push notifications",
+      "areas": ["Push", "CLI", "Dashboard", "API"],
+      "versions": {
+        "push": "0.1.0",
+        "cli": "1.7.0"
+      },
+      "summary": "Send push notifications to your Capacitor app on iOS and Android with your own APNs key and Firebase project. Send from the dashboard, the CLI, your backend or an AI agent.",
+      "highlights": [
+        "Turn it on per workspace under Settings → Add-ons. No extra native SDK: devices use the official `@capacitor/push-notifications` plugin.",
+        "Target your own user IDs, topics or OTA channels, and see delivery counts for every campaign.",
+        "Send with `otakit push send`, or call the REST API with an idempotency key so a retry never sends twice.",
+        "Free plan: 10,000 devices and 100,000 notifications a month."
+      ],
+      "code": "npm install @otakit/push",
+      "links": [
+        {
+          "label": "Push setup guide",
+          "href": "/docs/push"
+        },
+        {
+          "label": "Push overview",
+          "href": "/push"
+        }
+      ]
+    },
+    {
+      "slug": "plugin-3-reliability",
+      "date": "2026-09-20",
+      "type": "improvement",
+      "title": "Plugin 3.0: reliability release",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "3.0.0",
+        "cli": "1.6.0"
+      },
+      "summary": "A hardening release for the native updater. The last healthy bundle is always kept, update state survives crashes, downloads retry, and every failure reports a specific reason.",
+      "highlights": [
+        "Readiness is bound to the WebView document, and `appReadyTimeout` counts foreground time only.",
+        "Downloads retry transient errors and verify integrity before a bundle is installed.",
+        "Device events are queued on the device and retried, with more context for failed update checks.",
+        "`otakit upload` warns about installers and very large files in the web build. `--strict-artifacts` fails CI instead."
+      ],
+      "upgrade": [
+        "Ship it in a native build: an OTA update cannot replace the native plugin.",
+        "Android needs a System WebView that supports `DOCUMENT_START_SCRIPT` to apply updates.",
+        "Encrypted bundles must fit within 128 MiB and the device's available memory.",
+        "`manifestKeys` must be an array when it is set.",
+        "Self-hosted: deploy the updated ingest Worker and Tinybird endpoints before releasing the native SDK."
+      ],
+      "links": [
+        {
+          "label": "Compatibility notes",
+          "href": "https://github.com/OtaKit/otakit/tree/main/packages/capacitor-plugin#reliability-update-compatibility"
+        }
+      ]
+    },
+    {
+      "slug": "mcp-and-agent-skill",
+      "date": "2026-09-01",
+      "type": "feature",
+      "title": "MCP server and Agent Skill",
+      "areas": ["CLI", "Agents", "Dashboard"],
+      "versions": {
+        "cli": "1.5.0"
+      },
+      "summary": "Release updates from your AI coding agent. OtaKit ships an MCP server, hosted and inside the CLI, plus an Agent Skill, so agents in Claude Code, Codex, VS Code and Copilot can upload, release, check health and revert.",
+      "highlights": [
+        "Releases take two steps: the agent prepares, you approve, then it publishes.",
+        "Release health, recent device events and reverts are available as tools.",
+        "`otakit connect` sets a project up for your agent, and the dashboard shows how to connect."
+      ],
+      "code": "npx @otakit/cli connect",
+      "links": [
+        {
+          "label": "MCP & Agent Skills guide",
+          "href": "/docs/agents"
+        }
+      ]
+    },
+    {
+      "slug": "auto-revert",
+      "date": "2026-07-02",
+      "type": "feature",
+      "title": "Auto-revert",
+      "areas": ["CLI", "API"],
+      "versions": {
+        "cli": "1.4.0"
+      },
+      "summary": "A release can revert itself. Publish with `--auto-revert`, and OtaKit reverts the release when too many devices roll back within 24 hours.",
+      "highlights": [
+        "By default it reverts when rollbacks reach 20% of at least 50 applied or rolled-back updates.",
+        "Tune it with `--auto-revert-rate` and `--auto-revert-min-sample`.",
+        "It also watches percentage rollouts, and returns every device to the previous release."
+      ],
+      "code": "otakit upload --release production --auto-revert",
+      "links": [
+        {
+          "label": "Health and auto-revert",
+          "href": "/docs/rollouts"
+        }
+      ]
+    },
+    {
+      "slug": "delta-updates",
+      "date": "2026-07-02",
+      "type": "feature",
+      "title": "Delta updates",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "2.3.0",
+        "cli": "1.3.0"
+      },
+      "summary": "Devices download only the files that changed. Upload with `--strategy deltas`, and OtaKit stores each file once by its content hash, so devices reuse unchanged images, fonts and chunks.",
+      "highlights": [
+        "Opt in per upload. A single zip stays the default.",
+        "Every file is verified by its hash before the bundle is assembled.",
+        "Keep build output deterministic so unchanged files stay unchanged."
+      ],
+      "code": "otakit upload --strategy deltas --release",
+      "links": [
+        {
+          "label": "CLI reference",
+          "href": "/docs/cli"
+        }
+      ]
+    },
+    {
+      "slug": "bundle-encryption",
+      "date": "2026-07-02",
+      "type": "feature",
+      "title": "End-to-end bundle encryption",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "2.2.0",
+        "cli": "1.2.0"
+      },
+      "summary": "Encrypt bundles before they leave your machine. OtaKit and the CDN only ever store ciphertext, and the app decrypts with a key that ships inside your native build.",
+      "highlights": [
+        "Run `otakit generate-encryption-key`, then upload with `OTAKIT_ENCRYPTION_KEY` set. Encryption turns on automatically.",
+        "AES-256-GCM with key IDs, so old and new keys can ship side by side during a rotation."
+      ],
+      "code": "otakit generate-encryption-key",
+      "requires": "Plugin 2.2+ with `bundleKeys` in the plugin config.",
+      "links": [
+        {
+          "label": "Security model",
+          "href": "/docs/security"
+        }
+      ]
+    },
+    {
+      "slug": "listeners-and-channel-switching",
+      "date": "2026-07-02",
+      "type": "feature",
+      "title": "Update listeners and in-app channel switching",
+      "areas": ["Plugin"],
+      "versions": {
+        "plugin": "2.2.0"
+      },
+      "summary": "React to updates from JavaScript, and move a device between channels at runtime, for example to let internal users opt into a beta channel.",
+      "highlights": [
+        "Listen for `updateAvailable`, `updateStaged`, `updateApplied`, `downloadFailed` and `rollback`.",
+        "`setChannel()` and `getChannel()` switch channels without a new native build."
+      ],
+      "code": "OtaKit.addListener('updateApplied', ({ bundle }) => {});",
+      "links": [
+        {
+          "label": "Events & listeners",
+          "href": "/docs/events"
+        },
+        {
+          "label": "Channels",
+          "href": "/docs/channels"
+        }
+      ]
+    },
+    {
+      "slug": "compatibility-check-and-emergency-releases",
+      "date": "2026-07-02",
+      "type": "feature",
+      "title": "Native compatibility check and emergency releases",
+      "areas": ["CLI", "Plugin"],
+      "versions": {
+        "cli": "1.2.0",
+        "plugin": "2.2.0"
+      },
+      "summary": "Uploads compare your native plugins with the ones the channel's current release was built with, and warn when a change needs a store build. For urgent fixes, `--force-immediate` makes devices apply a release on their next check.",
+      "highlights": [
+        "`otakit compatibility` runs the same check without uploading.",
+        "`--fail-on-incompatible` blocks the upload in CI.",
+        "The force flag is part of the signed manifest, so it cannot be added in transit."
+      ],
+      "code": "otakit upload --release production --force-immediate",
+      "links": [
+        {
+          "label": "CLI reference",
+          "href": "/docs/cli"
+        }
+      ]
+    },
+    {
+      "slug": "update-policies",
+      "date": "2026-04-23",
+      "type": "improvement",
+      "title": "Update policies",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "2.1.1",
+        "cli": "1.1.1"
+      },
+      "summary": "Choose exactly when updates apply with `launchPolicy`, `resumePolicy` and `runtimePolicy`: off, shadow, apply-staged or immediate.",
+      "highlights": [
+        "By default, staged bundles apply on the next cold start and resumes download in the background.",
+        "After a native update, the first launch can apply the latest bundle right away with `runtimePolicy`."
+      ],
+      "code": "launchPolicy: 'apply-staged', resumePolicy: 'shadow', runtimePolicy: 'immediate'",
+      "links": [
+        {
+          "label": "Update strategies",
+          "href": "/docs/update-strategies"
+        }
+      ]
+    },
+    {
+      "slug": "device-events",
+      "date": "2026-04-13",
+      "type": "feature",
+      "title": "Device events and release analytics",
+      "areas": ["Plugin", "Dashboard"],
+      "versions": {
+        "plugin": "2.0.1"
+      },
+      "summary": "Devices report downloads, applies and rollbacks to an edge ingest service, and the dashboard shows an events timeline with counts for every release.",
+      "highlights": [
+        "Events are validated and rate-limited at the edge before they reach analytics."
+      ],
+      "links": [
+        {
+          "label": "Events & listeners",
+          "href": "/docs/events"
+        }
+      ]
+    },
+    {
+      "slug": "self-hosting",
+      "date": "2026-04-13",
+      "type": "improvement",
+      "title": "Self-hosting",
+      "areas": ["Dashboard"],
+      "versions": {},
+      "summary": "Run OtaKit on your own infrastructure. The dashboard needs only Postgres, S3-compatible storage and authentication; billing, email and analytics switch off when they are not configured.",
+      "links": [
+        {
+          "label": "Self-hosting guide",
+          "href": "/docs/self-host"
+        }
+      ]
+    },
+    {
+      "slug": "cdn-manifests",
+      "date": "2026-04-12",
+      "type": "feature",
+      "title": "Signed manifests on the CDN",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "2.0.0"
+      },
+      "summary": "Update checks no longer reach an app server. Every release is a signed, static manifest on Cloudflare's CDN, and bundles download from public CDN URLs, so checks stay fast at any scale.",
+      "upgrade": [
+        "Plugin 2.0 uses the new manifest protocol: update the plugin in a native build."
+      ],
+      "links": [
+        {
+          "label": "Security model",
+          "href": "/docs/security"
+        }
+      ]
+    },
+    {
+      "slug": "runtime-versions",
+      "date": "2026-04-11",
+      "type": "feature",
+      "title": "Runtime versions",
+      "areas": ["Plugin", "CLI"],
+      "versions": {
+        "plugin": "1.2.0",
+        "cli": "1.1.0"
+      },
+      "summary": "Set `runtimeVersion` in the plugin config to keep web bundles matched to native builds. Each native build only receives bundles uploaded for its runtime version.",
+      "code": "runtimeVersion: '2026.04'",
+      "links": [
+        {
+          "label": "Channels & runtime versions",
+          "href": "/docs/channels"
+        }
+      ]
+    },
+    {
+      "slug": "launch",
+      "date": "2026-04-10",
+      "type": "launch",
+      "title": "OtaKit 1.0",
+      "areas": ["Plugin", "CLI", "Dashboard"],
+      "versions": {
+        "plugin": "1.0.0",
+        "cli": "1.0.0"
+      },
+      "summary": "Over-the-air updates for Capacitor apps. Upload a web build with the CLI, release it to a channel, and devices download it in the background.",
+      "highlights": [
+        "A new bundle runs on trial: if the app does not call `notifyAppReady()` in time, the device rolls back automatically.",
+        "Open source under the MIT license."
+      ],
+      "code": "npm install @otakit/capacitor-updater",
+      "links": [
+        {
+          "label": "Quick setup",
+          "href": "/docs/setup"
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "key": "plugin",
+      "name": "@otakit/capacitor-updater",
+      "label": "Capacitor plugin",
+      "install": "npm install @otakit/capacitor-updater@latest",
+      "version": "3.2.0",
+      "date": "2026-09-30"
+    },
+    {
+      "key": "cli",
+      "name": "@otakit/cli",
+      "label": "CLI",
+      "install": "npm install -g @otakit/cli@latest",
+      "version": "1.9.0",
+      "date": "2026-09-30"
+    },
+    {
+      "key": "push",
+      "name": "@otakit/push",
+      "label": "Push SDK",
+      "install": "npm install @otakit/push@latest",
+      "version": "0.1.1",
+      "date": "2026-09-27"
+    }
+  ]
+}

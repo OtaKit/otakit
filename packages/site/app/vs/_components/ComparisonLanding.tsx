@@ -586,6 +586,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             links={[
               { label: 'Pricing', href: '#pricing' },
               { label: 'Push notifications', href: '/push' },
+              { label: 'Changelog', href: '/changelog' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
               { label: 'Sign up', href: `${site.console}/login` },
               { label: 'Security', href: '/docs/security' },
