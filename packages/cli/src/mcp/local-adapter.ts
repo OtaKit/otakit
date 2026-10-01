@@ -277,6 +277,8 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.publishRelease(input);
         case 'get_release_health':
           return await this.getReleaseHealth(input);
+        case 'get_release_timeseries':
+          return await this.getReleaseTimeseries(input);
         case 'list_events':
           return await this.listEvents(input);
         case 'list_audit_log':
@@ -591,6 +593,24 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     return toolEnvelope('Read client-reported rollout event health.', json(health), {
       links: [this.appLink(appId, 'View rollout')],
       nextActions: ['Use list_events to see the individual records behind these counts.'],
+    });
+  }
+
+  private async getReleaseTimeseries(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const timeseries = await this.api(appId).request<JsonObject>(
+      `/api/v1/apps/${encodeURIComponent(appId)}/releases/${encodeURIComponent(stringInput(input, 'releaseId'))}/timeseries${queryString(
+        {
+          range: optionalString(input, 'range'),
+          platform: optionalString(input, 'platform'),
+        },
+      )}`,
+    );
+    return toolEnvelope('Read client-reported release events over time.', json(timeseries), {
+      links: [this.appLink(appId, 'View release health')],
+      warnings: [
+        'Event counts are client-reported and are not unique devices, adoption, or authenticated installations.',
+      ],
     });
   }
 

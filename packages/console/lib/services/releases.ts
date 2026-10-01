@@ -34,7 +34,7 @@ const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RELEASE_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
 const ROLLOUT_REPLACED_BY = 'system:rollout-replaced';
 
-const releaseWithBundlesInclude = {
+export const releaseWithBundlesInclude = {
   bundle: {
     select: {
       version: true,
@@ -233,7 +233,7 @@ export async function lockTransaction(tx: Prisma.TransactionClient, key: string)
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
 }
 
-function toReleaseSummary(release: ReleaseForSummary): ReleaseSummary {
+export function toReleaseSummary(release: ReleaseForSummary): ReleaseSummary {
   return {
     id: release.id,
     channel: release.channel,

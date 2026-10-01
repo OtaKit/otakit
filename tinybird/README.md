@@ -11,6 +11,7 @@ analytics. It is mainly relevant for advanced self-hosted setups.
 - `endpoints/app_events_recent.pipe`
 - `endpoints/release_event_counts.pipe`
 - `endpoints/release_health_window.pipe`
+- `endpoints/release_event_timeseries.pipe`
 - `endpoints/bundle_event_counts.pipe`
 - `endpoints/organization_download_counts.pipe`
 
@@ -25,6 +26,7 @@ The web app and ingest service expect these resource names:
   - `app_events_recent`
   - `release_event_counts`
   - `release_health_window`
+  - `release_event_timeseries`
   - `bundle_event_counts`
   - `organization_download_counts`
 
@@ -61,8 +63,8 @@ reconcile decreases that were already reported. These query changes do not
 change billing APIs, settings, or reconciliation policy and do not guarantee
 exactly-once billing.
 
-Release health groups applied/rollback identities by their earliest retained
-receipt before applying its rolling window. The recent-event timeline likewise
+Release health and the release timeseries group identities by their earliest
+retained receipt before applying their time window and buckets. The recent-event timeline likewise
 keeps one earliest row per ID before applying its date, optional filters, order,
 and limit. Both raw queries are bounded by the raw datasource's 90-day retention:
 a retry whose original receipt has expired can appear new. They do not infer
