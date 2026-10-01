@@ -13,6 +13,7 @@ export const OTAKIT_TOOL_NAMES = [
   'prepare_release',
   'publish_release',
   'get_release_health',
+  'get_release_timeseries',
   'list_events',
   'list_audit_log',
   'prepare_revert',

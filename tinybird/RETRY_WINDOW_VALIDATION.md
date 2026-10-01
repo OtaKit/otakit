@@ -17,17 +17,24 @@ array, and exact aggregate-state functions used by these endpoints. Run:
 pnpm --filter @otakit/console test lib/tinybird-retry-windows.test.ts
 ```
 
-The eight cases cover cross-period retries, inclusive start/exclusive end,
+The ten cases cover cross-period retries, inclusive start/exclusive end,
 empty periods, nonadditive daily identity sets, app/action scoping, late earlier
 receipts, lifetime rollup identities surviving raw expiration, health windows,
-earliest timeline rows, limit ordering, and optional/null filters. These tests
-are regression checks, not a substitute for ClickHouse deployment validation.
+earliest timeline rows, limit ordering, optional/null filters, and timeseries
+buckets (earliest-receipt bucketing, range bounds, platform, hourly/daily). These
+tests are regression checks, not a substitute for ClickHouse deployment
+validation.
 
 The three rendered endpoint queries were also executed read-only against the
 [official ClickHouse playground](https://play.clickhouse.com/) on 2026-09-20,
 using only synthetic data. A prior-period download retry was excluded, an old
 rollback retry did not enter the health window, and the timeline returned each
 eligible identity once with its earliest receipt.
+
+`release_event_timeseries` was run the same way on 2026-10-01: a retry counted
+once in its earliest hourly bucket, an event first received before the range
+stayed out, the end bound was exclusive, daily buckets started at UTC midnight,
+and the platform filter kept only matching events.
 
 ## Synthetic workload
 
