@@ -32,6 +32,8 @@ struct LatestManifest {
   let encryption: ManifestEncryption?
   /// Per-file entries for the deltas strategy; nil for zip.
   let files: [ManifestFileEntry]?
+  /// Verified release notes (plugin 3.3+), or nil.
+  let notes: String?
 }
 
 struct ManifestSignature {
@@ -147,7 +149,13 @@ enum ManifestClient {
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
       throw ManifestClientError.invalidResponse
     }
-    let (stable, signature) = try parseEntry(object, allowInsecureUrls: allowInsecureUrls)
+    let (stable, signature) = try parseEntry(
+      object,
+      appId: appId,
+      channel: channel,
+      allowInsecureUrls: allowInsecureUrls,
+      manifestKeys: manifestKeys
+    )
 
     if manifestKeys.isEmpty {
       print("[OtaKit] WARNING: No manifest signing keys configured — signature verification is disabled for this request.")
@@ -206,7 +214,13 @@ enum ManifestClient {
           stableSha256 == stable.sha256 else {
       throw ManifestClientError.invalidResponse
     }
-    let (manifest, signature) = try parseEntry(object, allowInsecureUrls: allowInsecureUrls)
+    let (manifest, signature) = try parseEntry(
+      object,
+      appId: appId,
+      channel: channel,
+      allowInsecureUrls: allowInsecureUrls,
+      manifestKeys: manifestKeys
+    )
     let rollout = ManifestRollout(manifest: manifest, percent: percent)
     if !manifestKeys.isEmpty {
       guard let signature else {
@@ -227,7 +241,10 @@ enum ManifestClient {
   /// Bundle fields shared by the top level and the `rollout` block.
   private static func parseEntry(
     _ object: [String: Any],
-    allowInsecureUrls: Bool
+    appId: String,
+    channel: String?,
+    allowInsecureUrls: Bool,
+    manifestKeys: [ManifestKey]
   ) throws -> (LatestManifest, ManifestSignature?) {
     guard
       let version = object["version"] as? String,
@@ -276,9 +293,51 @@ enum ManifestClient {
       strategy: strategy,
       forceImmediate: forceImmediate,
       encryption: encryption,
-      files: files
+      files: files,
+      notes: verifiedNotes(
+        object["notes"],
+        appId: appId,
+        channel: channel,
+        releaseId: releaseId,
+        sha256: sha256,
+        manifestKeys: manifestKeys
+      )
     )
     return (manifest, signature)
+  }
+
+  /// One entry's release notes (plugin 3.3+). Anything missing, malformed or
+  /// unverifiable yields nil: notes never block an update. Without manifest
+  /// keys (unsigned self-hosting) the text is accepted, like the manifest.
+  private static func verifiedNotes(
+    _ rawValue: Any?,
+    appId: String,
+    channel: String?,
+    releaseId: String,
+    sha256: String,
+    manifestKeys: [ManifestKey]
+  ) -> String? {
+    guard let object = rawValue as? [String: Any],
+          let text = object["text"] as? String, !text.isEmpty else {
+      return nil
+    }
+    if manifestKeys.isEmpty { return text }
+    guard let signature = parseSignature(object["signature"]) else { return nil }
+    do {
+      try ManifestVerifier.verifyNotes(
+        appId: appId,
+        channel: channel,
+        releaseId: releaseId,
+        sha256: sha256,
+        text: text,
+        signature: signature,
+        trustedKeys: manifestKeys
+      )
+      return text
+    } catch {
+      print("[OtaKit] Ignoring release notes that failed verification: \(error)")
+      return nil
+    }
   }
 
   private static func parseFiles(

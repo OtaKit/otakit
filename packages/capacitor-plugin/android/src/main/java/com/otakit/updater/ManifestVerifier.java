@@ -105,6 +105,46 @@ final class ManifestVerifier {
     );
   }
 
+  /**
+   * Verify a manifest entry's notes block (plugin 3.3+). It binds the text (by hash) to its
+   * release, bundle and lane; must match the server's buildNotesPayload byte-for-byte.
+   */
+  static void verifyNotes(
+    String appId,
+    String channel,
+    String releaseId,
+    String sha256,
+    String text,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
+    List<String> lines = new ArrayList<>();
+    lines.add("appId:" + appId);
+    lines.add("channel:" + (channel != null ? channel : "null"));
+    lines.add("releaseId:" + releaseId);
+    lines.add("sha256:" + sha256);
+    lines.add("notesSha256:" + sha256Hex(text));
+    verifyCanonicalPayload(
+      buildCanonicalPayload("NOTES", lines, signature),
+      signature,
+      trustedKeys
+    );
+  }
+
+  /** Lowercase hex SHA-256 of the UTF-8 bytes, as the server computes it. */
+  static String sha256Hex(String text) {
+    try {
+      byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(
+        text.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+      );
+      StringBuilder hex = new StringBuilder(digest.length * 2);
+      for (byte value : digest) hex.append(String.format("%02x", value));
+      return hex.toString();
+    } catch (java.security.NoSuchAlgorithmException error) {
+      throw new IllegalStateException(error);
+    }
+  }
+
   private static void verifyCanonicalPayload(
     String payload,
     ManifestClient.ManifestSignature signature,

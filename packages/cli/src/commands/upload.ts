@@ -17,6 +17,7 @@ import {
   rolloutConflictError,
   rolloutSuffix,
 } from '../lib/rollout.js';
+import { readReleaseNotes } from '../lib/notes.js';
 import { renderPreview } from '../lib/preview.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
 import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
@@ -38,6 +39,8 @@ type UploadOptions = {
   autoRevertMinSample?: string;
   rollout?: string;
   replaceRollout?: boolean;
+  notes?: string;
+  notesFile?: string;
   preview?: boolean;
   encrypt?: boolean;
   strictArtifacts?: boolean;
@@ -128,6 +131,11 @@ export const uploadCommand = new Command('upload')
     '--replace-rollout',
     "With --release: cancel the channel's active rollout and release this bundle in its place",
   )
+  .option(
+    '--notes <text>',
+    'With --release: release notes app users may see (plain text, up to 2,000 characters)',
+  )
+  .option('--notes-file <path>', 'With --release: read the release notes from a file')
   .option(
     '--preview',
     'Also create a preview link and QR code for the uploaded bundle (see `otakit preview`)',
@@ -227,6 +235,12 @@ export const uploadCommand = new Command('upload')
           ? undefined
           : parseRolloutPercent(options.rollout, '--rollout');
       const replaceRollout = options.replaceRollout === true && releaseChannel !== undefined;
+      const notes = await readReleaseNotes(options);
+      if (notes !== undefined && releaseChannel === undefined) {
+        console.warn(
+          '--notes has no effect without --release; ignoring. Add notes when you release the bundle.',
+        );
+      }
       if (releaseChannel !== undefined && lane) {
         const conflict = findRolloutConflict(lane, { rolloutPercent, replaceRollout });
         if (conflict) throw rolloutConflictError(conflict, releaseChannel);
@@ -271,6 +285,7 @@ export const uploadCommand = new Command('upload')
             autoRevertMinSample,
             rolloutPercent,
             replaceRollout: replaceRollout || undefined,
+            notes: releaseChannel === undefined ? undefined : notes,
             encrypt: options.encrypt,
             strictArtifacts: options.strictArtifacts,
             onStatus: (message) => {

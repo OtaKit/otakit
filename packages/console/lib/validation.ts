@@ -48,6 +48,27 @@ export function isReleasableChannelName(channel: string): boolean {
   return isValidChannelName(channel) && !channel.toLowerCase().startsWith('__preview');
 }
 
+export const MAX_RELEASE_NOTES_LENGTH = 2000;
+
+/**
+ * Normalise release notes once, before they are stored and signed: line
+ * endings become "\n", surrounding whitespace is trimmed, and empty notes
+ * become null. `notes` is undefined when the value was not provided.
+ */
+export function normalizeReleaseNotes(
+  value: unknown,
+): { notes: string | null | undefined } | { error: string } {
+  if (value === undefined) return { notes: undefined };
+  if (value === null) return { notes: null };
+  if (typeof value !== 'string') return { error: 'notes must be a string or null' };
+  const notes = value.replace(/\r\n?/g, '\n').trim();
+  if (notes.length > MAX_RELEASE_NOTES_LENGTH) {
+    return { error: `notes must be at most ${MAX_RELEASE_NOTES_LENGTH} characters` };
+  }
+  if (notes.includes('\u0000')) return { error: 'notes must not contain null characters' };
+  return { notes: notes === '' ? null : notes };
+}
+
 export function normalizeOptionalChannel(channel: unknown): string | null {
   if (typeof channel !== 'string') {
     return null;

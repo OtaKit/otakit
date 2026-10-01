@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { db } from '@/lib/db';
-import { signManifest, signRollout } from '@/lib/manifest-signing';
+import { signManifest, signNotes, signRollout } from '@/lib/manifest-signing';
 import { purgeCdnUrls } from '@/lib/cdn-purge';
 import { previewChannel } from '@/lib/preview-links';
 import { isRolling } from '@/lib/rollouts';
@@ -35,6 +35,7 @@ type ManifestRelease = {
   id: string;
   forceImmediate: boolean;
   rolloutPercent: number;
+  notes: string | null;
   bundle: ManifestBundle;
 };
 
@@ -61,6 +62,7 @@ const manifestReleaseSelect = {
   id: true,
   forceImmediate: true,
   rolloutPercent: true,
+  notes: true,
   bundle: { select: manifestBundleSelect },
 } satisfies Prisma.ReleaseSelect;
 
@@ -131,6 +133,7 @@ export async function writeManifestFile(
     channel,
     signature: signManifest({ appId, channel, ...stable.signed }),
     ...stable.location,
+    ...notesBlock(appId, channel, lane.stable),
   };
 
   if (lane.rolling) {
@@ -146,6 +149,7 @@ export async function writeManifestFile(
       ...rollout,
       signature: signRollout({ appId, channel, ...rolling.signed, ...rollout }),
       ...rolling.location,
+      ...notesBlock(appId, channel, lane.rolling),
     };
   }
 
@@ -157,6 +161,31 @@ export async function writeManifestFile(
   });
 
   await purgeCdnUrls([buildPublicObjectUrl(storageKey)]);
+}
+
+/**
+ * A release's notes as their own signed block (plugin 3.3+). Older plugins
+ * ignore the key, and the v2 and rollout signatures do not cover it.
+ */
+function notesBlock(
+  appId: string,
+  channel: string | null,
+  release: ManifestRelease,
+): { notes?: { text: string; signature: ReturnType<typeof signNotes> } } {
+  if (!release.notes) return {};
+  const text = release.notes;
+  return {
+    notes: {
+      text,
+      signature: signNotes({
+        appId,
+        channel,
+        releaseId: release.id,
+        sha256: release.bundle.sha256,
+        text,
+      }),
+    },
+  };
 }
 
 async function buildManifestEntry(appId: string, release: ManifestRelease) {
@@ -226,7 +255,13 @@ export async function writePreviewManifestFile(
   bundle: ManifestBundle,
 ): Promise<void> {
   await writeManifestFile(appId, previewChannel(preview.token), bundle.runtimeVersion, {
-    stable: { id: `preview_${preview.id}`, forceImmediate: false, rolloutPercent: 100, bundle },
+    stable: {
+      id: `preview_${preview.id}`,
+      forceImmediate: false,
+      rolloutPercent: 100,
+      notes: null,
+      bundle,
+    },
     rolling: null,
   });
 }

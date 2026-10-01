@@ -22,7 +22,11 @@ import {
   getReleaseEventCountsWithStatus,
   getReleaseHealthWindowCounts,
 } from '@/lib/tinybird/events';
-import { isReleasableChannelName, isValidRuntimeVersion } from '@/lib/validation';
+import {
+  isReleasableChannelName,
+  isValidRuntimeVersion,
+  normalizeReleaseNotes,
+} from '@/lib/validation';
 
 import { OtaKitServiceError } from './errors';
 import {
@@ -77,6 +81,8 @@ export type ReleaseSummary = {
   autoRevertMinSample: number;
   /** Share of devices (1-100). Below 100 on a non-reverted release: an active rollout. */
   rolloutPercent: number;
+  /** Plain-text release notes, or null. */
+  notes: string | null;
   promotedAt: string;
   promotedBy: string | null;
   revertedAt: string | null;
@@ -127,6 +133,8 @@ export type PrepareReleaseResult = {
   currentRelease: ReleaseSummary | null;
   expectedCurrentReleaseId: string | null;
   compatibility: NativeCompatibilityResult;
+  /** The notes this release would carry, normalised as they will be stored. */
+  notes: string | null;
 };
 
 export type PrepareRevertResult = {
@@ -160,6 +168,8 @@ export type PublishReleaseInput = {
   rolloutPercent?: number;
   /** Revert the lane's active rollout and publish this bundle in its place. */
   replaceRollout?: boolean;
+  /** Plain-text release notes (max 2,000 characters); normalised before storing. */
+  notes?: string | null;
   expectedCurrentReleaseId?: string | null;
   idempotencyKey?: string;
   auditMetadata?: Record<string, unknown>;
@@ -227,6 +237,14 @@ function laneLockKey(appId: string, channel: string | null, runtimeVersion: stri
   return `release-lane:${appId}:${channel ?? '__base__'}:${runtimeVersion ?? '__default__'}`;
 }
 
+export function releaseNotesOrThrow(value: unknown): string | null {
+  const parsed = normalizeReleaseNotes(value);
+  if ('error' in parsed) {
+    throw new OtaKitServiceError('INVALID_INPUT', parsed.error, 400);
+  }
+  return parsed.notes ?? null;
+}
+
 export async function lockTransaction(tx: Prisma.TransactionClient, key: string): Promise<void> {
   // The PostgreSQL lock function returns the pseudo-type `void`, which Prisma
   // cannot deserialize through $queryRaw. Execute it without reading a result.
@@ -247,6 +265,7 @@ function toReleaseSummary(release: ReleaseForSummary): ReleaseSummary {
     autoRevertRatePercent: release.autoRevertRatePercent,
     autoRevertMinSample: release.autoRevertMinSample,
     rolloutPercent: release.rolloutPercent,
+    notes: release.notes ?? null,
     promotedAt: release.promotedAt.toISOString(),
     promotedBy: release.promotedBy ?? null,
     revertedAt: release.revertedAt?.toISOString() ?? null,
@@ -531,11 +550,12 @@ export async function listReleases(input: {
 export async function prepareRelease(
   input: Pick<
     PublishReleaseInput,
-    'organizationId' | 'appId' | 'bundleId' | 'channel' | 'compatibilityDecision'
+    'organizationId' | 'appId' | 'bundleId' | 'channel' | 'compatibilityDecision' | 'notes'
   >,
   dependencies: Pick<ServiceDependencies, 'database'> = {},
 ): Promise<PrepareReleaseResult> {
   validateLane(input.channel);
+  const notes = releaseNotesOrThrow(input.notes);
   const database = dependencies.database ?? db;
   const bundle = await database.bundle.findFirst({
     where: {
@@ -575,6 +595,7 @@ export async function prepareRelease(
     currentRelease: currentRelease ? toReleaseSummary(currentRelease) : null,
     expectedCurrentReleaseId: currentRelease?.id ?? null,
     compatibility,
+    notes,
   };
 }
 
@@ -708,6 +729,7 @@ export async function publishRelease(
   dependencies: ServiceDependencies = {},
 ): Promise<PublishReleaseResult> {
   validateReleaseOptions(input);
+  const notes = releaseNotesOrThrow(input.notes);
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
   const rolloutPercent = input.rolloutPercent ?? FULL_ROLLOUT_PERCENT;
   const requestHash = stableHash({
@@ -725,6 +747,7 @@ export async function publishRelease(
     // before rollouts existed keep matching their stored mutation.
     ...(rolloutPercent !== FULL_ROLLOUT_PERCENT ? { rolloutPercent } : {}),
     ...(input.replaceRollout ? { replaceRollout: true } : {}),
+    ...(notes !== null ? { notes } : {}),
   });
 
   return runReleaseMutation<PublishReleaseResult>({
@@ -825,6 +848,7 @@ export async function publishRelease(
           autoRevertRatePercent: input.autoRevertRatePercent ?? 20,
           autoRevertMinSample: input.autoRevertMinSample ?? 50,
           rolloutPercent,
+          notes,
           promotedBy: input.actor.actorLabel,
         },
         include: releaseWithBundlesInclude,
@@ -865,6 +889,7 @@ export async function publishRelease(
         ...(result.release.rolloutPercent < FULL_ROLLOUT_PERCENT
           ? { rolloutPercent: result.release.rolloutPercent }
           : {}),
+        ...(result.release.notes ? { hasNotes: true } : {}),
         ...(result.replacedRelease
           ? {
               replacedReleaseId: result.replacedRelease.id,
@@ -895,6 +920,7 @@ export async function publishReleaseLegacy(
   dependencies: Pick<ServiceDependencies, 'database' | 'syncManifest'> = {},
 ): Promise<PublishReleaseResult> {
   validateReleaseOptions(input);
+  const notes = releaseNotesOrThrow(input.notes);
   // replaceRollout needs no guard: this path never replaces a rollout, and a
   // lane that still has one is refused below.
   if ((input.rolloutPercent ?? FULL_ROLLOUT_PERCENT) < FULL_ROLLOUT_PERCENT) {
@@ -948,6 +974,7 @@ export async function publishReleaseLegacy(
       autoRevert: input.autoRevert ?? false,
       autoRevertRatePercent: input.autoRevertRatePercent ?? 20,
       autoRevertMinSample: input.autoRevertMinSample ?? 50,
+      notes,
       promotedBy: input.actor.actorLabel,
     },
     include: releaseWithBundlesInclude,
@@ -972,6 +999,7 @@ export async function publishReleaseLegacy(
             autoRevertMinSample: release.autoRevertMinSample,
           }
         : {}),
+      ...(release.notes ? { hasNotes: true } : {}),
       previousBundleVersion: currentRelease?.bundle.version ?? null,
       ...input.auditMetadata,
     },
@@ -1368,6 +1396,83 @@ export async function updateRollout(
       },
     }),
   });
+}
+
+export type UpdateReleaseNotesInput = {
+  organizationId: string;
+  actor: AuditActor;
+  appId: string;
+  releaseId: string;
+  notes: string | null;
+  auditMetadata?: Record<string, unknown>;
+};
+
+/**
+ * Change a release's notes. A release belongs to one lane, so this is a
+ * one-lane republish: the lane manifest is rebuilt under the lane lock from
+ * fresh state, exactly like after a publish. Phones that already downloaded
+ * the release keep the text they received. A failed rebuild throws; retrying
+ * with the same text rebuilds again.
+ */
+export async function updateReleaseNotes(
+  input: UpdateReleaseNotesInput,
+  dependencies: Pick<ServiceDependencies, 'database' | 'syncManifest'> = {},
+): Promise<{ release: ReleaseSummary }> {
+  const notes = releaseNotesOrThrow(input.notes);
+  const database = dependencies.database ?? db;
+  const syncManifest = dependencies.syncManifest ?? syncManifestFileForLane;
+  const existing = await database.release.findFirst({
+    where: {
+      id: input.releaseId,
+      appId: input.appId,
+      app: { organizationId: input.organizationId },
+    },
+    include: releaseWithBundlesInclude,
+  });
+  if (!existing) {
+    throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
+  }
+
+  const changed = (existing.notes ?? null) !== notes;
+  const release = changed
+    ? await database.release.update({
+        where: { id: existing.id },
+        data: { notes },
+        include: releaseWithBundlesInclude,
+      })
+    : existing;
+
+  // Audit the change before republishing, so a failed rebuild cannot lose it.
+  if (changed) {
+    await recordAuditLog({
+      organizationId: input.organizationId,
+      actor: input.actor,
+      action: 'release.notes_updated',
+      targetType: 'release',
+      targetId: release.id,
+      metadata: {
+        appId: input.appId,
+        channel: release.channel,
+        bundleVersion: release.bundle.version,
+        runtimeVersion: release.bundle.runtimeVersion,
+        hasNotes: notes !== null,
+        ...input.auditMetadata,
+      },
+    });
+  }
+
+  // Reverted releases are in no manifest; everything else may be.
+  if (!release.revertedAt) {
+    await database.$transaction(async (tx) => {
+      await lockTransaction(
+        tx,
+        laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
+      );
+      await syncManifest(input.appId, release.channel, release.bundle.runtimeVersion, tx);
+    }, RELEASE_TRANSACTION_OPTIONS);
+  }
+
+  return { release: toReleaseSummary(release) };
 }
 
 export function rolloutsUnavailable(): OtaKitServiceError {

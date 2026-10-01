@@ -53,6 +53,8 @@ export interface Release {
   autoRevertMinSample?: number;
   /** Share of devices (1-100); below 100 on a non-reverted release is an active rollout. */
   rolloutPercent?: number;
+  /** Plain-text release notes, or null. */
+  notes?: string | null;
   promotedAt: string;
   promotedBy?: string;
   revertedAt?: string | null;
@@ -359,6 +361,8 @@ export class ApiClient {
       autoRevertMinSample?: number;
       rolloutPercent?: number;
       replaceRollout?: boolean;
+      /** Plain-text release notes; null or omitted for none. */
+      notes?: string | null;
       expectedCurrentReleaseId?: string | null;
       idempotencyKey?: string;
       compatibilityDecision?: 'block' | 'proceed' | 'skip';
@@ -378,6 +382,7 @@ export class ApiClient {
         autoRevert,
         rolloutPercent: options?.rolloutPercent,
         replaceRollout: options?.replaceRollout,
+        ...(options?.notes !== undefined ? { notes: options.notes } : {}),
         compatibilityDecision: options?.compatibilityDecision,
         // The server rejects threshold fields unless autoRevert is true.
         ...(autoRevert

@@ -31,6 +31,9 @@ final class BundleStore {
   private static final String KEY_ASSIGNMENT_SECRET = "assignment_secret";
   private static final String KEY_PREVIEW = "preview";
   private static final String KEY_PREVIEW_LAUNCH_TASK = "preview_launch_task";
+  private static final String KEY_SEEN_RELEASE_NOTES = "seen_release_notes";
+  /** Releases whose notes the app marked seen; the newest 20 are kept. */
+  static final int SEEN_RELEASE_NOTES_LIMIT = 20;
 
   private final Context context;
   private final SharedPreferences prefs;
@@ -327,6 +330,37 @@ final class BundleStore {
       editor.remove(KEY_PREVIEW);
     }
     editor.commit();
+  }
+
+  synchronized boolean isReleaseNotesSeen(String releaseId) {
+    return seenReleaseNotes().contains(releaseId);
+  }
+
+  synchronized void markReleaseNotesSeen(String releaseId) {
+    java.util.List<String> seen = seenReleaseNotes();
+    seen.remove(releaseId);
+    seen.add(releaseId);
+    org.json.JSONArray kept = new org.json.JSONArray();
+    for (String id : seen.subList(
+      Math.max(0, seen.size() - SEEN_RELEASE_NOTES_LIMIT),
+      seen.size()
+    )) {
+      kept.put(id);
+    }
+    prefs.edit().putString(KEY_SEEN_RELEASE_NOTES, kept.toString()).commit();
+  }
+
+  private java.util.List<String> seenReleaseNotes() {
+    java.util.List<String> seen = new java.util.ArrayList<>();
+    try {
+      org.json.JSONArray stored = new org.json.JSONArray(
+        prefs.getString(KEY_SEEN_RELEASE_NOTES, "[]")
+      );
+      for (int index = 0; index < stored.length(); index++) seen.add(stored.getString(index));
+    } catch (org.json.JSONException ignored) {
+      // A corrupt list only means notes may be shown once more.
+    }
+    return seen;
   }
 
   /** The task whose launch intent already opened its preview link; -1 when none. */

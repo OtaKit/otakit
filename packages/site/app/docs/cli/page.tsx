@@ -160,6 +160,14 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               desc: "With --release: cancel the channel's active rollout and release this bundle in its place.",
             },
             {
+              flag: '--notes <text>',
+              desc: 'With --release: release notes app users may see (plain text, up to 2,000 characters). See Release notes.',
+            },
+            {
+              flag: '--notes-file <path>',
+              desc: 'With --release: read the release notes from a file.',
+            },
+            {
               flag: '--preview',
               desc: 'Also create a preview link and QR code for the uploaded bundle. See Preview links.',
             },
@@ -199,6 +207,11 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
               flag: '--replace-rollout',
               desc: "Cancel the channel's active rollout and release this bundle in its place.",
             },
+            {
+              flag: '--notes <text>',
+              desc: 'Release notes app users may see (plain text, up to 2,000 characters). Edit them later in the dashboard.',
+            },
+            { flag: '--notes-file <path>', desc: 'Read the release notes from a file.' },
           ]}
           example="otakit release --channel production --rollout 10"
         />

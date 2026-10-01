@@ -60,6 +60,7 @@ export async function POST(
         bundleId,
         channel,
         compatibilityDecision: rawCompatibilityDecision,
+        notes: body.notes as string | null | undefined,
       }),
     );
   } catch (error) {

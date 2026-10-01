@@ -316,6 +316,23 @@ if (preview) showPreviewBanner(preview.version, () => OtaKit.stopPreview());
 OtaKit.addListener('previewFailed', ({ reason }) => {}); // 'unavailable' | 'download_failed' | 'busy'
 ```
 
+## Release notes
+
+A release can carry short plain-text notes (dashboard, `otakit release --notes`,
+or an agent). Plugin 3.3+ delivers them with the update, signed, so the app can
+show a "What's new" screen once per release:
+
+```ts
+const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
+if (notes) {
+  showWhatsNew(notes.text); // render as text, never as HTML
+  await OtaKit.markReleaseNotesSeen();
+}
+```
+
+The running bundle's notes are also in `getState().current.notes` and the
+`updateApplied` event.
+
 ## Events
 
 The plugin emits lifecycle events alongside the pull APIs:

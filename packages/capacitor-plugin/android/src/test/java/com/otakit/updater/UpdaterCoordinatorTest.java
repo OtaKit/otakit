@@ -136,6 +136,7 @@ public class UpdaterCoordinatorTest {
       "zip",
       false,
       null,
+      null,
       null
     );
     assertEquals(

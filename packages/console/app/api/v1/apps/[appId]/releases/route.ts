@@ -222,6 +222,8 @@ export async function POST(
       autoRevertMinSample,
       rolloutPercent: rawRolloutPercent,
       replaceRollout: rawReplaceRollout,
+      // Validated and normalised by the service.
+      notes: body.notes as string | null | undefined,
       expectedCurrentReleaseId,
       idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
       compatibilityDecision: rawCompatibilityDecision,

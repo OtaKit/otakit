@@ -33,6 +33,8 @@ const OtaKit: OtaKitPlugin = {
   setChannel: (options) => NativeOtaKit.setChannel(options),
   getChannel: () => NativeOtaKit.getChannel(),
   stopPreview: () => NativeOtaKit.stopPreview(),
+  getUnseenReleaseNotes: async () => normalizeNullable(await NativeOtaKit.getUnseenReleaseNotes()),
+  markReleaseNotesSeen: () => NativeOtaKit.markReleaseNotesSeen(),
   // NativeOtaKit is the registerPlugin proxy, which implements Capacitor's
   // listener API; this plain-object wrapper must forward it explicitly.
   addListener: ((eventName: OtaKitEventName, listenerFunc: (event: unknown) => void) =>

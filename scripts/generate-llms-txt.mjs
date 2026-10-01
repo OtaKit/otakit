@@ -20,6 +20,11 @@ const DOCS = [
   { label: 'Rollouts', route: '/docs/rollouts', file: 'packages/site/app/docs/rollouts/page.tsx' },
   { label: 'Previews', route: '/docs/previews', file: 'packages/site/app/docs/previews/page.tsx' },
   {
+    label: 'Release Notes',
+    route: '/docs/release-notes',
+    file: 'packages/site/app/docs/release-notes/page.tsx',
+  },
+  {
     label: 'Update Strategies',
     route: '/docs/update-strategies',
     file: 'packages/site/app/docs/update-strategies/page.tsx',
