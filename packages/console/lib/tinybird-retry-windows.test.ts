@@ -118,6 +118,22 @@ function recent(parameters: Record<string, string> = {}) {
   return db.prepare(pipeQuery('app_events_recent', { app_id: 'app-a', ...parameters })).all();
 }
 
+function timeseries(parameters: Record<string, string> = {}) {
+  return db
+    .prepare(
+      pipeQuery('release_event_timeseries', {
+        app_id: 'app-a',
+        release_ids: 'release-a',
+        from_ts: '2026-09-01T00:00:00.000Z',
+        to_ts: '2026-09-03T00:00:00.000Z',
+        ...parameters,
+      }),
+    )
+    .all();
+}
+
+const seconds = (iso: string) => Date.parse(iso) / 1000;
+
 beforeEach(() => {
   db = new DatabaseSync(':memory:');
   db.exec(`
@@ -136,6 +152,9 @@ beforeEach(() => {
     return value;
   });
   db.function('toDate', (value) => String(value).slice(0, 10));
+  db.function('toStartOfHour', (value) => `${String(value).slice(0, 13)}:00:00.000Z`);
+  db.function('toStartOfDay', (value) => `${String(value).slice(0, 10)}T00:00:00.000Z`);
+  db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
   db.function('splitByChar', (separator, value) =>
     JSON.stringify(String(value).split(String(separator))),
   );
@@ -274,5 +293,62 @@ describe('recent event identities', () => {
         release_id: 'release-b',
       }).map((row) => row.event_id),
     ).toEqual(['android']);
+  });
+});
+
+describe('release event timeseries', () => {
+  it('buckets each identity once, by its earliest receipt', () => {
+    addEvent('applied', '2026-09-01T10:15:00.000Z', { action: 'applied' });
+    addEvent('applied', '2026-09-01T12:00:00.000Z', { action: 'applied' });
+    addEvent('applied-late', '2026-09-01T10:59:59.999Z', { action: 'applied' });
+    addEvent('rollback', '2026-09-01T11:00:00.000Z', { action: 'rollback' });
+    // A retry inside the range of an event first received before it.
+    addEvent('earlier', '2026-08-31T23:59:59.999Z', { action: 'applied' });
+    addEvent('earlier', '2026-09-01T10:30:00.000Z', { action: 'applied' });
+    expect(timeseries()).toEqual([
+      {
+        release_id: 'release-a',
+        action: 'applied',
+        bucket_start: seconds('2026-09-01T10:00:00Z'),
+        events_count: 2,
+        last_received_at: seconds('2026-09-01T10:59:59Z'),
+      },
+      {
+        release_id: 'release-a',
+        action: 'rollback',
+        bucket_start: seconds('2026-09-01T11:00:00Z'),
+        events_count: 1,
+        last_received_at: seconds('2026-09-01T11:00:00Z'),
+      },
+    ]);
+  });
+
+  it('honours the range, platform, daily buckets, and release and app scope', () => {
+    addEvent('start', '2026-09-01T00:00:00.000Z');
+    addEvent('end', '2026-09-03T00:00:00.000Z');
+    addEvent('android', '2026-09-02T05:00:00.000Z', {
+      platform: 'android',
+      action: 'download_error',
+    });
+    addEvent('other-release', '2026-09-02T05:00:00.000Z', { release_id: 'release-b' });
+    addEvent('other-app', '2026-09-02T05:00:00.000Z', { app_id: 'app-b' });
+    addEvent('no-release', '2026-09-02T05:00:00.000Z', { release_id: null });
+    addEvent('check', '2026-09-02T05:00:00.000Z', { action: 'check_error' });
+
+    const counts = (rows: Record<string, SQLOutputValue>[]) =>
+      rows.map((row) => `${row.release_id} ${row.action} ${row.bucket_start} ${row.events_count}`);
+    expect(counts(timeseries())).toEqual([
+      `release-a downloaded ${seconds('2026-09-01T00:00:00Z')} 1`,
+      `release-a download_error ${seconds('2026-09-02T05:00:00Z')} 1`,
+    ]);
+    expect(counts(timeseries({ platform: 'ios' }))).toEqual([
+      `release-a downloaded ${seconds('2026-09-01T00:00:00Z')} 1`,
+    ]);
+    expect(counts(timeseries({ daily: '1', release_ids: 'release-a,release-b' }))).toEqual([
+      `release-a downloaded ${seconds('2026-09-01T00:00:00Z')} 1`,
+      `release-a download_error ${seconds('2026-09-02T00:00:00Z')} 1`,
+      `release-b downloaded ${seconds('2026-09-02T00:00:00Z')} 1`,
+    ]);
+    expect(timeseries({ release_ids: 'missing' })).toEqual([]);
   });
 });

@@ -1,0 +1,46 @@
+DESCRIPTION >
+    Event counts per release, action and time bucket (hourly, or daily when
+    `daily` is set) for release health charts. Like release_health_window, it
+    buckets each event by its earliest receipt within raw-table retention, so a
+    retry never counts twice or moves into a later bucket.
+
+TOKEN otakit_web READ
+
+NODE first_release_receipts
+SQL >
+    %
+    SELECT
+        event_id,
+        ifNull(release_id, '') AS release_id,
+        action,
+        min(received_at) AS first_received_at
+    FROM device_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND action IN ('downloaded', 'applied', 'download_error', 'rollback')
+      AND ifNull(release_id, '') != ''
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), ifNull(release_id, ''))
+      AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+    GROUP BY event_id, release_id, action
+
+NODE count_release_buckets
+SQL >
+    %
+    SELECT
+        release_id,
+        action,
+        toUnixTimestamp(
+            {% if defined(daily) %}
+            toStartOfDay(first_received_at)
+            {% else %}
+            toStartOfHour(first_received_at)
+            {% end %}
+        ) AS bucket_start,
+        count() AS events_count,
+        toUnixTimestamp(max(first_received_at)) AS last_received_at
+    FROM first_release_receipts
+    WHERE first_received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+      AND first_received_at < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+    GROUP BY release_id, action, bucket_start
+    ORDER BY bucket_start, release_id, action
+
+TYPE ENDPOINT
