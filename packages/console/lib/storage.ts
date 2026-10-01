@@ -238,6 +238,30 @@ export async function getTextObject(storageKey: string): Promise<string> {
   return response.Body.transformToString('utf-8');
 }
 
+/** Bytes [start, end] (inclusive) of a storage object. */
+export async function getObjectRange(
+  storageKey: string,
+  start: number,
+  end: number,
+): Promise<Buffer> {
+  const { client, bucket } = getStorageConfig();
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: storageKey,
+      Range: `bytes=${start}-${end}`,
+    }),
+  );
+  if (!response.Body) {
+    throw new Error(`Storage object has no body: ${storageKey}`);
+  }
+  const bytes = Buffer.from(await response.Body.transformToByteArray());
+  if (bytes.length !== end - start + 1) {
+    throw new Error(`Storage range ${start}-${end} returned ${bytes.length} bytes: ${storageKey}`);
+  }
+  return bytes;
+}
+
 function getCdnBaseUrl(): string {
   return requiredEnv('CDN_BASE_URL').trim().replace(/\/+$/, '');
 }

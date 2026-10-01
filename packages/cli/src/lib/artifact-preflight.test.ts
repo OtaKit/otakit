@@ -73,6 +73,44 @@ describe('upload artifact preflight', () => {
     },
   );
 
+  it('warns about secrets, repositories and build folders, and notes source maps', () => {
+    mkdirSync(join(directory, 'assets'));
+    mkdirSync(join(directory, '.git'));
+    mkdirSync(join(directory, 'node_modules', 'lib'), { recursive: true });
+    writeFileSync(join(directory, '.env.production'), 'API_SECRET=1');
+    writeFileSync(join(directory, '.git', 'config'), '[core]');
+    writeFileSync(join(directory, 'node_modules', 'lib', 'index.js'), '');
+    writeFileSync(join(directory, 'assets', 'index-4f3a9c2b.js.map'), '{}');
+    writeFileSync(join(directory, '.DS_Store'), '');
+    writeFileSync(join(directory, 'assets', 'environment.js'), '');
+    const warning = vi.fn();
+
+    const result = preflightArtifacts(directory, { onWarning: warning });
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining('environment file(s): ".env.production"'),
+      expect.stringContaining('.git directory (1 files)'),
+      expect.stringContaining('node_modules (1 files)'),
+    ]);
+    expect(result.notes).toEqual([
+      expect.stringContaining('1 source map(s): "assets/index-4f3a9c2b.js.map"'),
+      expect.stringContaining('hidden file(s): ".DS_Store"'),
+    ]);
+    expect(warning).toHaveBeenCalledTimes(5);
+    expect(warning).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Note: Bundle contains hidden/),
+    );
+  });
+
+  it('fails strict uploads on an .env file but not on a source map', () => {
+    writeFileSync(join(directory, 'app.js.map'), '{}');
+    expect(() => preflightArtifacts(directory, { strict: true, onWarning: vi.fn() })).not.toThrow();
+    writeFileSync(join(directory, '.env'), 'SECRET=1');
+    expect(() => preflightArtifacts(directory, { strict: true, onWarning: vi.fn() })).toThrow(
+      'Artifact preflight failed',
+    );
+  });
+
   it('rejects directory and symlink index pages', () => {
     const index = join(directory, 'index.html');
     rmSync(index);

@@ -1,3 +1,4 @@
+export * from './bundle-diff';
 export * from './catalog';
 export * from './contracts';
 export * from './previews';
