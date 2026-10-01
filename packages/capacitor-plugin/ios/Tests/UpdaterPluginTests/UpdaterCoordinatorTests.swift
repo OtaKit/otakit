@@ -263,7 +263,7 @@ final class UpdaterCoordinatorTests: XCTestCase {
     let latest = LatestManifest(
       version: first, url: nil, sha256: "hash-\(first)", size: 0,
       runtimeVersion: nil, releaseId: "release-\(first)", strategy: "zip",
-      forceImmediate: false, encryption: nil, files: nil
+      forceImmediate: false, encryption: nil, files: nil, notes: nil
     )
     switch fixture.coordinator.classifyLatestManifest(
       latest, targetChannel: nil, isStagedBundleUsable: fixture.isUsable

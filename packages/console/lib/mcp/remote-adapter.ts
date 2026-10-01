@@ -76,6 +76,12 @@ function nullableString(input: JsonObject, name: string): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+/** Release notes: text, null for none, or undefined when not given. */
+function notesInput(input: JsonObject): string | null | undefined {
+  const value = input.notes;
+  return typeof value === 'string' || value === null ? value : undefined;
+}
+
 function numberInput(input: JsonObject, name: string): number | undefined {
   const value = input[name];
   return typeof value === 'number' ? value : undefined;
@@ -111,6 +117,7 @@ function releaseOptions(input: JsonObject) {
     autoRevertMinSample: numberInput(input, 'autoRevertMinSample'),
     rolloutPercent: numberInput(input, 'rolloutPercent'),
     replaceRollout: booleanInput(input, 'replaceRollout'),
+    notes: notesInput(input),
   };
 }
 
@@ -419,6 +426,7 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           | 'proceed'
           | 'skip'
           | undefined) ?? 'block',
+      notes: notesInput(input),
     });
     const options = releaseOptions(input);
     return toolEnvelope(
@@ -432,7 +440,12 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       }),
       {
         warnings: rolloutWarnings(preview.currentRelease, options),
-        nextActions: ['Review this preview, then call publish_release with the same values.'],
+        nextActions: [
+          'Review this preview, then call publish_release with the same values.',
+          ...(preview.notes
+            ? ['Show the user the release notes exactly as written: app users may see them.']
+            : []),
+        ],
       },
     );
   }

@@ -18,6 +18,7 @@ import {
   Filter,
   Hash,
   LoaderCircle,
+  NotebookPen,
   Package,
   Plus,
   RefreshCw,
@@ -70,6 +71,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -120,6 +122,8 @@ const BASE_RELEASE_STREAM_KEY = '$base';
 const NEW_RELEASE_STREAM_KEY = '$new';
 const NULL_RUNTIME_TARGET_KEY = '$runtime-null';
 const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
+/** Same limit as the server (lib/validation.ts), which also normalises the text. */
+const MAX_RELEASE_NOTES_LENGTH = 2000;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v3';
 const ROLLOUT_PRESETS = ['100', '50', '25', '10', '5', '1'] as const;
@@ -507,7 +511,15 @@ export function ProductDashboard({
     autoRevertMinSample: string;
     rollout: string;
     rolloutCustom: string;
+    notes: string;
   } | null>(null);
+
+  // Release notes of a live release
+  const [notesEdit, setNotesEdit] = useState<{
+    release: ReleaseHistoryItem;
+    text: string;
+  } | null>(null);
+  const [notesEditBusy, setNotesEditBusy] = useState(false);
 
   // Rollout percentage change
   const [rolloutChange, setRolloutChange] = useState<{
@@ -687,6 +699,9 @@ export function ProductDashboard({
   const releaseAutoRevertInvalid =
     releaseConfirm?.autoRevert === true &&
     (releaseAutoRevertRateValue === null || releaseAutoRevertMinSampleValue === null);
+  const releaseNotesLength = releaseConfirm?.notes.trim().length ?? 0;
+  const releaseNotesTooLong = releaseNotesLength > MAX_RELEASE_NOTES_LENGTH;
+  const notesEditLength = notesEdit?.text.trim().length ?? 0;
 
   // Each lane's current release: its newest non-reverted one (history is newest first).
   const laneCurrentByKey = useMemo(() => {
@@ -940,6 +955,7 @@ export function ProductDashboard({
       autoRevertMinSample: '50',
       rollout: '100',
       rolloutCustom: '',
+      notes: '',
     });
   }
 
@@ -949,6 +965,7 @@ export function ProductDashboard({
     forceImmediate = false,
     autoRevert: { ratePercent: number; minSample: number } | null = null,
     rollout: { percent: number; replace: boolean } = { percent: 100, replace: false },
+    notes: string | null = null,
   ): Promise<boolean> {
     if (!selectedAppId || !target) return false;
     if (isCurrentOnTarget(bundle, target.channel, target.runtimeVersion)) {
@@ -990,6 +1007,7 @@ export function ProductDashboard({
             : {}),
           ...(rollout.percent < FULL_ROLLOUT_PERCENT ? { rolloutPercent: rollout.percent } : {}),
           ...(rollout.replace ? { replaceRollout: true } : {}),
+          ...(notes ? { notes } : {}),
         }),
       });
       const data = await parseJson<
@@ -1030,6 +1048,7 @@ export function ProductDashboard({
       releaseChannelError ||
       releaseChannelMissing ||
       releaseAutoRevertInvalid ||
+      releaseNotesTooLong ||
       releaseRolloutValue === null
     ) {
       return;
@@ -1047,7 +1066,34 @@ export function ProductDashboard({
           }
         : null,
       { percent: releaseRolloutValue, replace: releaseLaneRollout !== null },
+      releaseConfirm.notes.trim() || null,
     );
+  }
+
+  async function saveReleaseNotes() {
+    if (!selectedAppId || !notesEdit || notesEditBusy) return;
+    const text = notesEdit.text.trim();
+    if (text.length > MAX_RELEASE_NOTES_LENGTH) return;
+    setNotesEditBusy(true);
+    try {
+      const res = await fetch(
+        `/api/v1/apps/${encodeURIComponent(selectedAppId)}/releases/${encodeURIComponent(notesEdit.release.id)}/notes`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: text || null }),
+        },
+      );
+      const data = await parseJson<ApiError>(res);
+      if (!res.ok) throw new Error(data.error ?? 'Could not save the release notes');
+      toast.success(text ? 'Release notes saved' : 'Release notes removed');
+      setNotesEdit(null);
+      await loadReleaseHistory(selectedAppId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save the release notes');
+    } finally {
+      setNotesEditBusy(false);
+    }
   }
 
   function openRevertConfirm(row: ReleaseHistoryItem) {
@@ -1812,6 +1858,16 @@ export function ProductDashboard({
                                                               </span>
                                                             </>
                                                           ) : null}
+                                                          {rel?.notes ? (
+                                                            <>
+                                                              <span className="text-muted-foreground">
+                                                                Notes
+                                                              </span>
+                                                              <span className="line-clamp-3 whitespace-pre-line">
+                                                                {rel.notes}
+                                                              </span>
+                                                            </>
+                                                          ) : null}
                                                           {rel?.autoRevert ? (
                                                             <>
                                                               <span className="text-muted-foreground">
@@ -1866,6 +1922,25 @@ export function ProductDashboard({
                                                             >
                                                               <RotateCcw className="size-3.5" />
                                                               Revert to previous
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : null}
+                                                        {rel ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              disabled={notesEdit !== null}
+                                                              onClick={() =>
+                                                                setNotesEdit({
+                                                                  release: rel,
+                                                                  text: rel.notes ?? '',
+                                                                })
+                                                              }
+                                                            >
+                                                              <NotebookPen className="size-3.5" />
+                                                              {rel.notes
+                                                                ? 'Edit release notes'
+                                                                : 'Add release notes'}
                                                             </DropdownMenuItem>
                                                           </>
                                                         ) : null}
@@ -2339,6 +2414,87 @@ export function ProductDashboard({
         onSave={saveBundleColumnsDialog}
       />
 
+      {/* Release Notes Dialog */}
+      <Dialog
+        open={notesEdit !== null}
+        onOpenChange={(open) => {
+          if (!open && !notesEditBusy) setNotesEdit(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <NotebookPen className="size-4" />
+              Release notes
+            </DialogTitle>
+            <DialogDescription>
+              {notesEdit
+                ? `${notesEdit.release.bundleVersion} on ${formatReleaseTarget(notesEdit.release.channel, notesEdit.release.runtimeVersion)}. `
+                : ''}
+              Phones that update from now on get the new text; phones that already updated keep what
+              they received.
+            </DialogDescription>
+          </DialogHeader>
+          {notesEdit ? (
+            <div className="space-y-1.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <Label htmlFor="release-notes-edit" className="text-sm font-normal">
+                  What changed for your users
+                </Label>
+                <span
+                  className={cn(
+                    'text-xs tabular-nums',
+                    notesEditLength > MAX_RELEASE_NOTES_LENGTH
+                      ? 'text-destructive'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  {notesEditLength.toLocaleString('en-US')}/
+                  {MAX_RELEASE_NOTES_LENGTH.toLocaleString('en-US')}
+                </span>
+              </div>
+              <Textarea
+                id="release-notes-edit"
+                rows={5}
+                value={notesEdit.text}
+                onChange={(event) =>
+                  setNotesEdit((current) =>
+                    current ? { ...current, text: event.target.value } : current,
+                  )
+                }
+                disabled={notesEditBusy}
+                aria-invalid={notesEditLength > MAX_RELEASE_NOTES_LENGTH}
+              />
+              <p className="text-xs text-muted-foreground">
+                Plain text. Leave it empty to remove the notes.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={notesEditBusy} onClick={() => setNotesEdit(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                notesEditBusy ||
+                notesEditLength > MAX_RELEASE_NOTES_LENGTH ||
+                (notesEdit?.text.trim() ?? '') === (notesEdit?.release.notes ?? '')
+              }
+              onClick={() => void saveReleaseNotes()}
+            >
+              {notesEditBusy ? (
+                <>
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save notes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Confirm Release Dialog */}
       <Dialog
         open={releaseConfirm !== null}
@@ -2552,6 +2708,39 @@ export function ProductDashboard({
                   ) : null}
                 </div>
               </div>
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <Label htmlFor="release-notes" className="text-sm font-normal">
+                    Release notes <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <span
+                    className={cn(
+                      'text-xs tabular-nums',
+                      releaseNotesTooLong ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                  >
+                    {releaseNotesLength.toLocaleString('en-US')}/
+                    {MAX_RELEASE_NOTES_LENGTH.toLocaleString('en-US')}
+                  </span>
+                </div>
+                <Textarea
+                  id="release-notes"
+                  rows={3}
+                  placeholder="What changed for your users, in a few short lines"
+                  value={releaseConfirm.notes}
+                  onChange={(event) =>
+                    setReleaseConfirm((current) =>
+                      current ? { ...current, notes: event.target.value } : current,
+                    )
+                  }
+                  disabled={releaseConfirmBusy}
+                  aria-invalid={releaseNotesTooLong}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Plain text. Apps on OtaKit plugin 3.3+ can show it in a &ldquo;What&apos;s
+                  new&rdquo; screen. You can edit it later.
+                </p>
+              </div>
               {releaseAlreadyCurrent ? (
                 <p className="text-xs text-muted-foreground">
                   This bundle is already current on{' '}
@@ -2580,6 +2769,7 @@ export function ProductDashboard({
                 releaseChannelError !== null ||
                 releaseAlreadyCurrent ||
                 releaseAutoRevertInvalid ||
+                releaseNotesTooLong ||
                 releaseRolloutValue === null
               }
               onClick={() => void confirmRelease()}

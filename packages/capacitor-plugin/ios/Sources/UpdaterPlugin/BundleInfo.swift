@@ -10,6 +10,8 @@ struct BundleInfo: Codable {
   let path: String?
   let channel: String?
   let releaseId: String?
+  /// Release notes delivered with this bundle (plugin 3.3+).
+  var notes: String? = nil
 
   var isBuiltin: Bool {
     id == "builtin"
@@ -24,7 +26,7 @@ struct BundleInfo: Codable {
     BundleInfo(
       id: id, version: version, runtimeVersion: runtimeVersion, status: status,
       downloadedAt: downloadedAt, sha256: sha256, path: path, channel: channel,
-      releaseId: releaseId
+      releaseId: releaseId, notes: notes
     )
   }
 
@@ -51,6 +53,9 @@ struct BundleInfo: Codable {
     }
     if let releaseId {
       result["releaseId"] = releaseId
+    }
+    if let notes {
+      result["notes"] = notes
     }
 
     return result

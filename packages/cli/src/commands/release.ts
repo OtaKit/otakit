@@ -5,6 +5,7 @@ import ora from 'ora';
 import { ApiClient } from '../lib/api.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
+import { readReleaseNotes } from '../lib/notes.js';
 import { explainRolloutConflict, rolloutSuffix } from '../lib/rollout.js';
 import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
 
@@ -15,6 +16,8 @@ type ReleaseOptions = {
   forceImmediate?: boolean;
   rollout?: string;
   replaceRollout?: boolean;
+  notes?: string;
+  notesFile?: string;
 };
 
 export const releaseCommand = new Command('release')
@@ -35,6 +38,8 @@ export const releaseCommand = new Command('release')
     '--replace-rollout',
     "Cancel the channel's active rollout and release this bundle in its place",
   )
+  .option('--notes <text>', 'Release notes app users may see (plain text, up to 2,000 characters)')
+  .option('--notes-file <path>', 'Read the release notes from a file')
   .action(async (bundleId: string | undefined, options: ReleaseOptions) => {
     await runCommand(async () => {
       const config = await requireConfig({
@@ -46,6 +51,8 @@ export const releaseCommand = new Command('release')
       const targetLabel = channel ?? 'base channel';
       const forceImmediate = options.forceImmediate === true;
       const forceLabel = forceImmediate ? ' (force immediate)' : '';
+      const notes = await readReleaseNotes(options);
+      const notesLabel = notes ? ' with release notes' : '';
       const releaseOptions = {
         forceImmediate,
         rolloutPercent:
@@ -53,6 +60,7 @@ export const releaseCommand = new Command('release')
             ? undefined
             : parseRolloutPercent(options.rollout, '--rollout'),
         replaceRollout: options.replaceRollout === true ? true : undefined,
+        notes,
       };
       const release = async (id: string) => {
         try {
@@ -64,35 +72,42 @@ export const releaseCommand = new Command('release')
 
       if (bundleId) {
         const spinner = ora(`Releasing ${bundleId} to ${targetLabel}...`).start();
-        const result = await release(bundleId);
+        const result = await release(bundleId).catch((error: unknown) => {
+          spinner.fail('Release failed.');
+          throw error;
+        });
         if (result.publicationStatus === 'manifest_sync_pending') {
           throw new CliError(
             `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
           );
         }
         spinner.succeed(
-          `Released ${bundleId} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}.`,
+          `Released ${bundleId} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel}.`,
         );
         return;
       }
 
       // No bundleId — release latest bundle
       const spinner = ora('Finding latest bundle...').start();
-      const { bundles } = await api.listBundles({ limit: 1 });
-      if (bundles.length === 0) {
-        throw new CliError('No bundles found to release.');
-      }
-
-      const latest = bundles[0];
-      spinner.text = `Releasing ${latest.version} to ${targetLabel}...`;
-      const result = await release(latest.id);
+      const result = await (async () => {
+        const { bundles } = await api.listBundles({ limit: 1 });
+        if (bundles.length === 0) {
+          throw new CliError('No bundles found to release.');
+        }
+        spinner.text = `Releasing ${bundles[0].version} to ${targetLabel}...`;
+        return { latest: bundles[0], ...(await release(bundles[0].id)) };
+      })().catch((error: unknown) => {
+        spinner.fail('Release failed.');
+        throw error;
+      });
+      const latest = result.latest;
       if (result.publicationStatus === 'manifest_sync_pending') {
         throw new CliError(
           `Release ${result.release.id} was recorded, but manifest synchronization is pending (operation ${result.operationId}). OtaKit will retry automatically; do not publish it again with a new version.`,
         );
       }
       spinner.succeed(
-        `Released ${latest.version} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}.`,
+        `Released ${latest.version} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel}.`,
       );
     });
   });
