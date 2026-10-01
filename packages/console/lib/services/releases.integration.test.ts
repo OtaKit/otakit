@@ -366,8 +366,8 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       db.release.findUniqueOrThrow({ where: { id: second.release.id } }),
     ).resolves.toMatchObject({
       revertedBy: actor.actorLabel,
-      autoRevertAlertPayload: expect.objectContaining({ rollbacks: 12, attempts: 20 }),
-      autoRevertAlertedAt: null,
+      // The alert is a notification now (notifications.integration.test.ts).
+      autoRevertAlertPayload: null,
     });
   });
 

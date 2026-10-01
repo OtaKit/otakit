@@ -1,15 +1,10 @@
 import { recordAuditLog, type AuditActor } from './audit-log';
-import {
-  AUTO_REVERT_REVERTED_BY,
-  deliverPendingAutoRevertAlerts,
-  sendAutoRevertAlerts,
-  type AutoRevertAlertPayload,
-} from './auto-revert-alerts';
+import { AUTO_REVERT_REVERTED_BY, type AutoRevertAlertPayload } from './auto-revert-alerts';
 import { db } from './db';
+import { emitNotification } from './notifications/emit';
 import { isReleaseReliabilityEnabled } from './release-features';
-import { revertCurrentRelease } from './releases';
 import { isOtaKitServiceError } from './services/errors';
-import { revertRelease } from './services/releases';
+import { findReleaseSummary, revertRelease, revertReleaseLegacy } from './services/releases';
 import { getReleaseHealthWindowCounts } from './tinybird/events';
 
 export const AUTO_REVERT_WINDOW_HOURS = 24;
@@ -71,26 +66,12 @@ function alertPayload(
   };
 }
 
-async function sendAlerts(
-  candidate: CandidateRelease,
-  counts: { applied: number; rollbacks: number },
-  args: { revertedToVersion: string | null; suppressed: boolean },
-): Promise<void> {
-  await sendAutoRevertAlerts({
-    releaseId: candidate.id,
-    organizationId: candidate.app.organizationId,
-    appSlug: candidate.app.slug,
-    payload: alertPayload(candidate, counts),
-    revertedToVersion: args.revertedToVersion,
-    suppressed: args.suppressed,
-  });
-}
-
 /**
  * One auto-revert sweep: for every non-reverted release with the autoRevert
  * flag that is current on its (channel, runtimeVersion) lane, compare the
  * rolling-window rollback share against the release's own thresholds and
- * revert + alert when it trips.
+ * revert when it trips. The revert queues the release.auto_reverted
+ * notification; the cron delivers it right after the sweep.
  *
  * Fail-safe by construction: missing analytics data (Tinybird down or not
  * configured) skips the app and can never trigger a revert.
@@ -210,6 +191,29 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
         if (alreadySuppressed) {
           continue;
         }
+        // Queue the notification before the audit entry that marks this release
+        // as handled: if queueing fails, the next sweep tries again.
+        const release = await findReleaseSummary(candidate.id);
+        if (release) {
+          await emitNotification(db, {
+            type: 'release.auto_revert_suppressed',
+            key: `release.auto_revert_suppressed:${candidate.id}`,
+            organizationId: candidate.app.organizationId,
+            appId,
+            actor: AUTO_REVERT_ACTOR,
+            data: {
+              release,
+              health: {
+                rollbacks: healthMetadata.rollbacks,
+                attempts: healthMetadata.attempts,
+                measuredRatePercent: healthMetadata.measuredRatePercent,
+                ratePercent: healthMetadata.ratePercent,
+                minSample: healthMetadata.minSample,
+                windowHours: healthMetadata.windowHours,
+              },
+            },
+          });
+        }
         await recordAuditLog({
           organizationId: candidate.app.organizationId,
           actor: AUTO_REVERT_ACTOR,
@@ -218,34 +222,13 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
           targetId: candidate.id,
           metadata: healthMetadata,
         });
-        await sendAlerts(candidate, counts, { revertedToVersion: null, suppressed: true });
         continue;
       }
 
-      if (!isReleaseReliabilityEnabled()) {
-        const legacyOutcome = await revertCurrentRelease({
-          appId,
-          releaseId: candidate.id,
-          revertedBy: AUTO_REVERT_REVERTED_BY,
-          actor: AUTO_REVERT_ACTOR,
-          organizationId: candidate.app.organizationId,
-          auditAction: 'release.auto_reverted',
-          auditMetadata: healthMetadata,
-        });
-        if (!legacyOutcome.ok) {
-          continue;
-        }
-        stats.reverted += 1;
-        await sendAlerts(candidate, counts, {
-          revertedToVersion: legacyOutcome.nextCurrentRelease?.bundle.version ?? null,
-          suppressed: false,
-        });
-        continue;
-      }
-
+      const revert = isReleaseReliabilityEnabled() ? revertRelease : revertReleaseLegacy;
       let outcome;
       try {
-        outcome = await revertRelease({
+        outcome = await revert({
           appId,
           releaseId: candidate.id,
           revertedBy: AUTO_REVERT_REVERTED_BY,
@@ -260,7 +243,9 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       } catch (error) {
         if (
           !isOtaKitServiceError(error) ||
-          (error.code !== 'STALE_RELEASE_STATE' && error.code !== 'RELEASE_NOT_CURRENT')
+          (error.code !== 'STALE_RELEASE_STATE' &&
+            error.code !== 'RELEASE_NOT_CURRENT' &&
+            error.code !== 'RELEASE_NOT_FOUND')
         ) {
           throw error;
         }
@@ -281,7 +266,6 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
       }
 
       stats.reverted += 1;
-      await deliverPendingAutoRevertAlerts({ releaseIds: [candidate.id] });
     }
   }
 

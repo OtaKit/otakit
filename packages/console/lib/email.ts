@@ -16,7 +16,7 @@ const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'OtaKit <noreply@otakit.app>';
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -31,27 +31,39 @@ type SendEmailArgs = {
   html: string;
   text: string;
   replyTo?: string;
+  /** Resend sends at most one email per key within 24 hours. */
+  idempotencyKey?: string;
 };
 
 export function isEmailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY?.trim();
 }
 
-async function sendEmail({ to, subject, html, text, replyTo }: SendEmailArgs): Promise<void> {
+async function sendEmail({
+  to,
+  subject,
+  html,
+  text,
+  replyTo,
+  idempotencyKey,
+}: SendEmailArgs): Promise<void> {
   if (!isEmailConfigured()) {
     console.warn(`[OtaKit] Email not configured (RESEND_API_KEY not set). Logging email instead:`);
     console.warn(`[OtaKit:email] To: ${to} | Subject: ${subject}\n${text}\n`);
     return;
   }
 
-  const response = await getResendClient().emails.send({
-    from: FROM_ADDRESS,
-    to,
-    subject,
-    html,
-    text,
-    replyTo: replyTo ? [replyTo] : undefined,
-  });
+  const response = await getResendClient().emails.send(
+    {
+      from: FROM_ADDRESS,
+      to,
+      subject,
+      html,
+      text,
+      replyTo: replyTo ? [replyTo] : undefined,
+    },
+    idempotencyKey ? { idempotencyKey } : undefined,
+  );
 
   if (response.error) {
     throw new Error(`Resend failed: ${response.error.message}`);
@@ -154,113 +166,15 @@ Open dashboard: ${dashboardUrl}`;
   });
 }
 
-export async function sendUsageWarningEmail({
-  to,
-  organizationName,
-  threshold,
-  downloadsCount,
-  limit,
-  periodStart,
-}: {
+/** One notification email (lib/notifications); the key makes retries safe. */
+export async function sendNotificationEmail(args: {
   to: string;
-  organizationName: string;
-  threshold: 90 | 100;
-  downloadsCount: number;
-  limit: number;
-  periodStart: Date;
+  subject: string;
+  html: string;
+  text: string;
+  idempotencyKey?: string;
 }): Promise<void> {
-  const safeOrganizationName = escapeHtml(organizationName);
-  const dashboardUrl = `${APP_URL}/dashboard/settings`;
-  const subject =
-    threshold === 100
-      ? `Usage reached 100% for ${organizationName}`
-      : `Usage reached 90% for ${organizationName}`;
-
-  const period = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(periodStart);
-
-  const html = `
-<p>Usage alert for <strong>${safeOrganizationName}</strong>.</p>
-<p>${threshold}% threshold reached for ${escapeHtml(period)}.</p>
-<p>Downloads: <strong>${downloadsCount.toLocaleString()}</strong> / <strong>${limit.toLocaleString()}</strong></p>
-<p><a href="${escapeHtml(dashboardUrl)}">Open settings</a></p>
-  `.trim();
-
-  const text = `Usage alert for ${organizationName}.
-${threshold}% threshold reached for ${period}.
-Downloads: ${downloadsCount.toLocaleString()} / ${limit.toLocaleString()}
-Open settings: ${dashboardUrl}`;
-
-  await sendEmail({
-    to,
-    subject,
-    html,
-    text,
-  });
-}
-
-export async function sendAutoRevertEmail({
-  to,
-  appSlug,
-  channel,
-  runtimeVersion,
-  bundleVersion,
-  rollbacks,
-  attempts,
-  measuredRatePercent,
-  thresholdRatePercent,
-  minSample,
-  revertedToVersion,
-  suppressed,
-}: {
-  to: string;
-  appSlug: string;
-  channel: string | null;
-  runtimeVersion: string | null;
-  bundleVersion: string;
-  rollbacks: number;
-  attempts: number;
-  measuredRatePercent: number;
-  thresholdRatePercent: number;
-  minSample: number;
-  revertedToVersion: string | null;
-  suppressed: boolean;
-}): Promise<void> {
-  const lane = `${channel ?? 'base'}${runtimeVersion ? ` / runtime ${runtimeVersion}` : ''}`;
-  const dashboardUrl = `${APP_URL}/dashboard`;
-  const stats = `${rollbacks} of ${attempts} devices rolled back (${measuredRatePercent}%) in the last 24 hours (trigger: >=${thresholdRatePercent}% of >=${minSample}).`;
-
-  const subject = suppressed
-    ? `Auto-revert suppressed for ${appSlug} (${lane})`
-    : `Auto-reverted ${appSlug} ${bundleVersion} (${lane})`;
-
-  const actionText = suppressed
-    ? 'Not reverted automatically: the previous release on this lane was already auto-reverted within the last 24 hours. Manual action needed.'
-    : revertedToVersion
-      ? `Reverted automatically. Devices now receive ${revertedToVersion}.`
-      : 'Reverted automatically. No previous release on this lane — new installs receive the built-in bundle.';
-
-  const html = `
-<p>Release health alert for <strong>${escapeHtml(appSlug)}</strong> (${escapeHtml(lane)}).</p>
-<p>Release <strong>${escapeHtml(bundleVersion)}</strong>: ${escapeHtml(stats)}</p>
-<p>${escapeHtml(actionText)}</p>
-<p><a href="${escapeHtml(dashboardUrl)}">Open dashboard</a></p>
-  `.trim();
-
-  const text = `Release health alert for ${appSlug} (${lane}).
-Release ${bundleVersion}: ${stats}
-${actionText}
-Open dashboard: ${dashboardUrl}`;
-
-  await sendEmail({
-    to,
-    subject,
-    html,
-    text,
-  });
+  await sendEmail(args);
 }
 
 export async function sendSupportContactEmail({

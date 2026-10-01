@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { runAutoRevertSweep } from '@/lib/auto-revert';
-import { deliverPendingAutoRevertAlerts } from '@/lib/auto-revert-alerts';
+import { deliverDueNotifications } from '@/lib/notifications/deliver';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
 import { reconcilePendingReleaseMutations } from '@/lib/services/releases';
 
@@ -41,10 +41,11 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 /**
- * The sweep below is the safety net for a bad rollout, so neither reliability
- * repair may prevent it from running. A repair that throws — a poisoned
- * mutation row, a transient database error — is reported and stepped over
- * rather than turning the whole cron into a 500 that silently skips the sweep.
+ * The sweep below is the safety net for a bad rollout, so neither the
+ * reliability repair nor notification delivery may prevent it from running. A
+ * step that throws — a poisoned mutation row, a transient database error — is
+ * reported and stepped over rather than turning the whole cron into a 500 that
+ * silently skips the sweep.
  */
 async function repair<T>(name: string, run: () => Promise<T>, fallback: T, failures: string[]) {
   try {
@@ -77,20 +78,20 @@ export async function POST(request: NextRequest) {
         failures,
       )
     : { checked: 0, repaired: 0, pending: 0 };
-  const recoveredAlerts = isReleaseReliabilityEnabled()
-    ? await repair(
-        'recoveredAlerts',
-        () => deliverPendingAutoRevertAlerts(),
-        { checked: 0, sent: 0, pending: 0 },
-        failures,
-      )
-    : { checked: 0, sent: 0, pending: 0 };
   const stats = await runAutoRevertSweep();
+  // Send this sweep's auto-revert alerts now rather than at the next
+  // notifications cron run.
+  const notifications = await repair(
+    'notifications',
+    () => deliverDueNotifications({ budgetMs: 60_000 }),
+    { claimed: 0, delivered: 0, failed: 0 },
+    failures,
+  );
   return NextResponse.json({
     success: true,
     stats,
     manifestRepairs,
-    recoveredAlerts,
+    notifications,
     ...(failures.length ? { failures } : {}),
   });
 }

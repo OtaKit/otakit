@@ -92,8 +92,8 @@ export default function SelfHostPage() {
           for production; see below.
         </li>
         <li>
-          <strong>Resend</strong> — transactional email (OTP codes, invites). Without it, emails are
-          logged to the server console.
+          <strong>Resend</strong> — transactional email (OTP codes, invites, alerts). Without it,
+          emails are logged to the server console.
         </li>
         <li>
           <strong>Cloudflare cache purge</strong> — instant CDN invalidation after a release.
@@ -267,7 +267,7 @@ npx wrangler deploy`}</Pre>
       <Ul>
         <li>
           <strong>Email</strong> — set <Code>RESEND_API_KEY</Code> and <Code>EMAIL_FROM</Code> to
-          send OTP codes and invites via Resend.
+          send OTP codes, invites and alerts via Resend.
         </li>
         <li>
           <strong>Auto-revert</strong> — releases published with the auto-revert flag are reverted
@@ -276,6 +276,14 @@ npx wrangler deploy`}</Pre>
           <Code>CRON_SECRET</Code> is set, pass it as a Bearer header or <Code>?secret=</Code> query
           param; if unset, the endpoint is open (the sweep is idempotent and only reverts releases
           whose own thresholds trip).
+        </li>
+        <li>
+          <strong>Notifications</strong> — email, Slack, Discord and webhook alerts; see{' '}
+          <A href="/docs/webhooks">Webhooks and Alerts</A>. Set <Code>DATA_ENCRYPTION_KEY</Code> (32
+          random bytes, base64) to store webhook signing secrets, and call{' '}
+          <Code>/api/cron/notifications</Code> every minute so failed deliveries are retried. Set{' '}
+          <Code>NOTIFICATIONS_ALLOW_PRIVATE_URLS=true</Code> to post to addresses inside your
+          network.
         </li>
         <li>
           <strong>CDN purge</strong> — set <Code>CF_ZONE_ID</Code> and <Code>CF_API_TOKEN</Code>{' '}

@@ -13,8 +13,11 @@ import {
   type AuditActor,
   type AuditLogEntry,
 } from '@/lib/audit-log';
+import { AUTO_REVERT_REVERTED_BY, type AutoRevertAlertPayload } from '@/lib/auto-revert-alerts';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
+import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
+import { emitNotification, type NotificationEvent } from '@/lib/notifications/emit';
 import { revertCurrentRelease } from '@/lib/releases';
 import { FULL_ROLLOUT_PERCENT, isRolling, isRolloutPercent } from '@/lib/rollouts';
 import {
@@ -180,7 +183,8 @@ export type RevertReleaseInput = {
   expectedRolloutPercent?: number;
   auditAction?: AuditAction;
   auditMetadata?: Record<string, unknown>;
-  autoRevertAlertPayload?: Record<string, unknown>;
+  /** Set by the auto-revert sweep: the health numbers its notification reports. */
+  autoRevertAlertPayload?: AutoRevertAlertPayload;
 };
 
 export type UpdateRolloutInput = {
@@ -632,6 +636,8 @@ async function runReleaseMutation<T extends ReleaseMutationResult>(args: {
     lane: { releaseId: string; channel: string | null; runtimeVersion: string | null };
   }>;
   audit: (result: T) => Omit<AuditLogEntry, 'organizationId' | 'actor'>;
+  /** The notification for the change, queued in the same transaction. */
+  notify: (result: T) => NotificationEvent;
 }): Promise<T> {
   const database = args.dependencies.database ?? db;
   const syncManifest = args.dependencies.syncManifest ?? syncManifestFileForLane;
@@ -658,7 +664,7 @@ async function runReleaseMutation<T extends ReleaseMutationResult>(args: {
     }
     if (existing) {
       assertIdempotencyHash(existing, args.requestHash);
-      return { mutation: existing, created: false };
+      return { mutation: existing, created: false, notifications: 0 };
     }
 
     const { result, lane } = await args.apply(tx);
@@ -686,7 +692,8 @@ async function runReleaseMutation<T extends ReleaseMutationResult>(args: {
         expiresAt: new Date(Date.now() + IDEMPOTENCY_RETENTION_MS),
       },
     });
-    return { mutation, created: true };
+    const notifications = await emitNotification(tx, args.notify(initialResult));
+    return { mutation, created: true, notifications };
   }, RELEASE_TRANSACTION_OPTIONS);
 
   const result = storedResult<T>(transactionResult.mutation);
@@ -699,6 +706,9 @@ async function runReleaseMutation<T extends ReleaseMutationResult>(args: {
       actor: args.actor,
       ...args.audit(result),
     });
+  }
+  if (transactionResult.notifications > 0) {
+    scheduleNotificationDelivery();
   }
   return finishManifestSync(database, transactionResult.mutation, result, syncManifest);
 }
@@ -881,7 +891,26 @@ export async function publishRelease(
         ...input.auditMetadata,
       },
     }),
+    notify: (result) => publishNotification(input, result),
   });
+}
+
+function publishNotification(
+  input: PublishReleaseInput,
+  result: Pick<PublishReleaseResult, 'release' | 'previousRelease' | 'replacedRelease'>,
+): NotificationEvent {
+  return {
+    type: 'release.published',
+    key: `release.published:${result.release.id}`,
+    organizationId: input.organizationId,
+    appId: input.appId,
+    actor: input.actor,
+    data: {
+      release: result.release,
+      previousRelease: result.previousRelease,
+      ...(result.replacedRelease ? { replacedRelease: result.replacedRelease } : {}),
+    },
+  };
 }
 
 /**
@@ -977,13 +1006,17 @@ export async function publishReleaseLegacy(
     },
   });
 
-  return {
+  const result: PublishReleaseResult = {
     operationId: `legacy:${release.id}`,
     idempotencyKey: input.idempotencyKey ?? `legacy:${release.id}`,
     publicationStatus: 'published',
     release: toReleaseSummary(release),
     previousRelease: currentRelease ? toReleaseSummary(currentRelease) : null,
   };
+  if ((await emitNotification(database, publishNotification(input, result))) > 0) {
+    scheduleNotificationDelivery();
+  }
+  return result;
 }
 
 export async function prepareRevert(
@@ -1195,9 +1228,6 @@ export async function revertRelease(
         data: {
           revertedAt: new Date(),
           revertedBy: input.revertedBy ?? input.actor.actorLabel,
-          ...(input.autoRevertAlertPayload
-            ? { autoRevertAlertPayload: jsonValue(input.autoRevertAlertPayload) }
-            : {}),
         },
         include: releaseWithBundlesInclude,
       });
@@ -1241,7 +1271,46 @@ export async function revertRelease(
         ...input.auditMetadata,
       },
     }),
+    notify: (result) => revertNotification(input, result),
   });
+}
+
+/** An auto-revert reports its health numbers; any other revert is release.reverted. */
+function revertNotification(
+  input: RevertReleaseInput,
+  result: Pick<RevertReleaseResult, 'release' | 'currentRelease'>,
+): NotificationEvent {
+  const base = {
+    organizationId: input.organizationId,
+    appId: input.appId,
+    actor: input.actor,
+  };
+  const health = input.autoRevertAlertPayload;
+  if (result.release.revertedBy === AUTO_REVERT_REVERTED_BY && health) {
+    return {
+      ...base,
+      type: 'release.auto_reverted',
+      key: `release.auto_reverted:${result.release.id}`,
+      data: {
+        release: result.release,
+        currentRelease: result.currentRelease,
+        health: {
+          rollbacks: health.rollbacks,
+          attempts: health.attempts,
+          measuredRatePercent: health.measuredRatePercent,
+          ratePercent: health.ratePercent,
+          minSample: health.minSample,
+          windowHours: health.windowHours,
+        },
+      },
+    };
+  }
+  return {
+    ...base,
+    type: 'release.reverted',
+    key: `release.reverted:${result.release.id}`,
+    data: { release: result.release, currentRelease: result.currentRelease },
+  };
 }
 
 /**
@@ -1367,6 +1436,14 @@ export async function updateRollout(
         ...input.auditMetadata,
       },
     }),
+    notify: (result) => ({
+      type: 'release.rollout_updated',
+      key: `release.rollout_updated:${result.operationId}`,
+      organizationId: input.organizationId,
+      appId: input.appId,
+      actor: input.actor,
+      data: { release: result.release, previousPercent: result.previousPercent },
+    }),
   });
 }
 
@@ -1426,7 +1503,7 @@ export async function revertReleaseLegacy(input: RevertReleaseInput): Promise<Re
     );
   }
 
-  return {
+  const result: RevertReleaseResult = {
     operationId: `legacy:${outcome.targetRelease.id}`,
     idempotencyKey: input.idempotencyKey ?? `legacy:${outcome.targetRelease.id}`,
     publicationStatus: 'published',
@@ -1439,6 +1516,22 @@ export async function revertReleaseLegacy(input: RevertReleaseInput): Promise<Re
       ? toReleaseSummary(outcome.nextCurrentRelease)
       : null,
   };
+  if ((await emitNotification(db, revertNotification(input, result))) > 0) {
+    scheduleNotificationDelivery();
+  }
+  return result;
+}
+
+/** One release in the API's shape, or null when it does not exist. */
+export async function findReleaseSummary(
+  releaseId: string,
+  database: PrismaClient = db,
+): Promise<ReleaseSummary | null> {
+  const release = await database.release.findUnique({
+    where: { id: releaseId },
+    include: releaseWithBundlesInclude,
+  });
+  return release ? toReleaseSummary(release) : null;
 }
 
 export async function reconcilePendingReleaseMutations(

@@ -1,8 +1,9 @@
 import type { PlanKey, UsageWarningSent } from '@prisma/client';
 
 import { db } from '@/lib/db';
-import { sendUsageWarningEmail } from '@/lib/email';
 import { deleteAllManifestFilesForApp, restoreManifestFilesForApp } from '@/lib/manifest-files';
+import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
+import { emitNotification } from '@/lib/notifications/emit';
 import { getPolar, isPolarConfigured } from '@/lib/polar';
 import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
@@ -20,7 +21,6 @@ type UsageRunStats = {
 
 type UsageOrganizationRecord = {
   id: string;
-  name: string;
   planKey: PlanKey;
   freeDownloadsLimit: number;
   usageBlocked: boolean;
@@ -183,48 +183,34 @@ export async function updateOrganizationOverageEnabled(
   };
 }
 
-async function sendThresholdWarningEmails(args: {
+/**
+ * Queue the usage.warning notification. The key makes it once per threshold,
+ * period and limit: a plan change that raises the limit can warn again.
+ */
+async function queueUsageWarning(args: {
   organizationId: string;
-  organizationName: string;
   threshold: 90 | 100;
   downloadsCount: number;
   limit: number;
   periodStart: Date;
 }): Promise<void> {
-  const members = await db.organizationMember.findMany({
-    where: {
-      organizationId: args.organizationId,
-      role: { in: ['owner', 'admin'] },
-    },
-    select: {
-      user: {
-        select: {
-          email: true,
-        },
-      },
-    },
-  });
-
-  const uniqueEmails = Array.from(new Set(members.map((m) => m.user.email)));
-  await Promise.all(
-    uniqueEmails.map((email) =>
-      sendUsageWarningEmail({
-        to: email,
-        organizationName: args.organizationName,
+  const periodStart = args.periodStart.toISOString();
+  const queued = await emitNotification(db, {
+    type: 'usage.warning',
+    key: `usage.warning:${periodStart.slice(0, 10)}:${args.threshold}:${args.limit}`,
+    organizationId: args.organizationId,
+    appId: null,
+    actor: null,
+    data: {
+      usage: {
         threshold: args.threshold,
         downloadsCount: args.downloadsCount,
         limit: args.limit,
-        periodStart: args.periodStart,
-      }).catch((error) => {
-        console.error('[UsageWarningEmail] send failed', {
-          organizationId: args.organizationId,
-          email,
-          threshold: args.threshold,
-          error,
-        });
-      }),
-    ),
-  );
+        periodStart,
+      },
+    },
+  });
+  if (queued > 0) scheduleNotificationDelivery();
 }
 
 async function syncOrganizationUsageToPolar(args: {
@@ -324,9 +310,8 @@ async function refreshUsageForOrganization(
     }
 
     if (percentage >= 100 && previousWarning !== 'at100') {
-      await sendThresholdWarningEmails({
+      await queueUsageWarning({
         organizationId: organization.id,
-        organizationName: organization.name,
         threshold: 100,
         downloadsCount,
         limit,
@@ -335,9 +320,8 @@ async function refreshUsageForOrganization(
       warningSent = 'at100';
       warningThresholdSent = 100;
     } else if (percentage >= 90 && previousWarning === 'none') {
-      await sendThresholdWarningEmails({
+      await queueUsageWarning({
         organizationId: organization.id,
-        organizationName: organization.name,
         threshold: 90,
         downloadsCount,
         limit,
@@ -401,7 +385,6 @@ export async function refreshOrganizationUsageSnapshot(
     where: { id: organizationId },
     select: {
       id: true,
-      name: true,
       planKey: true,
       freeDownloadsLimit: true,
       usageBlocked: true,
@@ -426,7 +409,6 @@ export async function runUsageAggregationCron(): Promise<UsageRunStats> {
   const organizations = await db.organization.findMany({
     select: {
       id: true,
-      name: true,
       planKey: true,
       freeDownloadsLimit: true,
       usageBlocked: true,

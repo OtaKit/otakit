@@ -36,6 +36,7 @@ const NAV = [
       { label: 'Preview Links', href: '/docs/previews' },
       { label: 'Update Strategies', href: '/docs/update-strategies' },
       { label: 'Events & Listeners', href: '/docs/events' },
+      { label: 'Webhooks & Alerts', href: '/docs/webhooks' },
       { label: 'Push Notifications', href: '/docs/push' },
       { label: 'MCP & Agent Skills', href: '/docs/agents' },
       { label: 'CI automation', href: '/docs/ci' },

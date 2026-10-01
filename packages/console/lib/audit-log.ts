@@ -32,7 +32,11 @@ export type AuditAction =
   | 'push_credential.saved'
   | 'push_credential.deleted'
   | 'push_campaign.created'
-  | 'push_campaign.canceled';
+  | 'push_campaign.canceled'
+  | 'notification_destination.created'
+  | 'notification_destination.updated'
+  | 'notification_destination.deleted'
+  | 'notification_destination.secret_rotated';
 
 export type AuditActor = {
   actorType: 'user' | 'key' | 'system';
