@@ -389,8 +389,8 @@
       "name": "@otakit/cli",
       "label": "CLI",
       "install": "npm install -g @otakit/cli@latest",
-      "version": "1.9.0",
-      "date": "2026-09-30"
+      "version": "1.9.1",
+      "date": "2026-10-05"
     },
     {
       "key": "push",

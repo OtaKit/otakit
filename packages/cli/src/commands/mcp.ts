@@ -1,7 +1,7 @@
 import { realpathSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { createOtaKitMcpServer } from '@otakit/mcp-core';
+import { createOtaKitMcpServer, PublicToolError } from '@otakit/mcp-core';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Command } from 'commander';
 
@@ -62,7 +62,33 @@ export const mcpCommand = new Command('mcp')
         serverUrl: options.server,
       });
       if (!snapshot.authToken.value || !snapshot.authSource) {
-        throw new CliError('Not authenticated. Run `otakit login`, or set OTAKIT_TOKEN.');
+        // Start anyway: clients and directories can list the tools, and every
+        // call says how to sign in, instead of the server exiting unexplained.
+        console.error(
+          '[OtaKit MCP] Not signed in. Tools are listed, but each call asks you to run `otakit login` (or set OTAKIT_TOKEN) and restart this server.',
+        );
+        serveUntilClosed(
+          serveStdio(
+            () =>
+              createOtaKitMcpServer({
+                mode: 'local',
+                version: CLI_VERSION,
+                adapter: {
+                  invoke: async () => {
+                    throw new PublicToolError(
+                      'NOT_AUTHENTICATED',
+                      'Not signed in to OtaKit.',
+                      'Run `otakit login`, or set OTAKIT_TOKEN, then restart the OtaKit MCP server.',
+                    );
+                  },
+                },
+              }),
+            {
+              onerror: (error) => console.error('[OtaKit MCP] transport error', error),
+            },
+          ),
+        );
+        return;
       }
 
       const explicitOrganizationId = options.organizationId?.trim();
@@ -147,10 +173,14 @@ export const mcpCommand = new Command('mcp')
         },
       );
 
-      const close = async () => {
-        await handle.close();
-      };
-      process.once('SIGINT', close);
-      process.once('SIGTERM', close);
+      serveUntilClosed(handle);
     });
   });
+
+function serveUntilClosed(handle: { close(): Promise<void> }): void {
+  const close = async () => {
+    await handle.close();
+  };
+  process.once('SIGINT', close);
+  process.once('SIGTERM', close);
+}
