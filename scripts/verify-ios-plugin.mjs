@@ -69,6 +69,12 @@ const result = spawnSync(
     resultBundlePath,
     '-parallel-testing-enabled',
     'NO',
+    // A test stuck on the simulator (a WebKit call that never returns) fails
+    // with a diagnostic instead of holding the job until it is cancelled.
+    '-test-timeouts-enabled',
+    'YES',
+    '-default-test-execution-time-allowance',
+    '300',
     '-quiet',
     'CODE_SIGNING_ALLOWED=NO',
   ],
