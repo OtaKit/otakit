@@ -225,7 +225,16 @@ const requestLogs = new WeakMap<Request, McpRequestLog>();
 const shortString = (value: unknown, max = 100) =>
   typeof value === 'string' && value.length > 0 ? value.slice(0, max) : undefined;
 
-function describeMessages(body: unknown): Pick<McpRequestLog, 'methods' | 'client' | 'protocol'> {
+// Where clients identify themselves: the initialize request (2025 protocols) or
+// every request's _meta (2026-07-28, which drops initialize).
+const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
+const PROTOCOL_VERSION_META_KEY = 'io.modelcontextprotocol/protocolVersion';
+const PROTOCOL_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function describeMessages(
+  body: unknown,
+  protocolHeader: string | null,
+): Pick<McpRequestLog, 'methods' | 'client' | 'protocol'> {
   const messages = (Array.isArray(body) ? body : [body]).filter(
     (message): message is Record<string, unknown> => !!message && typeof message === 'object',
   );
@@ -233,18 +242,28 @@ function describeMessages(body: unknown): Pick<McpRequestLog, 'methods' | 'clien
     .map((message) => shortString(message.method, 60))
     .filter((method): method is string => method !== undefined)
     .slice(0, 10);
-  const initialize = messages.find((message) => message.method === 'initialize');
-  const params = (initialize?.params ?? {}) as Record<string, unknown>;
-  const clientInfo = (params.clientInfo ?? {}) as Record<string, unknown>;
-  const protocol = shortString(params.protocolVersion, 20);
+
+  let client: McpRequestLog['client'];
+  let protocol: string | undefined;
+  for (const message of messages) {
+    const params = (message.params ?? {}) as Record<string, unknown>;
+    const meta = (params._meta ?? {}) as Record<string, unknown>;
+    const info = (
+      message.method === 'initialize' ? params.clientInfo : meta[CLIENT_INFO_META_KEY]
+    ) as Record<string, unknown> | undefined;
+    const version =
+      message.method === 'initialize' ? params.protocolVersion : meta[PROTOCOL_VERSION_META_KEY];
+    if (!client && info && typeof info === 'object') {
+      client = { name: shortString(info.name), version: shortString(info.version) };
+    }
+    protocol ??= shortString(version, 20);
+  }
+  // Streamable HTTP clients also name the version in a header on every request.
+  protocol ??= shortString(protocolHeader, 20);
   return {
     methods,
-    ...(initialize
-      ? {
-          client: { name: shortString(clientInfo.name), version: shortString(clientInfo.version) },
-          ...(protocol && /^\d{4}-\d{2}-\d{2}$/.test(protocol) ? { protocol } : {}),
-        }
-      : {}),
+    ...(client ? { client } : {}),
+    ...(protocol && PROTOCOL_VERSION_PATTERN.test(protocol) ? { protocol } : {}),
   };
 }
 
@@ -291,7 +310,7 @@ async function serveAuthorized(
 
   const tools = calledToolNames(parsedBody);
   requestLogs.set(request, {
-    ...describeMessages(parsedBody),
+    ...describeMessages(parsedBody, request.headers.get('mcp-protocol-version')),
     ...(tools.length > 0 ? { tools } : {}),
     credential: connection.credentialType,
     organizationId: connection.access.organizationId,
@@ -345,7 +364,19 @@ const oauthHandler = requireMcpAuth(auth, serveOAuthAuthorized, {
 export async function POST(request: Request): Promise<Response> {
   if (!isRemoteMcpEnabled()) return remoteMcpDisabled();
   const startedAt = Date.now();
+  // Refused requests never reach serveAuthorized; describe them from a copy.
+  const copy = request.clone();
   const response = await authorizeAndServe(request);
+  if (!requestLogs.has(request)) {
+    try {
+      requestLogs.set(
+        request,
+        describeMessages(await readBoundedJson(copy), request.headers.get('mcp-protocol-version')),
+      );
+    } catch {
+      // No readable JSON body: the line still records status and reason.
+    }
+  }
   logMcpRequest(request, response, startedAt);
   return response;
 }

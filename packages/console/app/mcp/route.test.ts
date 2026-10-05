@@ -140,6 +140,99 @@ describe('remote MCP HTTP boundary', () => {
     });
   });
 
+  it('logs which client and protocol made each request, in either protocol era', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const lastLine = () => {
+      const lines = log.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => line.startsWith('{"remoteMcp"'));
+      return (JSON.parse(lines.at(-1) ?? 'null') as { remoteMcp: Record<string, unknown> })
+        .remoteMcp;
+    };
+
+    await POST(
+      request({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'remote-test', version: '1.0.0' },
+        },
+      }),
+    );
+    expect(lastLine()).toMatchObject({
+      status: 200,
+      methods: ['initialize'],
+      client: { name: 'remote-test', version: '1.0.0' },
+      protocol: '2025-11-25',
+      credential: 'organization_key',
+    });
+
+    // 2026-07-28 has no initialize: every request names its client in _meta.
+    await POST(
+      request(
+        {
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'server/discover',
+          params: {
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientCapabilities': {},
+              'io.modelcontextprotocol/clientInfo': { name: 'claude-code', version: '2.1.0' },
+            },
+          },
+        },
+        { 'mcp-method': 'server/discover', 'mcp-protocol-version': '2026-07-28' },
+      ),
+    );
+    expect(lastLine()).toMatchObject({
+      methods: ['server/discover'],
+      client: { name: 'claude-code', version: '2.1.0' },
+      protocol: '2026-07-28',
+    });
+
+    // A 2025 client after initialize: only the header names the version.
+    await POST(
+      request(
+        { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+        { 'mcp-protocol-version': '2025-06-18' },
+      ),
+    );
+    const line = lastLine();
+    expect(line).toMatchObject({ methods: ['tools/list'], protocol: '2025-06-18' });
+    expect(line.client).toBeUndefined();
+
+    // Refused requests say who sent them too.
+    mocks.verifySecretAuth.mockResolvedValue({ success: false, error: 'Invalid secret key' });
+    const refused = await POST(
+      request(
+        {
+          jsonrpc: '2.0',
+          id: 4,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-11-25',
+            capabilities: {},
+            clientInfo: { name: 'directory-probe', version: '0.1' },
+          },
+        },
+        { authorization: '' },
+      ),
+    );
+    expect(refused.status).toBe(401);
+    expect(lastLine()).toMatchObject({
+      status: 401,
+      reason: 'missing_token',
+      methods: ['initialize'],
+      client: { name: 'directory-probe', version: '0.1' },
+      protocol: '2025-11-25',
+    });
+    expect(lastLine().credential).toBeUndefined();
+  });
+
   it('returns the standard OAuth discovery challenge when delegated auth is enabled', async () => {
     vi.stubEnv('OTAKIT_REMOTE_MCP_OAUTH_ENABLED', 'true');
     mocks.verifySecretAuth.mockResolvedValue({ success: false, error: 'Invalid secret key' });
