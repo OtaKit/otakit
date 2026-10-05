@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { OAuthConsent } from './consent';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { oauthClientOrigin } from '@/lib/mcp/client-identity';
 import { isRemoteMcpOAuthEnabled } from '@/lib/mcp/features';
 import { describeOrganization } from '@/lib/organization-identity';
 import {
@@ -95,7 +96,7 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
     <OAuthConsent
       client={{
         name: client.client_name ?? 'An MCP client',
-        uri: client.client_uri ?? null,
+        uri: oauthClientOrigin(clientId, client.client_uri ?? null),
       }}
       organizationId={selectedOrganization.id}
       organizationName={selectedOrganization.name}
