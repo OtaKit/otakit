@@ -1,6 +1,6 @@
 {
   "name": "otakit",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Inspect, upload, release, monitor, and revert OtaKit Capacitor OTA updates.",
   "author": {
     "name": "OtaKit",

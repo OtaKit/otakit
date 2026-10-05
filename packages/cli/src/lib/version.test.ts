@@ -4,8 +4,8 @@ import { CLI_VERSION, getCliUserAgent, readCliVersion } from './version.js';
 
 describe('CLI version metadata', () => {
   it('reads the publishable package version instead of using the fallback', () => {
-    expect(readCliVersion()).toBe('1.9.0');
-    expect(CLI_VERSION).toBe('1.9.0');
-    expect(getCliUserAgent()).toBe('otakit-cli/1.9.0');
+    expect(readCliVersion()).toBe('1.9.1');
+    expect(CLI_VERSION).toBe('1.9.1');
+    expect(getCliUserAgent()).toBe('otakit-cli/1.9.1');
   });
 });

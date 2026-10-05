@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "otakit",
   "displayName": "OtaKit",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Ship over-the-air updates to Capacitor apps: publish releases you approve, run staged rollouts, read rollout health, and revert, through OtaKit's hosted MCP server and release skill.",
   "author": {
     "name": "OtaKit",

@@ -136,6 +136,39 @@ afterAll(async () => {
 });
 
 describe('local MCP CLI process', () => {
+  it('starts without a login, lists its tools, and tells each call how to sign in', async () => {
+    const testRoot = await mkdtemp(join(buildDirectory, 'signed-out-'));
+    const projectRoot = join(testRoot, 'project');
+    const configRoot = join(testRoot, 'config');
+    await mkdir(projectRoot, { recursive: true });
+    await mkdir(configRoot, { recursive: true });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [cliBundle, 'mcp', '--project-root', projectRoot],
+      cwd: packageRoot,
+      env: childEnvironment({ XDG_CONFIG_HOME: configRoot, APPDATA: configRoot }),
+      stderr: 'pipe',
+    });
+    const client = new Client({ name: 'otakit-cli-e2e', version: '1.0.0' });
+    try {
+      await client.connect(transport);
+      const { tools } = await client.listTools();
+      expect(tools.map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(['get_context', 'publish_release', 'upload_bundle']),
+      );
+      const result = await client.callTool({ name: 'get_context', arguments: {} });
+      expect(result.isError).toBe(true);
+      const [content] = result.content as Array<{ type: string; text: string }>;
+      expect(JSON.parse(content?.text ?? '{}')).toMatchObject({
+        code: 'NOT_AUTHENTICATED',
+        nextStep: expect.stringContaining('otakit login'),
+      });
+    } finally {
+      await client.close().catch(() => undefined);
+      await rm(testRoot, { recursive: true, force: true });
+    }
+  });
+
   it('lets the configured app resolve organization context without leaking the CLI default', async () => {
     const result = await runMcpConnection({
       appId: 'app-project',
