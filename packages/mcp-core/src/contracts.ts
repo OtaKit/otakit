@@ -98,7 +98,12 @@ export const runtimeVersionSchema = z
   .regex(/^[A-Za-z0-9._-]+$/)
   .nullable()
   .describe('Native runtime lane, or null for the default runtime');
-export const cursorSchema = z.string().min(1).max(256).optional();
+export const cursorSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .optional()
+  .describe("The previous page's nextCursor; omit for the first page");
 export const idempotencyKeySchema = z
   .string()
   .min(1)
@@ -118,8 +123,24 @@ export const releaseOptionsShape = {
     .boolean()
     .optional()
     .describe('Enable rollback-share based automatic revert for this release'),
-  autoRevertRatePercent: z.number().int().min(1).max(95).optional(),
-  autoRevertMinSample: z.number().int().min(10).max(100000).optional(),
+  autoRevertRatePercent: z
+    .number()
+    .int()
+    .min(1)
+    .max(95)
+    .optional()
+    .describe(
+      'With autoRevert: share of completed update trials that rolled back, over 24 hours, that triggers the revert (1-95, default 20)',
+    ),
+  autoRevertMinSample: z
+    .number()
+    .int()
+    .min(10)
+    .max(100000)
+    .optional()
+    .describe(
+      'With autoRevert: completed trials (applied plus rolled back) needed before the share is trusted (10-100000, default 50)',
+    ),
   rolloutPercent: z
     .number()
     .int()
@@ -144,17 +165,64 @@ export const rolloutPercentSchema = z
 
 export const paginationShape = {
   cursor: cursorSchema,
-  limit: z.number().int().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(200).optional().describe('Maximum results in one page'),
 };
+
+export const compatibilityDecisionSchema = z
+  .enum(['block', 'proceed', 'skip'])
+  .optional()
+  .describe(
+    "When the bundle's native dependencies differ from the lane's current release: block (default) refuses; proceed publishes anyway, only after confirming no store build is needed; skip does not compare",
+  );
+export const packageJsonPathSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .optional()
+  .describe(
+    "package.json that declares the app's native dependencies; defaults to the project root's",
+  );
+export const nodeModulesPathSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .optional()
+  .describe('node_modules holding those dependencies; defaults to the one beside package.json');
 
 export const uploadShape = {
   appId: resolvedAppIdSchema,
-  sourcePath: z.string().min(1).max(4096).optional(),
-  version: z.string().trim().min(1).max(64).optional(),
-  versionMode: z.enum(['strict', 'auto']).optional(),
+  sourcePath: z
+    .string()
+    .min(1)
+    .max(4096)
+    .optional()
+    .describe("Built web assets directory in the project; defaults to Capacitor's webDir"),
+  version: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe('Bundle version; defaults to OTAKIT_VERSION, then a generated one'),
+  versionMode: z
+    .enum(['strict', 'auto'])
+    .optional()
+    .describe(
+      'strict requires version or OTAKIT_VERSION; auto (default) generates a version when neither is set',
+    ),
   runtimeVersion: runtimeVersionSchema.optional(),
-  strategy: z.enum(['zip', 'deltas']).optional(),
-  encrypt: z.boolean().optional(),
-  packageJsonPath: z.string().min(1).max(4096).optional(),
-  nodeModulesPath: z.string().min(1).max(4096).optional(),
+  strategy: z
+    .enum(['zip', 'deltas'])
+    .optional()
+    .describe(
+      "zip uploads one archive; deltas uploads files separately so devices download only changed ones. Defaults to the project's updateStrategy, then zip",
+    ),
+  encrypt: z
+    .boolean()
+    .optional()
+    .describe(
+      'Require encryption with OTAKIT_ENCRYPTION_KEY and fail if it is not set; bundles are encrypted whenever that variable is set',
+    ),
+  packageJsonPath: packageJsonPathSchema,
+  nodeModulesPath: nodeModulesPathSchema,
 };

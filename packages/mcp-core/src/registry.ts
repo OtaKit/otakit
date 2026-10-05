@@ -31,6 +31,7 @@ type RegisterTool = (
     description: string;
     inputSchema: z.ZodObject<z.ZodRawShape>;
     annotations: (typeof OTAKIT_TOOL_CATALOG)[number]['annotations'];
+    _meta?: Record<string, unknown>;
   },
   callback: (input: Record<string, unknown>, context: ServerContext) => Promise<CallToolResult>,
 ) => unknown;
@@ -148,7 +149,15 @@ export function createOtaKitMcpServer(options: {
   onError?: (error: unknown, tool: OtaKitToolName) => void;
 }): McpServer {
   const server = new McpServer(
-    { name: options.mode === 'local' ? 'otakit-local' : 'otakit-remote', version: options.version },
+    {
+      name: options.mode === 'local' ? 'otakit-local' : 'otakit-remote',
+      title: 'OtaKit',
+      version: options.version,
+      websiteUrl: 'https://otakit.app',
+      icons: [
+        { src: 'https://www.otakit.app/logo.png', mimeType: 'image/png', sizes: ['1200x1200'] },
+      ],
+    },
     {
       capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
       instructions: serverInstructions(options.mode, options.binding),
@@ -204,6 +213,15 @@ export function createOtaKitMcpServer(options: {
         // identical, information-free schema on every tool — 44% of the whole
         // tools/list payload. Bring it back per-tool if `data` ever gets typed.
         annotations: definition.annotations,
+        // The OAuth scopes a call needs, for clients and directories that read
+        // per-tool auth (OpenAI's Apps SDK). Local stdio mode has no OAuth.
+        ...(options.mode === 'remote'
+          ? {
+              _meta: {
+                securitySchemes: [{ type: 'oauth2', scopes: [...definition.oauthScopes] }],
+              },
+            }
+          : {}),
       },
       async (input, context) => {
         try {

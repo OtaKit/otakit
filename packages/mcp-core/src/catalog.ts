@@ -5,9 +5,12 @@ import {
   resolvedAppIdSchema,
   bundleIdSchema,
   channelSchema,
+  compatibilityDecisionSchema,
   cursorSchema,
   expectedCurrentReleaseIdSchema,
   idempotencyKeySchema,
+  nodeModulesPathSchema,
+  packageJsonPathSchema,
   paginationShape,
   previewIdSchema,
   releaseIdSchema,
@@ -33,17 +36,21 @@ export type OtaKitToolDefinition = {
 
 const both = ['local', 'remote'] as const;
 const local = ['local'] as const;
+// openWorldHint is false by default: these tools act on the user's own OtaKit
+// organization. reachesEndUsers marks the ones whose effect leaves it — what
+// app users' devices download, or a public link anyone holding it can open.
+// Directory reviews (Claude, OpenAI) check that hints match behaviour.
 const readOnly = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
-  openWorldHint: true,
+  openWorldHint: false,
 } satisfies ToolAnnotations;
 const write = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: false,
-  openWorldHint: true,
+  openWorldHint: false,
 } satisfies ToolAnnotations;
 const idempotentWrite = {
   ...write,
@@ -57,6 +64,7 @@ const destructiveNonIdempotent = {
   ...write,
   destructiveHint: true,
 } satisfies ToolAnnotations;
+const reachesEndUsers = { openWorldHint: true } satisfies ToolAnnotations;
 
 export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
   {
@@ -88,9 +96,15 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'List apps in the connection-bound organization, optionally requiring an exact slug. Never guesses an app when the slug is absent.',
     modes: both,
     inputSchema: z.object({
-      slug: z.string().trim().min(1).max(120).optional(),
+      slug: z
+        .string()
+        .trim()
+        .min(1)
+        .max(120)
+        .optional()
+        .describe('Return only the app with exactly this slug'),
       cursor: cursorSchema,
-      limit: z.number().int().min(1).max(50).optional(),
+      limit: z.number().int().min(1).max(50).optional().describe('Maximum apps (1-50, default 20)'),
     }),
     annotations: readOnly,
     oauthScopes: ['otakit:read'],
@@ -108,7 +122,10 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
         .trim()
         .min(3)
         .max(120)
-        .regex(/^[A-Za-z0-9._-]+$/),
+        .regex(/^[A-Za-z0-9._-]+$/)
+        .describe(
+          'App slug, unique in the organization: 3-120 letters, digits, dots, underscores or hyphens',
+        ),
     }),
     annotations: write,
     oauthScopes: ['otakit:app:write'],
@@ -122,7 +139,13 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     modes: both,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
-      version: z.string().trim().min(1).max(64).optional(),
+      version: z
+        .string()
+        .trim()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe('Return only bundles with exactly this version'),
       ...paginationShape,
     }),
     annotations: readOnly,
@@ -191,7 +214,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       appId: resolvedAppIdSchema,
       bundleId: bundleIdSchema,
       channel: channelSchema,
-      compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
+      compatibilityDecision: compatibilityDecisionSchema,
       ...releaseOptionsShape,
     }),
     annotations: readOnly,
@@ -210,10 +233,10 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       channel: channelSchema,
       expectedCurrentReleaseId: expectedCurrentReleaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
-      compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
+      compatibilityDecision: compatibilityDecisionSchema,
       ...releaseOptionsShape,
     }),
-    annotations: destructive,
+    annotations: { ...destructive, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,
   },
@@ -226,7 +249,10 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema,
-      window: z.enum(['1h', '24h', '7d', '30d']).optional(),
+      window: z
+        .enum(['1h', '24h', '7d', '30d'])
+        .optional()
+        .describe('Period the counts cover, ending now (default 24h)'),
     }),
     annotations: readOnly,
     oauthScopes: ['otakit:read'],
@@ -241,17 +267,41 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
       releaseId: releaseIdSchema.optional(),
-      bundleVersion: z.string().trim().min(1).max(64).optional(),
+      bundleVersion: z
+        .string()
+        .trim()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe('Only events for this bundle version'),
       action: z
         .enum(['downloaded', 'applied', 'download_error', 'rollback', 'check_error'])
-        .optional(),
-      platform: z.enum(['ios', 'android']).optional(),
+        .optional()
+        .describe('Only events of this kind'),
+      platform: z.enum(['ios', 'android']).optional().describe('Only events from this platform'),
       channel: channelSchema.optional(),
       runtimeVersion: runtimeVersionSchema.optional(),
-      since: z.iso.datetime().optional(),
-      timeframe: z.enum(['1h', '24h', '7d', '30d']).optional(),
-      includeDetail: z.boolean().optional(),
-      limit: z.number().int().min(1).max(200).optional(),
+      since: z.iso
+        .datetime()
+        .optional()
+        .describe('Only events after this ISO 8601 time; takes precedence over timeframe'),
+      timeframe: z
+        .enum(['1h', '24h', '7d', '30d'])
+        .optional()
+        .describe('How far back to look when since is not set (default 24h)'),
+      includeDetail: z
+        .boolean()
+        .optional()
+        .describe(
+          "Set false to leave out each event's raw client-reported detail text, which is included by default",
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('Maximum events (1-200, default 50)'),
     }),
     annotations: readOnly,
     oauthScopes: ['otakit:read'],
@@ -291,14 +341,14 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       releaseId: releaseIdSchema,
       expectedCurrentReleaseId: releaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
-      forceImmediate: z.boolean().optional(),
+      forceImmediate: releaseOptionsShape.forceImmediate,
       expectedRolloutPercent: rolloutPercentSchema
         .optional()
         .describe(
           'When cancelling a rollout: the rollout percentage that was reviewed. The revert is refused if the rollout changed or completed meanwhile.',
         ),
     }),
-    annotations: destructive,
+    annotations: { ...destructive, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,
   },
@@ -317,7 +367,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       ),
       idempotencyKey: idempotencyKeySchema,
     }),
-    annotations: destructive,
+    annotations: { ...destructive, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,
   },
@@ -345,7 +395,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
           "The app's custom URL scheme (for example myapp), needed once per app so the link can open it",
         ),
     }),
-    annotations: write,
+    annotations: { ...write, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,
   },
@@ -356,7 +406,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Revoke a preview link. Phones on it return to their normal release on their next update check.',
     modes: both,
     inputSchema: z.object({ appId: resolvedAppIdSchema, previewId: previewIdSchema }),
-    annotations: destructive,
+    annotations: { ...destructive, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
     allowOrganizationKey: true,
   },
@@ -367,7 +417,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       'Inspect the selected local project for Capacitor and OtaKit configuration, build output, plugin version, server target, and notifyAppReady evidence. Does not return source contents.',
     modes: local,
     inputSchema: z.object({}),
-    annotations: { ...readOnly, openWorldHint: false },
+    annotations: readOnly,
     oauthScopes: [],
     allowOrganizationKey: true,
   },
@@ -379,8 +429,8 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     modes: local,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,
-      packageJsonPath: z.string().min(1).max(4096).optional(),
-      nodeModulesPath: z.string().min(1).max(4096).optional(),
+      packageJsonPath: packageJsonPathSchema,
+      nodeModulesPath: nodeModulesPathSchema,
       channel: channelSchema,
       runtimeVersion: runtimeVersionSchema,
     }),
@@ -410,13 +460,13 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
       channel: channelSchema,
       expectedCurrentReleaseId: expectedCurrentReleaseIdSchema,
       idempotencyKey: idempotencyKeySchema,
-      compatibilityDecision: z.enum(['block', 'proceed', 'skip']).optional(),
+      compatibilityDecision: compatibilityDecisionSchema,
       ...releaseOptionsShape,
     }),
     // The publish phase is idempotent, but the preceding artifact upload is
     // not durably keyed. Callers must reuse the returned bundle after a partial
     // result instead of retrying the combined operation.
-    annotations: destructiveNonIdempotent,
+    annotations: { ...destructiveNonIdempotent, ...reachesEndUsers },
     oauthScopes: ['otakit:bundle:write', 'otakit:release:write'],
     allowOrganizationKey: true,
   },
