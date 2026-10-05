@@ -21,7 +21,9 @@ describe('Better Auth OAuth Prisma schema', () => {
 });
 
 databaseDescribe('Better Auth OAuth initialization', () => {
-  const resourceUrl = 'https://console.example/mcp';
+  // Its own identifier: this test rewrites and deletes the row, and other test
+  // files sign in against https://console.example/mcp at the same time.
+  const resourceUrl = 'https://seed-test.console.example/mcp';
 
   afterAll(async () => {
     await db.oauthResource.deleteMany({ where: { identifier: resourceUrl } });

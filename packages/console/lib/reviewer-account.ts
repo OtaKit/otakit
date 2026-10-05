@@ -1,7 +1,5 @@
 import { randomBytes } from 'node:crypto';
 
-import { createLocalAccountIssuer } from '@better-auth/core/db';
-
 import { auth } from './auth';
 
 /**
@@ -31,7 +29,6 @@ export async function createReviewerAccount(
   await context.internalAdapter.linkAccount({
     userId: user.id,
     providerId: 'credential',
-    issuer: createLocalAccountIssuer('credential'),
     accountId: user.id,
     password: await context.password.hash(password),
   });

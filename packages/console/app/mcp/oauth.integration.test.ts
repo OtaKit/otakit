@@ -11,6 +11,25 @@ vi.mock('next/headers', async (importOriginal) => ({
   headers: async () => new Headers(),
 }));
 
+// Client ID metadata documents are fetched over the network; serve Claude Code's
+// published document (claude.ai/oauth/claude-code-client-metadata) in-process.
+const CLAUDE_CODE_CLIENT_ID = 'https://claude.ai/oauth/claude-code-client-metadata';
+vi.mock('@/lib/mcp/cimd-fetch', () => ({
+  fetchCimdMetadataResource: async (input: string | URL | Request) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url !== CLAUDE_CODE_CLIENT_ID) return new Response('Not found', { status: 404 });
+    return Response.json({
+      client_id: CLAUDE_CODE_CLIENT_ID,
+      client_name: 'Claude Code',
+      client_uri: 'https://claude.ai',
+      redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    });
+  },
+}));
+
 // lib/auth decides at import time whether the MCP OAuth plugins are mounted.
 vi.hoisted(() => {
   process.env.OTAKIT_REMOTE_MCP_ENABLED = 'true';
@@ -122,7 +141,7 @@ databaseDescribe('remote MCP OAuth (PostgreSQL integration)', () => {
    * The login and consent pages for a new user: email code, sign-in carrying
    * the signed OAuth request, then approval. Returns the authorization code.
    */
-  async function approveAsNewUser(login: URL, state: string) {
+  async function approveAsNewUser(login: URL, state: string, redirectUri = LOOPBACK_REDIRECT) {
     const email = `agent-${randomUUID()}@example.com`;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const sent = await authPOST(
@@ -163,7 +182,7 @@ databaseDescribe('remote MCP OAuth (PostgreSQL integration)', () => {
     );
     expect(consent.status).toBe(200);
     const callback = new URL(((await consent.json()) as { url: string }).url);
-    expect(`${callback.origin}${callback.pathname}`).toBe(LOOPBACK_REDIRECT);
+    expect(`${callback.origin}${callback.pathname}`).toBe(redirectUri);
     expect(callback.searchParams.get('state')).toBe(state);
     const code = callback.searchParams.get('code');
     expect(code).toBeTruthy();
@@ -554,5 +573,70 @@ databaseDescribe('remote MCP OAuth (PostgreSQL integration)', () => {
       refreshToken = next;
     }
     expect(await db.oauthRefreshToken.count({ where: { clientId, revoked: null } })).toBe(1);
+  });
+  it('signs in Claude Code: metadata-document client, port-less localhost callback', async () => {
+    clientIds.push(CLAUDE_CODE_CLIENT_ID);
+    // Claude Code registers http://localhost/callback and listens on a random port.
+    for (const redirectUri of [
+      'http://localhost:64393/callback',
+      'http://127.0.0.1:52011/callback',
+    ]) {
+      const authorize = await authorizeRequest({
+        response_type: 'code',
+        client_id: CLAUDE_CODE_CLIENT_ID,
+        code_challenge: createHash('sha256').update(randomBytes(32)).digest('base64url'),
+        code_challenge_method: 'S256',
+        redirect_uri: redirectUri,
+        state: 'state-cc',
+        scope:
+          'otakit:read otakit:app:write otakit:bundle:write otakit:release:write offline_access',
+        prompt: 'consent',
+        resource: RESOURCE,
+      });
+      const login = new URL(((await authorize.json()) as { url: string }).url, ORIGIN);
+      expect(login.searchParams.get('error'), redirectUri).toBeNull();
+      expect(login.pathname, redirectUri).toBe('/login');
+      expect(login.searchParams.get('redirect_uri'), redirectUri).toBe(redirectUri);
+    }
+
+    const verifier = randomBytes(32).toString('base64url');
+    const redirectUri = 'http://localhost:64393/callback';
+    const authorize = await authorizeRequest({
+      response_type: 'code',
+      client_id: CLAUDE_CODE_CLIENT_ID,
+      code_challenge: createHash('sha256').update(verifier).digest('base64url'),
+      code_challenge_method: 'S256',
+      redirect_uri: redirectUri,
+      state: 'state-cc',
+      scope: 'otakit:read offline_access',
+      prompt: 'consent',
+      resource: RESOURCE,
+    });
+    const login = new URL(((await authorize.json()) as { url: string }).url, ORIGIN);
+    const { code, organizationId } = await approveAsNewUser(login, 'state-cc', redirectUri);
+    const exchange = await authPOST(
+      postForm('/api/auth/oauth2/token', {
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        client_id: CLAUDE_CODE_CLIENT_ID,
+        redirect_uri: redirectUri,
+        resource: RESOURCE,
+      }),
+    );
+    expect(exchange.status).toBe(200);
+    const tokens = (await exchange.json()) as { access_token: string; refresh_token?: string };
+    expect(tokens.refresh_token).toBeTruthy();
+    expect(jwtPayload(tokens.access_token)).toMatchObject({
+      aud: RESOURCE,
+      client_id: CLAUDE_CODE_CLIENT_ID,
+      otakit_organization_id: organizationId,
+    });
+
+    serveIssuerInProcess();
+    const list = await mcpPOST(
+      mcpRequest({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }, tokens.access_token),
+    );
+    expect(list.status).toBe(200);
   });
 });

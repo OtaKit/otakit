@@ -61,9 +61,10 @@ model Account {
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId             String
   providerId            String
-  /// Better Auth keys accounts by (issuer, accountId) since 1.5. It writes
-  /// "local:oauth:<providerId>" unless a provider declares its own issuer.
-  issuer                String
+  /// Written by Better Auth 1.7.0-1.7.2 only. Since 1.7.3 accounts are keyed by
+  /// (providerId, accountId) again and new rows leave this empty; kept for the
+  /// existing rows, dropping it is separate cleanup.
+  issuer                String?
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
@@ -73,8 +74,6 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-
-  @@unique([issuer, accountId])
 }
 
 model Verification {
