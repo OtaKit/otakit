@@ -1,0 +1,49 @@
+name: Uptime
+
+# Production console check every 5 minutes. A failed run is the alert: GitHub
+# emails the person who last changed the cron line below. The health check
+# queries the database; /login is a page render, which is what failed in the
+# 2026-10-01 outage while API routes stayed up.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  console:
+    name: Console is up
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check console endpoints
+        shell: bash
+        run: |
+          set -u
+          check() {
+            local url="$1" expect="$2" status body
+            # Three tries 20s apart, so one slow cold start does not page anyone.
+            for attempt in 1 2 3; do
+              body=$(curl -sS --max-time 20 -o - -w '\n%{http_code}' "$url") || body=$'\n000'
+              status="${body##*$'\n'}"
+              body="${body%$'\n'*}"
+              if [ "$status" = 200 ] && grep -q -- "$expect" <<<"$body"; then
+                echo "OK $url"
+                return 0
+              fi
+              echo "Attempt $attempt: $url returned $status"
+              [ "$attempt" -lt 3 ] && sleep 20
+            done
+            echo "::error title=Console down::$url returned $status after 3 attempts"
+            return 1
+          }
+
+          failed=0
+          check 'https://console.otakit.app/api/health?db=true' '"status":"ok"' || failed=1
+          check 'https://console.otakit.app/login' '</html>' || failed=1
+          exit "$failed"
