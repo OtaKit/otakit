@@ -105,6 +105,29 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           response={'{ "deleted": true, "id": "uuid" }'}
           description="Delete a bundle. Bundles that are part of a release history cannot be deleted."
         />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/bundles/:bundleId/diff"
+          auth="Bearer"
+          queryParams="?against=<bundleId> or ?channel=<name> (empty for the base channel)"
+          response={`{
+  "target": { "id": "…", "version": "1.4.2", "strategy": "deltas", "size": 4508876 },
+  "base": { "id": "…", "version": "1.4.1", … },
+  "baseSource": "channel",          // "against" | "channel" | "previous_upload"
+  "status": "ok",                   // or "target_unavailable" | "base_unavailable"
+  "unavailableReason": null,        // "encrypted" | "unreadable"
+  "comparable": true,               // false: zip vs deltas, compared by size only
+  "summary": { "added": 3, "changed": 12, "removed": 1, "unchanged": 210,
+               "totalBefore": 4299161, "totalAfter": 4508876,
+               "downloadBytes": 38912 },
+  "changes": [{ "path": "assets/hero.png", "status": "added",
+                "sizeBefore": null, "sizeAfter": 3145728 }],
+  "unlistedChanges": 0,
+  "warnings": [{ "code": "env_file", "severity": "warning",
+                 "message": "…", "paths": [".env.production"], "count": 1 }]
+}`}
+          description="Compare a bundle with another one. Without against or channel, the base is the previous upload of the same runtime version. Zip bundles are read from the archive's central directory and delta bundles from their file list; encrypted bundles cannot be inspected. downloadBytes is what a device on the base downloads: the archive for zip updates, only content it does not have yet for delta updates, or null when that depends on the device. Warning codes: env_file, git_directory and node_modules (warnings); source_map, dotfile, native_installer, large_new_file and size_increase (notes)."
+        />
       </div>
 
       <Separator className="my-10" />
