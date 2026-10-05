@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 
 import { auth } from '@/lib/auth';
 
+import { isReviewerLoginEnabled } from '@/lib/reviewer-login';
+
 import { LoginPageClient } from './LoginPageClient';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -73,6 +75,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
       siteUrl={siteUrl}
       authorizationPath={authorizationPath}
       initialError={initialError}
+      reviewerSignIn={isReviewerLoginEnabled()}
     />
   );
 }

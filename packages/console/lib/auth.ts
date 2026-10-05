@@ -10,6 +10,7 @@ import { headers } from 'next/headers';
 import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
+import { isReviewerLoginEnabled } from './reviewer-login';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
 import { withMcpRegistrationDefaults } from './mcp/client-registration';
 import { normalizeRequestedScope, normalizeResourceIndicator } from './mcp/oauth-request';
@@ -274,7 +275,9 @@ export const auth = betterAuth({
       allowDifferentEmails: false,
     },
   },
-  emailAndPassword: { enabled: false },
+  // Only pre-created app-directory reviewer accounts sign in with a password;
+  // it is off unless OTAKIT_REVIEWER_LOGIN is set, and sign-up is never allowed.
+  emailAndPassword: { enabled: isReviewerLoginEnabled(), disableSignUp: true },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // refresh after 1 day

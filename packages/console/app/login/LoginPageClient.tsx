@@ -17,6 +17,8 @@ import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+import { ReviewerSignIn } from './ReviewerSignIn';
 import { Separator } from '@/components/ui/separator';
 
 type LoginPageClientProps = {
@@ -28,6 +30,8 @@ type LoginPageClientProps = {
   authorizationPath: string | null;
   /** Why the last attempt came back here, when it came back here at all. */
   initialError: string | null;
+  /** Show the password form for pre-created app-directory reviewer accounts. */
+  reviewerSignIn: boolean;
 };
 
 type Step = 'email' | 'otp';
@@ -183,6 +187,7 @@ export function LoginPageClient({
   siteUrl,
   authorizationPath,
   initialError,
+  reviewerSignIn,
 }: LoginPageClientProps) {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -508,29 +513,32 @@ export function LoginPageClient({
               ) : null}
 
               {step === 'email' ? (
-                <form onSubmit={sendOtp} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      autoFocus
-                      autoComplete="email"
-                      className="h-11"
-                    />
-                  </div>
-                  <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
-                    {busyAction === 'otp-send' ? (
-                      <LoaderCircle className="size-4 animate-spin" />
-                    ) : (
-                      <Mail className="size-4" />
-                    )}
-                    {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email OTP'}
-                  </Button>
-                </form>
+                <>
+                  <form onSubmit={sendOtp} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="login-email">Email</Label>
+                      <Input
+                        id="login-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        autoFocus
+                        autoComplete="email"
+                        className="h-11"
+                      />
+                    </div>
+                    <Button type="submit" className="h-11 w-full gap-2" disabled={busy}>
+                      {busyAction === 'otp-send' ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <Mail className="size-4" />
+                      )}
+                      {busyAction === 'otp-send' ? 'Sending code...' : 'Continue with email OTP'}
+                    </Button>
+                  </form>
+                  {reviewerSignIn ? <ReviewerSignIn authorizationPath={authorizationPath} /> : null}
+                </>
               ) : (
                 <form onSubmit={verifyOtp} className="space-y-4">
                   <div className="space-y-2">
