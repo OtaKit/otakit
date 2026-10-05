@@ -28,7 +28,18 @@ databaseDescribe('Better Auth OAuth initialization', () => {
     await db.$disconnect();
   });
 
-  it('seeds the MCP resource with every OtaKit scope', async () => {
+  it('seeds the MCP resource with every OtaKit scope and offline_access', async () => {
+    // A row seeded by an earlier deployment, before offline_access was allowed.
+    await db.oauthResource.upsert({
+      where: { identifier: resourceUrl },
+      create: {
+        id: 'stale-mcp-resource',
+        identifier: resourceUrl,
+        name: resourceUrl,
+        allowedScopes: [...OTAKIT_OAUTH_SCOPES],
+      },
+      update: { allowedScopes: [...OTAKIT_OAUTH_SCOPES] },
+    });
     vi.stubEnv('OTAKIT_REMOTE_MCP_ENABLED', 'true');
     vi.stubEnv('OTAKIT_REMOTE_MCP_OAUTH_ENABLED', 'true');
     vi.stubEnv('OTAKIT_REMOTE_MCP_RESOURCE_URL', resourceUrl);
@@ -43,6 +54,6 @@ databaseDescribe('Better Auth OAuth initialization', () => {
         where: { identifier: resourceUrl },
         select: { allowedScopes: true },
       }),
-    ).resolves.toEqual({ allowedScopes: [...OTAKIT_OAUTH_SCOPES] });
+    ).resolves.toEqual({ allowedScopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'] });
   });
 });
