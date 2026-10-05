@@ -12,6 +12,8 @@
   "repository": "https://github.com/OtaKit/otakit",
   "license": "MIT",
   "privacyPolicyUrl": "https://otakit.app/policy",
+  "termsOfServiceUrl": "https://otakit.app/terms",
+  "supportUrl": "mailto:support@otakit.app",
   "keywords": ["capacitor", "ota", "releases", "mcp", "agent-skills"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json"
