@@ -212,7 +212,9 @@ export function createOtaKitMcpServer(options: {
         // whose payload is an untyped JSON value, so declaring it repeated one
         // identical, information-free schema on every tool — 44% of the whole
         // tools/list payload. Bring it back per-tool if `data` ever gets typed.
-        annotations: definition.annotations,
+        // annotations.title repeats the title for clients and directories that
+        // read only the annotation (Claude's directory flags tools without it).
+        annotations: { title: definition.title, ...definition.annotations },
         // The OAuth scopes a call needs, for clients and directories that read
         // per-tool auth (OpenAI's Apps SDK). Local stdio mode has no OAuth.
         ...(options.mode === 'remote'

@@ -219,6 +219,7 @@ describe('OtaKit MCP registry transport', () => {
     expect(tools).toHaveLength(19);
     for (const tool of tools) {
       expect(tool.title, tool.name).toBeTruthy();
+      expect(tool.annotations?.title, tool.name).toBe(tool.title);
       for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint']) {
         expect(
           typeof tool.annotations?.[hint as keyof typeof tool.annotations],
