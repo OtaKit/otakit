@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "otakit",
+  "displayName": "OtaKit",
+  "version": "1.9.0",
+  "description": "Ship over-the-air updates to Capacitor apps: publish releases you approve, run staged rollouts, read rollout health, and revert, through OtaKit's hosted MCP server and release skill.",
+  "author": {
+    "name": "OtaKit",
+    "url": "https://otakit.app"
+  },
+  "homepage": "https://otakit.app/docs/agents",
+  "repository": "https://github.com/OtaKit/otakit",
+  "license": "MIT",
+  "keywords": ["capacitor", "ota", "releases", "mcp", "agent-skills"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

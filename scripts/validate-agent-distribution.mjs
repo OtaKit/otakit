@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// The Claude directory takes a plugin folder, not the repository root, and
+// rejects `npx …@latest`, so it gets its own copy that uses the hosted server.
+const DIRECTORY_PLUGIN = 'plugins/claude-directory/otakit';
+const SYNC_HINT = 'run `node scripts/sync-claude-directory-plugin.mjs`';
 const errors = [];
 
 await validate();
@@ -24,6 +28,8 @@ async function validate() {
   const claudeMarketplace = await readJson('.claude-plugin/marketplace.json');
   const codexMcp = await readJson('.codex-plugin/mcp.json');
   const claudeMcp = await readJson('.claude-plugin/mcp.json');
+  const directoryPlugin = await readJson(`${DIRECTORY_PLUGIN}/.claude-plugin/plugin.json`);
+  const directoryMcp = await readJson(`${DIRECTORY_PLUGIN}/.mcp.json`);
   const skillText = await readText('skills/otakit/SKILL.md');
   const mcpCorePackage = await readJson('packages/mcp-core/package.json');
   const mcpVersionSource = await readText('packages/mcp-core/src/version.ts');
@@ -36,6 +42,8 @@ async function validate() {
     !claudeMarketplace ||
     !codexMcp ||
     !claudeMcp ||
+    !directoryPlugin ||
+    !directoryMcp ||
     skillText === null
   ) {
     return;
@@ -69,11 +77,12 @@ async function validate() {
     registry.version,
     codexPlugin.version,
     claudePlugin.version,
+    directoryPlugin.version,
     frontmatter.version,
   ];
   expect(
     versions.every((version) => version === versions[0]),
-    `CLI, mcp-core, advertised MCP, registry, plugin, and Skill versions must match (found ${versions.join(', ')})`,
+    `CLI, mcp-core, advertised MCP, registry, plugin, directory plugin, and Skill versions must match (found ${versions.join(', ')})`,
   );
 
   expect(
@@ -162,6 +171,50 @@ async function validate() {
     ),
     'server.json must declare the canonical Streamable HTTP endpoint',
   );
+
+  expect(directoryPlugin.name === 'otakit', 'Claude directory plugin name must be `otakit`');
+  expect(
+    directoryPlugin.skills === './skills/' && directoryPlugin.mcpServers === './.mcp.json',
+    'Claude directory plugin must load ./skills/ and ./.mcp.json from its own folder',
+  );
+  const directoryServer = directoryMcp.mcpServers?.otakit;
+  expect(
+    directoryServer?.type === 'http' &&
+      directoryServer.url === 'https://console.otakit.app/mcp' &&
+      directoryServer.command === undefined,
+    'Claude directory plugin must use the hosted server, with no package launcher',
+  );
+  const rootSkill = await listFiles('skills');
+  const directorySkill = await listFiles(`${DIRECTORY_PLUGIN}/skills`);
+  expect(
+    rootSkill.join() === directorySkill.join(),
+    `Claude directory plugin skill files differ from skills/; ${SYNC_HINT}`,
+  );
+  for (const file of [...rootSkill.map((name) => `skills/${name}`), 'LICENSE']) {
+    const copy = path.posix.join(DIRECTORY_PLUGIN, file);
+    if ((await readText(file)) !== (await readText(copy))) {
+      errors.push(`${copy} differs from ${file}; ${SYNC_HINT}`);
+    }
+  }
+}
+
+async function listFiles(relativeDir) {
+  try {
+    const entries = await readdir(path.join(ROOT, relativeDir), {
+      recursive: true,
+      withFileTypes: true,
+    });
+    return entries
+      .filter((entry) => entry.isFile())
+      .map((entry) =>
+        path.relative(path.join(ROOT, relativeDir), path.join(entry.parentPath, entry.name)),
+      )
+      .map((name) => name.split(path.sep).join('/'))
+      .sort();
+  } catch {
+    errors.push(`${relativeDir} is required`);
+    return [];
+  }
 }
 
 async function readJson(relativePath) {
