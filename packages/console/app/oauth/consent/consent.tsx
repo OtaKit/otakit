@@ -81,7 +81,7 @@ export function OAuthConsent({
             </ul>
           </div>
           <p className="text-xs text-muted-foreground">
-            You can revoke this connection at any time from Settings → MCP connections.
+            You can revoke this connection at any time from Settings → Agents.
           </p>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </CardContent>
