@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { bearer, emailOTP, jwt } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
 import { cimd } from '@better-auth/cimd';
@@ -11,7 +11,8 @@ import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
-import { withNativeApplicationTypeDefault } from './mcp/client-registration';
+import { withMcpRegistrationDefaults } from './mcp/client-registration';
+import { normalizeRequestedScope, normalizeResourceIndicator } from './mcp/oauth-request';
 import {
   selectedOAuthOrganizationId,
   shouldSelectOAuthOrganization,
@@ -80,10 +81,17 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
         loginPage: '/login',
         consentPage: '/oauth/consent',
         resource: remoteMcpResourceUrl(),
+        // Config is the only source of truth for this resource, so apply its
+        // fields to the stored row on startup. The default, insertOnly, never
+        // updates an existing row and would leave a deployed policy stale.
+        resourceSeedMode: 'merge',
         resources: [
           {
             identifier: remoteMcpResourceUrl(),
-            allowedScopes: [...OTAKIT_OAUTH_SCOPES],
+            // offline_access must be allowed here too: Better Auth stores refresh
+            // tokens with the scopes this list permits, and a stored refresh token
+            // without offline_access is never rotated on use.
+            allowedScopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
           },
         ],
         scopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
@@ -172,10 +180,78 @@ export const auth = betterAuth({
   ],
   trustedOrigins,
   hooks: {
+    // MCP clients vary in how closely they follow RFC 7591/8707 and which
+    // scopes they ask for. Normalize the requests before Better Auth validates
+    // them; each rule is documented next to its function in lib/mcp.
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== '/oauth2/register' || !isRemoteMcpOAuthEnabled()) return;
-      const body = withNativeApplicationTypeDefault(ctx.body);
-      if (body !== ctx.body) return { context: { body } };
+      if (!isRemoteMcpOAuthEnabled()) return;
+      if (ctx.path === '/oauth2/register') {
+        const body = withMcpRegistrationDefaults(ctx.body);
+        if (body !== ctx.body) return { context: { body } };
+        return;
+      }
+      if (ctx.path === '/oauth2/authorize' && ctx.query) {
+        const clientId = typeof ctx.query.client_id === 'string' ? ctx.query.client_id : undefined;
+        const client = clientId
+          ? await db.oauthClient.findUnique({
+              where: { clientId },
+              select: { grantTypes: true },
+            })
+          : null;
+        const query: Record<string, unknown> = { ...ctx.query };
+        const scope = normalizeRequestedScope(query.scope, {
+          addOfflineAccess: client?.grantTypes.includes('refresh_token') ?? false,
+        });
+        if (scope !== undefined) query.scope = scope;
+        // /mcp is the only protected resource. A client that omits the RFC 8707
+        // indicator would otherwise get a consent bound to no resource, which
+        // the MCP endpoint refuses on every call.
+        query.resource =
+          query.resource === undefined
+            ? remoteMcpResourceUrl()
+            : normalizeResourceIndicator(query.resource, remoteMcpResourceUrl());
+        return { context: { query } };
+      }
+      if (ctx.path === '/oauth2/token' && ctx.body && typeof ctx.body === 'object') {
+        const body = ctx.body as Record<string, unknown>;
+        if (body.resource === undefined) return;
+        return {
+          context: {
+            body: {
+              ...body,
+              resource: normalizeResourceIndicator(body.resource, remoteMcpResourceUrl()),
+            },
+          },
+        };
+      }
+    }),
+    // Granting an agent access is recorded next to its revocation.
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/oauth2/consent' || !isRemoteMcpOAuthEnabled()) return;
+      const body = (ctx.body ?? {}) as { accept?: unknown; oauth_query?: unknown };
+      if (body.accept !== true) return;
+      const returned = ctx.context.returned as { url?: unknown } | undefined;
+      if (typeof returned?.url !== 'string' || !URL.canParse(returned.url)) return;
+      if (!new URL(returned.url).searchParams.has('code')) return;
+      const clientId = new URLSearchParams(
+        typeof body.oauth_query === 'string' ? body.oauth_query : '',
+      ).get('client_id');
+      const session = await getSessionFromCtx(ctx);
+      if (!clientId || !session) return;
+      const consent = await db.oauthConsent.findFirst({
+        where: { clientId, userId: session.user.id },
+        orderBy: { updatedAt: 'desc' },
+        select: { referenceId: true, scopes: true, client: { select: { name: true } } },
+      });
+      if (!consent?.referenceId) return;
+      await recordAuditLog({
+        organizationId: consent.referenceId,
+        actor: { actorType: 'user', actorId: session.user.id, actorLabel: session.user.email },
+        action: 'oauth.connection_granted',
+        targetType: 'oauth_client',
+        targetId: clientId,
+        metadata: { client: consent.client.name, scopes: consent.scopes.join(' ') },
+      });
     }),
   },
   /**

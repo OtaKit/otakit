@@ -28,6 +28,7 @@ export type AuditAction =
   | 'member.joined'
   | 'invite.created'
   | 'invite.revoked'
+  | 'oauth.connection_granted'
   | 'oauth.connection_revoked'
   | 'push_credential.saved'
   | 'push_credential.deleted'
