@@ -6,7 +6,7 @@ export const metadata = {
     'Privacy Policy for OtaKit (otakit.app), including data collection, use, sharing, and rights.',
 };
 
-const LAST_UPDATED = 'February 12, 2026';
+const LAST_UPDATED = 'October 5, 2026';
 
 export default function PrivacyPolicyPage() {
   return (
@@ -45,6 +45,7 @@ export default function PrivacyPolicyPage() {
                 'Authentication data: one-time passcode events, session and security metadata.',
                 'Billing data: subscription status, plan, invoices, and transaction references processed via Polar.',
                 'Service usage data: app IDs, release/channel activity, API usage, event telemetry, and operational logs.',
+                'Agent connection data: when you connect an AI agent or other MCP client, the name and redirect addresses it registers, the organization and permissions you approve, and a record of each request it makes (methods and tool names, client name and version, time, and outcome).',
                 'Technical data: IP address, device/browser metadata, and diagnostic information for reliability and security.',
                 'Support communications: messages and materials you send to support.',
               ]}
@@ -58,6 +59,7 @@ export default function PrivacyPolicyPage() {
                 'Authenticate users and manage accounts and organizations.',
                 'Process billing, subscriptions, and credit usage.',
                 'Operate update delivery, release workflows, and related analytics.',
+                'Carry out the actions agents you connect request, within the permissions you approved, and show you which agents are connected.',
                 'Detect, prevent, and investigate abuse, fraud, and security incidents.',
                 'Respond to support requests and communicate service updates.',
                 'Comply with legal obligations and enforce our Terms of Use.',
@@ -78,6 +80,7 @@ export default function PrivacyPolicyPage() {
             <List
               items={[
                 'Service providers that support hosting, storage, email delivery, and operational tooling.',
+                'AI agents and MCP clients you connect, and their providers: they receive the data their requests return, such as app, bundle, release, and event information, and handle it under their own terms. You can revoke a connection at any time in Settings → Agents.',
                 'Polar (polar.sh) and payment partners for subscription and payment processing.',
                 'Professional advisers (legal, accounting, audit) when needed.',
                 'Authorities or counterparties when required by law or to protect rights and security.',

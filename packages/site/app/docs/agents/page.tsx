@@ -194,6 +194,25 @@ codex mcp add otakit-remote --url https://console.otakit.app/mcp
 codex mcp login --oauth-client-registration cimd \\
   --scopes otakit:read,otakit:app:write,otakit:bundle:write,otakit:release:write,offline_access \\
   otakit-remote`}</Pre>
+      <P>Clients that add a server by its URL connect the same way:</P>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+        <li>
+          <strong>Claude</strong> (claude.ai and Claude Desktop): Settings → Connectors → Add custom
+          connector, with the URL <Code>https://console.otakit.app/mcp</Code>.
+        </li>
+        <li>
+          <strong>ChatGPT</strong>: Settings → Apps → Advanced → Developer mode → Create app, with
+          the URL <Code>https://console.otakit.app/mcp</Code> and OAuth authentication.
+        </li>
+        <li>
+          <strong>Cursor</strong>:{' '}
+          <InstallLink href={CURSOR_INSTALL_URL}>Add to Cursor</InstallLink>
+        </li>
+        <li>
+          <strong>VS Code</strong>:{' '}
+          <InstallLink href={VSCODE_INSTALL_URL}>Add to VS Code</InstallLink>
+        </li>
+      </ul>
       <P>
         The browser flow shows the client, the organization, and what it is asking for before
         anything is granted. Clients that connect with just the URL start read-only: the write tools
@@ -334,6 +353,23 @@ function CapabilityHeader() {
         <th className="border-b border-border px-4 py-3 font-semibold">Remote</th>
       </tr>
     </thead>
+  );
+}
+
+const REMOTE_MCP_URL = 'https://console.otakit.app/mcp';
+const CURSOR_INSTALL_URL = `cursor://anysphere.cursor-deeplink/mcp/install?name=otakit-remote&config=${btoa(
+  JSON.stringify({ url: REMOTE_MCP_URL }),
+)}`;
+const VSCODE_INSTALL_URL = `vscode:mcp/install?${encodeURIComponent(
+  JSON.stringify({ name: 'otakit-remote', type: 'http', url: REMOTE_MCP_URL }),
+)}`;
+
+/** Opens the editor through its URL scheme, so no new tab. */
+function InstallLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} className="font-medium text-foreground underline underline-offset-4">
+      {children}
+    </a>
   );
 }
 

@@ -2175,6 +2175,12 @@ codex mcp login --oauth-client-registration cimd \
   otakit-remote
 ```
 
+Clients that add a server by its URL connect the same way:
+- Claude (claude.ai and Claude Desktop): Settings → Connectors → Add custom connector, with the URL `https://console.otakit.app/mcp`.
+- ChatGPT: Settings → Apps → Advanced → Developer mode → Create app, with the URL `https://console.otakit.app/mcp` and OAuth authentication.
+- Cursor: Add to Cursor
+- VS Code: Add to VS Code
+
 The browser flow shows the client, the organization, and what it is asking for before anything is granted. Clients that connect with just the URL start read-only: the write tools are listed, and the first write sends you back to the browser to approve the extra access. Leave the write scopes out of the commands above to start read-only. Revoke a connection from Settings → Agents and its tokens stop working immediately. For CI, use an organization key in `OTAKIT_TOKEN` and keep it in your secret store, never in a project file.
 
 ### Which organization it uses

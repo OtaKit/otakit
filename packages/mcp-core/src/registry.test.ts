@@ -206,6 +206,67 @@ describe('OtaKit MCP registry transport', () => {
     return { client, invoke };
   }
 
+  it('publishes the metadata MCP directories check, on every tool', async () => {
+    const remote = await connect();
+    expect(remote.client.getServerVersion()).toMatchObject({
+      name: 'otakit-remote',
+      title: 'OtaKit',
+      websiteUrl: 'https://otakit.app',
+      icons: [{ src: 'https://www.otakit.app/logo.png', mimeType: 'image/png' }],
+    });
+    const { tools } = await remote.client.listTools();
+    const catalog = new Map(OTAKIT_TOOL_CATALOG.map((tool) => [tool.name, tool]));
+    expect(tools).toHaveLength(19);
+    for (const tool of tools) {
+      expect(tool.title, tool.name).toBeTruthy();
+      for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint']) {
+        expect(
+          typeof tool.annotations?.[hint as keyof typeof tool.annotations],
+          `${tool.name}.${hint}`,
+        ).toBe('boolean');
+      }
+      expect(tool._meta?.securitySchemes, tool.name).toEqual([
+        {
+          type: 'oauth2',
+          scopes: [...(catalog.get(tool.name as OtaKitToolName)?.oauthScopes ?? [])],
+        },
+      ]);
+      const properties = (tool.inputSchema.properties ?? {}) as Record<
+        string,
+        { description?: string }
+      >;
+      for (const [parameter, schema] of Object.entries(properties)) {
+        expect(schema.description, `${tool.name}.${parameter}`).toBeTruthy();
+      }
+    }
+
+    const local = await connect({ mode: 'local' });
+    for (const tool of (await local.client.listTools()).tools) {
+      expect(tool._meta?.securitySchemes, tool.name).toBeUndefined();
+      const properties = (tool.inputSchema.properties ?? {}) as Record<
+        string,
+        { description?: string }
+      >;
+      for (const [parameter, schema] of Object.entries(properties)) {
+        expect(schema.description, `local ${tool.name}.${parameter}`).toBeTruthy();
+      }
+    }
+  });
+
+  it('marks only tools whose effect leaves the organization as open world', () => {
+    const openWorld = OTAKIT_TOOL_CATALOG.filter((tool) => tool.annotations.openWorldHint).map(
+      (tool) => tool.name,
+    );
+    expect(openWorld).toEqual([
+      'publish_release',
+      'revert_release',
+      'set_rollout_percent',
+      'create_preview',
+      'revoke_preview',
+      'upload_and_publish_bundle',
+    ]);
+  });
+
   it('negotiates, lists the remote catalog, validates input, and returns structured content', async () => {
     const { client, invoke } = await connect();
     const listed = await client.listTools();
