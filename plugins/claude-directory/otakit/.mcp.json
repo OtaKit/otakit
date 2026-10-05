@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "otakit": {
+      "type": "http",
+      "url": "https://console.otakit.app/mcp"
+    }
+  }
+}
