@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { oauthClientOrigin } from '@/lib/mcp/client-identity';
 import { isRemoteMcpOAuthEnabled, remoteMcpResourceUrl } from '@/lib/mcp/features';
 
 export const runtime = 'nodejs';
@@ -42,7 +43,7 @@ export async function GET() {
       id: consent.id,
       clientId: consent.client.clientId,
       clientName: consent.client.name ?? 'MCP client',
-      clientUri: consent.client.uri,
+      clientUri: oauthClientOrigin(consent.client.clientId, consent.client.uri),
       organization: consent.referenceId
         ? {
             id: consent.referenceId,

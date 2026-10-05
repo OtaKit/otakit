@@ -149,6 +149,12 @@ const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
       cimd({
         fetchClientMetadataResource: fetchCimdMetadataResource,
         metadataProfile: 'mcp-2026-07-28',
+        // The default also binds client_uri to the client ID's origin, which
+        // refuses Smithery Connect (client ID on connect.smithery.ai, homepage
+        // https://smithery.ai). client_uri is only a homepage link: the consent
+        // page and Settings → Agents show the client ID's origin instead
+        // (lib/mcp/client-identity.ts).
+        originBoundFields: ['post_logout_redirect_uris'],
       }),
     ]
   : [];

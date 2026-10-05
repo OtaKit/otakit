@@ -11,22 +11,38 @@ vi.mock('next/headers', async (importOriginal) => ({
   headers: async () => new Headers(),
 }));
 
-// Client ID metadata documents are fetched over the network; serve Claude Code's
-// published document (claude.ai/oauth/claude-code-client-metadata) in-process.
+// Client ID metadata documents are fetched over the network; serve the published
+// documents of Claude Code (claude.ai/oauth/claude-code-client-metadata) and
+// Smithery Connect (connect.smithery.ai/.well-known/oauth-client) in-process.
 const CLAUDE_CODE_CLIENT_ID = 'https://claude.ai/oauth/claude-code-client-metadata';
+const SMITHERY_CLIENT_ID = 'https://connect.smithery.ai/.well-known/oauth-client';
 vi.mock('@/lib/mcp/cimd-fetch', () => ({
   fetchCimdMetadataResource: async (input: string | URL | Request) => {
     const url = input instanceof Request ? input.url : String(input);
-    if (url !== CLAUDE_CODE_CLIENT_ID) return new Response('Not found', { status: 404 });
-    return Response.json({
-      client_id: CLAUDE_CODE_CLIENT_ID,
-      client_name: 'Claude Code',
-      client_uri: 'https://claude.ai',
-      redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none',
-    });
+    if (url === CLAUDE_CODE_CLIENT_ID) {
+      return Response.json({
+        client_id: CLAUDE_CODE_CLIENT_ID,
+        client_name: 'Claude Code',
+        client_uri: 'https://claude.ai',
+        redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      });
+    }
+    if (url === SMITHERY_CLIENT_ID) {
+      return Response.json({
+        client_id: SMITHERY_CLIENT_ID,
+        client_name: 'Smithery Connect',
+        client_uri: 'https://smithery.ai',
+        logo_uri: 'https://smithery.ai/logos/profile.png',
+        redirect_uris: ['https://connect.smithery.ai/oauth/callback'],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      });
+    }
+    return new Response('Not found', { status: 404 });
   },
 }));
 
@@ -638,5 +654,23 @@ databaseDescribe('remote MCP OAuth (PostgreSQL integration)', () => {
       mcpRequest({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }, tokens.access_token),
     );
     expect(list.status).toBe(200);
+  });
+  it('sends Smithery Connect to sign-in although its homepage is on another origin', async () => {
+    clientIds.push(SMITHERY_CLIENT_ID);
+    const redirectUri = 'https://connect.smithery.ai/oauth/callback';
+    const authorize = await authorizeRequest({
+      response_type: 'code',
+      client_id: SMITHERY_CLIENT_ID,
+      code_challenge: createHash('sha256').update(randomBytes(32)).digest('base64url'),
+      code_challenge_method: 'S256',
+      redirect_uri: redirectUri,
+      state: 'state-smithery',
+      scope: 'otakit:read offline_access',
+      resource: RESOURCE,
+    });
+    const login = new URL(((await authorize.json()) as { url: string }).url, ORIGIN);
+    expect(login.searchParams.get('error')).toBeNull();
+    expect(login.pathname).toBe('/login');
+    expect(login.searchParams.get('client_id')).toBe(SMITHERY_CLIENT_ID);
   });
 });
