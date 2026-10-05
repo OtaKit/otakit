@@ -48,6 +48,8 @@ const ACTION_LABELS: Record<string, string> = {
   'member.joined': 'Member joined',
   'invite.created': 'Invite sent',
   'invite.revoked': 'Invite revoked',
+  'oauth.connection_granted': 'Agent connected',
+  'oauth.connection_revoked': 'Agent disconnected',
   'push_credential.saved': 'Push credential saved',
   'push_credential.deleted': 'Push credential removed',
   'push_campaign.created': 'Push notification sent',

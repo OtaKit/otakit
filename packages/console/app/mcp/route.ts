@@ -209,6 +209,74 @@ function authInfo(connection: RemoteMcpConnection): AuthInfo {
   };
 }
 
+type McpRequestLog = {
+  methods?: string[];
+  tools?: string[];
+  client?: { name?: string; version?: string };
+  protocol?: string;
+  credential?: RemoteMcpConnection['credentialType'];
+  organizationId?: string;
+  oauthClientId?: string;
+};
+
+/** Details gathered while serving a request, for its single log line. */
+const requestLogs = new WeakMap<Request, McpRequestLog>();
+
+const shortString = (value: unknown, max = 100) =>
+  typeof value === 'string' && value.length > 0 ? value.slice(0, max) : undefined;
+
+function describeMessages(body: unknown): Pick<McpRequestLog, 'methods' | 'client' | 'protocol'> {
+  const messages = (Array.isArray(body) ? body : [body]).filter(
+    (message): message is Record<string, unknown> => !!message && typeof message === 'object',
+  );
+  const methods = messages
+    .map((message) => shortString(message.method, 60))
+    .filter((method): method is string => method !== undefined)
+    .slice(0, 10);
+  const initialize = messages.find((message) => message.method === 'initialize');
+  const params = (initialize?.params ?? {}) as Record<string, unknown>;
+  const clientInfo = (params.clientInfo ?? {}) as Record<string, unknown>;
+  const protocol = shortString(params.protocolVersion, 20);
+  return {
+    methods,
+    ...(initialize
+      ? {
+          client: { name: shortString(clientInfo.name), version: shortString(clientInfo.version) },
+          ...(protocol && /^\d{4}-\d{2}-\d{2}$/.test(protocol) ? { protocol } : {}),
+        }
+      : {}),
+  };
+}
+
+function rejectionReason(request: Request, response: Response): string | undefined {
+  if (response.status < 400) return undefined;
+  const challengeError = response.headers.get('www-authenticate')?.match(/\berror="([^"]+)"/)?.[1];
+  if (challengeError) return challengeError;
+  if (response.status === 401) {
+    return request.headers.get('authorization') ? 'invalid_token' : 'missing_token';
+  }
+  return `http_${response.status}`;
+}
+
+/**
+ * One line per request in the runtime logs: which client and protocol, which
+ * methods and tools, and why a request was refused. Never includes credentials.
+ */
+function logMcpRequest(request: Request, response: Response, startedAt: number) {
+  const details = requestLogs.get(request) ?? {};
+  console.log(
+    JSON.stringify({
+      remoteMcp: {
+        status: response.status,
+        ms: Date.now() - startedAt,
+        ...details,
+        reason: rejectionReason(request, response),
+        userAgent: shortString(request.headers.get('user-agent'), 200),
+      },
+    }),
+  );
+}
+
 async function serveAuthorized(
   request: Request,
   connection: RemoteMcpConnection,
@@ -222,6 +290,13 @@ async function serveAuthorized(
   }
 
   const tools = calledToolNames(parsedBody);
+  requestLogs.set(request, {
+    ...describeMessages(parsedBody),
+    ...(tools.length > 0 ? { tools } : {}),
+    credential: connection.credentialType,
+    organizationId: connection.access.organizationId,
+    ...(connection.clientId ? { oauthClientId: connection.clientId } : {}),
+  });
   if (connection.credentialType === 'oauth') {
     const missing = missingToolScopes(connection, tools);
     if (missing.length > 0) {
@@ -269,6 +344,13 @@ const oauthHandler = requireMcpAuth(auth, serveOAuthAuthorized, {
 
 export async function POST(request: Request): Promise<Response> {
   if (!isRemoteMcpEnabled()) return remoteMcpDisabled();
+  const startedAt = Date.now();
+  const response = await authorizeAndServe(request);
+  logMcpRequest(request, response, startedAt);
+  return response;
+}
+
+async function authorizeAndServe(request: Request): Promise<Response> {
   const originFailure = validateOrigin(request);
   if (originFailure) return originFailure;
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
