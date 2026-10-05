@@ -44,8 +44,11 @@ final class DocumentReadyBridgeTests: XCTestCase {
     let firstReady = expectation(description: "Original document sends readiness")
     recorder.onReady = { firstReady.fulfill() }
     webView.loadHTMLString(html, baseURL: URL(string: "https://localhost"))
-    // Cold simulator WebKit startup is separate from the updater's readiness budget.
-    await fulfillment(of: [firstReady], timeout: 30)
+    // The first load also starts WebKit's processes in the simulator, which has
+    // taken just over 30 seconds on busy CI machines (navigation not even
+    // started). That is the environment, not the updater's readiness budget;
+    // the later steps run on a warm WebView and keep 30 seconds.
+    await fulfillment(of: [firstReady], timeout: 120)
     guard recorder.activationId != nil else {
       XCTFail("Initial WebView load: \(navigation.status); bridge messages: \(recorder.lastMessage)")
       return

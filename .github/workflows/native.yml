@@ -34,6 +34,8 @@ jobs:
 
   ios:
     runs-on: macos-15
+    # A normal run takes about 6 minutes; a stuck simulator must not hold the job for hours.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +103,21 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The runner downloads the emulator and system image with sdkmanager, which
+      # does not retry; a truncated download ("Error on ZipFile unknown archive")
+      # failed whole runs. Install both here with retries; the runner then finds
+      # them current and skips its own download.
+      - name: Install emulator and system image
+        run: |
+          for package in emulator 'system-images;android-34;google_apis;x86_64'; do
+            for attempt in 1 2 3; do
+              if sdkmanager --install "$package" --channel=0 > /dev/null; then break; fi
+              if [ "$attempt" = 3 ]; then echo "::error::Could not install $package"; exit 1; fi
+              echo "Install of $package failed (attempt $attempt); retrying"
+              sleep 15
+            done
+          done
+          sdkmanager --list_installed | grep -E 'emulator|system-images'
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
