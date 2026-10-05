@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useMemo, useState, useEffect, useCallback, type ElementType } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +8,7 @@ import {
   Activity,
   BadgeCheck,
   Calendar,
+  ChartLine,
   Check,
   ChevronDown,
   ChevronsUpDown,
@@ -88,6 +90,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+
+// Charts load only when someone opens a release's health.
+const ReleaseHealthDialog = dynamic(
+  () => import('@/app/components/ReleaseHealthDialog').then((module) => module.ReleaseHealthDialog),
+  { ssr: false },
+);
 
 /* ─── Types ────────────────────────────────────────────────────────── */
 
@@ -516,6 +524,9 @@ export function ProductDashboard({
     rolloutCustom: string;
   } | null>(null);
   const [rolloutChangeBusy, setRolloutChangeBusy] = useState(false);
+
+  // Release health charts
+  const [healthRelease, setHealthRelease] = useState<ReleaseHistoryItem | null>(null);
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -1826,6 +1837,17 @@ export function ProductDashboard({
                                                             </>
                                                           ) : null}
                                                         </div>
+                                                        {rel ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              onClick={() => setHealthRelease(rel)}
+                                                            >
+                                                              <ChartLine className="size-3.5" />
+                                                              Health
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : null}
                                                         {rolling ? (
                                                           <>
                                                             <DropdownMenuSeparator />
@@ -1898,10 +1920,13 @@ export function ProductDashboard({
                                                       : null;
                                                   const wasAutoReverted = autoRevertedAt !== null;
                                                   return (
-                                                    <span
+                                                    <button
+                                                      type="button"
                                                       key={tKey}
-                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}${autoRevertedAt ? ` · auto-reverted ${formatDate(autoRevertedAt)}` : ''}`}
-                                                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
+                                                      disabled={!rel}
+                                                      onClick={() => rel && setHealthRelease(rel)}
+                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}${autoRevertedAt ? ` · auto-reverted ${formatDate(autoRevertedAt)}` : ''}${rel ? ' · open health' : ''}`}
+                                                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground transition-colors enabled:hover:bg-secondary/70 enabled:hover:text-foreground"
                                                     >
                                                       {wasAutoReverted ? (
                                                         <ShieldAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -1909,7 +1934,7 @@ export function ProductDashboard({
                                                       <span className="truncate">
                                                         {entry.channel ?? 'base'}
                                                       </span>
-                                                    </span>
+                                                    </button>
                                                   );
                                                 })}
                                             </div>
@@ -2308,6 +2333,15 @@ export function ProductDashboard({
           )}
         </div>
       </main>
+
+      {healthRelease && selectedAppId ? (
+        <ReleaseHealthDialog
+          key={healthRelease.id}
+          appId={selectedAppId}
+          release={healthRelease}
+          onClose={() => setHealthRelease(null)}
+        />
+      ) : null}
 
       <PricingDialog
         open={pricingDialogOpen}

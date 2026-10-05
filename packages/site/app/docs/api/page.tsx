@@ -163,6 +163,27 @@ Authorization: Bearer otakit_sk_...`}</Pre>
 }`}
           description="List release history sorted newest first. Omit channel to list every stream, or pass an empty channel value to query only the base channel."
         />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/releases/:releaseId/timeseries"
+          auth="Bearer"
+          queryParams="?range=24h|7d|30d&platform=ios|android&lane=1"
+          response={`{
+  "range": "24h",
+  "granularity": "hour",           // "day" for 30d
+  "unit": "events",
+  "analyticsAvailable": true,
+  "totals": { "downloads": 53, "applied": 48, "downloadErrors": 0,
+              "rollbacks": 1, "rollbackSharePercent": 2.04 },
+  "buckets": [{ "start": "2026-10-01T12:00:00.000Z", "downloads": 6,
+                "applied": 5, "downloadErrors": 0, "rollbacks": 0,
+                "appliedTotal": 5 }],
+  "markers": [{ "at": "…", "type": "rollout", "label": "10% → 50%" }],
+  "lane": { "channel": "production", "releases": [{ "id": "…",
+            "bundleVersion": "1.4.1", "applied": [3, 2] }] }
+}`}
+          description="A release's client-reported events per UTC hour (24h, 7d) or day (30d), zero-filled, with totals, the rollback share (rollbacks ÷ (applies + rollbacks)) and markers for release, rollout steps and reverts. The range defaults to 24h for releases younger than two days and 7d otherwise. lane=1 adds applies per bucket for recent releases of the same channel and runtime. Counts are events, not unique devices; when analytics are unavailable, analyticsAvailable is false."
+        />
       </div>
 
       <Separator className="my-10" />

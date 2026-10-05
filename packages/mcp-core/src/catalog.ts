@@ -259,6 +259,22 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     allowOrganizationKey: true,
   },
   {
+    name: 'get_release_timeseries',
+    title: 'Get OtaKit release events over time',
+    description:
+      'Return client-reported downloads, applies, download errors and rollbacks of a release per hour (24h, 7d) or day (30d), with totals, rollback share and rollout/revert markers. Use it to see whether a release is still spreading or whether rollbacks are rising. Counts are events, not unique devices, installations, or adoption — never describe them as such.',
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      releaseId: releaseIdSchema,
+      range: z.enum(['24h', '7d', '30d']).optional(),
+      platform: z.enum(['ios', 'android']).optional(),
+    }),
+    annotations: readOnly,
+    oauthScopes: ['otakit:read'],
+    allowOrganizationKey: true,
+  },
+  {
     name: 'list_events',
     title: 'List OtaKit client-reported events',
     description:

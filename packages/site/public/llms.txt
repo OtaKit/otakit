@@ -1023,6 +1023,31 @@ Response
 }
 ```
 
+### GET /api/v1/apps/:appId/releases/:releaseId/timeseries
+
+A release's client-reported events per UTC hour (24h, 7d) or day (30d), zero-filled, with totals, the rollback share (rollbacks ÷ (applies + rollbacks)) and markers for release, rollout steps and reverts. The range defaults to 24h for releases younger than two days and 7d otherwise. lane=1 adds applies per bucket for recent releases of the same channel and runtime. Counts are events, not unique devices; when analytics are unavailable, analyticsAvailable is false.
+- Auth: Bearer
+- Query: ?range=24h|7d|30d&platform=ios|android&lane=1
+
+Response
+
+```txt
+{
+  "range": "24h",
+  "granularity": "hour",           // "day" for 30d
+  "unit": "events",
+  "analyticsAvailable": true,
+  "totals": { "downloads": 53, "applied": 48, "downloadErrors": 0,
+              "rollbacks": 1, "rollbackSharePercent": 2.04 },
+  "buckets": [{ "start": "2026-10-01T12:00:00.000Z", "downloads": 6,
+                "applied": 5, "downloadErrors": 0, "rollbacks": 0,
+                "appliedTotal": 5 }],
+  "markers": [{ "at": "…", "type": "rollout", "label": "10% → 50%" }],
+  "lane": { "channel": "production", "releases": [{ "id": "…",
+            "bundleVersion": "1.4.1", "applied": [3, 2] }] }
+}
+```
+
 ### Preview links
 
 ### POST /api/v1/apps/:appId/bundles/:bundleId/previews
@@ -1549,6 +1574,8 @@ otakit upload --release production --replace-rollout --rollout 10
 ### Health and auto-revert
 
 Devices on the rolling release report events with its own release ID, so its health counts only those devices. Auto-revert works on rolling releases and returns every device to the previous release. At low percentages it takes longer to reach the minimum sample, so small apps should start at 5% or more.
+
+To watch a rollout over time, open the release's channel badge and choose Health. It charts applies, rollbacks and download errors per hour or day, marks each rollout step, and shows the lane's releases replacing each other. Agents read the same data with `get_release_timeseries`.
 
 ### On the device
 

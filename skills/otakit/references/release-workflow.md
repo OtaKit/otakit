@@ -32,8 +32,10 @@ idempotency, audit, and manifest-sync semantics.
 
 ## Inspect a rollout
 
-Use release health for bounded event counts and `list_events` for recent filtered
-diagnostic records. Say “events” and name the event types. Do not call the values
+Use release health for bounded event counts, `get_release_timeseries` for the
+same events per hour or day (is it still spreading, are rollbacks rising after a
+rollout step), and `list_events` for recent filtered diagnostic records. Say
+“events” and name the event types. Do not call the values
 devices, users, installations, adoption, success rate, or causal evidence. A
 missing analytics capability is “unavailable,” not zero.
 
