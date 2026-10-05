@@ -45,6 +45,15 @@ import { remoteMcpServerOrigin } from './features';
 
 type JsonObject = Record<string, unknown>;
 
+/** The public pricing section: information only, no checkout. */
+function publicPricingUrl(): string {
+  const site = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://otakit.app').replace(
+    /\/+$/,
+    '',
+  );
+  return `${site}/#pricing`;
+}
+
 function json(value: unknown): ToolEnvelope['data'] {
   return JSON.parse(JSON.stringify(value)) as ToolEnvelope['data'];
 }
@@ -286,13 +295,21 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
   }
 
   private async getAccountStatus(): Promise<ToolEnvelope> {
-    const status = await getAccountStatus(this.connection.access);
-    return toolEnvelope('Read the current OtaKit plan and usage status.', json(status), {
-      links: [
-        { label: 'Billing', url: status.links.billing },
-        { label: 'Usage', url: status.links.usage },
-      ],
-    });
+    // Remote clients include ChatGPT, whose app directory forbids links that
+    // start a purchase. The upgrade-dialog link (links.billing) is therefore not
+    // passed on; the public pricing section and the usage page are.
+    const { links, ...status } = await getAccountStatus(this.connection.access);
+    const remoteLinks = { pricing: publicPricingUrl(), usage: links.usage };
+    return toolEnvelope(
+      'Read the current OtaKit plan and usage status.',
+      json({ ...status, links: remoteLinks }),
+      {
+        links: [
+          { label: 'Plans and pricing', url: remoteLinks.pricing },
+          { label: 'Usage', url: remoteLinks.usage },
+        ],
+      },
+    );
   }
 
   private async listApps(input: JsonObject): Promise<ToolEnvelope> {
