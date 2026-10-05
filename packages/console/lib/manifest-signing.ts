@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 const MANIFEST_PAYLOAD_HEADER = 'MANIFEST';
 const ROLLOUT_PAYLOAD_HEADER = 'ROLLOUT';
+const NOTES_PAYLOAD_HEADER = 'NOTES';
 const DEFAULT_MANIFEST_TTL_SECONDS = 31_536_000; // 1 year
 
 export type ManifestStrategy = 'zip' | 'deltas';
@@ -36,6 +37,17 @@ export interface RolloutSignatureInput extends ManifestSignatureInput {
   releaseId: string;
   /** sha256 of the manifest's top-level (stable) bundle this block belongs to. */
   stableSha256: string;
+}
+
+export interface NotesSignatureInput {
+  appId: string;
+  channel: string | null;
+  /** Release the notes belong to. */
+  releaseId: string;
+  /** sha256 of the bundle in the same manifest entry. */
+  sha256: string;
+  /** Exactly the text sent to devices. */
+  text: string;
 }
 
 export interface ManifestSignature {
@@ -131,8 +143,9 @@ export function buildCanonicalPayload(
  * The same bundle lines as v2 under its own header, followed by the rollout
  * lines. The header keeps a rollout signature from ever verifying as a
  * top-level manifest (and the reverse); `stableSha256` binds the block to the
- * manifest it was published in. `notesSha256` is reserved for release notes
- * and is `null` until they exist. Must match ManifestVerifier.swift /
+ * manifest it was published in. `notesSha256` stays `null`: plugins 3.1 and
+ * 3.2 verify it as such, and release notes carry their own signed block
+ * (buildNotesPayload). Must match ManifestVerifier.swift /
  * ManifestVerifier.java byte-for-byte.
  */
 export function buildRolloutPayload(
@@ -148,6 +161,31 @@ export function buildRolloutPayload(
     `releaseId:${fields.releaseId}`,
     `stableSha256:${fields.stableSha256}`,
     'notesSha256:null',
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
+/**
+ * Canonical payload of a manifest entry's `notes` block (plugin 3.3+). It binds
+ * the text (by hash) to its release, bundle and lane, so notes cannot be moved
+ * to another release or manifest. Must match ManifestVerifier.swift /
+ * ManifestVerifier.java byte-for-byte.
+ */
+export function buildNotesPayload(
+  fields: NotesSignatureInput,
+  kid: string,
+  iat: number,
+  exp: number,
+): string {
+  return [
+    NOTES_PAYLOAD_HEADER,
+    `appId:${fields.appId}`,
+    `channel:${fields.channel ?? 'null'}`,
+    `releaseId:${fields.releaseId}`,
+    `sha256:${fields.sha256}`,
+    `notesSha256:${crypto.createHash('sha256').update(fields.text, 'utf8').digest('hex')}`,
     `kid:${kid}`,
     `iat:${iat}`,
     `exp:${exp}`,
@@ -180,6 +218,11 @@ export function signManifest(fields: ManifestSignatureInput): ManifestSignature 
 /** Sign a `rollout` block with the manifest key; null when signing is disabled. */
 export function signRollout(fields: RolloutSignatureInput): ManifestSignature | null {
   return signPayload((kid, iat, exp) => buildRolloutPayload(fields, kid, iat, exp));
+}
+
+/** Sign a `notes` block with the manifest key; null when signing is disabled. */
+export function signNotes(fields: NotesSignatureInput): ManifestSignature | null {
+  return signPayload((kid, iat, exp) => buildNotesPayload(fields, kid, iat, exp));
 }
 
 function signPayload(

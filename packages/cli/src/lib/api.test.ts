@@ -101,6 +101,22 @@ describe('ApiClient release reliability contract', () => {
     expect(rollout).toMatchObject({ rolloutPercent: 10, replaceRollout: true });
   });
 
+  it('sends release notes only when they are given', async () => {
+    mocks.fetchCli.mockImplementation(async () => jsonResponse(publishedResult()));
+    const api = new ApiClient(config);
+
+    await api.release(null, 'f32627ca-9e8c-4358-90d8-bde732400081');
+    await api.release(null, 'f32627ca-9e8c-4358-90d8-bde732400081', {
+      notes: 'Faster checkout.',
+    });
+
+    const [plain, withNotes] = mocks.fetchCli.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)),
+    );
+    expect(plain).not.toHaveProperty('notes');
+    expect(withNotes).toMatchObject({ notes: 'Faster checkout.' });
+  });
+
   it('changes a rollout with its reviewed percentage and an idempotency key', async () => {
     mocks.fetchCli.mockResolvedValueOnce(
       jsonResponse({ ...publishedResult(), previousPercent: 10 }),

@@ -16,6 +16,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Channels: /docs/channels
 - Rollouts: /docs/rollouts
 - Previews: /docs/previews
+- Release Notes: /docs/release-notes
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - Push Notifications: /docs/push
@@ -249,6 +250,8 @@ Options
 - `--force-immediate`: With --release: devices apply and reload this release on their next check (emergency fixes).
 - `--rollout <percent>`: With --release: release to this share of devices first (1-100, default 100). See Percentage rollouts.
 - `--replace-rollout`: With --release: cancel the channel's active rollout and release this bundle in its place.
+- `--notes <text>`: With --release: release notes app users may see (plain text, up to 2,000 characters). See Release notes.
+- `--notes-file <path>`: With --release: read the release notes from a file.
 - `--preview`: Also create a preview link and QR code for the uploaded bundle. See Preview links.
 - `--encrypt`: Encrypt the bundle with OTAKIT_ENCRYPTION_KEY before upload (auto-enabled when the env var is set).
 - `--fail-on-incompatible`: Exit non-zero when the native compatibility check finds changes that need a store build.
@@ -269,6 +272,8 @@ Options
 - `--force-immediate`: Devices apply and reload this release on their next check (emergency fixes).
 - `--rollout <percent>`: Release to this share of devices first (1-100, default 100). The channel needs a previous release.
 - `--replace-rollout`: Cancel the channel's active rollout and release this bundle in its place.
+- `--notes <text>`: Release notes app users may see (plain text, up to 2,000 characters). Edit them later in the dashboard.
+- `--notes-file <path>`: Read the release notes from a file.
 
 Example
 
@@ -692,6 +697,8 @@ plugins: {
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 - `stopPreview()` -> `void`: End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release.
+- `getUnseenReleaseNotes()` -> `ReleaseNotes | null`: The running release's notes, until markReleaseNotesSeen() is called (plugin 3.3+). Show them once in a What's new screen, rendered as text. See Release Notes.
+- `markReleaseNotesSeen()` -> `void`: Mark the running release's notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes.
 
 The plugin also emits lifecycle events — `updateAvailable`, `updateStaged`, `updateApplied`, `downloadFailed`, and `rollback` — via `OtaKit.addListener(...)`. See Events & Listeners for the full reference and the startup reconciliation pattern.
 
@@ -781,6 +788,13 @@ interface BundleInfo {
   sha256?: string;
   channel?: string;
   releaseId?: string;
+  notes?: string; // release notes, plugin 3.3+
+}
+
+interface ReleaseNotes {
+  text: string; // plain text: render it as text
+  version: string;
+  releaseId: string;
 }
 
 interface OtaKitState {
@@ -961,7 +975,8 @@ Request body
   "bundleId": "uuid",
   "channel": "staging",    // optional; omit or null for base channel
   "rolloutPercent": 10,    // optional; 1-100, default 100
-  "replaceRollout": true   // optional; cancel the active rollout first
+  "replaceRollout": true,  // optional; cancel the active rollout first
+  "notes": "Faster checkout." // optional; plain text, up to 2,000 characters
 }
 ```
 
@@ -980,6 +995,23 @@ Response
   },
   "previousRelease": { ... } | null
 }
+```
+
+### PATCH /api/v1/apps/:appId/releases/:releaseId/notes
+
+Change a release's notes. The release's channel is republished, so phones that update from now on get the new text; phones that already updated keep what they received.
+- Auth: Bearer
+
+Request body
+
+```txt
+{ "notes": "Faster checkout.\nPhoto upload fixed." }   // or null to remove
+```
+
+Response
+
+```txt
+{ "release": { ..., "notes": "Faster checkout.\nPhoto upload fixed." } }
 ```
 
 ### PATCH /api/v1/apps/:appId/releases/:releaseId/rollout
@@ -1652,6 +1684,63 @@ Each link carries a random 130-bit token and works only for the bundle it was cr
 ### API and agents
 
 See the REST API for the preview endpoints. Agents use `create_preview` and `revoke_preview`; see MCP & Agent Skills .
+
+## Release Notes
+
+Route: /docs/release-notes
+
+Attach short notes to a release and show them once in the app as a "What's new" screen.
+
+Attach a few lines to a release, such as &ldquo;Faster checkout. Photo upload fixed on Android.&rdquo; Your team sees them next to the release in the dashboard, and the app can show them once after the update as a &ldquo;What's new&rdquo; screen.
+
+Notes are plain text with line breaks, up to 2,000 characters. Showing them in the app needs `@otakit/capacitor-updater` 3.3 or later; everything else works with any plugin version.
+
+### Write notes when you release
+
+In the dashboard, the release dialog has a &ldquo;Release notes&rdquo; field. From the CLI:
+
+```txt
+otakit release --channel production --notes "Faster checkout.
+Photo upload fixed on Android."
+
+# Or from a file, in the same command that uploads
+otakit upload --release production --notes-file NOTES.md
+```
+
+Agents pass `notes` to `prepare_release` and `publish_release`, and show you the text before publishing. Over the API, send `notes` with the release; see the REST API .
+
+Notes belong to the release, so the same bundle can carry different notes on beta and production. Write them for the people using your app: what changed for them, in a few short lines.
+
+### Show &ldquo;What's new&rdquo; in the app
+
+After an update, `getUnseenReleaseNotes()` returns the running release's notes until you mark them seen, so each release shows once per phone:
+
+```txt
+import { OtaKit } from '@otakit/capacitor-updater';
+
+const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
+if (notes) {
+  showWhatsNew(notes.text);
+  await OtaKit.markReleaseNotesSeen();
+}
+
+function showWhatsNew(text: string) {
+  const sheet = document.createElement('div');
+  sheet.className = 'whats-new';
+  sheet.textContent = text; // plain text: never insert it as HTML
+  document.body.append(sheet);
+}
+```
+
+Render notes as text, with `white-space: pre-line` for line breaks. Never insert them as HTML. The bundle the app is running also exposes its notes as `getState().current.notes` and in the `updateApplied` event.
+
+### Edit notes later
+
+Fix a typo or polish the copy from the release's menu in the dashboard (&ldquo;Edit release notes&rdquo;) or with `PATCH /releases/:releaseId/notes`. Phones that update from then on get the new text; phones that already updated keep the notes they received.
+
+### Security
+
+Notes travel in their own signed block of the release manifest. The app only shows notes signed for that exact release, so they cannot be changed in transit. Older plugin versions ignore the block and update as before.
 
 ## Update Strategies
 

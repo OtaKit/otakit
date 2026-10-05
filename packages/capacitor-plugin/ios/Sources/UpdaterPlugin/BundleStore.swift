@@ -13,7 +13,11 @@ final class BundleStore {
     static let overrideChannel = "otakit_override_channel"
     static let assignmentSecret = "otakit_assignment_secret"
     static let preview = "otakit_preview"
+    static let seenReleaseNotes = "otakit_seen_release_notes"
   }
+
+  /// Releases whose notes the app marked seen; the newest 20 are kept.
+  static let seenReleaseNotesLimit = 20
 
   private let defaults: UserDefaults
   private let rootDirectory: URL
@@ -295,6 +299,16 @@ final class BundleStore {
     }
   }
 
+  func isReleaseNotesSeen(_ releaseId: String) -> Bool {
+    (defaults.stringArray(forKey: Keys.seenReleaseNotes) ?? []).contains(releaseId)
+  }
+
+  func markReleaseNotesSeen(_ releaseId: String) {
+    var seen = (defaults.stringArray(forKey: Keys.seenReleaseNotes) ?? []).filter { $0 != releaseId }
+    seen.append(releaseId)
+    defaults.set(Array(seen.suffix(Self.seenReleaseNotesLimit)), forKey: Keys.seenReleaseNotes)
+  }
+
   func getLastResolvedRuntimeKey() -> String? {
     defaults.string(forKey: Keys.lastResolvedRuntimeKey)
   }
@@ -309,21 +323,10 @@ final class BundleStore {
   }
 
   func markStatus(bundleId: String, status: BundleStatus) throws {
-    guard var bundle = getBundle(id: bundleId) else {
+    guard let bundle = getBundle(id: bundleId) else {
       return
     }
-    bundle = BundleInfo(
-      id: bundle.id,
-      version: bundle.version,
-      runtimeVersion: bundle.runtimeVersion,
-      status: status,
-      downloadedAt: bundle.downloadedAt,
-      sha256: bundle.sha256,
-      path: bundle.path,
-      channel: bundle.channel,
-      releaseId: bundle.releaseId
-    )
-    try saveBundle(bundle)
+    try saveBundle(bundle.withStatus(status))
   }
 
   func deleteBundle(id: String) throws {

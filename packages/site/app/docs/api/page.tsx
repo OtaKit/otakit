@@ -119,7 +119,8 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "bundleId": "uuid",
   "channel": "staging",    // optional; omit or null for base channel
   "rolloutPercent": 10,    // optional; 1-100, default 100
-  "replaceRollout": true   // optional; cancel the active rollout first
+  "replaceRollout": true,  // optional; cancel the active rollout first
+  "notes": "Faster checkout." // optional; plain text, up to 2,000 characters
 }`}
           response={`{
   "release": {
@@ -134,6 +135,14 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "previousRelease": { ... } | null
 }`}
           description="Release a bundle to the base channel or a named channel. The runtimeVersion comes from the bundle itself, so current resolution is per (channel, runtimeVersion). A rolloutPercent below 100 releases to that share of devices; it needs a previous release on the lane. While a rollout is active, another release returns 409 ROLLOUT_IN_PROGRESS unless replaceRollout is true."
+        />
+        <Endpoint
+          method="PATCH"
+          path="/api/v1/apps/:appId/releases/:releaseId/notes"
+          auth="Bearer"
+          body={'{ "notes": "Faster checkout.\\nPhoto upload fixed." }   // or null to remove'}
+          response={'{ "release": { ..., "notes": "Faster checkout.\\nPhoto upload fixed." } }'}
+          description="Change a release's notes. The release's channel is republished, so phones that update from now on get the new text; phones that already updated keep what they received."
         />
         <Endpoint
           method="PATCH"

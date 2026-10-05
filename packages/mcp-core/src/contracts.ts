@@ -154,6 +154,14 @@ export const releaseOptionsShape = {
     .boolean()
     .optional()
     .describe("Revert the lane's active rollout and publish this bundle in its place"),
+  notes: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .describe(
+      'Release notes that app users may see in a "What\'s new" sheet: what changed for them, in plain text and a few short lines. Show them to the user for approval.',
+    ),
 };
 
 export const rolloutPercentSchema = z

@@ -157,6 +157,8 @@ export type UploadWorkflowOptions = {
   autoRevertMinSample?: number;
   rolloutPercent?: number;
   replaceRollout?: boolean;
+  /** Plain-text release notes for the release made with releaseChannel. */
+  notes?: string;
   expectedCurrentReleaseId?: string | null;
   idempotencyKey?: string;
   compatibilityDecision?: 'block' | 'proceed' | 'skip';
@@ -224,6 +226,7 @@ export async function runUploadWorkflow(
     autoRevertMinSample,
     rolloutPercent,
     replaceRollout,
+    notes,
     expectedCurrentReleaseId,
     idempotencyKey,
     compatibilityDecision,
@@ -318,6 +321,7 @@ export async function runUploadWorkflow(
         autoRevertMinSample,
         rolloutPercent,
         replaceRollout,
+        notes,
         expectedCurrentReleaseId,
         idempotencyKey,
         compatibilityDecision,
@@ -436,6 +440,7 @@ async function runDeltaUploadWorkflow(
     autoRevertMinSample,
     rolloutPercent,
     replaceRollout,
+    notes,
     expectedCurrentReleaseId,
     idempotencyKey,
     compatibilityDecision,
@@ -531,6 +536,7 @@ async function runDeltaUploadWorkflow(
       autoRevertMinSample,
       rolloutPercent,
       replaceRollout,
+      notes,
       expectedCurrentReleaseId,
       idempotencyKey,
       compatibilityDecision,
