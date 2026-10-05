@@ -1,5 +1,6 @@
 import { createMcpHandler, type AuthInfo } from '@modelcontextprotocol/server';
 import { requireMcpAuth } from '@better-auth/mcp';
+import { createInsufficientScopeError } from 'better-auth/oauth2';
 
 import { auth } from '@/lib/auth';
 import { verifySecretAuth } from '@/lib/api-auth';
@@ -13,6 +14,7 @@ import {
 import {
   isRemoteMcpEnabled,
   isRemoteMcpOAuthEnabled,
+  remoteMcpResourceMetadataUrl,
   remoteMcpResourceUrl,
   remoteMcpServerOrigin,
 } from '@/lib/mcp/features';
@@ -22,7 +24,11 @@ import {
   resolveOAuthConnection,
   type RemoteMcpConnection,
 } from '@/lib/mcp/remote-auth';
-import { createRemoteToolAuthorization, RemoteOtaKitToolAdapter } from '@/lib/mcp/remote-adapter';
+import {
+  createRemoteToolAuthorization,
+  missingToolScopes,
+  RemoteOtaKitToolAdapter,
+} from '@/lib/mcp/remote-adapter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,6 +83,29 @@ function jsonRpcError(status: number, message: string, headers?: HeadersInit): R
     },
     { status, headers },
   );
+}
+
+function hasCredential(request: Request): boolean {
+  return /^\s*\S+\s+\S/.test(request.headers.get('authorization') ?? '');
+}
+
+/**
+ * RFC 6750: a request that carried a token and was refused gets
+ * error="invalid_token"; a request with no token gets a bare challenge.
+ * The OAuth verifier answers both the same way, so mark the first here.
+ */
+function markInvalidToken(request: Request, response: Response): Response {
+  if (response.status !== 401 || !hasCredential(request)) return response;
+  const challenge = response.headers.get('www-authenticate');
+  if (!challenge || !/^Bearer\b/i.test(challenge) || /\berror=/i.test(challenge)) return response;
+  const headers = new Headers(response.headers);
+  const params = challenge.replace(/^Bearer\s*/i, '');
+  headers.set('www-authenticate', `Bearer error="invalid_token"${params ? `, ${params}` : ''}`);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function remoteMcpDisabled(): Response {
@@ -193,6 +222,18 @@ async function serveAuthorized(
   }
 
   const tools = calledToolNames(parsedBody);
+  if (connection.credentialType === 'oauth') {
+    const missing = missingToolScopes(connection, tools);
+    if (missing.length > 0) {
+      // Step-up per the MCP authorization spec: requireMcpAuth turns this into a
+      // 403 insufficient_scope challenge. Name the scopes already granted too, so
+      // the re-authorization does not drop them.
+      throw createInsufficientScopeError(
+        [...connection.scopes, ...missing],
+        `This connection needs ${missing.join(' ')} to call ${tools.join(', ')}`,
+      );
+    }
+  }
   const hasWrite = tools.some((name) => getToolDefinition(name).annotations.readOnlyHint !== true);
   // A JSON-RPC batch carries many calls in one request, so charge the limiter
   // per tool call. Otherwise one request could ask for unbounded work.
@@ -214,7 +255,7 @@ async function serveOAuthAuthorized(request: Request, claims: Record<string, unk
   } catch (error) {
     if (error instanceof RemoteMcpAuthError) {
       return jsonRpcError(401, error.message, {
-        'WWW-Authenticate': 'Bearer error="invalid_token"',
+        'WWW-Authenticate': `Bearer error="invalid_token", resource_metadata="${remoteMcpResourceMetadataUrl()}"`,
       });
     }
     throw error;
@@ -242,9 +283,28 @@ export async function POST(request: Request): Promise<Response> {
       )
     : isRemoteMcpOAuthEnabled()
       ? await oauthHandler(request)
-      : jsonRpcError(401, 'A valid organization API key is required');
-  return withCors(request, response);
+      : jsonRpcError(401, 'A valid organization API key is required', {
+          'WWW-Authenticate': 'Bearer',
+        });
+  return withCors(request, markInvalidToken(request, response));
 }
+
+/**
+ * This server is stateless and offers no SSE stream, so GET and DELETE are 405
+ * per the Streamable HTTP transport. RFC 9110 requires the Allow header.
+ */
+function methodNotAllowed(request: Request): Response {
+  if (!isRemoteMcpEnabled()) return remoteMcpDisabled();
+  return withCors(
+    request,
+    jsonRpcError(405, 'Method not allowed; send JSON-RPC messages with POST', {
+      allow: 'POST, OPTIONS',
+    }),
+  );
+}
+
+export const GET = methodNotAllowed;
+export const DELETE = methodNotAllowed;
 
 export async function OPTIONS(request: Request): Promise<Response> {
   if (!isRemoteMcpEnabled()) return remoteMcpDisabled();

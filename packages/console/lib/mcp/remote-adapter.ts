@@ -125,7 +125,8 @@ function invocationMetadata(connection: RemoteMcpConnection): Record<string, unk
   };
 }
 
-function canUseTool(connection: RemoteMcpConnection, name: OtaKitToolName): boolean {
+/** Every check except OAuth scopes: credential type, member role, and rollout flags. */
+function isToolAvailable(connection: RemoteMcpConnection, name: OtaKitToolName): boolean {
   const definition = getToolDefinition(name);
   if (connection.credentialType === 'organization_key' && !definition.allowOrganizationKey) {
     return false;
@@ -137,9 +138,6 @@ function canUseTool(connection: RemoteMcpConnection, name: OtaKitToolName): bool
   ) {
     return false;
   }
-  if (definition.oauthScopes.some((scope) => !connection.scopes.has(scope))) {
-    return false;
-  }
   if (
     (name === 'publish_release' || name === 'revert_release' || name === 'set_rollout_percent') &&
     !isReleaseReliabilityEnabled()
@@ -149,11 +147,39 @@ function canUseTool(connection: RemoteMcpConnection, name: OtaKitToolName): bool
   return true;
 }
 
+function canUseTool(connection: RemoteMcpConnection, name: OtaKitToolName): boolean {
+  return (
+    isToolAvailable(connection, name) &&
+    getToolDefinition(name).oauthScopes.every((scope) => connection.scopes.has(scope))
+  );
+}
+
+/**
+ * Scopes the connection still needs before it can call these tools. Tools its
+ * role or the rollout flags rule out are skipped: no extra scope would help.
+ */
+export function missingToolScopes(
+  connection: RemoteMcpConnection,
+  names: readonly OtaKitToolName[],
+): string[] {
+  const missing = new Set<string>();
+  for (const name of names) {
+    if (!isToolAvailable(connection, name)) continue;
+    for (const scope of getToolDefinition(name).oauthScopes) {
+      if (!connection.scopes.has(scope)) missing.add(scope);
+    }
+  }
+  return Array.from(missing);
+}
+
 export function createRemoteToolAuthorization(
   initialConnection: RemoteMcpConnection,
 ): OtaKitToolAuthorization {
   return {
-    canRegister: (name) => canUseTool(initialConnection, name),
+    // A connection lists every tool its role allows, including ones it lacks the
+    // scope for. Calling one returns a 403 insufficient_scope challenge from the
+    // route, which MCP clients answer by asking the user for the extra scope.
+    canRegister: (name) => isToolAvailable(initialConnection, name),
     authorize: async (name) => {
       const current = initialConnection.oauthClaims
         ? await resolveOAuthConnection(initialConnection.oauthClaims as OAuthTokenClaims)

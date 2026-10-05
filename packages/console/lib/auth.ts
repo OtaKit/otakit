@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { bearer, emailOTP, jwt } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
 import { cimd } from '@better-auth/cimd';
@@ -11,6 +11,7 @@ import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
+import { withNativeApplicationTypeDefault } from './mcp/client-registration';
 import {
   selectedOAuthOrganizationId,
   shouldSelectOAuthOrganization,
@@ -170,6 +171,13 @@ export const auth = betterAuth({
     nextCookies(),
   ],
   trustedOrigins,
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== '/oauth2/register' || !isRemoteMcpOAuthEnabled()) return;
+      const body = withNativeApplicationTypeDefault(ctx.body);
+      if (body !== ctx.body) return { context: { body } };
+    }),
+  },
   /**
    * A failed social callback used to end up at Better Auth's own /error, which
    * redirects to the site root, which redirects to /login — dropping the error

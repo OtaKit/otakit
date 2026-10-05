@@ -196,10 +196,12 @@ codex mcp login --oauth-client-registration cimd \\
   otakit-remote`}</Pre>
       <P>
         The browser flow shows the client, the organization, and what it is asking for before
-        anything is granted. Drop the write scopes for a deliberately read-only connection. Revoke
-        it from <strong>Settings → Agents</strong> and its tokens stop working immediately. For CI,
-        use an organization key in <Code>OTAKIT_TOKEN</Code> and keep it in your secret store, never
-        in a project file.
+        anything is granted. Clients that connect with just the URL start read-only: the write tools
+        are listed, and the first write sends you back to the browser to approve the extra access.
+        Leave the write scopes out of the commands above to start read-only. Revoke a connection
+        from <strong>Settings → Agents</strong> and its tokens stop working immediately. For CI, use
+        an organization key in <Code>OTAKIT_TOKEN</Code> and keep it in your secret store, never in
+        a project file.
       </P>
 
       <Separator className="my-10" />

@@ -50,3 +50,10 @@ export function remoteMcpServerOrigin(): string {
     );
   }
 }
+
+/** RFC 9728 metadata URL for the MCP resource: the well-known path inserted before its path. */
+export function remoteMcpResourceMetadataUrl(): string {
+  const resource = new URL(remoteMcpResourceUrl());
+  const path = resource.pathname === '/' ? '' : resource.pathname;
+  return `${resource.origin}/.well-known/oauth-protected-resource${path}`;
+}
