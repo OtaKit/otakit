@@ -2,8 +2,8 @@ import { CountUp } from './CountUp';
 import { UpdateGlobe } from './UpdateGlobe';
 
 const STATS: { value: number; decimals?: number; suffix: string; label: string }[] = [
-  { value: 500, suffix: '+', label: 'Apps registered' },
-  { value: 10_000_000, suffix: '+', label: 'Updates delivered' },
+  { value: 1000, suffix: '+', label: 'Apps registered' },
+  { value: 20_000_000, suffix: '+', label: 'Updates delivered' },
   { value: 99.99, decimals: 2, suffix: '%', label: 'Delivery uptime' },
 ];
 
