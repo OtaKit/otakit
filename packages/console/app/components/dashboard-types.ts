@@ -103,6 +103,8 @@ export type ReleaseHistoryItem = {
   autoRevertMinSample: number;
   /** Share of devices (1-100); below 100 on a non-reverted release is an active rollout. */
   rolloutPercent: number;
+  /** Plain-text release notes, or null. */
+  notes: string | null;
   promotedAt: string;
   promotedBy: string | null;
   revertedAt: string | null;

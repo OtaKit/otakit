@@ -34,6 +34,7 @@ const NAV = [
       { label: 'Channels & Runtime Version', href: '/docs/channels' },
       { label: 'Percentage Rollouts', href: '/docs/rollouts' },
       { label: 'Preview Links', href: '/docs/previews' },
+      { label: 'Release Notes', href: '/docs/release-notes' },
       { label: 'Update Strategies', href: '/docs/update-strategies' },
       { label: 'Events & Listeners', href: '/docs/events' },
       { label: 'Push Notifications', href: '/docs/push' },

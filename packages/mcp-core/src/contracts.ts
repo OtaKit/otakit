@@ -154,6 +154,14 @@ export const releaseOptionsShape = {
     .boolean()
     .optional()
     .describe("Revert the lane's active rollout and publish this bundle in its place"),
+  notes: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .describe(
+      'Plain-text release notes, up to 2,000 characters, delivered with the release. Apps on plugin 3.3+ can show them to their users. Null or omitted for none.',
+    ),
 };
 
 export const rolloutPercentSchema = z

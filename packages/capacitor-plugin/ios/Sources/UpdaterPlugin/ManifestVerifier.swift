@@ -90,6 +90,37 @@ enum ManifestVerifier {
     try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
   }
 
+  /// Verify a manifest entry's `notes` block (plugin 3.3+). It binds the text
+  /// (by hash) to its release, bundle and lane; must match the server's
+  /// `buildNotesPayload` byte-for-byte.
+  static func verifyNotes(
+    appId: String,
+    channel: String?,
+    releaseId: String,
+    sha256: String,
+    text: String,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
+    let payload = buildCanonicalPayload(
+      header: "NOTES",
+      bundleLines: [
+        "appId:\(appId)",
+        "channel:\(channel ?? "null")",
+        "releaseId:\(releaseId)",
+        "sha256:\(sha256)",
+        "notesSha256:\(sha256Hex(text))"
+      ],
+      signature: signature
+    )
+    try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
+  /// Lowercase hex SHA-256 of the UTF-8 bytes, as the server computes it.
+  static func sha256Hex(_ text: String) -> String {
+    SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+
   private static func verifyCanonicalPayload(
     _ payload: String,
     signature: ManifestSignature,

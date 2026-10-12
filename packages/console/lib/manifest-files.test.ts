@@ -31,7 +31,8 @@ vi.stubEnv('MANIFEST_SIGNING_KEY', privateKey.export({ type: 'pkcs8', format: 'p
 
 const { resolveLaneManifest, restoreManifestFilesForApp, writeManifestFile } =
   await import('./manifest-files');
-const { buildCanonicalPayload, buildRolloutPayload } = await import('./manifest-signing');
+const { buildCanonicalPayload, buildNotesPayload, buildRolloutPayload } =
+  await import('./manifest-signing');
 
 type Signature = { kid: string; sig: string; iat: number; exp: number };
 
@@ -40,6 +41,7 @@ function release(id: string, rolloutPercent: number, overrides: Record<string, u
     id,
     forceImmediate: false,
     rolloutPercent,
+    notes: null as string | null,
     bundle: {
       version: `1.0.${id}`,
       sha256: id.repeat(64).slice(0, 64),
@@ -191,6 +193,61 @@ describe('writeManifestFile', () => {
         signature,
       ),
     ).toBe(false);
+  });
+
+  it("signs each release's notes in their own block, bound to release, bundle and lane", async () => {
+    const stable = {
+      ...release('s', 100),
+      notes: 'Faster checkout.\nFotos werden schneller geladen.',
+    };
+    const rolling = { ...release('r', 25), notes: 'Beta:\tnew home screen' };
+    await writeManifestFile('app-1', 'production', 'rt-1', { stable, rolling });
+
+    const manifest = writtenManifest() as ReturnType<typeof writtenManifest> & {
+      notes: { text: string; signature: Signature };
+      rollout: { notes: { text: string; signature: Signature } };
+    };
+    const payload = (
+      fields: { releaseId: string; sha256: string; text: string; channel?: string },
+      signature: Signature,
+    ) =>
+      buildNotesPayload(
+        { appId: 'app-1', channel: 'production', ...fields },
+        signature.kid,
+        signature.iat,
+        signature.exp,
+      );
+
+    expect(manifest.notes.text).toBe(stable.notes);
+    expect(
+      verifies(
+        payload(
+          { releaseId: 's', sha256: stable.bundle.sha256, text: stable.notes },
+          manifest.notes.signature,
+        ),
+        manifest.notes.signature,
+      ),
+    ).toBe(true);
+    expect(manifest.rollout.notes.text).toBe(rolling.notes);
+    expect(
+      verifies(
+        payload(
+          { releaseId: 'r', sha256: rolling.bundle.sha256, text: rolling.notes },
+          manifest.rollout.notes.signature,
+        ),
+        manifest.rollout.notes.signature,
+      ),
+    ).toBe(true);
+    // Moved to the rolling release, another lane, or edited: no longer valid.
+    for (const moved of [
+      { releaseId: 'r', sha256: rolling.bundle.sha256, text: stable.notes },
+      { releaseId: 's', sha256: stable.bundle.sha256, text: stable.notes, channel: 'staging' },
+      { releaseId: 's', sha256: stable.bundle.sha256, text: `${stable.notes}!` },
+    ]) {
+      expect(verifies(payload(moved, manifest.notes.signature), manifest.notes.signature)).toBe(
+        false,
+      );
+    }
   });
 
   it('expands the rolling bundle file list for the deltas strategy', async () => {

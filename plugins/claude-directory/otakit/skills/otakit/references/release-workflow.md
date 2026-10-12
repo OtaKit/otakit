@@ -70,6 +70,18 @@ needed; still say which bundle the link opens and how long it lasts.
   post it anywhere public, and suggest `revoke_preview` when testing is done.
 - An app has at most 20 active links; `PREVIEW_LIMIT_REACHED` means revoke some.
 
+## Release notes
+
+A release can carry plain-text notes (`notes` on `prepare_release`,
+`publish_release` and `upload_and_publish_bundle`; up to 2,000 characters). Apps
+on plugin 3.3+ may show them to their users in a "What's new" screen.
+
+- Write them for app users: what changed for them, plain language, a few short
+  lines, no internal details, ticket numbers or file names.
+- Show the exact text with the release preview and get approval with it.
+- Notes can be edited later in the dashboard; phones that already updated keep
+  the text they received.
+
 ## Revert
 
 Read the exact current state and call `prepare_revert`. Show the current release,

@@ -87,7 +87,9 @@ final class DownloadRetryTests: XCTestCase {
       try await Task.sleep(nanoseconds: 30_000_000_000)
     })
     let download = Task { try await downloader.download(from: url) }
-    await fulfillment(of: [waiting], timeout: 10)
+    // The suite's first real URLSession request: in a cold CI simulator it has
+    // taken over 10s. Allow the downloader's own request timeout.
+    await fulfillment(of: [waiting], timeout: 60)
     download.cancel()
     do { _ = try await download.value; XCTFail("Expected cancellation") }
     catch { XCTAssertTrue(error is CancellationError) }

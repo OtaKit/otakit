@@ -15,10 +15,10 @@ function isEmptyObject(obj: unknown): boolean {
 
 /**
  * Wrapped plugin that normalizes null returns from native code.
- * iOS call.resolve() without arguments returns {} instead of null.
+ * call.resolve() without arguments returns {} on iOS and undefined on Android.
  */
 function normalizeNullable<T>(value: T): T | null {
-  return isEmptyObject(value) ? null : value;
+  return value == null || isEmptyObject(value) ? null : value;
 }
 
 const OtaKit: OtaKitPlugin = {
@@ -33,6 +33,8 @@ const OtaKit: OtaKitPlugin = {
   setChannel: (options) => NativeOtaKit.setChannel(options),
   getChannel: () => NativeOtaKit.getChannel(),
   stopPreview: () => NativeOtaKit.stopPreview(),
+  getUnseenReleaseNotes: async () => normalizeNullable(await NativeOtaKit.getUnseenReleaseNotes()),
+  markReleaseNotesSeen: () => NativeOtaKit.markReleaseNotesSeen(),
   // NativeOtaKit is the registerPlugin proxy, which implements Capacitor's
   // listener API; this plain-object wrapper must forward it explicitly.
   addListener: ((eventName: OtaKitEventName, listenerFunc: (event: unknown) => void) =>

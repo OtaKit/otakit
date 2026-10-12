@@ -35,6 +35,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "setChannel", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getChannel", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "stopPreview", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getUnseenReleaseNotes", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "markReleaseNotesSeen", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -502,6 +504,26 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve(failed.toDictionary())
   }
 
+  /// The running bundle's release notes, unless the app marked that release's
+  /// notes seen. Resolves empty (null in JS) when there is nothing to show.
+  @objc func getUnseenReleaseNotes(_ call: CAPPluginCall) {
+    let current = store.getCurrentBundle()
+    guard let text = current.notes, let releaseId = current.releaseId,
+          !store.isReleaseNotesSeen(releaseId) else {
+      call.resolve()
+      return
+    }
+    call.resolve(["text": text, "version": current.version, "releaseId": releaseId])
+  }
+
+  @objc func markReleaseNotesSeen(_ call: CAPPluginCall) {
+    let current = store.getCurrentBundle()
+    if current.notes != nil, let releaseId = current.releaseId {
+      store.markReleaseNotesSeen(releaseId)
+    }
+    call.resolve()
+  }
+
   @objc func setChannel(_ call: CAPPluginCall) {
     let raw = call.options["channel"]
     if raw == nil || raw is NSNull {
@@ -902,7 +924,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     runtimeVersion: String? = nil,
     channel: String? = nil,
     releaseId: String? = nil,
-    encryption: ManifestEncryption? = nil
+    encryption: ManifestEncryption? = nil,
+    notes: String? = nil
   ) async throws -> BundleInfo {
     try ensureOwnerActive()
     let installationId = BundleStore.newInstallationId()
@@ -1036,7 +1059,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         sha256: expectedSha256,
         path: destination.path,
         channel: channel,
-        releaseId: releaseId
+        releaseId: releaseId,
+        notes: notes
       )
 
       phase = "stage"
@@ -1311,7 +1335,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       runtimeVersion: manifest.runtimeVersion,
       channel: targetChannel,
       releaseId: manifest.releaseId,
-      encryption: manifest.encryption
+      encryption: manifest.encryption,
+      notes: manifest.notes
     )
   }
 
@@ -1411,7 +1436,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         sha256: manifest.sha256,
         path: destination.path,
         channel: targetChannel,
-        releaseId: manifest.releaseId
+        releaseId: manifest.releaseId,
+        notes: manifest.notes
       )
 
       phase = "stage"

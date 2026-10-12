@@ -62,6 +62,8 @@ Flags that change device behavior, so show them before running:
 - `--replace-rollout` — cancel the channel's active rollout and release this
   bundle in its place.
 - `--force-immediate` — devices apply and reload on their next check.
+- `--notes <text>` / `--notes-file <path>` — release notes app users may see
+  (plugin 3.3+). Show the exact text.
 - `--fail-on-incompatible` — exit non-zero when native compatibility fails.
 - `--ignore-compat` — skip the check entirely. Only on explicit instruction.
 

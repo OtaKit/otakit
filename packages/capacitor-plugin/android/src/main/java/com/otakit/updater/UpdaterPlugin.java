@@ -706,6 +706,37 @@ public class UpdaterPlugin extends Plugin {
     call.resolve();
   }
 
+  /**
+   * The running bundle's release notes, unless the app marked that release's notes seen. Resolves
+   * empty (null in JS) when there is nothing to show.
+   */
+  @PluginMethod
+  public void getUnseenReleaseNotes(PluginCall call) {
+    BundleInfo current = store.getCurrentBundle();
+    if (
+      current.notes == null ||
+      current.releaseId == null ||
+      store.isReleaseNotesSeen(current.releaseId)
+    ) {
+      call.resolve();
+      return;
+    }
+    JSObject result = new JSObject();
+    result.put("text", current.notes);
+    result.put("version", current.version);
+    result.put("releaseId", current.releaseId);
+    call.resolve(result);
+  }
+
+  @PluginMethod
+  public void markReleaseNotesSeen(PluginCall call) {
+    BundleInfo current = store.getCurrentBundle();
+    if (current.notes != null && current.releaseId != null) {
+      store.markReleaseNotesSeen(current.releaseId);
+    }
+    call.resolve();
+  }
+
   @PluginMethod
   public void stopPreview(PluginCall call) {
     exitPreview(call);
@@ -1122,7 +1153,8 @@ public class UpdaterPlugin extends Plugin {
     String runtimeVersion,
     String channel,
     String releaseId,
-    ManifestClient.ManifestEncryption encryption
+    ManifestClient.ManifestEncryption encryption,
+    String notes
   ) throws Exception {
     ensureOwnerActive();
     String installationId = BundleStore.newInstallationId();
@@ -1225,7 +1257,8 @@ public class UpdaterPlugin extends Plugin {
         expectedSha256,
         destination.getAbsolutePath(),
         channel,
-        releaseId
+        releaseId,
+        notes
       );
       phase = "stage";
       java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
@@ -1499,7 +1532,8 @@ public class UpdaterPlugin extends Plugin {
       latest.runtimeVersion,
       targetChannel,
       latest.releaseId,
-      latest.encryption
+      latest.encryption,
+      latest.notes
     );
   }
 
@@ -1593,7 +1627,8 @@ public class UpdaterPlugin extends Plugin {
         manifest.sha256,
         destination.getAbsolutePath(),
         targetChannel,
-        manifest.releaseId
+        manifest.releaseId,
+        manifest.notes
       );
       phase = "stage";
       java.util.List<String> cleanupBundleIds = stageOwnedBundle(info);
