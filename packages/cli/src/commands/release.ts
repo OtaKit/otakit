@@ -5,7 +5,7 @@ import ora from 'ora';
 import { ApiClient } from '../lib/api.js';
 import { requireConfig } from '../lib/config.js';
 import { CliError, runCommand } from '../lib/errors.js';
-import { readReleaseNotes } from '../lib/notes.js';
+import { notesLabel, readReleaseNotes, warnIfNotesDropped } from '../lib/notes.js';
 import { explainRolloutConflict, rolloutSuffix } from '../lib/rollout.js';
 import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
 
@@ -52,7 +52,6 @@ export const releaseCommand = new Command('release')
       const forceImmediate = options.forceImmediate === true;
       const forceLabel = forceImmediate ? ' (force immediate)' : '';
       const notes = await readReleaseNotes(options);
-      const notesLabel = notes ? ' with release notes' : '';
       const releaseOptions = {
         forceImmediate,
         rolloutPercent:
@@ -82,8 +81,9 @@ export const releaseCommand = new Command('release')
           );
         }
         spinner.succeed(
-          `Released ${bundleId} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel}.`,
+          `Released ${bundleId} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel(result.release)}.`,
         );
+        warnIfNotesDropped(notes, result.release);
         return;
       }
 
@@ -107,7 +107,8 @@ export const releaseCommand = new Command('release')
         );
       }
       spinner.succeed(
-        `Released ${latest.version} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel}.`,
+        `Released ${latest.version} to ${targetLabel}${rolloutSuffix(result.release)}${forceLabel}${notesLabel(result.release)}.`,
       );
+      warnIfNotesDropped(notes, result.release);
     });
   });

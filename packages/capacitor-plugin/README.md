@@ -323,10 +323,15 @@ or an agent). Plugin 3.3+ delivers them with the update, signed, so the app can
 show a "What's new" screen once per release:
 
 ```ts
-const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
-if (notes) {
-  showWhatsNew(notes.text); // render as text, never as HTML
-  await OtaKit.markReleaseNotesSeen();
+await OtaKit.notifyAppReady(); // first, so a bundle that rolls back never marks its notes seen
+try {
+  const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
+  if (notes) {
+    showWhatsNew(notes.text); // render as text, never as HTML
+    await OtaKit.markReleaseNotesSeen();
+  }
+} catch {
+  // A native shell on plugin 3.2 or older doesn't have these methods.
 }
 ```
 

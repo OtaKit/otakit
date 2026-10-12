@@ -1463,13 +1463,22 @@ export async function updateReleaseNotes(
 
   // Reverted releases are in no manifest; everything else may be.
   if (!release.revertedAt) {
-    await database.$transaction(async (tx) => {
-      await lockTransaction(
-        tx,
-        laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
+    try {
+      await database.$transaction(async (tx) => {
+        await lockTransaction(
+          tx,
+          laneLockKey(input.appId, release.channel, release.bundle.runtimeVersion),
+        );
+        await syncManifest(input.appId, release.channel, release.bundle.runtimeVersion, tx);
+      }, RELEASE_TRANSACTION_OPTIONS);
+    } catch (error) {
+      console.error('Release notes manifest sync failed', error);
+      throw new OtaKitServiceError(
+        'MANIFEST_SYNC_PENDING',
+        'The release notes were saved, but devices do not have them yet because republishing the release failed. Save the notes again to retry.',
+        503,
       );
-      await syncManifest(input.appId, release.channel, release.bundle.runtimeVersion, tx);
-    }, RELEASE_TRANSACTION_OPTIONS);
+    }
   }
 
   return { release: toReleaseSummary(release) };

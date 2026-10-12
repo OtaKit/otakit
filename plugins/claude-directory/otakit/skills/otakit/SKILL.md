@@ -28,8 +28,8 @@ For a release:
 2. Check native compatibility when local project evidence is available.
 3. Upload without publishing when the user wants review first.
 4. Prepare the exact release and show its bundle, lane, expected current state,
-   rollout percentage, force-immediate behavior, auto-revert thresholds, and
-   compatibility decision.
+   rollout percentage, force-immediate behavior, auto-revert thresholds, release
+   notes exactly as written, and compatibility decision.
 5. Ask for approval before publishing. Use the combined upload-and-publish tool
    only when the user explicitly requests a one-step release and the exact target
    and options are visible for approval.

@@ -491,9 +491,10 @@ databaseDescribe('release reliability (PostgreSQL integration)', () => {
       const failing = vi.fn().mockRejectedValue(new Error('storage unavailable'));
       const input = { organizationId, actor, appId, releaseId: release.id, notes: 'New notes' };
 
-      await expect(updateReleaseNotes(input, { syncManifest: failing })).rejects.toThrow(
-        'storage unavailable',
-      );
+      await expect(updateReleaseNotes(input, { syncManifest: failing })).rejects.toMatchObject({
+        code: 'MANIFEST_SYNC_PENDING',
+        status: 503,
+      });
       await expect(
         db.release.findUniqueOrThrow({ where: { id: release.id } }),
       ).resolves.toMatchObject({ notes: 'New notes' });

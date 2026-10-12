@@ -15,10 +15,10 @@ function isEmptyObject(obj: unknown): boolean {
 
 /**
  * Wrapped plugin that normalizes null returns from native code.
- * iOS call.resolve() without arguments returns {} instead of null.
+ * call.resolve() without arguments returns {} on iOS and undefined on Android.
  */
 function normalizeNullable<T>(value: T): T | null {
-  return isEmptyObject(value) ? null : value;
+  return value == null || isEmptyObject(value) ? null : value;
 }
 
 const OtaKit: OtaKitPlugin = {

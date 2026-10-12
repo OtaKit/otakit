@@ -34,7 +34,7 @@ export default function ReleaseNotesPage() {
 Photo upload fixed on Android."
 
 # Or from a file, in the same command that uploads
-otakit upload --release production --notes-file NOTES.md`}</Pre>
+otakit upload --release production --notes-file NOTES.txt`}</Pre>
       <P>
         Agents pass <Code>notes</Code> to <Code>prepare_release</Code> and{' '}
         <Code>publish_release</Code>, and show you the text before publishing. Over the API, send{' '}
@@ -59,10 +59,15 @@ otakit upload --release production --notes-file NOTES.md`}</Pre>
       </P>
       <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
-const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
-if (notes) {
-  showWhatsNew(notes.text);
-  await OtaKit.markReleaseNotesSeen();
+await OtaKit.notifyAppReady(); // first, so a bundle that rolls back never marks its notes seen
+try {
+  const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
+  if (notes) {
+    showWhatsNew(notes.text);
+    await OtaKit.markReleaseNotesSeen();
+  }
+} catch {
+  // A native shell on plugin 3.2 or older doesn't have these methods.
 }
 
 function showWhatsNew(text: string) {

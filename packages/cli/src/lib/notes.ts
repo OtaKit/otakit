@@ -32,5 +32,25 @@ export async function readReleaseNotes(options: {
       `Release notes must be at most ${MAX_RELEASE_NOTES_LENGTH.toLocaleString('en-US')} characters (got ${notes.length.toLocaleString('en-US')}).`,
     );
   }
+  if (notes.includes('\u0000')) {
+    throw new CliError('Release notes must not contain null characters.');
+  }
   return notes === '' ? undefined : notes;
+}
+
+/** ' with release notes' when the server stored notes on the release. */
+export function notesLabel(release: { notes?: string | null }): string {
+  return release.notes ? ' with release notes' : '';
+}
+
+/** Warn when notes were sent but the server did not store them (no notes support yet). */
+export function warnIfNotesDropped(
+  sent: string | undefined,
+  release: { notes?: string | null },
+): void {
+  if (sent !== undefined && !release.notes) {
+    console.warn(
+      'Warning: the server did not store the release notes; it may not support them yet.',
+    );
+  }
 }

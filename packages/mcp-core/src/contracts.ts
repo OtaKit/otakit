@@ -160,7 +160,7 @@ export const releaseOptionsShape = {
     .nullable()
     .optional()
     .describe(
-      'Release notes that app users may see in a "What\'s new" sheet: what changed for them, in plain text and a few short lines. Show them to the user for approval.',
+      'Plain-text release notes, up to 2,000 characters, delivered with the release. Apps on plugin 3.3+ can show them to their users. Null or omitted for none.',
     ),
 };
 

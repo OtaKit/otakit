@@ -36,6 +36,10 @@ describe('release notes flags', () => {
     );
   });
 
+  it('refuses null characters, like the server', async () => {
+    await expect(readReleaseNotes({ notes: 'a\u0000b' })).rejects.toThrow('null characters');
+  });
+
   it('refuses notes over 2,000 characters', async () => {
     await expect(readReleaseNotes({ notes: 'x'.repeat(2000) })).resolves.toHaveLength(2000);
     await expect(readReleaseNotes({ notes: 'x'.repeat(2001) })).rejects.toThrow(

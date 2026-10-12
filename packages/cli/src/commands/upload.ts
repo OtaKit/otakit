@@ -17,7 +17,7 @@ import {
   rolloutConflictError,
   rolloutSuffix,
 } from '../lib/rollout.js';
-import { readReleaseNotes } from '../lib/notes.js';
+import { notesLabel, readReleaseNotes, warnIfNotesDropped } from '../lib/notes.js';
 import { renderPreview } from '../lib/preview.js';
 import { resolveBundlePath, resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
 import { normalizeChannel, parseRolloutPercent } from '../lib/validate.js';
@@ -238,7 +238,7 @@ export const uploadCommand = new Command('upload')
       const notes = await readReleaseNotes(options);
       if (notes !== undefined && releaseChannel === undefined) {
         console.warn(
-          '--notes has no effect without --release; ignoring. Add notes when you release the bundle.',
+          '--notes and --notes-file have no effect without --release; ignoring. Add notes when you release the bundle.',
         );
       }
       if (releaseChannel !== undefined && lane) {
@@ -312,9 +312,11 @@ export const uploadCommand = new Command('upload')
 
       if (releaseChannel !== undefined) {
         const share = uploadResult.release ? rolloutSuffix(uploadResult.release.release) : '';
+        const withNotes = uploadResult.release ? notesLabel(uploadResult.release.release) : '';
         spinner.succeed(
-          `Uploaded ${bundle.version} (${bundle.id}) and released to ${releaseChannel ?? 'base channel'}${share}.`,
+          `Uploaded ${bundle.version} (${bundle.id}) and released to ${releaseChannel ?? 'base channel'}${share}${withNotes}.`,
         );
+        if (uploadResult.release) warnIfNotesDropped(notes, uploadResult.release.release);
       } else {
         spinner.succeed(`Uploaded ${bundle.version} (${bundle.id}).`);
       }
