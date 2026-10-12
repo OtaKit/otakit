@@ -1,6 +1,31 @@
 {
   "entries": [
     {
+      "slug": "release-notes",
+      "date": "2026-10-12",
+      "type": "feature",
+      "title": "Release notes",
+      "areas": ["Plugin", "CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.3.0",
+        "cli": "1.10.0"
+      },
+      "summary": "Attach short plain-text notes to a release, such as \"Faster checkout. Photo upload fixed on Android.\" Your team sees them next to the release, and the app can show them once after the update as a \"What's new\" screen.",
+      "highlights": [
+        "Write notes in the release dialog, with `otakit release --notes` or `--notes-file`, over the REST API, or through the `prepare_release` and `publish_release` agent tools.",
+        "In the app, `getUnseenReleaseNotes()` returns the running release's notes until `markReleaseNotesSeen()` is called, so each release shows once per phone.",
+        "Notes travel in their own signed block, so the app only shows text signed for that exact release. Fix a typo later from the release's menu in the dashboard."
+      ],
+      "code": "otakit release --channel production --notes \"Faster checkout.\"",
+      "requires": "Plugin 3.3+ to show notes in the app. Older plugins ignore them and update as before.",
+      "links": [
+        {
+          "label": "Release notes guide",
+          "href": "/docs/release-notes"
+        }
+      ]
+    },
+    {
       "slug": "preview-links",
       "date": "2026-09-30",
       "type": "feature",
@@ -381,16 +406,16 @@
       "name": "@otakit/capacitor-updater",
       "label": "Capacitor plugin",
       "install": "npm install @otakit/capacitor-updater@latest",
-      "version": "3.2.0",
-      "date": "2026-09-30"
+      "version": "3.3.0",
+      "date": "2026-10-12"
     },
     {
       "key": "cli",
       "name": "@otakit/cli",
       "label": "CLI",
       "install": "npm install -g @otakit/cli@latest",
-      "version": "1.9.1",
-      "date": "2026-10-05"
+      "version": "1.10.0",
+      "date": "2026-10-12"
     },
     {
       "key": "push",

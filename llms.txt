@@ -2612,7 +2612,23 @@ Route: /changelog
 
 New features, improvements and fixes, newest first. Plugin features need the plugin version shown.
 
-Latest versions: @otakit/capacitor-updater 3.2.0 (2026-09-30), @otakit/cli 1.9.1 (2026-10-05), @otakit/push 0.1.1 (2026-09-27).
+Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.10.0 (2026-10-12), @otakit/push 0.1.1 (2026-09-27).
+
+### Release notes (2026-10-12, Plugin 3.3.0, CLI 1.10.0)
+
+Attach short plain-text notes to a release, such as "Faster checkout. Photo upload fixed on Android." Your team sees them next to the release, and the app can show them once after the update as a "What's new" screen.
+
+- Write notes in the release dialog, with `otakit release --notes` or `--notes-file`, over the REST API, or through the `prepare_release` and `publish_release` agent tools.
+- In the app, `getUnseenReleaseNotes()` returns the running release's notes until `markReleaseNotesSeen()` is called, so each release shows once per phone.
+- Notes travel in their own signed block, so the app only shows text signed for that exact release. Fix a typo later from the release's menu in the dashboard.
+
+```
+otakit release --channel production --notes "Faster checkout."
+```
+
+Requires: Plugin 3.3+ to show notes in the app. Older plugins ignore them and update as before.
+
+Docs: Release notes guide (/docs/release-notes)
 
 ### Preview links (2026-09-30, Plugin 3.2.0, CLI 1.9.0)
 
