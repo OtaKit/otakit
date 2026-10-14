@@ -182,6 +182,7 @@ databaseDescribe('custom events (PostgreSQL integration)', () => {
         },
         select: { id: true },
       });
+    const r0 = await release('none', 1);
     const r1 = await release('a', 1);
     const r2 = await release('b', 2);
     await release('c', 3, '__preview_abcdefghijklmnopqrstuvwxyz');
@@ -191,6 +192,8 @@ databaseDescribe('custom events (PostgreSQL integration)', () => {
     ]);
     const bySessions = await events.compareAppEventReleases(ctx(), 'checkout_completed');
     expect(bySessions.basis).toBe('sessions');
+    // A release without any data is left out, and is never the baseline.
+    expect(bySessions.releases.map((row) => row.releaseId)).not.toContain(r0.id);
     expect(
       bySessions.releases.map((row) => [row.releaseId, row.perThousand, row.differencePercent]),
     ).toEqual([

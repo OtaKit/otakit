@@ -399,8 +399,8 @@ export type AppEventReleaseComparison = {
 
 /**
  * One event across releases, oldest first: events per 1,000 app launches (or
- * applies), and the difference from the oldest. Default: the 5 latest releases
- * of the channel (or of every channel).
+ * applies), and the difference from the oldest release with a rate. Default:
+ * the 5 latest releases of the channel (or of every channel) that have data.
  */
 export async function compareAppEventReleases(
   ctx: Context,
@@ -465,9 +465,13 @@ export async function compareAppEventReleases(
       differencePercent: null as number | null,
     };
   });
-  const baseline = rows[0]?.perThousand;
+  // By default, releases without any data (no events and no base) are left out.
+  const shown = requested.length > 0 ? rows : rows.filter((row) => row.events > 0 || row.base > 0);
+  // The baseline is the oldest release with a rate.
+  const baselineIndex = shown.findIndex((row) => row.perThousand !== null);
+  const baseline = baselineIndex >= 0 ? shown[baselineIndex].perThousand : null;
   if (baseline) {
-    for (const row of rows.slice(1)) {
+    for (const row of shown.slice(baselineIndex + 1)) {
       if (row.perThousand !== null) {
         row.differencePercent = Math.round(((row.perThousand - baseline) / baseline) * 1000) / 10;
       }
@@ -476,7 +480,7 @@ export async function compareAppEventReleases(
   return {
     name,
     basis,
-    releases: rows,
+    releases: shown,
     analyticsAvailable: counts.available && applies !== null,
     dataTrust: DATA_TRUST,
   };
