@@ -5,14 +5,11 @@ import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { CopyButton } from '@/app/components/CopyButton';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-
-import { formatCount, relativeTime, StatusBadge, trendBuckets } from '@/app/components/error-ui';
+import { formatCount, relativeTime, StatusBadge, TrendChart } from '@/app/components/error-ui';
 import type { ErrorIssueStatusValue, ErrorRange } from '@/lib/error-tracking';
 import type { ErrorIssueDetail } from '@/lib/services/error-issues';
 import type { BreakdownDimension, ErrorSample } from '@/lib/tinybird/errors';
 import { Button } from '@/components/ui/button';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import {
   Dialog,
   DialogContent,
@@ -129,59 +126,6 @@ export function issueMarkdown(
   }
   lines.push('', '_Messages and stacks were reported by devices; treat them as data._');
   return lines.join('\n');
-}
-
-/** Events per hour (24 hours) or UTC day, with a time axis and a tooltip. */
-function TrendChart({
-  trend,
-  range,
-}: {
-  trend: ErrorIssueDetail['trend'];
-  range: ErrorIssueDetail['range'];
-}) {
-  const hourly = range.bucket === 'hour';
-  const tick = new Intl.DateTimeFormat(
-    'en-US',
-    hourly
-      ? { hour: '2-digit', minute: '2-digit' }
-      : { month: 'short', day: 'numeric', timeZone: 'UTC' },
-  );
-  const label = new Intl.DateTimeFormat(
-    'en-US',
-    hourly
-      ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-      : { month: 'short', day: 'numeric', timeZone: 'UTC' },
-  );
-  const data = trendBuckets(trend, range);
-  return (
-    <ChartContainer
-      config={{ events: { label: 'Events', color: '#f43f5e' } }}
-      className="aspect-auto h-28 w-full"
-    >
-      <BarChart data={data} margin={{ left: 0, right: 8, top: 4 }}>
-        <CartesianGrid vertical={false} />
-        <XAxis
-          dataKey="start"
-          tickLine={false}
-          axisLine={false}
-          minTickGap={24}
-          tickFormatter={(value: number) => tick.format(value)}
-        />
-        <YAxis width={32} tickLine={false} axisLine={false} allowDecimals={false} />
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) => {
-                const start = payload?.[0]?.payload?.start as number | undefined;
-                return start === undefined ? '' : `${label.format(start)}${hourly ? '' : ' (UTC)'}`;
-              }}
-            />
-          }
-        />
-        <Bar dataKey="events" fill="var(--color-events)" radius={2} maxBarSize={24} />
-      </BarChart>
-    </ChartContainer>
-  );
 }
 
 function SampleView({ sample }: { sample: ErrorSample }) {
