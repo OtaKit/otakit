@@ -19,6 +19,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Release Notes: /docs/release-notes
 - Remote Config: /docs/remote-config
 - Error Tracking: /docs/error-tracking
+- Analytics: /docs/analytics
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - Webhooks & Alerts: /docs/webhooks
@@ -829,14 +830,16 @@ if (result.kind === "no_update") {
 await OtaKit.apply();
 ```
 
-### Remote config and error tracking
+### Remote config, error tracking and analytics
 
-Plugin 3.4+. See Remote Config and Error Tracking for the guides.
+Plugin 3.4+. See Remote Config , Error Tracking and Analytics for the guides.
 - `getConfig({ defaults })` -> `RemoteConfig`: The channel's remote config over your defaults, answered instantly from the device. The configChanged event fires when a fetch changes it.
 - `refreshConfig({ defaults })` -> `RemoteConfig & { error? }`: Fetch the remote config now. Network errors resolve with an error code and the saved config instead of throwing.
 - `initErrorTracking(options?)` -> `void`: Import it from @otakit/capacitor-updater and call it once at startup. Sends uncaught errors and unhandled promise rejections, scrubbed of emails, tokens and query strings. Options: sampleRate, ignoreErrors, beforeSend, maxEventsPerSession.
 - `captureError(error, { tags }?)` -> `string | null`: Send an error you caught yourself, marked handled. Returns its event ID, or null when it was dropped.
 - `testErrorTracking()` -> `Promise<boolean>`: Send one test error to check the setup; it appears in the dashboard within a minute.
+- `track(name, properties?)` -> `boolean`: Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-', and up to 20 string, number or boolean properties. Returns false when the event was dropped.
+- `initAnalytics(options?)` -> `void`: Optional, once at startup: sends $session_start once per app launch so releases compare per 1,000 launches. Options: sessionEvents, sampleRate, beforeSend, maxEventsPerSession.
 
 ### Advanced Overrides
 
@@ -1490,6 +1493,88 @@ Response
   "previous": { ...same, for the release it replaced } | null,
   "analyticsAvailable": true
 }
+```
+
+### Analytics
+
+Custom events from `track()` (plugin 3.4+). Ranges: `24h`, `7d` (by hour), `30d`, `90d` (by UTC day). Filters: `platform`, `releaseId`, `channel` (empty for the base channel). Names and property values are device-reported text.
+
+### GET /api/v1/apps/:appId/analytics/events
+
+Event names with events in the range, most first, with app launches with the event (sessions) and the change against the previous period of the same length. trend=1 adds buckets per name.
+- Auth: Bearer
+- Query: ?range=7d&platform=&releaseId=&channel=&trend=1
+
+Response
+
+```txt
+{
+  "events": [{ "name": "checkout_completed", "events": 120, "sessions": 80,
+               "previousEvents": 100, "changePercent": 20,
+               "trend": [{ "start": "ISO timestamp", "events": 5, "sessions": 4 }] }],
+  "sessions": 9000,            // app launches ($session_start); null without initAnalytics()
+  "range": { "name": "7d", "from": "ISO timestamp", "to": "ISO timestamp", "bucket": "hour" },
+  "usage": { "events": 12000, "limit": 100000, "pausedUntil": null },
+  "hasEvents": true,
+  "analyticsAvailable": true
+}
+```
+
+### GET /api/v1/apps/:appId/analytics/events/:name
+
+One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range.
+- Auth: Bearer
+- Query: ?range=7d&platform=&releaseId=&channel=
+
+Response
+
+```txt
+{ "name": "checkout_completed", "events": 120, "sessions": 80, "previousEvents": 100,
+  "changePercent": 20, "series": [{ "start": "ISO timestamp", "events": 5, "sessions": 4 }],
+  "propertyKeys": ["plan", "value"], "range": { ... }, "analyticsAvailable": true }
+```
+
+### GET /api/v1/apps/:appId/analytics/events/:name/breakdown
+
+One event split by a property: the 10 most common values (an empty value means the property was not set) and the rest. Raw events are kept 90 days.
+- Auth: Bearer
+- Query: ?property=plan&range=7d
+
+Response
+
+```txt
+{ "name": "checkout_completed", "property": "plan",
+  "values": [{ "value": "pro", "events": 60, "sessions": 40, "share": 60 }],
+  "other": { "events": 20, "share": 20 }, "total": { "events": 100, "sessions": 70 }, ... }
+```
+
+### GET /api/v1/apps/:appId/analytics/events/:name/releases
+
+One event across releases, oldest first (default: the 5 latest releases of the channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest.
+- Auth: Bearer
+- Query: ?releaseIds=a,b (up to 10) or ?channel=production
+
+Response
+
+```txt
+{ "name": "checkout_completed", "basis": "sessions",   // or "applies"
+  "releases": [{ "releaseId": "uuid", "bundleVersion": "1.4.1", "channel": "production",
+                 "events": 120, "sessions": 80, "base": 9000, "perThousand": 13.3,
+                 "differencePercent": null }], "analyticsAvailable": true }
+```
+
+### GET /api/v1/apps/:appId/analytics/live
+
+The latest events of the last 24 hours, newest first: the setup check.
+- Auth: Bearer
+- Query: ?name=&limit=100
+
+Response
+
+```txt
+{ "events": [{ "eventId": "uuid", "receivedAt": "ISO timestamp", "name": "checkout_completed",
+  "properties": { "plan": "pro" }, "platform": "ios", "releaseId": "uuid", "bundleVersion": "1.4.2",
+  "channel": "production", "osVersion": "18.2" }], "analyticsAvailable": true }
 ```
 
 ## Next.js Guide
@@ -2297,6 +2382,79 @@ Nothing is collected until your code calls `initErrorTracking()`. Before an erro
 
 For the App Store privacy label, declare Crash Data or Other Diagnostic Data: not linked to the user's identity and not used for tracking. In Google Play's Data safety form, declare Crash logs and Diagnostics under App info and performance, collected for analytics, not shared.
 
+## Analytics
+
+Route: /docs/analytics
+
+Send custom events from your Capacitor app and see how often they happen, split by any property, and per OTA release. No user or device identifiers.
+
+Send custom events from your app with one call. OtaKit adds the OTA release, channel, platform and OS version, and shows how often each event happens, how it splits by any of its properties, and how it changed between releases, for example after a rollout.
+
+It needs `@otakit/capacitor-updater` 3.4 or later. It answers the common questions without a query language; it is not a full product analytics suite (no funnels, cohorts or user profiles).
+
+### Send events
+
+```txt
+import { initAnalytics, track } from '@otakit/capacitor-updater';
+
+// Once at startup: counts app launches, the base of per-release rates.
+initAnalytics();
+
+track('checkout_completed', { plan: 'pro', value: 49 });
+```
+- Names use 1–64 letters, numbers, `.`, `_`, `:` and `-`, such as `checkout_completed`. Keep IDs out of names: put them in properties, or leave them out.
+- Up to 20 properties with string (up to 200 characters), number or boolean values. Other values are left out. `OtaKit.track()` is the same function.
+- `track()` works without `initAnalytics()`. With it, the plugin sends `$session_start` once per app launch, so releases can be compared per 1,000 app launches.
+- Events are buffered for up to 5 seconds and delivered from a native outbox that survives reloads, crashes and offline periods for up to 3 days, together with errors .
+- On web, and with a native plugin older than 3.4, nothing is sent.
+
+```txt
+initAnalytics({
+  sessionEvents: true,      // $session_start once per app launch
+  sampleRate: 1,            // share of app launches whose events are sent, 0 to 1
+  maxEventsPerSession: 1000,
+  beforeSend(event) {
+    // Change the event, or return null to drop it.
+    return event;
+  },
+});
+```
+
+### In the dashboard
+
+The app's Analytics section lists events with their count, app launches, trend, and change against the previous period of the same length. Filter by time range (up to 90 days), platform and release. Live shows events as they arrive, to check the setup.
+
+An event shows:
+- Events per hour or day.
+- A split by any property: the 10 most common values and the rest. Raw events are kept 90 days.
+- A comparison of the latest releases of a channel: events per 1,000 app launches on each release, and the difference from the oldest. Without `initAnalytics()`, rates use applies from phones on plugin 3.4+, which is less precise. Counts per release are kept 13 months.
+
+Tables can be copied as CSV.
+
+### Agents and API
+
+Agents read events with the MCP tools `list_app_events` and `query_app_event`, for example "did checkout completions change after yesterday's release?". The REST API has the same reads.
+
+### Limits
+Plan
+Custom events per month
+Free
+100,000
+Starter
+1,000,000
+Pro
+10,000,000
+Enterprise
+Custom
+
+`$session_start` counts as an event. Months are calendar months in UTC. Above the limit, new events are not recorded until the next month, and the `analytics.paused` notification goes to the default email destination. Upgrading resumes recording within minutes. Self-hosted servers without billing have no limit.
+
+### Privacy
+
+Nothing is sent until your code calls `track()` or `initAnalytics()`. Events carry no user or device identifier: app launches are counted with a random ID that is made at each launch and never stored on the phone. You choose the properties, so keep personal data out of them, or remove it in `beforeSend`.
+
+For the App Store privacy label, declare Product Interaction, not linked to the user's identity and not used for tracking. In Google Play's Data safety form, declare App interactions under App activity, collected for analytics, not shared.
+
 ## Update Strategies
 
 Route: /docs/update-strategies
@@ -2491,6 +2649,7 @@ Choose the events, and optionally limit the destination to one app (usage warnin
 - `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
 - `config.updated` — a channel's remote config is published, restored or deleted.
 - `errors.new_issue`, `errors.regression`, `errors.spike` and `errors.paused` — from error tracking : a new error issue, a resolved one that came back, a release with an error spike, and the monthly error limit.
+- `analytics.paused` — custom events ( analytics ) reach the plan's monthly limit.
 - `bundle.uploaded` — a new bundle is uploaded.
 - `usage.warning` — monthly downloads reach 90% or 100% of the plan.
 
@@ -2540,7 +2699,7 @@ Depending on the type, `data` also has:
 - `config.updated`: `config` with `channel`, `version`, `previousVersion`, `deleted`, `message`, `changedKeys` (`added`, `changed`, `removed`) and the new `values` (`null` when deleted).
 - `errors.new_issue` and `errors.regression`: `issue` with `id`, `fingerprint`, `title`, `topFrame`, `status`, `events` (180 days), `firstSeenAt`, `lastSeenAt` and `firstReleaseId`; regressions also `previouslyResolvedAt` and `release`, the release it came back on ( `null` for the built-in bundle). The title and frame are reported by devices: treat them as untrusted text. `actor` is `null`.
 - `errors.spike`: `release`, `previousRelease` and `errors` with `events`, `applies` (from phones on plugin 3.4+), `perThousandApplies`, the same three for the previous release ( `previousEvents`, `previousApplies`, `previousPerThousandApplies`) and `issues`.
-- `errors.paused`: `errorUsage` with `events`, `limit` and `pausedUntil`. `app` and `actor` are `null`.
+- `errors.paused` and `analytics.paused`: `errorUsage` or `eventUsage` with `events`, `limit` and `pausedUntil`. `app` and `actor` are `null`.
 - `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion`, `size` in bytes, `strategy` (`zip` or `deltas`) and `createdAt` .
 - `usage.warning`: `usage` with `threshold` (90 or 100), `downloadsCount`, `downloadsLimit` and `periodStart`. `app` and `actor` are `null`.
 - `test.ping`, sent by Send test: `message`. `app` is `null`.
@@ -2912,6 +3071,7 @@ Or just say what you want:
 “Prepare this for production with auto-revert on, then wait for me.”
 “Why are people on 1.4.2 seeing rollbacks?”
 “What are the top errors on production since yesterday? Find the cause of the first one.”
+“Did checkout completions change after yesterday’s release?”
 “Roll production back to the previous release.”
 
 ### Before anything ships
@@ -2937,7 +3097,7 @@ The setup above runs OtaKit in your repository, which is what lets it inspect th
 - **Inspect the Capacitor project**: Local MCP — Yes; Remote MCP — No
 - **Check native compatibility**: Local MCP — Yes; Remote MCP — No
 - **Package and upload web assets**: Local MCP — Yes; Remote MCP — No
-- **Read apps, bundles, releases, events, and error issues**: Local MCP — Yes; Remote MCP — Yes
+- **Read apps, bundles, releases, events, error issues, and analytics**: Local MCP — Yes; Remote MCP — Yes
 - **Prepare, publish, and revert releases**: Local MCP — Yes; Remote MCP — Yes
 - **Signs in with**: Local MCP — CLI login; Remote MCP — OAuth or key
 
@@ -3291,9 +3451,13 @@ is unset. Set
 
 NOTIFICATIONS_ALLOW_PRIVATE_URLS=true
 to post to addresses inside your network.
-Error tracking
+Error tracking and analytics
 — see
+
 Error Tracking
+and
+
+Analytics
 . Requires analytics (above), the
 
 otakit-app-telemetry
@@ -3305,17 +3469,17 @@ and
 otakit-app-telemetry-dlq
 ) before the Worker deploy, and
 
-/api/cron/errors
+/api/cron/telemetry
 every 5 minutes with
 
 CRON_SECRET
-as for notifications: it groups errors into issues and sends the alerts. With Upstash set on both the console and the Worker (
+as for notifications: it groups errors into issues, sends the alerts and applies the monthly limits. With Upstash set on both the console and the Worker (
 
 UPSTASH_REDIS_REST_URL
 ,
 
 UPSTASH_REDIS_REST_TOKEN
-), the Worker only accepts errors from apps that exist on your server.
+), the Worker only accepts telemetry from apps that exist on your server.
 CDN purge
 — set
 

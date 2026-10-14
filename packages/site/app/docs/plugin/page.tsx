@@ -350,7 +350,7 @@ await OtaKit.apply();`}</Pre>
 
       <Separator className="my-10" />
 
-      <H2>Remote config and error tracking</H2>
+      <H2>Remote config, error tracking and analytics</H2>
       <P>
         Plugin 3.4+. See{' '}
         <Link
@@ -358,13 +358,20 @@ await OtaKit.apply();`}</Pre>
           className="font-medium text-foreground underline underline-offset-4"
         >
           Remote Config
-        </Link>{' '}
-        and{' '}
+        </Link>
+        ,{' '}
         <Link
           href="/docs/error-tracking"
           className="font-medium text-foreground underline underline-offset-4"
         >
           Error Tracking
+        </Link>{' '}
+        and{' '}
+        <Link
+          href="/docs/analytics"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Analytics
         </Link>{' '}
         for the guides.
       </P>
@@ -393,6 +400,16 @@ await OtaKit.apply();`}</Pre>
           name="testErrorTracking()"
           returns="Promise<boolean>"
           description="Send one test error to check the setup; it appears in the dashboard within a minute."
+        />
+        <Method
+          name="track(name, properties?)"
+          returns="boolean"
+          description="Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-', and up to 20 string, number or boolean properties. Returns false when the event was dropped."
+        />
+        <Method
+          name="initAnalytics(options?)"
+          returns="void"
+          description="Optional, once at startup: sends $session_start once per app launch so releases compare per 1,000 launches. Options: sessionEvents, sampleRate, beforeSend, maxEventsPerSession."
         />
       </div>
 

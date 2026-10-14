@@ -124,6 +124,7 @@ codex mcp add otakit -- npx -y @otakit/cli@latest mcp`}</Pre>
         <li>
           “What are the top errors on production since yesterday? Find the cause of the first one.”
         </li>
+        <li>“Did checkout completions change after yesterday’s release?”</li>
         <li>“Roll production back to the previous release.”</li>
       </Ul>
 
@@ -170,7 +171,7 @@ Approve? This goes live for every device on that lane.`}</Pre>
             <CapabilityRow capability="Check native compatibility" local="Yes" remote="No" />
             <CapabilityRow capability="Package and upload web assets" local="Yes" remote="No" />
             <CapabilityRow
-              capability="Read apps, bundles, releases, events, and error issues"
+              capability="Read apps, bundles, releases, events, error issues, and analytics"
               local="Yes"
               remote="Yes"
             />

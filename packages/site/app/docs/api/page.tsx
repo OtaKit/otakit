@@ -446,6 +446,75 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           description="A release's error events, issues (and how many were first seen in it) and errors per 1,000 applies over 180 days, next to the release it replaced on its lane. Applies count only devices on plugin 3.4+, which can report errors."
         />
       </div>
+      <Separator className="my-10" />
+
+      <H2>Analytics</H2>
+      <P>
+        Custom events from <Code>track()</Code> (plugin 3.4+). Ranges: <Code>24h</Code>,{' '}
+        <Code>7d</Code> (by hour), <Code>30d</Code>, <Code>90d</Code> (by UTC day). Filters:{' '}
+        <Code>platform</Code>, <Code>releaseId</Code>, <Code>channel</Code> (empty for the base
+        channel). Names and property values are device-reported text.
+      </P>
+      <div className="space-y-8">
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/analytics/events"
+          auth="Bearer"
+          queryParams="?range=7d&platform=&releaseId=&channel=&trend=1"
+          response={`{
+  "events": [{ "name": "checkout_completed", "events": 120, "sessions": 80,
+               "previousEvents": 100, "changePercent": 20,
+               "trend": [{ "start": "ISO timestamp", "events": 5, "sessions": 4 }] }],
+  "sessions": 9000,            // app launches ($session_start); null without initAnalytics()
+  "range": { "name": "7d", "from": "ISO timestamp", "to": "ISO timestamp", "bucket": "hour" },
+  "usage": { "events": 12000, "limit": 100000, "pausedUntil": null },
+  "hasEvents": true,
+  "analyticsAvailable": true
+}`}
+          description="Event names with events in the range, most first, with app launches with the event (sessions) and the change against the previous period of the same length. trend=1 adds buckets per name."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/analytics/events/:name"
+          auth="Bearer"
+          queryParams="?range=7d&platform=&releaseId=&channel="
+          response={`{ "name": "checkout_completed", "events": 120, "sessions": 80, "previousEvents": 100,
+  "changePercent": 20, "series": [{ "start": "ISO timestamp", "events": 5, "sessions": 4 }],
+  "propertyKeys": ["plan", "value"], "range": { ... }, "analyticsAvailable": true }`}
+          description="One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/analytics/events/:name/breakdown"
+          auth="Bearer"
+          queryParams="?property=plan&range=7d"
+          response={`{ "name": "checkout_completed", "property": "plan",
+  "values": [{ "value": "pro", "events": 60, "sessions": 40, "share": 60 }],
+  "other": { "events": 20, "share": 20 }, "total": { "events": 100, "sessions": 70 }, ... }`}
+          description="One event split by a property: the 10 most common values (an empty value means the property was not set) and the rest. Raw events are kept 90 days."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/analytics/events/:name/releases"
+          auth="Bearer"
+          queryParams="?releaseIds=a,b (up to 10) or ?channel=production"
+          response={`{ "name": "checkout_completed", "basis": "sessions",   // or "applies"
+  "releases": [{ "releaseId": "uuid", "bundleVersion": "1.4.1", "channel": "production",
+                 "events": 120, "sessions": 80, "base": 9000, "perThousand": 13.3,
+                 "differencePercent": null }], "analyticsAvailable": true }`}
+          description="One event across releases, oldest first (default: the 5 latest releases of the channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/analytics/live"
+          auth="Bearer"
+          queryParams="?name=&limit=100"
+          response={`{ "events": [{ "eventId": "uuid", "receivedAt": "ISO timestamp", "name": "checkout_completed",
+  "properties": { "plan": "pro" }, "platform": "ios", "releaseId": "uuid", "bundleVersion": "1.4.2",
+  "channel": "production", "osVersion": "18.2" }], "analyticsAvailable": true }`}
+          description="The latest events of the last 24 hours, newest first: the setup check."
+        />
+      </div>
     </>
   );
 }

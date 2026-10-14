@@ -35,6 +35,11 @@ const DOCS = [
     file: 'packages/site/app/docs/error-tracking/page.tsx',
   },
   {
+    label: 'Analytics',
+    route: '/docs/analytics',
+    file: 'packages/site/app/docs/analytics/page.tsx',
+  },
+  {
     label: 'Update Strategies',
     route: '/docs/update-strategies',
     file: 'packages/site/app/docs/update-strategies/page.tsx',

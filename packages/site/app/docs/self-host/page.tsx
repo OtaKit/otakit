@@ -288,15 +288,17 @@ npx wrangler deploy`}</Pre>
           network.
         </li>
         <li>
-          <strong>Error tracking</strong> — see <A href="/docs/error-tracking">Error Tracking</A>.
-          Requires analytics (above), the <Code>otakit-app-telemetry</Code> queue and its
-          dead-letter queue (<Code>npx wrangler queues create otakit-app-telemetry</Code> and{' '}
+          <strong>Error tracking and analytics</strong> — see{' '}
+          <A href="/docs/error-tracking">Error Tracking</A> and{' '}
+          <A href="/docs/analytics">Analytics</A>. Requires analytics (above), the{' '}
+          <Code>otakit-app-telemetry</Code> queue and its dead-letter queue (
+          <Code>npx wrangler queues create otakit-app-telemetry</Code> and{' '}
           <Code>otakit-app-telemetry-dlq</Code>) before the Worker deploy, and{' '}
-          <Code>/api/cron/errors</Code> every 5 minutes with <Code>CRON_SECRET</Code> as for
-          notifications: it groups errors into issues and sends the alerts. With Upstash set on both
-          the console and the Worker (<Code>UPSTASH_REDIS_REST_URL</Code>,{' '}
-          <Code>UPSTASH_REDIS_REST_TOKEN</Code>), the Worker only accepts errors from apps that
-          exist on your server.
+          <Code>/api/cron/telemetry</Code> every 5 minutes with <Code>CRON_SECRET</Code> as for
+          notifications: it groups errors into issues, sends the alerts and applies the monthly
+          limits. With Upstash set on both the console and the Worker (
+          <Code>UPSTASH_REDIS_REST_URL</Code>, <Code>UPSTASH_REDIS_REST_TOKEN</Code>), the Worker
+          only accepts telemetry from apps that exist on your server.
         </li>
         <li>
           <strong>CDN purge</strong> — set <Code>CF_ZONE_ID</Code> and <Code>CF_API_TOKEN</Code>{' '}

@@ -109,6 +109,16 @@ export default function WebhooksPage() {
           monthly error limit.
         </li>
         <li>
+          <Code>analytics.paused</Code> — custom events (
+          <Link
+            href="/docs/analytics"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            analytics
+          </Link>
+          ) reach the plan&apos;s monthly limit.
+        </li>
+        <li>
           <Code>bundle.uploaded</Code> — a new bundle is uploaded.
         </li>
         <li>
@@ -201,9 +211,9 @@ export default function WebhooksPage() {
           <Code>previousPerThousandApplies</Code>) and <Code>issues</Code>.
         </li>
         <li>
-          <Code>errors.paused</Code>: <Code>errorUsage</Code> with <Code>events</Code>,{' '}
-          <Code>limit</Code> and <Code>pausedUntil</Code>. <Code>app</Code> and <Code>actor</Code>{' '}
-          are <Code>null</Code>.
+          <Code>errors.paused</Code> and <Code>analytics.paused</Code>: <Code>errorUsage</Code> or{' '}
+          <Code>eventUsage</Code> with <Code>events</Code>, <Code>limit</Code> and{' '}
+          <Code>pausedUntil</Code>. <Code>app</Code> and <Code>actor</Code> are <Code>null</Code>.
         </li>
         <li>
           <Code>bundle.uploaded</Code>: <Code>bundle</Code> with <Code>id</Code>,{' '}

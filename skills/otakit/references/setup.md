@@ -53,3 +53,12 @@ URL query strings on the device; `beforeSend` handles app-specific data.
 `testErrorTracking()` sends one test error to confirm the setup. Mention that
 the app's store privacy declarations need crash or diagnostic data (not linked
 to identity).
+
+## Optional: analytics
+
+With plugin 3.4+, apps send custom events with `track(name, properties)`; one
+`initAnalytics()` call at startup counts app launches so releases can be
+compared per 1,000 launches. Add it only when the user asks for analytics, keep
+IDs out of event names, and keep personal data out of properties. The store
+privacy declaration is product interaction, not linked to identity.
+
