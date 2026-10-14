@@ -2110,7 +2110,7 @@ export function ProductDashboard({
                           {bundles.length > visibleBundleCount ? (
                             <button
                               type="button"
-                              className="absolute -right-8 bottom-2 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                              className="absolute bottom-2 right-2 flex h-6 w-6 2xl:-right-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
                               title="Load more"
                               onClick={() =>
                                 setVisibleBundleCount((current) =>
@@ -2401,7 +2401,7 @@ export function ProductDashboard({
                         {appEvents.length > visibleEventCount ? (
                           <button
                             type="button"
-                            className="absolute -right-8 bottom-2 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground sm:flex"
+                            className="absolute bottom-2 right-2 z-10 hidden 2xl:-right-8 h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground sm:flex"
                             title="Load more"
                             onClick={() =>
                               setVisibleEventCount((current) =>
