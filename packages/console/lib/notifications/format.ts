@@ -2,7 +2,12 @@ import { escapeHtml } from '@/lib/email';
 import type { ReleaseSummary } from '@/lib/services/releases';
 
 import { appUrl } from './emit';
-import { notificationEventLabel, type AutoRevertHealth, type NotificationPayload } from './events';
+import {
+  notificationEventLabel,
+  type AutoRevertHealth,
+  type NotificationErrorIssue,
+  type NotificationPayload,
+} from './events';
 
 /**
  * Human-readable notifications. describeEvent holds all copy; Slack, Discord and
@@ -13,6 +18,11 @@ export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 
 export type EventDescription = {
   title: string;
+  /**
+   * Device-reported text (error titles and frames), shown verbatim as inline
+   * code after the title: never markup, never a link.
+   */
+  code?: string[];
   lines: string[];
   /** Release notes, shown as their own block. Plain text written by the team. */
   notes: string | null;
@@ -39,6 +49,27 @@ function formatBytes(bytes: number): string {
 
 function healthStats(health: AutoRevertHealth): string {
   return `${health.rollbacks} of ${health.attempts} update attempts rolled back (${health.rollbackSharePercent}%) in the last ${health.windowHours} hours. Threshold: ≥${health.thresholdPercent}% of ≥${health.thresholdMinSample}.`;
+}
+
+function formatUtc(iso: string): string {
+  return `${new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'UTC',
+  }).format(new Date(iso))} UTC`;
+}
+
+/** Error events per 1,000 applies, e.g. "1.8" or "<0.1". */
+function formatRate(rate: number): string {
+  if (rate > 0 && rate < 0.1) return '<0.1';
+  return rate >= 10 ? rate.toFixed(0) : rate.toFixed(1);
+}
+
+function issueCode(issue: NotificationErrorIssue): string[] {
+  return [issue.title, ...(issue.topFrame ? [`at ${issue.topFrame}`] : [])];
 }
 
 const NO_PREVIOUS_RELEASE =
@@ -194,6 +225,67 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
         url,
       };
     }
+    case 'errors.new_issue': {
+      const { issue } = payload.data;
+      return {
+        title: `New error in ${slug}`,
+        code: issueCode(issue),
+        lines: [
+          `${issue.events.toLocaleString('en-US')} events since ${formatUtc(issue.firstSeenAt)}.`,
+        ],
+        notes: null,
+        severity: 'warning',
+        url,
+      };
+    }
+    case 'errors.regression': {
+      const { issue, previouslyResolvedAt } = payload.data;
+      return {
+        title: `Error came back in ${slug}`,
+        code: issueCode(issue),
+        lines: [
+          `Resolved ${formatUtc(previouslyResolvedAt)}, seen again ${formatUtc(issue.lastSeenAt)}. The issue is open again.`,
+        ],
+        notes: null,
+        severity: 'warning',
+        url,
+      };
+    }
+    case 'errors.spike': {
+      const { release, previousRelease, errors } = payload.data;
+      const comparison =
+        errors.previousPerThousandApplies > 0
+          ? `${(errors.perThousandApplies / errors.previousPerThousandApplies).toFixed(1)}× the rate of ${previousRelease.bundleVersion} (${formatRate(errors.previousPerThousandApplies)})`
+          : `${previousRelease.bundleVersion} had no errors`;
+      return {
+        title: `Error spike: ${slug} ${release.bundleVersion} (${lane(release)})`,
+        lines: [
+          `${formatRate(errors.perThousandApplies)} error events per 1,000 applies; ${comparison}.`,
+          `${errors.events.toLocaleString('en-US')} error events in ${errors.issues.toLocaleString('en-US')} ${errors.issues === 1 ? 'issue' : 'issues'}, ${errors.applies.toLocaleString('en-US')} applies.`,
+        ],
+        notes: null,
+        severity: 'critical',
+        url,
+      };
+    }
+    case 'errors.paused': {
+      const { errorUsage, organization } = payload.data;
+      const until = new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(errorUsage.pausedUntil));
+      return {
+        title: `Error tracking paused for ${organization.name}`,
+        lines: [
+          `${errorUsage.events.toLocaleString('en-US')} of ${errorUsage.limit.toLocaleString('en-US')} error events this month. New errors are not recorded until ${until}.`,
+          'Upgrade the plan to resume now.',
+        ],
+        notes: null,
+        severity: 'warning',
+        url,
+      };
+    }
     case 'usage.warning': {
       const { usage, organization } = payload.data;
       const period = new Intl.DateTimeFormat('en-US', {
@@ -232,6 +324,11 @@ function slackEscape(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+/** One line of device text, without backticks or line breaks, so it cannot leave its code span. */
+function codeLine(value: string): string {
+  return value.replaceAll('`', "'").replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
 const SLACK_COLORS: Record<NotificationSeverity, string> = {
   info: '#3b82f6',
   success: '#22c55e',
@@ -253,7 +350,11 @@ export function slackMessage(payload: NotificationPayload): Record<string, unkno
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: [`*${slackEscape(event.title)}*`, ...event.lines.map(slackEscape)]
+        text: [
+          `*${slackEscape(event.title)}*`,
+          ...(event.code ?? []).map((line) => `\`${slackEscape(codeLine(line))}\``),
+          ...event.lines.map(slackEscape),
+        ]
           .join('\n')
           .slice(0, SLACK_TEXT_LIMIT),
       },
@@ -308,6 +409,7 @@ function discordEscape(value: string): string {
 export function discordMessage(payload: NotificationPayload): Record<string, unknown> {
   const event = describeEvent(payload);
   const description = [
+    ...(event.code ?? []).map((line) => `\`${codeLine(line)}\``),
     ...event.lines.map(discordEscape),
     ...(event.notes ? ['', '**Release notes**', discordEscape(event.notes)] : []),
   ].join('\n');
@@ -347,13 +449,14 @@ export function emailMessage(
     : '';
   const html = `
 <p><strong>${escapeHtml(event.title)}</strong></p>
-${event.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n')}
+${(event.code ?? []).map((line) => `<p><code>${escapeHtml(codeLine(line))}</code></p>\n`).join('')}${event.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n')}
 ${notesHtml}<p><a href="${escapeHtml(event.url)}">Open in OtaKit</a></p>
 <p style="color: #6b7280; font-size: 12px;">${escapeHtml(footer)} <a href="${escapeHtml(settingsUrl)}">Notification settings</a></p>
   `.trim();
   const text = [
     event.title,
     '',
+    ...(event.code ?? []).map(codeLine),
     ...event.lines,
     ...(event.notes ? ['', 'Release notes:', event.notes] : []),
     '',

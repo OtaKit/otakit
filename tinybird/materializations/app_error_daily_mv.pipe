@@ -1,0 +1,30 @@
+DESCRIPTION >
+    Materialized daily rollup of raw app errors.
+
+NODE rollup_daily_errors
+SQL >
+    SELECT
+        toDate(received_at) AS bucket_date,
+        app_id,
+        fingerprint,
+        ifNull(release_id, '') AS release_id,
+        ifNull(channel, '') AS channel,
+        platform,
+        any(error_name) AS error_name,
+        any(normalized_message) AS normalized_message,
+        any(ifNull(top_frame, '')) AS top_frame,
+        min(received_at) AS first_seen,
+        max(received_at) AS last_seen,
+        max(occurred_at) AS last_occurred,
+        uniqExactState(event_id) AS event_ids_uniq_exact_state
+    FROM app_errors_raw
+    GROUP BY
+        bucket_date,
+        app_id,
+        fingerprint,
+        release_id,
+        channel,
+        platform
+
+TYPE MATERIALIZED
+DATASOURCE app_error_daily

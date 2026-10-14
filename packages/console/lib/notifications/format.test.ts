@@ -309,3 +309,116 @@ describe('message formats', () => {
     expect(withNotes.text).toContain('Release notes:\nFaster <b>checkout</b>');
   });
 });
+
+describe('error alerts', () => {
+  const issue = {
+    id: 'issue-1',
+    fingerprint: '0123456789abcdef',
+    title: 'TypeError: Visit <https://evil.example|here> `now` *bold*',
+    topFrame: 'computeTotal (assets/index.js)',
+    status: 'open',
+    events: 1234,
+    firstSeenAt: '2026-10-14T09:05:00.000Z',
+    lastSeenAt: '2026-10-14T12:00:00.000Z',
+    firstReleaseId: 'release-1',
+  };
+
+  it('describes a new issue, with the device text as code', () => {
+    expect(describeEvent(payload('errors.new_issue', { issue, actor: null }))).toEqual({
+      title: 'New error in com.acme.app',
+      code: [issue.title, 'at computeTotal (assets/index.js)'],
+      lines: ['1,234 events since Oct 14, 09:05 UTC.'],
+      notes: null,
+      severity: 'warning',
+      url: context.dashboardUrl,
+    });
+  });
+
+  it('describes a regression', () => {
+    const event = describeEvent(
+      payload('errors.regression', {
+        issue: { ...issue, topFrame: null },
+        previouslyResolvedAt: '2026-10-10T08:00:00.000Z',
+        actor: null,
+      }),
+    );
+    expect(event.title).toBe('Error came back in com.acme.app');
+    expect(event.code).toEqual([issue.title]);
+    expect(event.lines).toEqual([
+      'Resolved Oct 10, 08:00 UTC, seen again Oct 14, 12:00 UTC. The issue is open again.',
+    ]);
+  });
+
+  it('describes a spike against the previous release', () => {
+    const errors = {
+      events: 120,
+      applies: 4000,
+      perThousandApplies: 30,
+      previousEvents: 40,
+      previousApplies: 8000,
+      previousPerThousandApplies: 5,
+      issues: 1,
+    };
+    const spike = (overrides = {}) =>
+      describeEvent(
+        payload('errors.spike', {
+          release: release(),
+          previousRelease: release({ id: 'release-0', bundleVersion: '1.4.1' }),
+          errors: { ...errors, ...overrides },
+          actor: null,
+        }),
+      );
+    expect(spike()).toMatchObject({
+      title: 'Error spike: com.acme.app 1.4.2 (production / runtime 2026.10)',
+      lines: [
+        '30 error events per 1,000 applies; 6.0× the rate of 1.4.1 (5.0).',
+        '120 error events in 1 issue, 4,000 applies.',
+      ],
+      severity: 'critical',
+    });
+    expect(spike({ previousPerThousandApplies: 0, perThousandApplies: 0.05 }).lines[0]).toBe(
+      '<0.1 error events per 1,000 applies; 1.4.1 had no errors.',
+    );
+  });
+
+  it('describes a paused workspace', () => {
+    expect(
+      describeEvent(
+        payload('errors.paused', {
+          app: null,
+          actor: null,
+          errorUsage: { events: 10_000, limit: 10_000, pausedUntil: '2026-11-01T00:00:00.000Z' },
+        }),
+      ),
+    ).toMatchObject({
+      title: 'Error tracking paused for Acme',
+      lines: [
+        '10,000 of 10,000 error events this month. New errors are not recorded until November 1.',
+        'Upgrade the plan to resume now.',
+      ],
+    });
+  });
+
+  it('never renders device text as markup or links', () => {
+    const event = payload('errors.new_issue', { issue, actor: null });
+    const slack = JSON.stringify(slackMessage(event));
+    expect(slack).toContain("`TypeError: Visit &lt;https://evil.example|here&gt; 'now' *bold*`");
+    expect(slack).not.toContain('<https://evil.example');
+    expect((slackMessage(event) as { text: string }).text).toBe('New error in com.acme.app');
+
+    const discord = discordMessage(event) as {
+      embeds: Array<{ title: string; description: string }>;
+    };
+    expect(discord.embeds[0].title).toBe('New error in com.acme.app');
+    expect(discord.embeds[0].description.split('\n')[0]).toBe(
+      "`TypeError: Visit <https://evil.example|here> 'now' *bold*`",
+    );
+
+    const email = emailMessage(event, 'Owners and admins');
+    expect(email.subject).toBe('New error in com.acme.app');
+    expect(email.html).toContain(
+      '<p><code>TypeError: Visit &lt;https://evil.example|here&gt; &#39;now&#39; *bold*</code></p>',
+    );
+    expect(email.text).toContain("TypeError: Visit <https://evil.example|here> 'now' *bold*");
+  });
+});

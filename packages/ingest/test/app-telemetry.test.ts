@@ -325,7 +325,10 @@ describe('app telemetry consumer', () => {
   });
 
   it('retries with backoff when Tinybird fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('busy', { status: 503 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('busy', { status: 503 })),
+    );
     const { env } = fixture();
     const messages = [message({ event_id: 'a' }, 3)];
     await worker.queue(

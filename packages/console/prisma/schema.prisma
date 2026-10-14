@@ -298,6 +298,12 @@ enum ReleaseMutationStatus {
   published
 }
 
+enum ErrorIssueStatus {
+  open
+  resolved
+  ignored
+}
+
 enum NotificationDestinationType {
   email
   webhook
@@ -333,6 +339,9 @@ model Organization {
   warningSent              UsageWarningSent          @default(none)
   // Add-ons (their data lives in their own packages and Postgres schemas)
   pushEnabled              Boolean                   @default(false)
+  // Error tracking reached the plan's monthly cap: ingest drops new errors
+  // until this time (the start of the next UTC month). Set by the errors cron.
+  errorsPausedUntil        DateTime?
   // Relations
   apps                     App[]
   apiKeys                  OrganizationApiKey[]
@@ -435,6 +444,7 @@ model App {
   previews                 BundlePreview[]
   notificationDestinations NotificationDestination[]
   remoteConfigs            RemoteConfig[]
+  errorIssues              ErrorIssue[]
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
@@ -496,6 +506,8 @@ model Release {
   autoRevertAlertPayload   Json?
   autoRevertAlertClaimedAt DateTime?
   autoRevertAlertedAt      DateTime?
+  // When the errors cron sent the errors.spike alert for this release.
+  errorSpikeAlertedAt      DateTime?
 
   @@index([appId, channel, promotedAt(sort: Desc)])
   @@index([bundleId, promotedAt(sort: Desc)])
@@ -701,4 +713,36 @@ model RemoteConfigVersion {
   createdAt       DateTime     @default(now())
 
   @@unique([configId, version])
+}
+
+// An issue: the app errors with one fingerprint, which the ingest Worker
+// computes. Counts and samples live in Tinybird (app_errors_raw); the errors
+// cron keeps these rows in step, reopens regressions and sends alerts.
+model ErrorIssue {
+  id                String           @id @default(uuid())
+  app               App              @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId             String
+  fingerprint       String
+  status            ErrorIssueStatus @default(open)
+  errorName         String
+  normalizedMessage String
+  topFrame          String?
+  // The release of the issue's first event; null on the built-in bundle.
+  firstReleaseId    String?
+  firstSeenAt       DateTime
+  lastSeenAt        DateTime
+  // Error events in the last 180 days, as of the last sync.
+  eventCount        Int              @default(0)
+  resolvedAt        DateTime?
+  statusChangedAt   DateTime?
+  statusChangedBy   String?
+  // How often the issue came back after it was resolved.
+  regressions       Int              @default(0)
+  newIssueAlertedAt DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@unique([appId, fingerprint])
+  @@index([appId, status, lastSeenAt(sort: Desc)])
+  @@index([appId, firstReleaseId])
 }

@@ -1,0 +1,55 @@
+DESCRIPTION >
+    Where one issue happens: its top releases, platforms, OS versions, native builds,
+    channels and routes by events.
+
+TOKEN otakit_web READ
+
+NODE issue_errors
+SQL >
+    %
+    SELECT *
+    FROM app_errors_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND fingerprint = {{ String(fingerprint, '__missing_fingerprint__') }}
+      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+
+NODE breakdown
+SQL >
+    %
+    SELECT * FROM (
+        SELECT 'release' AS dimension, coalesce(release_id, '') AS value,
+            any(bundle_version) AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT 'platform' AS dimension, toString(platform) AS value,
+            '' AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT 'os_version' AS dimension, concat(platform, ' ', coalesce(os_version, '')) AS value,
+            '' AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT 'native_build' AS dimension, concat(platform, ' ', native_build) AS value,
+            '' AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT 'channel' AS dimension, coalesce(channel, '') AS value,
+            '' AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT 'route' AS dimension, coalesce(route, '') AS value,
+            '' AS label, uniqExact(event_id) AS events
+        FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
+    )
+
+TYPE ENDPOINT

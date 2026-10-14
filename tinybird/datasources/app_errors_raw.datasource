@@ -1,0 +1,35 @@
+DESCRIPTION >
+    Raw app errors (error tracking, plugin 3.4+), grouped by the ingest Worker.
+    Retries can repeat an event_id: count with uniqExact(event_id).
+
+TOKEN otakit_ingest APPEND
+
+SCHEMA >
+    `event_id` String `json:$.event_id`,
+    `received_at` DateTime64(3) `json:$.received_at`,
+    `occurred_at` DateTime64(3) `json:$.occurred_at`,
+    `app_id` String `json:$.app_id`,
+    `platform` LowCardinality(String) `json:$.platform`,
+    `release_id` Nullable(String) `json:$.release_id`,
+    `bundle_version` String `json:$.bundle_version`,
+    `channel` Nullable(String) `json:$.channel`,
+    `runtime_version` Nullable(String) `json:$.runtime_version`,
+    `native_build` String `json:$.native_build`,
+    `os_version` Nullable(String) `json:$.os_version`,
+    `sdk_version` Nullable(String) `json:$.sdk_version`,
+    `session_id` String `json:$.session_id`,
+    `fingerprint` String `json:$.fingerprint`,
+    `error_name` String `json:$.error_name`,
+    `message` String `json:$.message`,
+    `normalized_message` String `json:$.normalized_message`,
+    `top_frame` Nullable(String) `json:$.top_frame`,
+    `stack` Nullable(String) `json:$.stack`,
+    `route` Nullable(String) `json:$.route`,
+    `handled` UInt8 `json:$.handled`,
+    `mechanism` LowCardinality(String) `json:$.mechanism`,
+    `tags` String `json:$.tags`
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(received_at)"
+ENGINE_SORTING_KEY "app_id, fingerprint, received_at"
+ENGINE_TTL "toDateTime(received_at) + toIntervalDay(30)"

@@ -1,0 +1,34 @@
+DESCRIPTION >
+    Issues (fingerprints) of every app with errors since from_date, with lifetime
+    totals from the daily rollup. Read by the console's errors cron.
+
+TOKEN otakit_web READ
+
+NODE active_issues
+SQL >
+    %
+    SELECT DISTINCT app_id, fingerprint
+    FROM app_error_daily
+    WHERE bucket_date >= toDate({{ String(from_date, '1970-01-01') }})
+
+NODE issue_totals
+SQL >
+    %
+    SELECT
+        app_id,
+        fingerprint,
+        any(error_name) AS error_name,
+        any(normalized_message) AS normalized_message,
+        any(top_frame) AS top_frame,
+        argMin(release_id, first_seen) AS first_release_id,
+        toUnixTimestamp64Milli(min(first_seen)) AS first_seen_ms,
+        toUnixTimestamp64Milli(max(last_seen)) AS last_seen_ms,
+        toUnixTimestamp64Milli(max(last_occurred)) AS last_occurred_ms,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events
+    FROM app_error_daily
+    WHERE (app_id, fingerprint) IN (SELECT app_id, fingerprint FROM active_issues)
+    GROUP BY app_id, fingerprint
+    ORDER BY last_seen_ms DESC, app_id, fingerprint
+    LIMIT {{ UInt32(limit, 20000) }}
+
+TYPE ENDPOINT

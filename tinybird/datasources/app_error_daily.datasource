@@ -1,0 +1,23 @@
+DESCRIPTION >
+    Daily app error rollup per issue (fingerprint), release, channel and platform.
+    Keeps counts for 180 days, after the raw errors expire.
+
+SCHEMA >
+    `bucket_date` Date,
+    `app_id` String,
+    `fingerprint` String,
+    `release_id` String,
+    `channel` String,
+    `platform` LowCardinality(String),
+    `error_name` SimpleAggregateFunction(any, String),
+    `normalized_message` SimpleAggregateFunction(any, String),
+    `top_frame` SimpleAggregateFunction(any, String),
+    `first_seen` SimpleAggregateFunction(min, DateTime64(3)),
+    `last_seen` SimpleAggregateFunction(max, DateTime64(3)),
+    `last_occurred` SimpleAggregateFunction(max, DateTime64(3)),
+    `event_ids_uniq_exact_state` AggregateFunction(uniqExact, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(bucket_date)"
+ENGINE_SORTING_KEY "app_id, bucket_date, fingerprint, release_id, channel, platform"
+ENGINE_TTL "bucket_date + toIntervalDay(180)"

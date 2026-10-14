@@ -71,7 +71,9 @@ before publishing rebuilt native clients.
     "osVersion": "18.2",
     "sdkVersion": "3.4.0"
   },
-  "items": [{ "kind": "error", "eventId": "<UUID>", "name": "TypeError", "message": "…", "stack": "…" }]
+  "items": [
+    { "kind": "error", "eventId": "<UUID>", "name": "TypeError", "message": "…", "stack": "…" }
+  ]
 }
 ```
 

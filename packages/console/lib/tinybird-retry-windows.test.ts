@@ -1,58 +1,11 @@
-import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLOutputValue } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-// Execute the checked-in endpoint SQL, including its node graph and optional
-// filters. SQLite handles relational/window operations; the adapters below
-// model only ClickHouse date, array, and exact aggregate-state functions.
-// Deployment still requires ClickHouse/Tinybird validation and benchmarking.
-function pipeQuery(name: string, parameters: Record<string, string> = {}) {
-  const source = readFileSync(
-    new URL(`../../../tinybird/endpoints/${name}.pipe`, import.meta.url),
-    'utf8',
-  );
-  const nodes = [...source.matchAll(/^NODE (\w+)\nSQL >\n([\s\S]*?)(?=\n(?:NODE |TYPE ))/gm)];
-  const queries = nodes.map(([, name, body]) => ({
-    name,
-    sql: body
-      .replace(/^\s*%\s*$/gm, '')
-      .replace(
-        /\{% if defined\((\w+)\) %\}([\s\S]*?)\{% else %\}([\s\S]*?)\{% end %\}/g,
-        (_, key: string, defined: string, missing: string) =>
-          parameters[key] === undefined ? missing : defined,
-      )
-      .replace(
-        /\{\{ (String|UInt8|UInt32)\((\w+)(?:, ('[^']*'|\d+))?\) \}\}/g,
-        (_, type: string, key: string, fallback?: string) => {
-          const value = parameters[key];
-          if (value === undefined) {
-            if (fallback === undefined) throw new Error(`Missing parameter ${key}`);
-            return fallback;
-          }
-          return type === 'String' ? `'${value.replaceAll("'", "''")}'` : value;
-        },
-      )
-      .trim(),
-  }));
-  const last = queries.pop();
-  if (!last) throw new Error(`No SQL nodes in ${name}`);
-  const ctes = queries.map(({ name, sql }) => `${name} AS (${sql})`).join(', ');
-  return `${ctes ? `WITH ${ctes} ` : ''}${last.sql}`;
-}
+import { pipeQuery, registerClickHouseAdapters } from './tinybird/pipe-sql-harness';
+
+// Executes the checked-in endpoint SQL in SQLite; see pipe-sql-harness.ts.
 
 let db: DatabaseSync;
-
-function exactMerge(name: string, conditional = false) {
-  db.aggregate(name, {
-    start: '[]',
-    varargs: true,
-    step: (state: string, ...args: SQLOutputValue[]) => {
-      if (args[0] === null || (conditional && !args[1])) return state;
-      return JSON.stringify([...new Set([...JSON.parse(state), ...JSON.parse(String(args[0]))])]);
-    },
-    result: (state: string) => JSON.parse(state).length,
-  });
-}
 
 function addEvent(
   eventId: string,
@@ -147,29 +100,7 @@ beforeEach(() => {
       bucket_date TEXT, app_id TEXT, action TEXT, event_ids_uniq_exact_state TEXT
     );
   `);
-  db.function('parseDateTime64BestEffort', (value, precision) => {
-    if (precision !== 3) throw new Error('Fixture timestamps use millisecond precision');
-    return value;
-  });
-  db.function('toDate', (value) => String(value).slice(0, 10));
-  // The pipe passes 'UTC' as the time zone; stored values are UTC already.
-  db.function(
-    'toStartOfHour',
-    { varargs: true },
-    (value) => `${String(value).slice(0, 13)}:00:00.000Z`,
-  );
-  db.function(
-    'toStartOfDay',
-    { varargs: true },
-    (value) => `${String(value).slice(0, 10)}T00:00:00.000Z`,
-  );
-  db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
-  db.function('splitByChar', (separator, value) =>
-    JSON.stringify(String(value).split(String(separator))),
-  );
-  db.function('has', (values, value) => Number(JSON.parse(String(values)).includes(value)));
-  exactMerge('uniqExactMerge');
-  exactMerge('uniqExactMergeIf', true);
+  registerClickHouseAdapters(db);
 });
 
 afterEach(() => db.close());
