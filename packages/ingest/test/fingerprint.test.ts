@@ -86,6 +86,9 @@ describe('normalizeFile', () => {
     );
     expect(normalizeFile('https://localhost/chunk-ABCDEFGH.js')).toBe('chunk.js');
     expect(normalizeFile('https://localhost/main-QWERTYUI.js')).toBe('main.js');
+    expect(normalizeFile('capacitor://localhost/_next/static/chunks/2405fce26a5fd80b.js')).toBe(
+      '_next/static/chunks/<hash>.js',
+    );
     expect(normalizeFile('https://localhost/static/js/787.e5f6a7b8.chunk.js')).toBe(
       'static/js/787.chunk.js',
     );
@@ -111,6 +114,13 @@ describe('normalizeMessage', () => {
     expect(normalizeMessage('Request deadbeef0123 timed out')).toBe('Request <id> timed out');
   });
 
+  it('keeps digits inside words, but not long ID runs', () => {
+    expect(normalizeMessage('E2E rejection 42')).toBe('E2E rejection <n>');
+    expect(normalizeMessage('md5 of utf8 input failed for item12345')).toBe(
+      'md5 of utf8 input failed for item<n>',
+    );
+  });
+
   it('keeps only the normalized path of URLs', () => {
     expect(
       normalizeMessage(
@@ -121,7 +131,7 @@ describe('normalizeMessage', () => {
       'Session expired, sign in again at <url>',
     );
     expect(normalizeMessage('GET https://api.example.com/v1/users/123?token=abc failed')).toBe(
-      'GET v<n>/users/<n> failed',
+      'GET v1/users/<n> failed',
     );
   });
 });

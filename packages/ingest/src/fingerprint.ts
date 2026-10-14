@@ -46,6 +46,8 @@ export function normalizeFile(raw: string): string {
   } else if (long && (/\d/.test(long[1]) || /^[A-F0-9]+$/i.test(long[1]))) {
     name = name.slice(0, long.index) + name.slice(long.index + long[0].length);
   }
+  // A file named only by its hash, like Next.js chunks (2405fce26a5fd80b.js).
+  name = name.replace(/^[A-Fa-f0-9]{8,}(?=(?:\.chunk)?\.m?[jt]sx?$)/, '<hash>');
   return directory + name;
 }
 
@@ -98,12 +100,13 @@ export function parseStack(stack: string | null | undefined): StackFrame[] {
 }
 
 // A URL in a message, e.g. "Failed to fetch dynamically imported module: https://localhost/assets/Page-BkMqT5Y2.js".
-const URL_IN_MESSAGE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>()]+/gi;
+const URL_IN_MESSAGE = /\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s'"`<>()]+/gi;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const HEX = /\b(?:0x)?[0-9a-f]{8,}\b/gi;
 const QUOTED = /(["'`])(?:\\.|(?!\1).)*\1/g;
-// Digits glued to units count too: "2.5s", "30000ms".
-const NUMBER = /\d+(?:\.\d+)?/g;
+// A number on its own or glued to a unit ("2.5s", "30000ms"); digits inside a word
+// ("E2E", "md5", "utf8") stay unless the run is long enough to be an ID ("item12345").
+const NUMBER = /(?<![A-Za-z])\d+(?:\.\d+)?|\d{4,}/g;
 
 /**
  * The message with its variable parts replaced, so "id 123 not found" and "id 456 not found" group.
