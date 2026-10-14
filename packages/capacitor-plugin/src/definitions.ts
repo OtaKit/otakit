@@ -323,6 +323,8 @@ export interface OtaKitPlugin {
 
   /**
    * Check the configured channel for a newer version without downloading it.
+   * A staged bundle the channel no longer targets (rollout lowered or
+   * cancelled, release reverted) is dropped (plugin 3.4+).
    */
   check(): Promise<CheckResult>;
 
@@ -333,6 +335,8 @@ export interface OtaKitPlugin {
 
   /**
    * Activate the currently staged bundle and reload the WebView.
+   * Rejects when nothing usable is staged, for example after a check dropped
+   * an update the channel no longer targets.
    *
    * **WARNING: TERMINAL OPERATION**
    * On success this call does not resolve back into the old JS context.

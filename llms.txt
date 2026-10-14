@@ -815,10 +815,10 @@ plugins: {
 }
 ```
 - `getState()` -> `OtaKitState`: Inspect the current updater state: current bundle, fallback bundle, staged bundle, builtin version, the active percentage rollout seen by the last check (plugin 3.1+), and the active preview link (plugin 3.2+).
-- `check()` -> `CheckResult`: Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available.
+- `check()` -> `CheckResult`: Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available. On plugin 3.4+, a staged bundle the channel no longer targets (rollout lowered or cancelled, release reverted) is dropped.
 - `download()` -> `DownloadResult`: Ensure the latest bundle is staged for later activation. Returns no_update or staged.
 - `update()` -> `void`: Convenience helper for manual flows. It runs the same native immediate-flow operation used by automatic immediate policies. Terminal operation: if an update is applied, it does not resolve back into the old JS context.
-- `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context.
+- `apply()` -> `void`: Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context. Rejects when nothing usable is staged, for example after a check dropped an update the channel no longer targets.
 - `notifyAppReady()` -> `void`: Still required after the updated bundle launches. Call this once when your app has fully loaded so the plugin can mark the new bundle healthy.
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 - `stopPreview()` -> `void`: End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release.
@@ -2212,7 +2212,7 @@ Rollouts need `@otakit/capacitor-updater` 3.1 or later on the device. Channels c
 
 ### How devices are selected
 - Each installation keeps a random secret that never leaves the device. For every rollout it derives a number from 1 to 100 and takes the rolling release when that number is within the percentage.
-- The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering it moves the extra devices back to the previous release after their next check, as does cancelling. A device that downloaded the rolling bundle but has not applied it yet drops it at that check (plugin 3.4+; older plugins may run it once more before switching back).
+- The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering it moves the extra devices back to the previous release after their next check, as does cancelling. A device that downloaded the rolling bundle but has not applied it yet drops it at its next check, such as on a resume (plugin 3.4+). If a launch or resume applies it first (the `apply-staged` policies, the default at launch), the device runs it once before switching back, as older plugins do.
 - Each rollout draws new numbers, so the same devices are not always first.
 - No device identifiers are collected. The percentage and the rolling release are part of the signed manifest.
 - Devices on plugin versions before 3.1 ignore rollouts and stay on the previous release until the rollout completes. The release dialog shows how many recent updates on the channel came from such plugins.
@@ -2895,8 +2895,14 @@ if (state.staged) showRestartPrompt(state.staged);
 OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
 
 // in the prompt's accept handler
-await OtaKit.apply();
+try {
+  await OtaKit.apply();
+} catch {
+  hideRestartPrompt(); // nothing is staged anymore
+}
 ```
+
+Plugin 3.4+ drops a staged update that the channel no longer targets, for example after a revert or a cancelled rollout, so `apply()` can reject while the prompt is open.
 
 #### 4. Confirm and report after the fact
 
