@@ -57,7 +57,13 @@ export interface ConfigSignatureInput {
   channel: string | null;
   /** Increases with every change; devices refuse a lower one (replay). */
   version: number;
-  /** Exactly the text sent to devices (a JSON object). */
+  /**
+   * The channel's config was deleted in this version: devices on a named
+   * channel use the base channel's config, apps on the base channel their
+   * defaults. A signed deletion (not a missing file) so it cannot be faked.
+   */
+  deleted: boolean;
+  /** Exactly the text sent to devices (a JSON object; "{}" when deleted). */
   valuesJson: string;
   /** Exactly the text sent to devices (a JSON array), or null without experiments. */
   experimentsJson: string | null;
@@ -227,6 +233,7 @@ export function buildConfigPayload(
     `appId:${fields.appId}`,
     `channel:${fields.channel ?? 'null'}`,
     `version:${fields.version}`,
+    `deleted:${fields.deleted ? 'true' : 'false'}`,
     `valuesSha256:${sha256Hex(fields.valuesJson)}`,
     `experimentsSha256:${fields.experimentsJson === null ? 'null' : sha256Hex(fields.experimentsJson)}`,
     `kid:${kid}`,

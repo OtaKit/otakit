@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient, RemoteConfig, RemoteConfigVersion } from '@p
 
 import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
 import { getOrganizationEntitlements } from '@/lib/billing/service';
-import { buildConfigUrl, deleteConfigFile, writeConfigFile } from '@/lib/config-files';
+import { buildConfigUrl, writeConfigFile } from '@/lib/config-files';
 import { db } from '@/lib/db';
 import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
 import { emitNotification } from '@/lib/notifications/emit';
@@ -50,7 +50,7 @@ export type RemoteConfigState = {
   usesBaseConfig: boolean;
   /** Whether the CDN file matches the latest version. */
   publicationStatus: 'published' | 'pending';
-  /** The signed file devices read, while the config is live. */
+  /** The signed file devices read (a signed deletion after a delete). */
   fileUrl: string | null;
 };
 
@@ -170,7 +170,7 @@ function toState(
     usesBaseConfig: channel !== null && status !== 'live',
     publicationStatus:
       !config || config.syncedVersion >= config.currentVersion ? 'published' : 'pending',
-    fileUrl: status === 'live' ? buildConfigUrl(appId, channel) : null,
+    fileUrl: status === 'none' ? null : buildConfigUrl(appId, channel),
   };
 }
 
@@ -200,18 +200,17 @@ export async function syncRemoteConfigFile(
       const config = await findConfig(tx, appId, channel);
       const latest = config?.versions[0];
       if (!config || !latest) return;
-      if (latest.deleted) {
-        await deleteConfigFile(appId, channel);
-      } else {
-        await writeConfigFile({
-          appId,
-          channel,
-          version: latest.version,
-          valuesJson: latest.valuesJson,
-          experimentsJson: latest.experimentsJson,
-          updatedAt: latest.createdAt.toISOString(),
-        });
-      }
+      // A deletion is written as a signed file too, so devices know it is real
+      // and never accept an older version again.
+      await writeConfigFile({
+        appId,
+        channel,
+        version: latest.version,
+        deleted: latest.deleted,
+        valuesJson: latest.deleted ? '{}' : latest.valuesJson,
+        experimentsJson: latest.deleted ? null : latest.experimentsJson,
+        updatedAt: latest.createdAt.toISOString(),
+      });
       await tx.remoteConfig.update({
         where: { id: config.id },
         data: { syncedVersion: latest.version },

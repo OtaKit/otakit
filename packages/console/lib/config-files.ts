@@ -1,12 +1,13 @@
 import { purgeCdnUrls } from '@/lib/cdn-purge';
 import { signConfig, type ManifestSignature } from '@/lib/manifest-signing';
 import { configChannelKey } from '@/lib/remote-config';
-import { buildPublicObjectUrl, deleteStorageObject, putTextObject } from '@/lib/storage';
+import { buildPublicObjectUrl, putTextObject } from '@/lib/storage';
 
 /**
  * The signed remote config file of one channel, read by plugin 3.4+:
- * `config/{appId}/{channelKey}/config.json`. A channel without a file makes
- * devices fall back to the base channel's file.
+ * `config/{appId}/{channelKey}/config.json`. A named channel without a file,
+ * or whose file is a signed deletion, makes devices use the base channel's
+ * file.
  */
 
 const CONFIG_PREFIX = 'config';
@@ -17,7 +18,9 @@ export type ConfigFile = {
   appId: string;
   channel: string | null;
   version: number;
-  /** Exactly the signed text: a JSON object. */
+  /** A signed deletion: no values of its own. */
+  deleted: boolean;
+  /** Exactly the signed text: a JSON object ("{}" when deleted). */
   valuesJson: string;
   /** Exactly the signed text: a JSON array, or null without experiments. */
   experimentsJson: string | null;
@@ -41,6 +44,7 @@ export function buildConfigFile(input: Omit<ConfigFile, 'signature'>): ConfigFil
       appId: input.appId,
       channel: input.channel,
       version: input.version,
+      deleted: input.deleted,
       valuesJson: input.valuesJson,
       experimentsJson: input.experimentsJson,
     }),
@@ -59,8 +63,3 @@ export async function writeConfigFile(input: Omit<ConfigFile, 'signature'>): Pro
   await purgeCdnUrls([buildPublicObjectUrl(storageKey)]);
 }
 
-export async function deleteConfigFile(appId: string, channel: string | null): Promise<void> {
-  const storageKey = buildConfigStorageKey(appId, channel);
-  await deleteStorageObject(storageKey);
-  await purgeCdnUrls([buildPublicObjectUrl(storageKey)]);
-}

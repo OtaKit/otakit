@@ -334,21 +334,23 @@ describe('release notes payload', () => {
 /**
  * Remote config vectors (plugin 3.4+), with their own throwaway key: the same
  * files are verified by RemoteConfigTests.swift and RemoteConfigTest.java.
+ * The third is a signed deletion.
  */
 const CONFIG_VECTOR_PUBLIC_KEY_DER =
-  'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEd0ZZZTk/0Z89FsFOcitUJETszNK7A3JeOHfMFCV9dHeuHeVNaEkEdy5kh+PZ/a26LBe8Y+hcPjJBFAC8+u80Ew==';
+  'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJP8NHG8t4uUu8RVw+lnnn7J3YJMMM2deHqJxIZo5O1PlZF7qB24YJ83c2Tv9fyh7fEQirqhkEs+/pBK/2kbCWQ==';
 const CONFIG_VECTOR_FILES = [
   {
     appId: '7bb828f1-797c-4d07-8254-068cac664f69',
     channel: 'production',
     version: 12,
+    deleted: false,
     valuesJson:
       '{"checkoutEnabled":false,"helpUrl":"https://example.com/help","banner":"Zurück um 14:00 ✓","limits":{"upload":25}}',
     experimentsJson: null,
     updatedAt: '2026-10-14T09:00:00.000Z',
     signature: {
       kid: 'config-test-key',
-      sig: 'MEYCIQC4BK17uUm7SDkkLMbx6MGEIjsyLKu6-ZEJcSyaRsV44gIhAKuu-KyeVy0WhIZ8BBuu1mRrcktXyCW23JZDTsCn2l2z',
+      sig: 'MEQCIGKAWvjrlu5QVltyCqufCS3j8Zre2H7UTTdmWJVTKv6AAiB3ciiNfJvV5ECQ921CICtxqkreY_BqXvzmSAssbeJ2xQ',
       iat: 1790000000,
       exp: 2145916800,
     },
@@ -357,13 +359,29 @@ const CONFIG_VECTOR_FILES = [
     appId: '7bb828f1-797c-4d07-8254-068cac664f69',
     channel: null,
     version: 3,
+    deleted: false,
     valuesJson: '{"paywallTitle":"Go Pro","maxItems":5}',
     experimentsJson:
       '[{"key":"paywall_copy","traffic":100,"variants":[{"key":"control","weight":50,"overrides":{}},{"key":"b","weight":50,"overrides":{"paywallTitle":"Unlock everything"}}],"runtimeVersions":null,"goal":"purchase_completed"}]',
     updatedAt: '2026-10-14T09:00:00.000Z',
     signature: {
       kid: 'config-test-key',
-      sig: 'MEUCIF3J9XOa6cNJnLyXUJYe-ULxGZGrpeEdUtK6-A6DnPvzAiEA5rjmp9Orhh5urwVBXCo4sUyIGbEvelphqLb_gsTYvhM',
+      sig: 'MEUCIFMd1Xs9YBZdJTqjxHwH-rye9EpZQ8y_6t2hh-jZ0KqMAiEA9O5vqX-pGvezd8i3V3-_JpZh6-7GYdW5BzHZnD5JOZs',
+      iat: 1790000000,
+      exp: 2145916800,
+    },
+  },
+  {
+    appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+    channel: 'beta',
+    version: 14,
+    deleted: true,
+    valuesJson: '{}',
+    experimentsJson: null,
+    updatedAt: '2026-10-14T09:00:00.000Z',
+    signature: {
+      kid: 'config-test-key',
+      sig: 'MEQCIFaQbv-YUZmF2TRAaRjDDoPfVJc78Sl2I66w3QIHhWF7AiB3iKMXz4PsB59qBK5Mca1tMKRXyxI4VPiAJ8aHq9b2XQ',
       iat: 1790000000,
       exp: 2145916800,
     },
@@ -372,7 +390,7 @@ const CONFIG_VECTOR_FILES = [
 
 describe('remote config payload', () => {
   it('signs the hashes of the exact JSON text the device receives', () => {
-    const [production, base] = CONFIG_VECTOR_FILES;
+    const [production, base, deleted] = CONFIG_VECTOR_FILES;
     const payload = buildConfigPayload(
       production,
       production.signature.kid,
@@ -385,6 +403,7 @@ describe('remote config payload', () => {
         'appId:7bb828f1-797c-4d07-8254-068cac664f69',
         'channel:production',
         'version:12',
+        'deleted:false',
         'valuesSha256:93c3bf113784f5be594aa537996ed24994f8fc2a94af39a5af55a013f86a2f0d',
         'experimentsSha256:null',
         'kid:config-test-key',
@@ -394,26 +413,32 @@ describe('remote config payload', () => {
     );
     expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, payload, production.signature.sig)).toBe(true);
 
-    const basePayload = buildConfigPayload(
-      base,
-      base.signature.kid,
-      base.signature.iat,
-      base.signature.exp,
+    for (const file of [base, deleted]) {
+      const filePayload = buildConfigPayload(
+        file,
+        file.signature.kid,
+        file.signature.iat,
+        file.signature.exp,
+      );
+      expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, filePayload, file.signature.sig)).toBe(true);
+    }
+    expect(buildConfigPayload(base, 'k', 1, 2)).toContain(
+      '\nchannel:null\nversion:3\ndeleted:false\n',
     );
-    expect(basePayload).toContain('\nchannel:null\n');
-    expect(basePayload).toContain(
+    expect(buildConfigPayload(base, 'k', 1, 2)).toContain(
       '\nexperimentsSha256:a82a2ff707af23aa4b266e1b815f88e582ea574468a8d8dc29166ef40789ffa2\n',
     );
-    expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, basePayload, base.signature.sig)).toBe(true);
+    expect(buildConfigPayload(deleted, 'k', 1, 2)).toContain('\ndeleted:true\n');
   });
 
   it('never lets a config verify after any signed field changes', () => {
-    const [production, base] = CONFIG_VECTOR_FILES;
+    const [production, base, deleted] = CONFIG_VECTOR_FILES;
     for (const moved of [
       { ...production, appId: '00000000-0000-4000-8000-000000000000' },
       { ...production, channel: 'beta' },
       { ...production, channel: null },
       { ...production, version: 13 },
+      { ...production, deleted: true },
       { ...production, valuesJson: production.valuesJson.replace('false', 'true') },
       { ...production, experimentsJson: base.experimentsJson },
     ]) {
@@ -427,6 +452,14 @@ describe('remote config payload', () => {
         false,
       );
     }
+    // A deletion cannot be turned back into a live config.
+    const revived = buildConfigPayload(
+      { ...deleted, deleted: false },
+      deleted.signature.kid,
+      deleted.signature.iat,
+      deleted.signature.exp,
+    );
+    expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, revived, deleted.signature.sig)).toBe(false);
     // A manifest or notes signature can never pass as a config one: other header.
     expect(buildConfigPayload(production, 'k', 1, 2).startsWith('CONFIG\n')).toBe(true);
   });

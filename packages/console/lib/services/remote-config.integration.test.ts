@@ -35,6 +35,7 @@ type ConfigFileJson = {
   appId: string;
   channel: string | null;
   version: number;
+  deleted: boolean;
   valuesJson: string;
   experimentsJson: string | null;
   updatedAt: string;
@@ -315,9 +316,16 @@ databaseDescribe('remote config (PostgreSQL integration)', () => {
       status: 'deleted',
       values: null,
       usesBaseConfig: true,
-      fileUrl: null,
+      fileUrl: `https://cdn.test/config/${appId}/beta/config.json`,
     });
-    expect(fileOf('beta')).toBeNull();
+    // A signed deletion, so devices know it is real and refuse version 2 from now on.
+    expect(fileOf('beta')).toMatchObject({
+      version: 3,
+      deleted: true,
+      valuesJson: '{}',
+      experimentsJson: null,
+    });
+    expect(verify(fileOf('beta')!)).toBe(true);
     await expect(
       service.deleteRemoteConfig(context(), { channel: 'beta', expectedVersion: 3 }),
     ).rejects.toMatchObject({ code: 'CONFIG_NOT_FOUND' });
