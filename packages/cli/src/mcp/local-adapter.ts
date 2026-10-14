@@ -4,6 +4,9 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  errorIssueAgentPayload,
+  errorIssueEnvelopeParts,
+  errorIssueListEnvelopeParts,
   releaseTimeseriesEnvelopeParts,
   remoteConfigSummary,
   remoteConfigWriteParts,
@@ -297,6 +300,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.getReleaseTimeseries(input);
         case 'list_events':
           return await this.listEvents(input);
+        case 'list_error_issues':
+          return await this.listErrorIssues(input);
+        case 'get_error_issue':
+          return await this.getErrorIssue(input);
         case 'list_audit_log':
           return await this.listAuditLog(input);
         case 'prepare_revert':
@@ -681,6 +688,46 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
             ],
           },
     );
+  }
+
+  private async listErrorIssues(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const status = optionalString(input, 'status') ?? 'open';
+    const list = await this.api(appId).request<JsonObject>(
+      `/api/v1/apps/${encodeURIComponent(appId)}/errors${queryString({
+        range: optionalString(input, 'range'),
+        status,
+        platform: optionalString(input, 'platform'),
+        releaseId: optionalString(input, 'releaseId'),
+        // null asks for the base channel (an empty value); omitted means every channel.
+        channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+        sort: optionalString(input, 'sort'),
+        limit: numberInput(input, 'limit') ?? 20,
+      })}`,
+    );
+    const parts = errorIssueListEnvelopeParts(
+      list as unknown as Parameters<typeof errorIssueListEnvelopeParts>[0],
+      status,
+    );
+    return toolEnvelope(parts.summary, json(list), {
+      warnings: parts.warnings,
+      links: [this.appLink(appId, 'View errors')],
+    });
+  }
+
+  private async getErrorIssue(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const fingerprint = stringInput(input, 'fingerprint');
+    const detail = (await this.api(appId).request<JsonObject>(
+      `/api/v1/apps/${encodeURIComponent(appId)}/errors/${encodeURIComponent(fingerprint)}${queryString(
+        { range: optionalString(input, 'range') },
+      )}`,
+    )) as unknown as Parameters<typeof errorIssueAgentPayload>[0];
+    const parts = errorIssueEnvelopeParts(detail);
+    return toolEnvelope(parts.summary, json(errorIssueAgentPayload(detail)), {
+      warnings: parts.warnings,
+      links: [this.appLink(appId, 'View errors')],
+    });
   }
 
   private async listAuditLog(input: JsonObject): Promise<ToolEnvelope> {

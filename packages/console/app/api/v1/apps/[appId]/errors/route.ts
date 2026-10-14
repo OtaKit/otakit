@@ -9,7 +9,8 @@ export const runtime = 'nodejs';
 /**
  * Error issues with events in a range:
  * `?range=24h|7d|30d&status=open|resolved|ignored|all&platform=&releaseId=&channel=&sort=events|last_seen&limit=&trend=1`.
- * `channel=base` is the base channel. Messages are device-reported text.
+ * Without `channel`, every channel; `channel=` (empty) is the base channel. Messages are
+ * device-reported text.
  */
 export async function GET(
   request: NextRequest,
@@ -21,14 +22,14 @@ export async function GET(
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
   const searchParams = request.nextUrl.searchParams;
-  const channel = searchParams.get('channel');
+  const channel = searchParams.has('channel') ? searchParams.get('channel') || null : undefined;
   try {
     const filters = parseErrorIssueFilters({
       range: searchParams.get('range'),
       status: searchParams.get('status'),
       platform: searchParams.get('platform'),
       releaseId: searchParams.get('releaseId'),
-      channel: channel === 'base' ? null : channel === 'all' ? undefined : (channel ?? undefined),
+      channel,
       sort: searchParams.get('sort'),
       limit: searchParams.get('limit'),
     });

@@ -16,6 +16,8 @@ export const OTAKIT_TOOL_NAMES = [
   'get_release_health',
   'get_release_timeseries',
   'list_events',
+  'list_error_issues',
+  'get_error_issue',
   'list_audit_log',
   'prepare_revert',
   'revert_release',
@@ -89,6 +91,10 @@ export const resolvedAppIdSchema = appIdSchema
 export const bundleIdSchema = z.string().uuid().describe('OtaKit bundle ID');
 export const releaseIdSchema = z.string().uuid().describe('OtaKit release ID');
 export const previewIdSchema = z.string().uuid().describe('OtaKit preview link ID');
+export const errorFingerprintSchema = z
+  .string()
+  .regex(/^[0-9a-f]{16}$/)
+  .describe('Error issue fingerprint (16 hex characters), from list_error_issues');
 export const channelSchema = z
   .string()
   .regex(/^[A-Za-z0-9._-]{1,64}$/)

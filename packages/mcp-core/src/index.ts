@@ -1,6 +1,7 @@
 export * from './bundle-diff';
 export * from './catalog';
 export * from './contracts';
+export * from './error-issues';
 export * from './previews';
 export * from './prompts';
 export * from './registry';
