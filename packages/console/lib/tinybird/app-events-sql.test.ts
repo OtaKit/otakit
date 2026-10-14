@@ -140,6 +140,16 @@ describe('app_event_timeseries', () => {
     expect(series({ channel: 'production', channel_is_null: '0', platform: 'ios' })).toEqual([
       [seconds('2026-10-13T10:00:00Z'), 2, 2],
     ]);
+    const all = query('app_event_timeseries', {
+      app_id: 'app-a',
+      from_ts: '2026-10-13T00:00:00.000Z',
+      daily: '1',
+    }).map((row) => [row.name, row.bucket_start, row.events]);
+    expect(all).toEqual([
+      ['checkout_completed', seconds('2026-10-13T00:00:00Z'), 3],
+      ['checkout_completed', seconds('2026-10-14T00:00:00Z'), 1],
+      ['signup', seconds('2026-10-13T00:00:00Z'), 1],
+    ]);
   });
 });
 

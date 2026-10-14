@@ -10,6 +10,7 @@ const tinybird = vi.hoisted(() => ({
   releaseErrors: new Map<string, { events: number; issues: number }>(),
   applies: new Map<string, number>(),
   usage: new Map<string, number>() as Map<string, number> | null,
+  eventUsage: new Map<string, number>() as Map<string, number> | null,
   issueReleases: new Map<string, { lastSeenAt: Date; lastOccurredAt: Date; events: number }>(),
 }));
 const gate = vi.hoisted(() => ({
@@ -62,9 +63,13 @@ vi.mock('@/lib/tinybird/events', async (importOriginal) => ({
   })),
 }));
 vi.mock('@/lib/telemetry-gate', () => gate);
+vi.mock('@/lib/tinybird/app-events', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/tinybird/app-events')>()),
+  getAppEventUsage: vi.fn(async () => tinybird.eventUsage),
+}));
 
 const { db } = await import('@/lib/db');
-const { runErrorsCron } = await import('./errors-cron');
+const { runTelemetryCron: runErrorsCron } = await import('./telemetry-cron');
 const issues = await import('./services/error-issues');
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
@@ -107,6 +112,7 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
     tinybird.releaseErrors = new Map();
     tinybird.applies = new Map();
     tinybird.usage = new Map();
+    tinybird.eventUsage = new Map();
     tinybird.issueReleases = new Map();
     organizationId = randomUUID();
     appId = randomUUID();
@@ -124,7 +130,13 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
           type: 'webhook',
           name: 'Errors hook',
           url: 'https://hooks.example/errors',
-          events: ['errors.new_issue', 'errors.regression', 'errors.spike', 'errors.paused'],
+          events: [
+            'errors.new_issue',
+            'errors.regression',
+            'errors.spike',
+            'errors.paused',
+            'analytics.paused',
+          ],
         },
       })
     ).id;
@@ -422,6 +434,27 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
       app: null,
       errorUsage: { events: 10_000, limit: 10_000, pausedUntil: monthEnd.toISOString() },
     });
+  });
+
+  it('pauses custom events on their own limit, apart from errors', async () => {
+    vi.stubEnv('POLAR_ACCESS_TOKEN', 'polar-test');
+    const monthEnd = new Date('2026-11-01T00:00:00.000Z');
+    tinybird.eventUsage = new Map([[appId, 100_000]]);
+    tinybird.usage = new Map([[appId, 9_999]]);
+    expect(await runErrorsCron(NOW)).toMatchObject({ paused: 1, queued: 1, skipped: [] });
+    expect(gate.pauseTelemetry).toHaveBeenCalledWith('event', [appId], monthEnd);
+    expect(gate.pauseTelemetry).not.toHaveBeenCalledWith('error', expect.anything(), monthEnd);
+    const organization = await db.organization.findUniqueOrThrow({ where: { id: organizationId } });
+    expect(organization).toMatchObject({ eventsPausedUntil: monthEnd, errorsPausedUntil: null });
+    const [delivery] = await deliveries('analytics.paused');
+    expect(JSON.parse(delivery.payload).data.eventUsage).toEqual({
+      events: 100_000,
+      limit: 100_000,
+      pausedUntil: monthEnd.toISOString(),
+    });
+    tinybird.eventUsage = new Map([[appId, 10]]);
+    expect(await runErrorsCron(NOW)).toMatchObject({ resumed: 1 });
+    expect(gate.resumeTelemetry).toHaveBeenCalledWith('event', [appId]);
   });
 
   it('lifts a pause on servers without billing', async () => {

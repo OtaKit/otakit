@@ -342,6 +342,8 @@ model Organization {
   // Error tracking reached the plan's monthly cap: ingest drops new errors
   // until this time (the start of the next UTC month). Set by the errors cron.
   errorsPausedUntil        DateTime?
+  // The same for custom events (OtaKit.track()).
+  eventsPausedUntil        DateTime?
   // Relations
   apps                     App[]
   apiKeys                  OrganizationApiKey[]

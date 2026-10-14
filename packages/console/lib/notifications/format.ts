@@ -291,6 +291,24 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
         url,
       };
     }
+    case 'analytics.paused': {
+      const { eventUsage, organization } = payload.data;
+      const until = new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date(eventUsage.pausedUntil));
+      return {
+        title: `Analytics paused for ${organization.name}`,
+        lines: [
+          `${eventUsage.events.toLocaleString('en-US')} of ${eventUsage.limit.toLocaleString('en-US')} custom events this month. New events are not recorded until ${until}.`,
+          'Upgrade the plan to resume now.',
+        ],
+        notes: null,
+        severity: 'warning',
+        url,
+      };
+    }
     case 'usage.warning': {
       const { usage, organization } = payload.data;
       const period = new Intl.DateTimeFormat('en-US', {
