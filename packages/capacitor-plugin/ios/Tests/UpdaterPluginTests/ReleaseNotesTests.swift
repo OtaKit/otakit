@@ -122,16 +122,22 @@ final class ReleaseNotesTests: XCTestCase {
       object["rollout"] = rollout
     }
 
-    for json in [edited, unsigned] {
+    for (json, detail) in [(edited, "notes_signature_invalid"), (unsigned, "notes_signature_missing")] {
       let parsed = try parse(json)
       XCTAssertEqual(parsed.stable.version, "1.5.0")
       XCTAssertNil(parsed.stable.notes)
+      // Reported as a check error; the rolling release's own notes are fine.
+      XCTAssertEqual(parsed.stable.notesFailure?.detail, detail)
+      XCTAssertEqual(parsed.stable.notesFailure?.phase, "signature")
       XCTAssertEqual(parsed.rollout?.manifest.notes, "Beta: new home screen")
+      XCTAssertNil(parsed.rollout?.manifest.notesFailure)
     }
     let parsed = try parse(moved)
     XCTAssertEqual(parsed.stable.notes, Self.stableNotes)
+    XCTAssertNil(parsed.stable.notesFailure)
     XCTAssertNotNil(parsed.rollout)
     XCTAssertNil(parsed.rollout?.manifest.notes)
+    XCTAssertEqual(parsed.rollout?.manifest.notesFailure?.detail, "notes_signature_invalid")
   }
 
   func testAcceptsNotesWithoutConfiguredKeys() throws {
@@ -148,6 +154,8 @@ final class ReleaseNotesTests: XCTestCase {
     }
     XCTAssertNil(try parse(none).stable.notes)
     XCTAssertNil(try parse(empty).stable.notes)
+    XCTAssertNil(try parse(none).stable.notesFailure)
+    XCTAssertNil(try parse(empty).stable.notesFailure)
   }
 
   func testBundleRecordsKeepNotesAndOldRecordsStillDecode() throws {

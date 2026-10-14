@@ -132,11 +132,17 @@ public class ReleaseNotesTest {
     JSONObject unsigned = new JSONObject(MANIFEST_JSON);
     unsigned.getJSONObject("notes").put("signature", JSONObject.NULL);
 
-    for (JSONObject json : new JSONObject[] { edited, unsigned }) {
-      ManifestClient.ParsedManifest parsed = parse(json.toString());
+    String[] details = { "notes_signature_invalid", "notes_signature_missing" };
+    JSONObject[] broken = { edited, unsigned };
+    for (int i = 0; i < broken.length; i++) {
+      ManifestClient.ParsedManifest parsed = parse(broken[i].toString());
       assertEquals("1.5.0", parsed.stable.version);
       assertNull(parsed.stable.notes);
+      // Reported as a check error; the rolling release's own notes are fine.
+      assertEquals(details[i], parsed.stable.notesFailure.detail);
+      assertEquals("signature", parsed.stable.notesFailure.phase);
       assertEquals("Beta: new home screen", parsed.rollout.manifest.notes);
+      assertNull(parsed.rollout.manifest.notesFailure);
     }
 
     // The stable release's notes copied into the rollout block: bound to another release.
@@ -144,8 +150,10 @@ public class ReleaseNotesTest {
     moved.getJSONObject("rollout").put("notes", moved.getJSONObject("notes"));
     ManifestClient.ParsedManifest parsed = parse(moved.toString());
     assertEquals(STABLE_NOTES, parsed.stable.notes);
+    assertNull(parsed.stable.notesFailure);
     assertNotNull(parsed.rollout);
     assertNull(parsed.rollout.manifest.notes);
+    assertEquals("notes_signature_invalid", parsed.rollout.manifest.notesFailure.detail);
   }
 
   @Test

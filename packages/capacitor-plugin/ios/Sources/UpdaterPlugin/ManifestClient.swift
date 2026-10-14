@@ -34,6 +34,8 @@ struct LatestManifest {
   let files: [ManifestFileEntry]?
   /// Verified release notes (plugin 3.3+), or nil.
   let notes: String?
+  /// Why the entry's notes were dropped, reported as a check error (plugin 3.4+).
+  var notesFailure: CheckFailure? = nil
 }
 
 struct ManifestSignature {
@@ -283,7 +285,15 @@ enum ManifestClient {
       try requireHTTPS(url: dlURL, allowInsecure: allowInsecureUrls)
     }
 
-    let manifest = LatestManifest(
+    let (notes, notesFailure) = verifiedNotes(
+      object["notes"],
+      appId: appId,
+      channel: channel,
+      releaseId: releaseId,
+      sha256: sha256,
+      manifestKeys: manifestKeys
+    )
+    var manifest = LatestManifest(
       version: version,
       url: downloadUrl,
       sha256: sha256,
@@ -294,21 +304,16 @@ enum ManifestClient {
       forceImmediate: forceImmediate,
       encryption: encryption,
       files: files,
-      notes: verifiedNotes(
-        object["notes"],
-        appId: appId,
-        channel: channel,
-        releaseId: releaseId,
-        sha256: sha256,
-        manifestKeys: manifestKeys
-      )
+      notes: notes
     )
+    manifest.notesFailure = notesFailure
     return (manifest, signature)
   }
 
   /// One entry's release notes (plugin 3.3+). Anything missing, malformed or
-  /// unverifiable yields nil: notes never block an update. Without manifest
-  /// keys (unsigned self-hosting) the text is accepted, like the manifest.
+  /// unverifiable yields nil: notes never block an update. Notes that fail
+  /// verification also return why, for a check error. Without manifest keys
+  /// (unsigned self-hosting) the text is accepted, like the manifest.
   private static func verifiedNotes(
     _ rawValue: Any?,
     appId: String,
@@ -316,13 +321,15 @@ enum ManifestClient {
     releaseId: String,
     sha256: String,
     manifestKeys: [ManifestKey]
-  ) -> String? {
+  ) -> (String?, CheckFailure?) {
     guard let object = rawValue as? [String: Any],
           let text = object["text"] as? String, !text.isEmpty else {
-      return nil
+      return (nil, nil)
     }
-    if manifestKeys.isEmpty { return text }
-    guard let signature = parseSignature(object["signature"]) else { return nil }
+    if manifestKeys.isEmpty { return (text, nil) }
+    guard let signature = parseSignature(object["signature"]) else {
+      return (nil, CheckFailure(phase: "signature", detail: "notes_signature_missing"))
+    }
     do {
       try ManifestVerifier.verifyNotes(
         appId: appId,
@@ -333,10 +340,10 @@ enum ManifestClient {
         signature: signature,
         trustedKeys: manifestKeys
       )
-      return text
+      return (text, nil)
     } catch {
       print("[OtaKit] Ignoring release notes that failed verification: \(error)")
-      return nil
+      return (nil, CheckFailure.notes(error))
     }
   }
 

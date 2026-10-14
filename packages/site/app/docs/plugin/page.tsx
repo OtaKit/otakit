@@ -285,9 +285,9 @@ await OtaKit.notifyAppReady();`}</Pre>
           description="The running release's notes, until markReleaseNotesSeen() is called (plugin 3.3+). Show them once in a What's new screen, rendered as text. See Release Notes."
         />
         <Method
-          name="markReleaseNotesSeen()"
+          name="markReleaseNotesSeen({ releaseId }?)"
           returns="void"
-          description="Mark the running release's notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes."
+          description="Mark notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes. Pass the releaseId you showed (plugin 3.4+): an update applied while the notes were open is then not marked instead. Without it, the running release's."
         />
       </div>
       <P>
