@@ -28,6 +28,10 @@ export const OTAKIT_TOOL_NAMES = [
   'revoke_preview',
   'get_remote_config',
   'set_remote_config',
+  'list_experiments',
+  'get_experiment_results',
+  'stop_experiment',
+  'ship_experiment_variant',
   'inspect_project',
   'check_compatibility',
   'upload_bundle',
@@ -97,6 +101,11 @@ export const appEventNameSchema = z
   .string()
   .regex(/^(?:(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}|\$session_start)$/)
   .describe('Custom event name, from list_app_events');
+export const experimentRefSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe('A/B test ID, or its key (the running or draft test, else the latest that ended)');
 export const errorFingerprintSchema = z
   .string()
   .regex(/^[0-9a-f]{16}$/)

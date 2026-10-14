@@ -278,6 +278,33 @@ describe('custom events', () => {
     expect(queued()[2].body.row).toMatchObject({ name: '$session_start', properties: '{}' });
   });
 
+  it('accepts the A/B test reports the plugin sends', async () => {
+    const { post, queued } = fixture();
+    const experiment = '0b1d2c3e-0000-4000-8000-00000000000a';
+    const response = await post({
+      context,
+      items: [
+        eventItem({ name: '$exposure', properties: { experiment, variant: 'b' } }),
+        eventItem({
+          name: '$conversion',
+          properties: { experiment, variant: 'b', goal: 'purchase_completed' },
+        }),
+        eventItem({ name: '$experiment_error', properties: { experiment, variant: 'b' } }),
+      ],
+    });
+    expect(await response.json()).toEqual({ accepted: true, items: 3, dropped: 0 });
+    expect(queued().map((message) => message.body.row.name)).toEqual([
+      '$exposure',
+      '$conversion',
+      '$experiment_error',
+    ]);
+    expect(JSON.parse(queued()[1].body.row.properties)).toEqual({
+      experiment,
+      variant: 'b',
+      goal: 'purchase_completed',
+    });
+  });
+
   it('drops events with invalid names and invalid properties one by one', async () => {
     const { post, queued } = fixture();
     const properties: Record<string, unknown> = {

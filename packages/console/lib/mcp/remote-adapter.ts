@@ -22,6 +22,9 @@ import {
   type OtaKitToolAuthorization,
   type OtaKitToolName,
   type ToolEnvelope,
+  experimentChangeSummary,
+  experimentListSummary,
+  experimentResultsParts,
 } from '@otakit/mcp-core';
 
 import { accessActor } from '@/lib/audit-log';
@@ -47,6 +50,12 @@ import {
   parseErrorIssueFilters,
 } from '@/lib/services/error-issues';
 import { listEvents } from '@/lib/services/events';
+import {
+  getExperimentResults,
+  listExperiments,
+  shipExperimentVariant,
+  stopExperiment,
+} from '@/lib/services/experiments';
 import { getReleaseTimeseries, isReleaseTimeseriesRange } from '@/lib/services/release-timeseries';
 import {
   getRemoteConfig,
@@ -310,6 +319,14 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.getRemoteConfig(input);
         case 'set_remote_config':
           return await this.setRemoteConfig(input);
+        case 'list_experiments':
+          return await this.listExperiments(input);
+        case 'get_experiment_results':
+          return await this.getExperimentResults(input);
+        case 'stop_experiment':
+          return await this.stopExperiment(input);
+        case 'ship_experiment_variant':
+          return await this.shipExperimentVariant(input);
         // Unreachable in practice: toolDefinitionsForMode('remote') never
         // registers these, so a caller gets a protocol-level unknown-tool
         // error first. Kept so the switch stays exhaustive over the shared
@@ -857,6 +874,59 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       },
     );
     const parts = remoteConfigWriteParts(result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
+  }
+
+  private async listExperiments(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const experiments = await listExperiments({
+      organizationId: this.connection.access.organizationId,
+      appId,
+    });
+    return toolEnvelope(experimentListSummary(experiments), json({ experiments }));
+  }
+
+  private async getExperimentResults(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await getExperimentResults(
+      { organizationId: this.connection.access.organizationId, appId },
+      stringInput(input, 'experiment'),
+    );
+    const parts = experimentResultsParts(result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
+  }
+
+  private experimentWriteContext(appId: string) {
+    return accessActor(this.connection.access).then((actor) => ({
+      organizationId: this.connection.access.organizationId,
+      actor,
+      appId,
+      auditMetadata: invocationMetadata(this.connection),
+    }));
+  }
+
+  private async stopExperiment(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await stopExperiment(
+      await this.experimentWriteContext(appId),
+      stringInput(input, 'experiment'),
+    );
+    const parts = experimentChangeSummary('stopped', result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
+  }
+
+  private async shipExperimentVariant(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await shipExperimentVariant(
+      await this.experimentWriteContext(appId),
+      stringInput(input, 'experiment'),
+      { variant: stringInput(input, 'variant') },
+    );
+    const parts = experimentChangeSummary('shipped', result);
     return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
   }
 

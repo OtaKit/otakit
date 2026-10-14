@@ -447,6 +447,7 @@ model App {
   notificationDestinations NotificationDestination[]
   remoteConfigs            RemoteConfig[]
   errorIssues              ErrorIssue[]
+  experiments              Experiment[]
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
@@ -750,4 +751,51 @@ model ErrorIssue {
   @@unique([appId, fingerprint])
   @@index([appId, status, lastSeenAt(sort: Desc)])
   @@index([appId, firstReleaseId])
+}
+
+enum ExperimentStatus {
+  draft
+  running
+  stopped
+  shipped
+}
+
+/// An A/B test. While it runs, it rides in its config file's signed
+/// experimentsJson; devices report exposures, goals and errors at most once
+/// each, counted in Tinybird (app_experiment_daily).
+model Experiment {
+  id               String           @id @default(uuid())
+  app              App              @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId            String
+  /// Used in app code, getVariant(key); unique among the app's draft and running experiments.
+  key              String
+  name             String
+  status           ExperimentStatus @default(draft)
+  /// The config file it rides in; null = the base config.
+  channel          String?
+  /// `channel ?? '__base__'`, as for remote config.
+  channelKey       String
+  /// Device channels (null = the base channel) as a JSON array; null = every device of the file.
+  audienceChannels Json?
+  /// Device runtime versions; empty = every runtime version.
+  runtimeVersions  String[]         @default([])
+  trafficPercent   Int              @default(100)
+  /// [{ key, weight, overrides }], control first. Locked while running.
+  variants         Json
+  goalEvent        String
+  secondaryEvents  String[]         @default([])
+  startedAt        DateTime?
+  stoppedAt        DateTime?
+  /// The variant whose values were written into the config when it ended.
+  shippedVariant   String?
+  /// The last verdict sent as experiment.verdict_reached ("winner:b", "no_difference", "guardrail:b").
+  notifiedVerdict  String?
+  /// When the telemetry cron last checked its results.
+  resultsCheckedAt DateTime?
+  createdBy        String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([appId, status])
+  @@index([status, resultsCheckedAt])
 }

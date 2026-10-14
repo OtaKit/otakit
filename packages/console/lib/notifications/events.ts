@@ -42,6 +42,24 @@ export const NOTIFICATION_EVENTS = [
     group: 'Remote config',
   },
   {
+    type: 'experiment.started',
+    label: 'A/B test started',
+    description: 'An A/B test starts on a config',
+    group: 'A/B tests',
+  },
+  {
+    type: 'experiment.stopped',
+    label: 'A/B test stopped',
+    description: 'An A/B test is stopped, or its winning variant is shipped',
+    group: 'A/B tests',
+  },
+  {
+    type: 'experiment.verdict_reached',
+    label: 'A/B test result',
+    description: 'An A/B test has a winner, no clear difference, or a variant with more errors',
+    group: 'A/B tests',
+  },
+  {
     type: 'errors.new_issue',
     label: 'New error',
     description: 'A new error issue reaches 5 events',
@@ -101,6 +119,7 @@ export const DEFAULT_EMAIL_EVENTS: NotificationEventType[] = [
   'errors.spike',
   'errors.paused',
   'analytics.paused',
+  'experiment.verdict_reached',
 ];
 
 export const DEFAULT_EMAIL_DESTINATION_NAME = 'Owners and admins';
@@ -211,6 +230,37 @@ export type NotificationUsage = {
   periodStart: string;
 };
 
+/** An A/B test, as notifications show it. */
+export type NotificationExperiment = {
+  id: string;
+  key: string;
+  name: string;
+  status: 'draft' | 'running' | 'stopped' | 'shipped';
+  /** The config file it runs in; null for the base config. */
+  channel: string | null;
+  goalEvent: string;
+  variants: Array<{ key: string; weight: number }>;
+  startedAt: string | null;
+  stoppedAt: string | null;
+  shippedVariant: string | null;
+};
+
+/** Devices per variant behind an A/B test result. */
+export type NotificationExperimentVariant = {
+  key: string;
+  exposed: number;
+  converted: number;
+  /** converted / exposed, or null without devices. */
+  rate: number | null;
+  probabilityBest: number;
+  errors: number;
+};
+
+export type NotificationExperimentVerdict =
+  | { kind: 'winner'; variant: string; probability: number }
+  | { kind: 'no_difference' }
+  | { kind: 'guardrail'; variant: string; probability: number };
+
 /** Per-type fields of `data`, as passed to emitNotification. */
 export type NotificationEventFields =
   | {
@@ -242,6 +292,16 @@ export type NotificationEventFields =
       data: { release: ReleaseSummary; health: AutoRevertHealth };
     }
   | { type: 'config.updated'; data: { config: NotificationConfig } }
+  | { type: 'experiment.started'; data: { experiment: NotificationExperiment } }
+  | { type: 'experiment.stopped'; data: { experiment: NotificationExperiment } }
+  | {
+      type: 'experiment.verdict_reached';
+      data: {
+        experiment: NotificationExperiment;
+        verdict: NotificationExperimentVerdict;
+        variants: NotificationExperimentVariant[];
+      };
+    }
   | { type: 'errors.new_issue'; data: { issue: NotificationErrorIssue } }
   | {
       type: 'errors.regression';

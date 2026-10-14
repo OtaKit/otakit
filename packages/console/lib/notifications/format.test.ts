@@ -448,3 +448,104 @@ describe('analytics alerts', () => {
     });
   });
 });
+
+describe('A/B test notifications', () => {
+  const experiment = {
+    id: 'exp-1',
+    key: 'paywall_copy',
+    name: 'Paywall copy',
+    status: 'running',
+    channel: null,
+    goalEvent: 'purchase_completed',
+    variants: [
+      { key: 'control', weight: 50 },
+      { key: 'b', weight: 50 },
+    ],
+    startedAt: '2026-10-01T12:00:00.000Z',
+    stoppedAt: null,
+    shippedVariant: null,
+  };
+  const variants = [
+    { key: 'control', exposed: 1000, converted: 100, rate: 0.1, probabilityBest: 0.02, errors: 2 },
+    { key: 'b', exposed: 1000, converted: 130, rate: 0.13, probabilityBest: 0.98, errors: 30 },
+  ];
+
+  it('describes starts, stops and shipped variants', () => {
+    expect(describeEvent(payload('experiment.started', { experiment }))).toMatchObject({
+      title: 'A/B test started: Paywall copy (com.acme.app)',
+      lines: [
+        'Runs on the base config: control 50%, b 50%. Goal: purchase_completed.',
+        'By dev@acme.com.',
+      ],
+      severity: 'info',
+    });
+    expect(
+      describeEvent(
+        payload('experiment.stopped', { experiment: { ...experiment, channel: 'beta' } }),
+      ).lines[0],
+    ).toBe('Every device gets the beta config without test values again.');
+    expect(
+      describeEvent(
+        payload('experiment.stopped', {
+          experiment: { ...experiment, status: 'shipped', shippedVariant: 'b' },
+        }),
+      ),
+    ).toMatchObject({
+      title: 'A/B test ended, b shipped: Paywall copy (com.acme.app)',
+      lines: [
+        'The values of b are now part of the base config for every device.',
+        'By dev@acme.com.',
+      ],
+      severity: 'success',
+    });
+  });
+
+  it('describes verdicts', () => {
+    expect(
+      describeEvent(
+        payload('experiment.verdict_reached', {
+          actor: null,
+          experiment,
+          variants,
+          verdict: { kind: 'winner', variant: 'b', probability: 0.9812 },
+        }),
+      ),
+    ).toMatchObject({
+      title: 'A/B test result: b is better in Paywall copy (com.acme.app)',
+      lines: [
+        '98.1% probability that b is the best variant for purchase_completed.',
+        'control: 10.0% of 1,000 devices converted',
+        'b: 13.0% of 1,000 devices converted',
+        'Ship b from the dashboard to give every device its values.',
+      ],
+      severity: 'success',
+    });
+    expect(
+      describeEvent(
+        payload('experiment.verdict_reached', {
+          actor: null,
+          experiment,
+          variants,
+          verdict: { kind: 'guardrail', variant: 'b', probability: 0.99 },
+        }),
+      ),
+    ).toMatchObject({
+      title: 'A/B test warning: b has more errors in Paywall copy (com.acme.app)',
+      lines: [
+        '3.0% of devices on b had an error after joining the test, against 0.2% on control (99% probability that b is worse).',
+        'Consider stopping the test.',
+      ],
+      severity: 'warning',
+    });
+    expect(
+      describeEvent(
+        payload('experiment.verdict_reached', {
+          actor: null,
+          experiment,
+          variants,
+          verdict: { kind: 'no_difference' },
+        }),
+      ).title,
+    ).toBe('A/B test result: no clear difference in Paywall copy (com.acme.app)');
+  });
+});

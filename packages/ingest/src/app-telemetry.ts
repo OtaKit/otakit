@@ -185,8 +185,17 @@ export async function parseErrorItem(
 }
 
 const EVENT_NAME = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
-/** Names OtaKit sends itself; apps cannot use the `$` prefix. */
-export const RESERVED_EVENT_NAMES = new Set(['$session_start']);
+/**
+ * Names OtaKit sends itself; apps cannot use the `$` prefix. `$session_start`
+ * counts app launches; the others are A/B test reports, at most once per
+ * device and experiment.
+ */
+export const RESERVED_EVENT_NAMES = new Set([
+  '$session_start',
+  '$exposure',
+  '$conversion',
+  '$experiment_error',
+]);
 const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
 const MAX_PROPERTIES = 20;
 const MAX_PROPERTY_VALUE = 200;

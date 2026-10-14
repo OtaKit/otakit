@@ -17,6 +17,7 @@ import {
 import { emitNotification, type NotificationEvent } from '@/lib/notifications/emit';
 import type { NotificationErrorIssue } from '@/lib/notifications/events';
 import { isPolarConfigured } from '@/lib/polar';
+import { checkExperimentVerdicts } from '@/lib/services/experiments';
 import { findReleaseSummary } from '@/lib/services/releases';
 import { pauseTelemetry, replaceTelemetryApps, resumeTelemetry } from '@/lib/telemetry-gate';
 import { getAppEventUsage } from '@/lib/tinybird/app-events';
@@ -55,6 +56,9 @@ export type TelemetryCronStats = {
   resumed: number;
   /** Notifications queued for delivery. */
   queued: number;
+  /** Running A/B tests whose results were read, and verdicts sent. */
+  experimentsChecked: number;
+  verdictAlerts: number;
   /** Steps that could not run (Tinybird or Redis unavailable, or a failure). */
   skipped: string[];
 };
@@ -110,6 +114,8 @@ export async function runTelemetryCron(now: Date = new Date()): Promise<Telemetr
     paused: 0,
     resumed: 0,
     queued: 0,
+    experimentsChecked: 0,
+    verdictAlerts: 0,
     skipped: [],
   };
   const apps = await db.app.findMany({ select: { id: true, organizationId: true } });
@@ -139,6 +145,11 @@ export async function runTelemetryCron(now: Date = new Date()): Promise<Telemetr
   await step('new_issue_alerts', stats, () => alertNewIssues(now, organizationOf, stats));
   await step('spikes', stats, () => alertSpikes([...changedApps], now, organizationOf, stats));
   await step('caps', stats, () => enforceCaps(now, organizationOf, stats));
+  await step('experiments', stats, async () => {
+    const result = await checkExperimentVerdicts(now);
+    stats.experimentsChecked = result.checked;
+    stats.verdictAlerts = result.notified;
+  });
   return stats;
 }
 

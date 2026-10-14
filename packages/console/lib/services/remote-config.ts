@@ -337,6 +337,8 @@ async function writeVersion(
     expectedVersion: number;
     message: string | null;
     auditExtra?: Record<string, unknown>;
+    /** Runs under the channel's lock, before anything is written. */
+    beforeWrite?: (tx: Prisma.TransactionClient) => Promise<void>;
   },
   next: (
     latest: RemoteConfigVersion | null,
@@ -349,6 +351,7 @@ async function writeVersion(
     const config = await findConfig(tx, appId, input.channel);
     const current = config?.currentVersion ?? 0;
     if (input.expectedVersion !== current) throw staleVersion(current);
+    await input.beforeWrite?.(tx);
 
     const latest = config?.versions[0] ?? null;
     const live = latest && !latest.deleted ? latest : null;
@@ -576,10 +579,136 @@ export async function deleteRemoteConfig(
   const channel = parseConfigChannel(input.channel);
   const expectedVersion = parseExpectedVersion(input.expectedVersion);
   const message = parseMessage(input.message);
-  return writeVersion(context, { channel, expectedVersion, message }, (latest) => {
-    if (!latest || latest.deleted) {
-      throw new OtaKitServiceError('CONFIG_NOT_FOUND', 'This channel has no config to delete', 404);
-    }
-    return null;
+  return writeVersion(
+    context,
+    {
+      channel,
+      expectedVersion,
+      message,
+      beforeWrite: async (tx) => {
+        const running = await tx.experiment.count({
+          where: { appId: context.appId, channelKey: configChannelKey(channel), status: 'running' },
+        });
+        if (running > 0) {
+          throw new OtaKitServiceError(
+            'CONFIG_HAS_EXPERIMENTS',
+            `${running === 1 ? 'An A/B test runs' : `${running} A/B tests run`} on this config; stop ${running === 1 ? 'it' : 'them'} before deleting the config`,
+            409,
+          );
+        }
+      },
+    },
+    (latest) => {
+      if (!latest || latest.deleted) {
+        throw new OtaKitServiceError(
+          'CONFIG_NOT_FOUND',
+          'This channel has no config to delete',
+          404,
+        );
+      }
+      return null;
+    },
+  );
+}
+
+/** What an A/B test change needs to know about its config file, read under the file's lock. */
+export type ConfigFileState = {
+  configId: string | null;
+  version: number;
+  status: RemoteConfigStatus;
+  /** The live values; null without live config. */
+  values: ConfigValues | null;
+  valuesJson: string | null;
+};
+
+/** Take a config file's lock in a transaction; A/B test changes take it before reading. */
+export async function lockConfigFile(
+  tx: Prisma.TransactionClient,
+  appId: string,
+  channel: string | null,
+): Promise<ConfigFileState> {
+  await lockTransaction(tx, lockKey(appId, channel));
+  const config = await findConfig(tx, appId, channel);
+  const latest = config?.versions[0] ?? null;
+  const status: RemoteConfigStatus = !latest ? 'none' : latest.deleted ? 'deleted' : 'live';
+  return {
+    configId: config?.id ?? null,
+    version: config?.currentVersion ?? 0,
+    status,
+    values: status === 'live' && latest ? parseValues(latest.valuesJson) : null,
+    valuesJson: status === 'live' && latest ? latest.valuesJson : null,
+  };
+}
+
+/**
+ * Write a version with new experiments, and new values when given (shipping a
+ * variant), for A/B tests. The caller holds the file's lock (lockConfigFile)
+ * and syncs the file after the transaction. config.updated goes out only when
+ * the values change.
+ */
+export async function writeConfigFileVersion(
+  tx: Prisma.TransactionClient,
+  context: Context,
+  input: {
+    channel: string | null;
+    file: ConfigFileState;
+    experimentsJson: string | null;
+    values?: { valuesJson: string; values: ConfigValues };
+    message: string;
+  },
+): Promise<{
+  version: number;
+  notified: number;
+  changedKeys: ReturnType<typeof configKeyChanges> | null;
+}> {
+  const { appId } = context;
+  const version = input.file.version + 1;
+  const valuesJson = input.values?.valuesJson ?? input.file.valuesJson ?? '{}';
+  const saved = input.file.configId
+    ? await tx.remoteConfig.update({
+        where: { id: input.file.configId },
+        data: { currentVersion: version },
+      })
+    : await tx.remoteConfig.create({
+        data: {
+          appId,
+          channel: input.channel,
+          channelKey: configChannelKey(input.channel),
+          currentVersion: version,
+        },
+      });
+  await tx.remoteConfigVersion.create({
+    data: {
+      configId: saved.id,
+      version,
+      valuesJson,
+      experimentsJson: input.experimentsJson,
+      deleted: false,
+      message: input.message,
+      createdBy: context.actor.actorLabel,
+    },
   });
+  if (!input.values || input.values.valuesJson === input.file.valuesJson) {
+    return { version, notified: 0, changedKeys: null };
+  }
+  const changedKeys = configKeyChanges(input.file.values, input.values.values);
+  const notified = await emitNotification(tx, {
+    type: 'config.updated',
+    key: `config.updated:${saved.id}:${version}`,
+    organizationId: context.organizationId,
+    appId,
+    actor: context.actor,
+    data: {
+      config: {
+        channel: input.channel,
+        version,
+        previousVersion: input.file.version,
+        deleted: false,
+        message: input.message,
+        changedKeys,
+        values: input.values.values,
+      },
+    },
+  });
+  return { version, notified, changedKeys };
 }

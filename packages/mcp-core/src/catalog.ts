@@ -9,6 +9,7 @@ import {
   appEventNameSchema,
   cursorSchema,
   errorFingerprintSchema,
+  experimentRefSchema,
   expectedCurrentReleaseIdSchema,
   idempotencyKeySchema,
   nodeModulesPathSchema,
@@ -609,6 +610,57 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
         .max(200)
         .optional()
         .describe('Why the config changes; shown in history, the audit log and notifications'),
+    }),
+    annotations: { ...destructive, ...reachesEndUsers },
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'list_experiments',
+    title: 'List OtaKit A/B tests',
+    description:
+      "List an app's A/B tests (plugin 3.4+): key, status (draft, running, stopped, shipped), the config they run on, variants with weights and overridden config keys, and the goal event. Running tests first.",
+    modes: both,
+    inputSchema: z.object({ appId: resolvedAppIdSchema }),
+    annotations: readOnly,
+    oauthScopes: ['otakit:read'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'get_experiment_results',
+    title: 'Get OtaKit A/B test results',
+    description:
+      'Return the results of an A/B test: devices exposed and converted per variant, conversion rates, probability to be best, lift against control with a 95% interval, devices with errors (guardrail), secondary goals, and a verdict (collecting, leading, winner, no_difference, guardrail). Devices report once each; counts are devices, without any device identifier.',
+    modes: both,
+    inputSchema: z.object({ appId: resolvedAppIdSchema, experiment: experimentRefSchema }),
+    annotations: readOnly,
+    oauthScopes: ['otakit:read'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'stop_experiment',
+    title: 'Stop an OtaKit A/B test',
+    description:
+      'Stop a running A/B test. Its devices get the normal config values on their next config fetch (at launch, or on resume after checkInterval). Results stay readable. To keep a variant instead, use ship_experiment_variant.',
+    modes: both,
+    inputSchema: z.object({ appId: resolvedAppIdSchema, experiment: experimentRefSchema }),
+    annotations: { ...destructive, ...reachesEndUsers },
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'ship_experiment_variant',
+    title: 'Ship an OtaKit A/B test variant',
+    description:
+      "Ship a variant of a running or stopped A/B test: its config overrides become part of the config's values for every device (a new config version), and the test ends. Shipping control keeps the current values. Check get_experiment_results first.",
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      experiment: experimentRefSchema,
+      variant: z
+        .string()
+        .regex(/^[a-z0-9_-]{1,40}$/)
+        .describe('Variant key to ship, from list_experiments'),
     }),
     annotations: { ...destructive, ...reachesEndUsers },
     oauthScopes: ['otakit:release:write'],
