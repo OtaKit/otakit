@@ -5,7 +5,8 @@ Cloudflare Worker for OtaKit event ingestion.
 ## What it does
 
 - accepts plugin event writes at `POST /v1/events`
-- accepts app telemetry batches (error tracking, plugin 3.4+) at `POST /v1/app-telemetry`
+- accepts app telemetry batches (error tracking and custom events, plugin 3.4+) at
+  `POST /v1/app-telemetry`
 - validates and normalizes events at the edge
 - rate-limits by `appId`
 - enqueues accepted events into Cloudflare Queues
@@ -80,14 +81,17 @@ before publishing rebuilt native clients.
 - At most 50 items. Invalid items, and kinds this Worker does not know, are dropped one by
   one; the rest are accepted. Errors are grouped here (`src/fingerprint.ts`), so grouping
   can improve without an app update.
+- Events: names `^[A-Za-z0-9_.:-]{1,64}$` (or OtaKit's own `$session_start`); up to 20
+  properties with keys `^[A-Za-z0-9_.:-]{1,40}$` and string (≤ 200), number or boolean
+  values, stored as text.
 - `404` for an app missing from the Upstash set `otakit:apps` (the console maintains it). Without
   Upstash, or before the set exists, every app is accepted.
 - `202` with `accepted: false` when the workspace reached its monthly cap: the console sets
-  `otakit:telemetry:blocked:<kind>:<appId>` until the end of the month.
+  `otakit:telemetry:blocked:<kind>:<appId>` (`error` or `event`) until the end of the month.
 - `429` over 2,000 requests per minute per app, `413` over 128 KB, `503` when the queue fails.
 
 Rows go to the queue `otakit-app-telemetry`, whose consumer writes them to the Tinybird
-datasource `app_errors_raw`.
+datasources `app_errors_raw` and `app_events_raw`.
 
 ## Wrangler bindings
 
@@ -100,6 +104,7 @@ The Worker expects:
   - `TINYBIRD_API_HOST`
   - `TINYBIRD_EVENTS_DATASOURCE`
   - `TINYBIRD_APP_ERRORS_DATASOURCE` (default `app_errors_raw`)
+  - `TINYBIRD_APP_EVENTS_DATASOURCE` (default `app_events_raw`)
 - secrets:
   - `TINYBIRD_EVENTS_TOKEN` (append access to both datasources)
   - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (optional; the same database as the

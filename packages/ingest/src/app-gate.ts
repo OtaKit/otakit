@@ -17,7 +17,7 @@ export type GateEnv = {
 export type AppGate = { known: boolean; blocked: Set<string> };
 
 export const APPS_SET = 'otakit:apps';
-export const KINDS = ['error'] as const;
+export const KINDS = ['error', 'event'] as const;
 const CACHE_MS = 60_000;
 /** Random app IDs must not grow the cache without bound. */
 const CACHE_ENTRIES = 5_000;
