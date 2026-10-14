@@ -14,7 +14,7 @@ function percent(share: number | null): string {
 }
 
 function signed(share: number): string {
-  const value = Math.round(share * 1000) / 10;
+  const value = Math.round(share * 100);
   return `${value > 0 ? '+' : ''}${value}%`;
 }
 
@@ -63,10 +63,10 @@ export function formatExperimentResults(result: ExperimentResults): string {
         variant.exposed.toLocaleString('en-US'),
         variant.converted.toLocaleString('en-US'),
         percent(variant.rate),
-        variant.lift
+        variant.lift && stats.comparable
           ? `${signed(variant.lift.median)} (${signed(variant.lift.low)} to ${signed(variant.lift.high)})`
           : '–',
-        percent(variant.probabilityBest),
+        stats.comparable ? percent(variant.probabilityBest) : '–',
         `${variant.errors.toLocaleString('en-US')}${variant.guardrail === 'worse' ? ' (more than control)' : ''}`,
       ]),
     ]),

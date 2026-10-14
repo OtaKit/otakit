@@ -67,6 +67,7 @@ describe('experiment output', () => {
       analyticsPausedUntil: null,
       series: [],
       stats: {
+        comparable: true,
         plannedPerVariant: 3841,
         verdict: { kind: 'winner', variant: 'b', probability: 0.98 },
         variants: [variant('control', 1000, 100, 0.02), variant('b', 1000, 130, 0.98)],
@@ -75,7 +76,7 @@ describe('experiment output', () => {
     expect(formatExperimentResults(result)).toBe(
       [
         'paywall_copy · running · base config · goal purchase_completed · 10 days',
-        'b is better: 98% probability to be best.',
+        'b is better: 98.0% probability to be best.',
         '',
         'VARIANT  DEVICES  CONVERTED  RATE   LIFT (95%)          BEST   ERRORS',
         'control  1,000    100        10.0%  –                   2.0%   3',

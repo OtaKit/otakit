@@ -71,6 +71,11 @@ export type ExperimentVerdict =
   | { kind: 'guardrail'; variant: string; probability: number };
 
 export type ExperimentStats = {
+  /**
+   * Every variant has devices. Without that, probabilities and lifts only
+   * restate the prior: show them as unknown.
+   */
+  comparable: boolean;
   variants: VariantResult[];
   verdict: ExperimentVerdict;
   /** Devices per variant to detect a 20% change at control's rate; null before control converts. */
@@ -292,6 +297,7 @@ export function analyzeExperiment(input: {
   const control = results[0];
   const plannedPerVariant = plannedSamplePerVariant(control?.rate ?? null);
   return {
+    comparable: variants.every((variant) => variant.exposed > 0),
     variants: results,
     verdict: verdictOf(results, input.daysRunning, plannedPerVariant),
     plannedPerVariant,

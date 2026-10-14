@@ -18,6 +18,7 @@ describe('analyzeExperiment', () => {
       seed: 'fixture',
     });
     const [control, b] = stats.variants;
+    expect(stats.comparable).toBe(true);
     expect(control).toMatchObject({ rate: 0.1, probabilityBetterThanControl: null, lift: null });
     expect(b.rate).toBe(0.13);
     // Normal approximation: P(B > A) = Φ(0.03 / 0.01425) ≈ 0.982.
@@ -113,6 +114,7 @@ describe('analyzeExperiment', () => {
       daysRunning: 0,
       seed: 's',
     });
+    expect(stats.comparable).toBe(false);
     expect(stats.variants[0]).toMatchObject({ rate: null, errorRate: null });
     expect(stats.variants[1]).toMatchObject({ converted: 10, errors: 10, rate: 1 });
     expect(stats.variants[1].secondary.signup).toMatchObject({ converted: 10, rate: 1 });

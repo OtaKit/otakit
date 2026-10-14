@@ -71,6 +71,7 @@ export type ExperimentVariantResult = {
 export type ExperimentResults = {
   experiment: ExperimentSummary;
   stats: {
+    comparable: boolean;
     variants: ExperimentVariantResult[];
     verdict: ExperimentVerdict;
     plannedPerVariant: number | null;

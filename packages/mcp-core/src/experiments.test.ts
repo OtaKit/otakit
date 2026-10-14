@@ -45,7 +45,7 @@ describe('experiment summaries', () => {
       'b is better: 98.1% probability to be best.',
     );
     expect(experimentVerdictSentence({ kind: 'guardrail', variant: 'b', probability: 0.97 })).toBe(
-      'b has more devices with errors than control (97% probability).',
+      'b has more devices with errors than control (97.0% probability).',
     );
   });
 
@@ -83,11 +83,49 @@ describe('experiment summaries', () => {
       },
     });
     expect(parts.summary).toBe(
-      'paywall_copy (running, 10 days, goal purchase_completed): b is better: 98% probability to be best. control: 10% of 1,000 devices converted, 2% to be best; b: 13% of 1,000 devices converted, lift +30% (+2% to +61%), 98% to be best.',
+      'paywall_copy (running, 10 days, goal purchase_completed): b is better: 98.0% probability to be best. control: 10.0% of 1,000 devices converted, 2.0% to be best; b: 13.0% of 1,000 devices converted, lift +30% (+2% to +61%), 98.0% to be best.',
     );
     expect(parts.warnings).toEqual([
       'Custom events are paused by the plan limit until 2026-11-01: new test reports are not recorded.',
     ]);
+    // Without devices in every variant, no lifts or probabilities.
+    expect(
+      experimentResultsParts({
+        experiment,
+        daysRunning: 0.2,
+        analyticsAvailable: true,
+        analyticsPausedUntil: null,
+        stats: {
+          comparable: false,
+          plannedPerVariant: null,
+          verdict: { kind: 'collecting', daysLeft: 7, conversionsNeeded: 100 },
+          variants: [
+            {
+              key: 'control',
+              exposed: 3,
+              converted: 0,
+              rate: 0,
+              probabilityBest: 0.4,
+              lift: null,
+              errors: 0,
+              guardrail: 'ok',
+            },
+            {
+              key: 'b',
+              exposed: 0,
+              converted: 0,
+              rate: null,
+              probabilityBest: 0.6,
+              lift: { low: -0.9, median: 0.1, high: 9 },
+              errors: 0,
+              guardrail: 'ok',
+            },
+          ],
+        },
+      }).summary,
+    ).toBe(
+      'paywall_copy (running, 0.2 days, goal purchase_completed): Not enough data yet: a result needs 7 more days and 100 more conversions in the smallest variant. control: 0.0% of 3 devices converted; b: – of 0 devices converted.',
+    );
     expect(
       experimentResultsParts({
         experiment: { ...experiment, status: 'draft', startedAt: null },

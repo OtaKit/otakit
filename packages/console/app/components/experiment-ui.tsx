@@ -41,9 +41,9 @@ export function formatShare(share: number | null, digits = 1): string {
   return `${value.toFixed(digits)}%`;
 }
 
-/** "+12%" from 0.12. */
+/** "+12%" from 0.12: whole percents, as the interval is wide anyway. */
 export function formatLift(share: number): string {
-  const value = Math.round(share * 1000) / 10;
+  const value = Math.round(share * 100);
   return `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}%`;
 }
 

@@ -72,7 +72,11 @@ function ConversionChart({ results }: { results: ExperimentResults }) {
   const config = Object.fromEntries(
     keys.map((key, index) => [key, { label: key, color: COLORS[index % COLORS.length] }]),
   );
-  const rows = results.series.map((point) => ({
+  // From the first day with devices, so a young test still shows its points.
+  const first = results.series.findIndex((point) =>
+    point.variants.some((variant) => variant.exposed > 0),
+  );
+  const rows = (first < 0 ? [] : results.series.slice(first)).map((point) => ({
     day: point.day,
     ...Object.fromEntries(
       point.variants.map((variant) => [
@@ -83,7 +87,7 @@ function ConversionChart({ results }: { results: ExperimentResults }) {
       ]),
     ),
   }));
-  if (rows.length < 2) return null;
+  if (rows.length === 0) return null;
   return (
     <section>
       <p className="mb-1 text-xs font-medium text-muted-foreground">
@@ -125,7 +129,7 @@ function ConversionChart({ results }: { results: ExperimentResults }) {
               type="linear"
               stroke={`var(--color-${key})`}
               strokeWidth={2}
-              dot={false}
+              dot={rows.length <= 14 ? { r: 2.5 } : false}
               connectNulls
             />
           ))}
@@ -252,7 +256,7 @@ export function ExperimentResultsDialog({
                   ? ` · ${experiment.trafficPercent}% of devices`
                   : ''}
                 {experiment.startedAt
-                  ? ` · ${formatDay(experiment.startedAt)}${experiment.stoppedAt ? ` to ${formatDay(experiment.stoppedAt)}` : ''} (${results?.daysRunning ?? 0} days)`
+                  ? ` · ${formatDay(experiment.startedAt)}${experiment.stoppedAt ? ` to ${formatDay(experiment.stoppedAt)}` : ''} (${(results?.daysRunning ?? 0) < 1 ? 'under a day' : `${results?.daysRunning} days`})`
                   : ''}
                 {' · '}goal <span className="font-mono">{experiment.goalEvent}</span>
               </>
@@ -353,7 +357,7 @@ export function ExperimentResultsDialog({
                             </span>
                           </td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">
-                            {variant.lift ? (
+                            {variant.lift && results.stats?.comparable ? (
                               <>
                                 {formatLift(variant.lift.median)}
                                 <span className="ml-1 text-muted-foreground">
@@ -362,11 +366,15 @@ export function ExperimentResultsDialog({
                                 </span>
                               </>
                             ) : (
-                              <span className="text-muted-foreground">baseline</span>
+                              <span className="text-muted-foreground">
+                                {variant.lift ? '–' : 'baseline'}
+                              </span>
                             )}
                           </td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">
-                            {formatProbability(variant.probabilityBest)}
+                            {results.stats?.comparable
+                              ? formatProbability(variant.probabilityBest)
+                              : '–'}
                           </td>
                           <td
                             className={cn(
@@ -421,7 +429,7 @@ export function ExperimentResultsDialog({
                             return (
                               <td key={variant.key} className="py-1.5 pr-3 text-right tabular-nums">
                                 {formatShare(result?.rate ?? null)}
-                                {result?.lift ? (
+                                {result?.lift && results.stats?.comparable ? (
                                   <span className="ml-1 text-muted-foreground">
                                     {formatLift(result.lift.median)}
                                   </span>

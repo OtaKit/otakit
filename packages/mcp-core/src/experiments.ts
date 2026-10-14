@@ -36,6 +36,8 @@ type VerdictLike =
 type ResultsLike = {
   experiment: ExperimentLike;
   stats: {
+    /** Every variant has devices; otherwise probabilities and lifts are not meaningful. */
+    comparable?: boolean;
     variants: VariantResultLike[];
     verdict: VerdictLike;
     plannedPerVariant: number | null;
@@ -51,11 +53,11 @@ function config(channel: string | null): string {
 
 function percent(share: number | null): string {
   if (share === null) return '–';
-  return `${Math.round(share * 1000) / 10}%`;
+  return `${(Math.round(share * 1000) / 10).toFixed(1)}%`;
 }
 
 function signedPercent(share: number): string {
-  const value = Math.round(share * 1000) / 10;
+  const value = Math.round(share * 100);
   return `${value > 0 ? '+' : ''}${value}%`;
 }
 
@@ -118,12 +120,15 @@ export function experimentResultsParts(result: ResultsLike): {
       warnings,
     };
   }
+  const comparable = stats.comparable !== false;
   const rows = stats.variants
     .map((variant) => {
-      const lift = variant.lift
-        ? `, lift ${signedPercent(variant.lift.median)} (${signedPercent(variant.lift.low)} to ${signedPercent(variant.lift.high)})`
-        : '';
-      return `${variant.key}: ${percent(variant.rate)} of ${devices(variant.exposed)} converted${lift}, ${percent(variant.probabilityBest)} to be best`;
+      const lift =
+        variant.lift && comparable
+          ? `, lift ${signedPercent(variant.lift.median)} (${signedPercent(variant.lift.low)} to ${signedPercent(variant.lift.high)})`
+          : '';
+      const best = comparable ? `, ${percent(variant.probabilityBest)} to be best` : '';
+      return `${variant.key}: ${percent(variant.rate)} of ${devices(variant.exposed)} converted${lift}${best}`;
     })
     .join('; ');
   return {

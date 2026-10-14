@@ -927,7 +927,9 @@ export type ExperimentEstimate = {
   analyticsAvailable: boolean;
 };
 
-/** A rough sample size for the create dialog, from the last 14 days of events. */
+const HOUR_MS = 3_600_000;
+
+/** A rough sample size for the create dialog, from the last 14 days of events (to now). */
 export async function estimateExperiment(
   ctx: ReadContext,
   input: { channel?: unknown; goalEvent: unknown },
@@ -941,7 +943,8 @@ export async function estimateExperiment(
       ? undefined
       : parseConfigChannel(input.channel);
   await ensureApp(db, ctx.organizationId, ctx.appId);
-  const to = new Date(Math.floor(now.getTime() / DAY_MS) * DAY_MS);
+  // Hourly counts: through the current hour, 14 days back.
+  const to = new Date(Math.floor(now.getTime() / HOUR_MS) * HOUR_MS + HOUR_MS);
   const from = new Date(to.getTime() - 14 * DAY_MS);
   const window = { appId: ctx.appId, channel, from, to, previousFrom: from };
   const [launches, goal] = await Promise.all([
