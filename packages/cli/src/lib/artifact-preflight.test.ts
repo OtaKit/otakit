@@ -102,6 +102,19 @@ describe('upload artifact preflight', () => {
     );
   });
 
+  it('escapes control and bidi characters in the file names it prints', () => {
+    writeFileSync(join(directory, 'invoice\u202etxt.exe'), '');
+    writeFileSync(join(directory, '.env'), 'SECRET=1');
+    const warning = vi.fn();
+    preflightArtifacts(directory, { onWarning: warning });
+    const printed = warning.mock.calls.map(([message]) => String(message)).join('\n');
+    expect(printed).toContain('"invoice\\u202etxt.exe"');
+    expect(printed).not.toContain('\u202e');
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringMatching(/^Warning: Bundle contains environment/),
+    );
+  });
+
   it('does not warn about .env templates or .well-known files', () => {
     mkdirSync(join(directory, '.well-known'));
     writeFileSync(join(directory, '.well-known', 'apple-app-site-association'), '{}');

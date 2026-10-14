@@ -54,7 +54,13 @@ export type BundleDiff = {
   target: BundleDiffBundle;
   /** What the target is compared with; null when there is nothing before it. */
   base: BundleDiffBundle | null;
-  baseSource: 'against' | 'channel' | 'previous_upload';
+  /**
+   * `channel`: what the channel runs. `channel_previous`: the target is what the
+   * channel runs, so it is compared with the release it replaced there.
+   */
+  baseSource: 'against' | 'channel' | 'channel_previous' | 'previous_upload';
+  /** The channel compared with (null: base), when `channel` chose the base. */
+  baseChannel?: string | null;
   /** `ok`, or which side's files cannot be read and why. */
   status: 'ok' | 'target_unavailable' | 'base_unavailable';
   unavailableReason: 'encrypted' | 'unreadable' | null;
@@ -99,7 +105,7 @@ async function laneBundleId(
   channel: string | null,
   runtimeVersion: string | null,
   target: BundleRow,
-): Promise<string | null> {
+): Promise<{ bundleId: string | null; replaced: boolean }> {
   const [current, below] = await database.release.findMany({
     where: { appId, channel, revertedAt: null, bundle: { is: { runtimeVersion } } },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
@@ -116,7 +122,9 @@ async function laneBundleId(
     );
   }
   // Comparing the lane's own bundle with itself says nothing: use what it replaced.
-  return stable.bundleId === target.id ? stable.previousBundleId : stable.bundleId;
+  return stable.bundleId === target.id
+    ? { bundleId: stable.previousBundleId, replaced: true }
+    : { bundleId: stable.bundleId, replaced: false };
 }
 
 /**
@@ -160,14 +168,15 @@ export async function getBundleDiff(
     baseSource = 'against';
     baseId = input.against;
   } else if (input.channel !== undefined) {
-    baseSource = 'channel';
-    baseId = await laneBundleId(
+    const lane = await laneBundleId(
       database,
       input.appId,
       input.channel,
       target.runtimeVersion,
       target,
     );
+    baseSource = lane.replaced ? 'channel_previous' : 'channel';
+    baseId = lane.bundleId;
   } else {
     baseSource = 'previous_upload';
     const previous = await database.bundle.findFirst({
@@ -197,6 +206,9 @@ export async function getBundleDiff(
     target: describeBundle(target),
     base: base ? describeBundle(base) : null,
     baseSource,
+    ...(input.channel !== undefined && input.against === undefined
+      ? { baseChannel: input.channel }
+      : {}),
     comparable: true,
     summary: null,
     changes: [],

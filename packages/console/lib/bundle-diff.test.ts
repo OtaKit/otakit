@@ -168,6 +168,20 @@ describe('bundleWarnings', () => {
     ]);
   });
 
+  it('says "N× larger" when a percentage would read as noise', () => {
+    const base = list('crc32', [['index.html', 100 * 1024, '1']]);
+    const target = list('crc32', [
+      ['index.html', 100 * 1024, '1'],
+      ['assets/video.mp4', 22 * MB, '2'],
+    ]);
+    expect(bundleWarnings(target, diffFileLists(base, target))).toContainEqual(
+      expect.objectContaining({
+        code: 'size_increase',
+        message: 'The bundle is 226× larger than before (100 KB → 22.1 MB).',
+      }),
+    );
+  });
+
   it('caps the example paths and stays quiet for a clean bundle', () => {
     const many = list(
       'crc32',

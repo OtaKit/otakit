@@ -2,7 +2,8 @@
 type BundleDiffLike = {
   target: { version: string; strategy?: string };
   base: { version: string } | null;
-  baseSource?: 'against' | 'channel' | 'previous_upload';
+  baseSource?: 'against' | 'channel' | 'channel_previous' | 'previous_upload';
+  baseChannel?: string | null;
   status: 'ok' | 'target_unavailable' | 'base_unavailable';
   unavailableReason: 'encrypted' | 'unreadable' | null;
   comparable: boolean;
@@ -87,18 +88,25 @@ export function describeBundleDiff(
       ? 'devices download up to the full bundle'
       : diff.target.strategy === 'deltas'
         ? `devices on ${diff.base.version} download up to ${formatBundleBytes(summary.downloadBytes)}`
-        : `devices download ${formatBundleBytes(summary.downloadBytes)} (the whole archive)`;
+        : `devices download ${formatBundleBytes(summary.downloadBytes)}, the whole archive`;
   const parts = [
     `+${summary.added} ~${summary.changed} -${summary.removed}`,
     `${formatBundleBytes(summary.totalBefore ?? 0)} → ${formatBundleBytes(summary.totalAfter)}`,
     download,
   ];
-  const caveat = diff.comparable ? '' : ' (by size: one bundle is zip, the other deltas)';
+  const caveat = diff.comparable
+    ? ''
+    : '; compared by size, as one bundle is zip and the other deltas';
+  const channel = diff.baseChannel === null ? 'base' : diff.baseChannel;
   const baseLabel =
     options.baseLabel ??
     (diff.baseSource === 'previous_upload'
       ? `${diff.base.version} (previous upload)`
-      : diff.base.version);
+      : diff.baseSource === 'channel' && channel !== undefined
+        ? `${channel} (${diff.base.version})`
+        : diff.baseSource === 'channel_previous' && channel !== undefined
+          ? `${diff.base.version} (what ${channel} ran before it)`
+          : diff.base.version);
   return `${diff.target.version} vs ${baseLabel}: ${parts.join(' · ')}${caveat}`;
 }
 

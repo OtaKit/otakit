@@ -216,6 +216,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** "grew by 35%", or "is 12× larger" when a percentage would read as noise. */
+function sizeIncreaseMessage(before: number, after: number): string {
+  const sizes = `${formatBytes(before)} → ${formatBytes(after)}`;
+  const ratio = after / before;
+  return ratio >= 10
+    ? `The bundle is ${Math.round(ratio).toLocaleString('en-US')}× larger than before (${sizes}).`
+    : `The bundle grew by ${Math.round((ratio - 1) * 100)}% (${sizes}).`;
+}
+
 /** Warnings about the target bundle's content and how it grew. Warnings come first. */
 export function bundleWarnings(target: BundleFileList, diff: FileListDiff | null): BundleWarning[] {
   const matched = new Map<BundleWarningCode, string[]>();
@@ -255,7 +264,7 @@ export function bundleWarnings(target: BundleFileList, diff: FileListDiff | null
       warnings.push({
         code: 'size_increase',
         severity: 'note',
-        message: `The bundle grew by ${Math.round((diff.totalAfter / diff.totalBefore - 1) * 100)}% (${formatBytes(diff.totalBefore)} → ${formatBytes(diff.totalAfter)}).`,
+        message: sizeIncreaseMessage(diff.totalBefore, diff.totalAfter),
         paths: [],
         count: 0,
       });

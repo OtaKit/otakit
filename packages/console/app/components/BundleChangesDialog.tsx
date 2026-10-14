@@ -90,6 +90,7 @@ export function BundleChangesDialog({
   bundle,
   bundles,
   against: initialAgainst,
+  againstLabel,
   onClose,
 }: {
   appId: string;
@@ -98,6 +99,8 @@ export function BundleChangesDialog({
   bundles: BundleSummaryItem[];
   /** Bundle to compare with; omitted for the previous upload. */
   against?: string | null;
+  /** How to describe `against`, such as "the release it replaced". */
+  againstLabel?: string;
   onClose: () => void;
 }) {
   const [against, setAgainst] = useState(initialAgainst ?? PREVIOUS);
@@ -155,6 +158,9 @@ export function BundleChangesDialog({
     ),
   ).sort((left, right) => left.localeCompare(right));
   const summary = diff?.summary ?? null;
+  const againstChannel = against.startsWith(CHANNEL_PREFIX)
+    ? against.slice(CHANNEL_PREFIX.length) || 'the base channel'
+    : 'the channel';
   const filtered = status !== 'all' || query.trim() !== '';
   const baseRuntimeDiffers =
     diff?.base !== null &&
@@ -244,8 +250,12 @@ export function BundleChangesDialog({
                       {diff.baseSource === 'previous_upload'
                         ? ', the previous upload'
                         : diff.baseSource === 'channel'
-                          ? `, what ${against.slice(CHANNEL_PREFIX.length) || 'the base channel'} runs`
-                          : ''}
+                          ? `, what ${againstChannel} runs`
+                          : diff.baseSource === 'channel_previous'
+                            ? `, what ${againstChannel} ran before this release`
+                            : againstLabel && against === initialAgainst
+                              ? `, ${againstLabel}`
+                              : ''}
                       .
                     </>
                   ) : (

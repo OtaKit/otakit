@@ -37,7 +37,7 @@ describe('describeBundleDiff', () => {
         summary: { ...ok.summary, downloadBytes: 1.2 * 1024 * 1024 },
       }),
     ).toBe(
-      '1.4.2 vs 1.4.1 (previous upload): +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download 1.2 MB (the whole archive)',
+      '1.4.2 vs 1.4.1 (previous upload): +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download 1.2 MB, the whole archive',
     );
     expect(
       describeBundleDiff({
@@ -46,8 +46,20 @@ describe('describeBundleDiff', () => {
         summary: { ...ok.summary, downloadBytes: null },
       }),
     ).toBe(
-      '1.4.2 vs 1.4.1: +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download up to the full bundle (by size: one bundle is zip, the other deltas)',
+      '1.4.2 vs 1.4.1: +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download up to the full bundle; compared by size, as one bundle is zip and the other deltas',
     );
+  });
+
+  it('names the channel it compared with', () => {
+    expect(describeBundleDiff({ ...ok, baseSource: 'channel', baseChannel: 'production' })).toMatch(
+      /^1\.4\.2 vs production \(1\.4\.1\): /,
+    );
+    expect(describeBundleDiff({ ...ok, baseSource: 'channel', baseChannel: null })).toMatch(
+      /^1\.4\.2 vs base \(1\.4\.1\): /,
+    );
+    expect(
+      describeBundleDiff({ ...ok, baseSource: 'channel_previous', baseChannel: 'production' }),
+    ).toMatch(/^1\.4\.2 vs 1\.4\.1 \(what production ran before it\): /);
   });
 
   it('can name the base by its channel', () => {

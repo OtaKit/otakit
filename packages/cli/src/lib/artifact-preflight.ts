@@ -1,6 +1,8 @@
 import { lstatSync, readdirSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
+import { printablePath } from '@otakit/mcp-core';
+
 import { CliError } from './errors.js';
 import { validateBundleDirectory } from './zip.js';
 
@@ -24,8 +26,9 @@ export type ArtifactInspection = {
   notes: string[];
 };
 
+/** Up to three quoted names; control and bidi characters are escaped (names come from the build output). */
 function examples(files: Artifact[]): string {
-  const shown = files.slice(0, 3).map((file) => JSON.stringify(file.path));
+  const shown = files.slice(0, 3).map((file) => printablePath(JSON.stringify(file.path)));
   return files.length > shown.length
     ? `${shown.join(', ')} and ${files.length - shown.length} more`
     : shown.join(', ');
@@ -79,7 +82,10 @@ export function inspectArtifacts(
   if (nativeArtifacts.length > 0) {
     const examples = nativeArtifacts
       .slice(0, 5)
-      .map((file) => `${JSON.stringify(file.path)} (${(file.bytes / MIB).toFixed(1)} MiB)`)
+      .map(
+        (file) =>
+          `${printablePath(JSON.stringify(file.path))} (${(file.bytes / MIB).toFixed(1)} MiB)`,
+      )
       .join(', ');
     warnings.push(
       `Bundle contains ${nativeArtifacts.length} native installer/artifact file(s): ${examples}. Confirm these belong in the mobile web bundle; otherwise publish them separately.`,
@@ -87,7 +93,10 @@ export function inspectArtifacts(
   }
   if (totalBytes >= 50 * MIB || largestFiles.some((file) => file.bytes >= 10 * MIB)) {
     const examples = largestFiles
-      .map((file) => `${JSON.stringify(file.path)} (${(file.bytes / MIB).toFixed(1)} MiB)`)
+      .map(
+        (file) =>
+          `${printablePath(JSON.stringify(file.path))} (${(file.bytes / MIB).toFixed(1)} MiB)`,
+      )
       .join(', ');
     warnings.push(
       `Large bundle: ${(totalBytes / MIB).toFixed(1)} MiB across ${files.length} files. Large downloads increase timeout, storage, and memory pressure. Largest files: ${examples}.`,
@@ -151,7 +160,7 @@ export function preflightArtifacts(
     throw new CliError(`Artifact preflight failed:\n${inspection.warnings.join('\n')}`);
   }
   const warn = options.onWarning ?? console.warn;
-  for (const warning of inspection.warnings) warn(warning);
+  for (const warning of inspection.warnings) warn(`Warning: ${warning}`);
   for (const note of inspection.notes) warn(`Note: ${note}`);
   return inspection;
 }

@@ -27,7 +27,8 @@ export type BundleDiffBundle = {
 export type BundleDiff = {
   target: BundleDiffBundle;
   base: BundleDiffBundle | null;
-  baseSource: 'against' | 'channel' | 'previous_upload';
+  baseSource: 'against' | 'channel' | 'channel_previous' | 'previous_upload';
+  baseChannel?: string | null;
   status: 'ok' | 'target_unavailable' | 'base_unavailable';
   unavailableReason: 'encrypted' | 'unreadable' | null;
   comparable: boolean;

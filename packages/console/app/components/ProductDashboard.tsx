@@ -535,6 +535,7 @@ export function ProductDashboard({
   const [changesFor, setChangesFor] = useState<{
     bundle: { id: string; version: string };
     against?: string | null;
+    againstLabel?: string;
   } | null>(null);
 
   // Preview links
@@ -1901,6 +1902,8 @@ export function ProductDashboard({
                                                                     version: rel.bundleVersion,
                                                                   },
                                                                   against: rel.previousBundleId,
+                                                                  againstLabel:
+                                                                    'the release it replaced',
                                                                 })
                                                               }
                                                             >
@@ -2432,6 +2435,7 @@ export function ProductDashboard({
           bundle={changesFor.bundle}
           bundles={bundles}
           against={changesFor.against}
+          againstLabel={changesFor.againstLabel}
           onClose={() => setChangesFor(null)}
         />
       ) : null}

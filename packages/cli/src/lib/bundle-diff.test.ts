@@ -55,7 +55,7 @@ describe('formatBundleDiff', () => {
   it('prints the summary, each changed file and the warnings', () => {
     expect(formatBundleDiff(diff)).toBe(
       [
-        '1.4.2 vs 1.4.1 (previous upload): +1 ~1 -1 · 2.0 KB → 3.0 KB · devices download 900 B (the whole archive)',
+        '1.4.2 vs 1.4.1 (previous upload): +1 ~1 -1 · 2.0 KB → 3.0 KB · devices download 900 B, the whole archive',
         '',
         '  + assets/new.js  (1.0 KB)',
         '  ~ assets/app.js  (1.0 KB → 2.0 KB)',

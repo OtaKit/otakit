@@ -138,10 +138,14 @@ databaseDescribe('bundle diff (PostgreSQL integration)', () => {
     // The lane's stable release (1.0.1), not the rolling one.
     await expect(diff(ids[3], { channel: 'production' })).resolves.toMatchObject({
       base: { id: ids[1] },
+      baseSource: 'channel',
+      baseChannel: 'production',
     });
     // The stable bundle itself is compared with the release it replaced.
     await expect(diff(ids[1], { channel: 'production' })).resolves.toMatchObject({
       base: { id: ids[0] },
+      baseSource: 'channel_previous',
+      baseChannel: 'production',
     });
     await expect(diff(ids[3], { channel: null })).rejects.toMatchObject({
       status: 404,
@@ -151,7 +155,8 @@ databaseDescribe('bundle diff (PostgreSQL integration)', () => {
     await release(3, { channel: 'beta' });
     await expect(diff(ids[3], { channel: 'beta' })).resolves.toMatchObject({
       base: null,
-      baseSource: 'channel',
+      baseSource: 'channel_previous',
+      baseChannel: 'beta',
     });
   });
 
