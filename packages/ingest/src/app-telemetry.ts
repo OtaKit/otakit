@@ -197,3 +197,33 @@ export async function parseBatch(
   }
   return { messages, dropped };
 }
+
+/** Cloudflare Queues accept at most 100 messages and 256 KB per sendBatch call. */
+const QUEUE_BATCH_MESSAGES = 100;
+const QUEUE_BATCH_BYTES = 192 * 1024;
+
+/**
+ * Split messages into sendBatch calls under the Queues limits. A batch is at
+ * most 128 KB, but its rows repeat the device context and add the grouping
+ * fields, so they can be larger than the batch itself.
+ */
+export function queueChunks<T>(messages: T[]): T[][] {
+  const chunks: T[][] = [];
+  let current: T[] = [];
+  let bytes = 0;
+  for (const message of messages) {
+    const size = new TextEncoder().encode(JSON.stringify(message)).length;
+    if (
+      current.length > 0 &&
+      (current.length >= QUEUE_BATCH_MESSAGES || bytes + size > QUEUE_BATCH_BYTES)
+    ) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(message);
+    bytes += size;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}

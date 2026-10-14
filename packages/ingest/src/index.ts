@@ -1,5 +1,5 @@
 import { appGate, type GateEnv } from './app-gate';
-import { MAX_BODY_BYTES, parseBatch, type TelemetryMessage } from './app-telemetry';
+import { MAX_BODY_BYTES, parseBatch, queueChunks, type TelemetryMessage } from './app-telemetry';
 
 type Platform = 'ios' | 'android';
 type EventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback' | 'check_error';
@@ -307,6 +307,10 @@ async function handleAppTelemetryRequest(request: Request, env: WorkerEnv): Prom
     if (!success) return new Response(null, { status: 429 });
   }
 
+  const declaredLength = Number(request.headers.get('Content-Length') ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    return jsonResponse({ error: 'Batch too large' }, 413);
+  }
   const raw = await request.text();
   if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
     return jsonResponse({ error: 'Batch too large' }, 413);
@@ -333,7 +337,11 @@ async function handleAppTelemetryRequest(request: Request, env: WorkerEnv): Prom
   const paused = parsed.messages.length - accepted.length;
   if (accepted.length > 0) {
     try {
-      await env.APP_TELEMETRY_QUEUE.sendBatch(accepted.map((body) => ({ body })));
+      // A retry after a partial failure sends earlier chunks again; reads count
+      // unique event IDs, so duplicates never inflate the numbers.
+      for (const chunk of queueChunks(accepted)) {
+        await env.APP_TELEMETRY_QUEUE.sendBatch(chunk.map((body) => ({ body })));
+      }
     } catch (error) {
       console.error('[Ingest] Failed to enqueue app telemetry', { appId, error });
       return jsonResponse({ error: 'Queue unavailable' }, 503);
