@@ -239,7 +239,7 @@ describe('OtaKit MCP registry transport', () => {
     });
     const { tools } = await remote.client.listTools();
     const catalog = new Map(OTAKIT_TOOL_CATALOG.map((tool) => [tool.name, tool]));
-    expect(tools).toHaveLength(19);
+    expect(tools).toHaveLength(20);
     for (const tool of tools) {
       expect(tool.title, tool.name).toBeTruthy();
       expect(tool.annotations?.title, tool.name).toBe(tool.title);
