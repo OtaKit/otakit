@@ -379,12 +379,17 @@ await OtaKit.apply();`}</Pre>
         <Method
           name="getConfig({ defaults })"
           returns="RemoteConfig"
-          description="The channel's remote config over your defaults, answered instantly from the device. The configChanged event fires when a fetch changes it."
+          description="The channel's remote config over your defaults, answered instantly from the device, with the values of the A/B test variants the device is in. The configChanged event fires when a fetch changes it."
         />
         <Method
           name="refreshConfig({ defaults })"
           returns="RemoteConfig & { error? }"
           description="Fetch the remote config now. Network errors resolve with an error code and the saved config instead of throwing."
+        />
+        <Method
+          name="getVariant(key)"
+          returns="string | null"
+          description="This device's variant in a running A/B test: 'control', another variant key, or null when the device is not in the test (or on web, or with a native plugin older than 3.4). The first call counts the device as in the test."
         />
         <Method
           name="initErrorTracking(options?)"

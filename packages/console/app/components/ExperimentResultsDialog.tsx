@@ -247,7 +247,7 @@ export function ExperimentResultsDialog({
             {experiment?.name ?? 'A/B test'}
             {experiment ? <ExperimentStatusBadge status={experiment.status} /> : null}
           </DialogTitle>
-          <DialogDescription className="text-xs">
+          <DialogDescription className="min-w-0 break-words text-xs">
             {experiment ? (
               <>
                 <span className="font-mono">{experiment.key}</span> ·{' '}
@@ -277,7 +277,7 @@ export function ExperimentResultsDialog({
             )}
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             {experiment.status === 'shipped' ? (
               <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-200">
                 {experiment.shippedVariant === 'control'
@@ -360,7 +360,7 @@ export function ExperimentResultsDialog({
                             {variant.lift && results.stats?.comparable ? (
                               <>
                                 {formatLift(variant.lift.median)}
-                                <span className="ml-1 text-muted-foreground">
+                                <span className="ml-1 hidden text-muted-foreground sm:inline">
                                   ({formatLift(variant.lift.low)} to {formatLift(variant.lift.high)}
                                   )
                                 </span>

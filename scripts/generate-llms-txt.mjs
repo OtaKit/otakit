@@ -40,6 +40,11 @@ const DOCS = [
     file: 'packages/site/app/docs/analytics/page.tsx',
   },
   {
+    label: 'A/B Tests',
+    route: '/docs/experiments',
+    file: 'packages/site/app/docs/experiments/page.tsx',
+  },
+  {
     label: 'Update Strategies',
     route: '/docs/update-strategies',
     file: 'packages/site/app/docs/update-strategies/page.tsx',

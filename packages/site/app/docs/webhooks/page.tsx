@@ -97,6 +97,18 @@ export default function WebhooksPage() {
           is published, restored or deleted.
         </li>
         <li>
+          <Code>experiment.started</Code>, <Code>experiment.stopped</Code> and{' '}
+          <Code>experiment.verdict_reached</Code> — an{' '}
+          <Link
+            href="/docs/experiments"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            A/B test
+          </Link>{' '}
+          starts, stops or ships a variant, and has a result: a winner, no clear difference, or a
+          variant with more errors. Results go to the default email destination.
+        </li>
+        <li>
           <Code>errors.new_issue</Code>, <Code>errors.regression</Code>, <Code>errors.spike</Code>{' '}
           and <Code>errors.paused</Code> — from{' '}
           <Link
@@ -193,6 +205,22 @@ export default function WebhooksPage() {
           <Code>version</Code>, <Code>previousVersion</Code>, <Code>deleted</Code>,{' '}
           <Code>message</Code>, <Code>changedKeys</Code> (<Code>added</Code>, <Code>changed</Code>,{' '}
           <Code>removed</Code>) and the new <Code>values</Code> (<Code>null</Code> when deleted).
+        </li>
+        <li>
+          <Code>experiment.started</Code> and <Code>experiment.stopped</Code>:{' '}
+          <Code>experiment</Code> with <Code>id</Code>, <Code>key</Code>, <Code>name</Code>,{' '}
+          <Code>status</Code>, <Code>channel</Code> (the config; <Code>null</Code> for the base
+          config), <Code>goalEvent</Code>, <Code>variants</Code> (<Code>key</Code>,{' '}
+          <Code>weight</Code>), <Code>startedAt</Code>, <Code>stoppedAt</Code> and{' '}
+          <Code>shippedVariant</Code> (set when a variant shipped).
+        </li>
+        <li>
+          <Code>experiment.verdict_reached</Code>: <Code>experiment</Code>, <Code>verdict</Code> (
+          <Code>{'{ kind: "winner" | "guardrail", variant, probability }'}</Code> or{' '}
+          <Code>{'{ kind: "no_difference" }'}</Code>) and <Code>variants</Code> with{' '}
+          <Code>key</Code>, <Code>exposed</Code> and <Code>converted</Code> devices,{' '}
+          <Code>rate</Code>, <Code>probabilityBest</Code> and <Code>errors</Code>. Sent once per
+          verdict; <Code>actor</Code> is <Code>null</Code>.
         </li>
         <li>
           <Code>errors.new_issue</Code> and <Code>errors.regression</Code>: <Code>issue</Code> with{' '}
