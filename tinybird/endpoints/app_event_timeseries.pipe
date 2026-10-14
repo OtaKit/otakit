@@ -1,6 +1,6 @@
 DESCRIPTION >
-    Events and sessions of one custom event per hour (or per UTC day with daily) in
-    [from_ts, to_ts). Bucket starts are Unix seconds.
+    Events and sessions per custom event name per hour (or per UTC day with daily) in
+    [from_ts, to_ts); one name with name, else every name. Bucket starts are Unix seconds.
 
 TOKEN otakit_web READ
 
@@ -8,12 +8,13 @@ NODE event_buckets
 SQL >
     %
     SELECT
+        name,
         toUnixTimestamp({% if defined(daily) %}toStartOfDay(bucket){% else %}bucket{% end %}) AS bucket_start,
         uniqExactMerge(event_ids_uniq_exact_state) AS events,
         uniqExactMerge(session_ids_uniq_exact_state) AS sessions
     FROM app_event_hourly
     WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
-      AND name = {{ String(name, '__missing_name__') }}
+      AND ({{ String(name, '') }} = '' OR name = {{ String(name, '') }})
       AND bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
       AND bucket < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
       AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
@@ -22,7 +23,7 @@ SQL >
         AND (({{ UInt8(channel_is_null) }} = 1 AND channel = '')
              OR ({{ UInt8(channel_is_null) }} = 0 AND channel = {{ String(channel, '') }}))
       {% end %}
-    GROUP BY bucket_start
-    ORDER BY bucket_start
+    GROUP BY name, bucket_start
+    ORDER BY name, bucket_start
 
 TYPE ENDPOINT

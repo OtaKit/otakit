@@ -13,7 +13,7 @@ SQL >
       AND fingerprint = {{ String(fingerprint, '__missing_fingerprint__') }}
       AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
 
-NODE breakdown
+NODE breakdown_rows
 SQL >
     %
     SELECT * FROM (
@@ -51,5 +51,9 @@ SQL >
             '' AS label, uniqExact(event_id) AS events
         FROM issue_errors GROUP BY value ORDER BY events DESC, value LIMIT 10
     )
+
+NODE breakdown
+SQL >
+    SELECT * FROM breakdown_rows ORDER BY dimension, events DESC, value
 
 TYPE ENDPOINT

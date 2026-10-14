@@ -24,7 +24,7 @@ SQL >
              OR ({{ UInt8(channel_is_null) }} = 0 AND channel = {{ String(channel, '') }}))
       {% end %}
 
-NODE breakdown
+NODE breakdown_rows
 SQL >
     %
     SELECT * FROM (
@@ -39,5 +39,9 @@ SQL >
         SELECT '' AS value, 1 AS is_total, uniqExact(event_id) AS events, uniqExact(session_id) AS sessions
         FROM property_values
     )
+
+NODE breakdown
+SQL >
+    SELECT * FROM breakdown_rows ORDER BY is_total, events DESC, value
 
 TYPE ENDPOINT
