@@ -5,6 +5,20 @@ import type { BundleFile, BundleFileList } from './bundle-files';
  * and content that probably should not ship. Pure; safe to import anywhere.
  */
 
+// C0/C1 controls, line separators and bidirectional overrides.
+const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * File names come from uploaded archives: show characters that could reorder or
+ * hide text as escapes. Same rule as `printablePath` in @otakit/mcp-core.
+ */
+export function printablePath(path: string): string {
+  return path.replace(
+    UNPRINTABLE,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
 export type FileChangeStatus = 'added' | 'removed' | 'changed';
 
 export type FileChange = {
@@ -122,6 +136,16 @@ export function downloadBytes(
   return bytes;
 }
 
+/** `.env`, `.env.production`…, but not templates such as `.env.example` that hold no values. */
+function isEnvFile(name: string): boolean {
+  return /^\.env(\..+)?$/i.test(name) && !/\.(example|sample|template|dist)$/i.test(name);
+}
+
+/** Hidden segments, except `.well-known`, which apps serve on purpose. */
+function isHiddenSegment(segment: string): boolean {
+  return segment.startsWith('.') && segment !== '.well-known';
+}
+
 type ContentRule = {
   code: BundleWarningCode;
   severity: BundleWarning['severity'];
@@ -134,7 +158,7 @@ const CONTENT_RULES: ContentRule[] = [
   {
     code: 'env_file',
     severity: 'warning',
-    matches: (segments) => /^\.env(\..+)?$/i.test(segments[segments.length - 1]),
+    matches: (segments) => isEnvFile(segments[segments.length - 1]),
     message:
       'Environment files (.env) often hold secrets, and anyone with the app can read every bundle file.',
   },
@@ -160,7 +184,7 @@ const CONTENT_RULES: ContentRule[] = [
   {
     code: 'dotfile',
     severity: 'note',
-    matches: (segments) => segments.some((segment) => segment.startsWith('.')),
+    matches: (segments) => segments.some(isHiddenSegment),
     message: 'Hidden files such as .DS_Store are usually left over from the build machine.',
   },
   {
@@ -198,7 +222,10 @@ export function bundleWarnings(target: BundleFileList, diff: FileListDiff | null
   for (const file of target.files) {
     const segments = file.path.split('/');
     const rule = CONTENT_RULES.find((candidate) => candidate.matches(segments));
-    if (rule) matched.set(rule.code, [...(matched.get(rule.code) ?? []), file.path]);
+    if (!rule) continue;
+    const paths = matched.get(rule.code);
+    if (paths) paths.push(file.path);
+    else matched.set(rule.code, [file.path]);
   }
   const warnings = CONTENT_RULES.filter((rule) => matched.has(rule.code)).map((rule) =>
     warning(rule, matched.get(rule.code) ?? []),

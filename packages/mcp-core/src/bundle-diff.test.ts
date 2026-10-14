@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { describeBundleDiff, formatBundleBytes } from './bundle-diff';
+import {
+  AGENT_LISTED_CHANGES,
+  bundleDiffEnvelopeParts,
+  describeBundleDiff,
+  formatBundleBytes,
+  printablePath,
+} from './bundle-diff';
 
 const ok = {
-  target: { version: '1.4.2' },
+  target: { version: '1.4.2', strategy: 'deltas' },
   base: { version: '1.4.1' },
   status: 'ok' as const,
   unavailableReason: null,
@@ -21,7 +27,17 @@ const ok = {
 describe('describeBundleDiff', () => {
   it('summarizes a comparison in one line', () => {
     expect(describeBundleDiff(ok)).toBe(
-      '1.4.2 vs 1.4.1: +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download ≈ 38.0 KB',
+      '1.4.2 vs 1.4.1: +3 ~12 -1 · 4.1 MB → 4.3 MB · devices on 1.4.1 download up to 38.0 KB',
+    );
+    expect(
+      describeBundleDiff({
+        ...ok,
+        target: { version: '1.4.2', strategy: 'zip' },
+        baseSource: 'previous_upload',
+        summary: { ...ok.summary, downloadBytes: 1.2 * 1024 * 1024 },
+      }),
+    ).toBe(
+      '1.4.2 vs 1.4.1 (previous upload): +3 ~12 -1 · 4.1 MB → 4.3 MB · devices download 1.2 MB (the whole archive)',
     );
     expect(
       describeBundleDiff({
@@ -64,6 +80,44 @@ describe('describeBundleDiff', () => {
         summary: null,
       }),
     ).toBe('Cannot compare 1.4.2 with 1.4.1: its files could not be read.');
+  });
+
+  it('escapes control and bidirectional characters in file names', () => {
+    expect(printablePath('ok/path.js')).toBe('ok/path.js');
+    expect(printablePath('a\u001b[31mred\u0007')).toBe('a\\u001b[31mred\\u0007');
+    expect(printablePath('invoice\u202efdp.exe')).toBe('invoice\\u202efdp.exe');
+    expect(printablePath('line\u2028break')).toBe('line\\u2028break');
+  });
+
+  it('gives agents the first files, printable names and the real warnings', () => {
+    const changes = Array.from({ length: 250 }, (_, index) => ({
+      path: index === 0 ? 'bad\u001bname.js' : `file-${index}.js`,
+      status: 'added' as const,
+    }));
+    const parts = bundleDiffEnvelopeParts({
+      ...ok,
+      changes,
+      unlistedChanges: 10,
+      warnings: [
+        {
+          severity: 'warning' as const,
+          message: 'Environment files (.env) often hold secrets.',
+          paths: ['.env', '.env\u0007'],
+          count: 4,
+        },
+        { severity: 'note' as const, message: 'The bundle grew.', paths: [], count: 0 },
+      ],
+    });
+    expect(parts.data.changes).toHaveLength(AGENT_LISTED_CHANGES);
+    expect(parts.data.changes[0].path).toBe('bad\\u001bname.js');
+    expect(parts.data.unlistedChanges).toBe(160);
+    expect(parts.summary).toContain(
+      'Lists the first 100 of 260 changed files; `otakit diff --json` and the REST API return up to 5,000.',
+    );
+    expect(parts.warnings).toEqual([
+      'Environment files (.env) often hold secrets. .env, .env\\u0007 and 2 more',
+    ]);
+    expect(parts.data.warnings[0].paths).toEqual(['.env', '.env\\u0007']);
   });
 
   it('formats sizes', () => {

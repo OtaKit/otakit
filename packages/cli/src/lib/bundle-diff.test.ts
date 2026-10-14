@@ -55,7 +55,7 @@ describe('formatBundleDiff', () => {
   it('prints the summary, each changed file and the warnings', () => {
     expect(formatBundleDiff(diff)).toBe(
       [
-        '1.4.2 vs 1.4.1: +1 ~1 -1 · 2.0 KB → 3.0 KB · devices download ≈ 900 B',
+        '1.4.2 vs 1.4.1 (previous upload): +1 ~1 -1 · 2.0 KB → 3.0 KB · devices download 900 B (the whole archive)',
         '',
         '  + assets/new.js  (1.0 KB)',
         '  ~ assets/app.js  (1.0 KB → 2.0 KB)',
@@ -69,9 +69,36 @@ describe('formatBundleDiff', () => {
     );
   });
 
-  it('says how many files it left out', () => {
+  it('says how many files it left out, and what --json has', () => {
     expect(formatBundleDiff({ ...diff, unlistedChanges: 7, warnings: [] }, 2)).toContain(
-      '  … and 8 more (use --json for all)',
+      '  … and 8 more (--json lists the first 3)',
     );
+    expect(formatBundleDiff({ ...diff, warnings: [] }, 2)).toContain(
+      '  … and 1 more (--json lists all)',
+    );
+  });
+
+  it('escapes control characters in file names from the archive', () => {
+    const output = formatBundleDiff({
+      ...diff,
+      changes: [
+        { path: 'evil\u001b[2Jname.js', status: 'added', sizeBefore: null, sizeAfter: 1 },
+        { path: 'a\u202egnp.js', status: 'added', sizeBefore: null, sizeAfter: 1 },
+      ],
+      warnings: [
+        {
+          code: 'env_file',
+          severity: 'warning',
+          message: 'Environment files (.env) often hold secrets.',
+          paths: ['.env\u0007'],
+          count: 1,
+        },
+      ],
+    });
+    expect(output).toContain('+ evil\\u001b[2Jname.js');
+    expect(output).toContain('+ a\\u202egnp.js');
+    expect(output).toContain('  .env\\u0007');
+    // eslint-disable-next-line no-control-regex
+    expect(output.replaceAll('\n', '')).not.toMatch(/[\u0000-\u001f\u202e]/);
   });
 });

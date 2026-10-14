@@ -122,9 +122,14 @@ databaseDescribe('bundle diff (PostgreSQL integration)', () => {
           ...data,
         },
       });
-    await expect(diff(ids[3], { channel: 'production' })).resolves.toMatchObject({
-      base: null,
-      baseSource: 'channel',
+    // No release on the lane yet (or a mistyped channel) is an error, not "nothing to compare".
+    await expect(diff(ids[3], { channel: 'production' })).rejects.toMatchObject({
+      status: 404,
+      code: 'RELEASE_NOT_FOUND',
+      message: 'No release on channel "production" for runtime version ios-1',
+    });
+    await expect(diff(ids[3], { against: ids[0], channel: 'production' })).rejects.toMatchObject({
+      status: 400,
     });
     await release(0);
     await release(1, { previousBundleId: ids[0] });
@@ -138,7 +143,16 @@ databaseDescribe('bundle diff (PostgreSQL integration)', () => {
     await expect(diff(ids[1], { channel: 'production' })).resolves.toMatchObject({
       base: { id: ids[0] },
     });
-    await expect(diff(ids[3], { channel: null })).resolves.toMatchObject({ base: null });
+    await expect(diff(ids[3], { channel: null })).rejects.toMatchObject({
+      status: 404,
+      message: 'No release on the base channel for runtime version ios-1',
+    });
+    // The first release of a lane, compared with its own channel: nothing earlier.
+    await release(3, { channel: 'beta' });
+    await expect(diff(ids[3], { channel: 'beta' })).resolves.toMatchObject({
+      base: null,
+      baseSource: 'channel',
+    });
   });
 
   it('reports which side cannot be read and still warns about the target', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bundleWarnings, diffFileLists, downloadBytes } from './bundle-diff';
+import { bundleWarnings, diffFileLists, downloadBytes, printablePath } from './bundle-diff';
 import type { BundleFileList } from './bundle-files';
 
 const MB = 1024 * 1024;
@@ -127,6 +127,23 @@ describe('bundleWarnings', () => {
       ['native_installer', 'note', ['downloads/Setup.EXE']],
     ]);
     expect(warnings[0]).toMatchObject({ count: 2, message: expect.stringContaining('secrets') });
+  });
+
+  it('treats .env templates as hidden files and leaves .well-known alone', () => {
+    const target = list('crc32', [
+      ['index.html', 10, '1'],
+      ['.env.example', 10, '2'],
+      ['.well-known/apple-app-site-association', 10, '3'],
+      ['.well-known/assetlinks.json', 10, '4'],
+    ]);
+    expect(bundleWarnings(target, null).map((item) => [item.code, item.paths])).toEqual([
+      ['dotfile', ['.env.example']],
+    ]);
+  });
+
+  it('escapes unprintable characters in file names for display', () => {
+    expect(printablePath('assets/app.js')).toBe('assets/app.js');
+    expect(printablePath('a\u001b[2Jb\u202ec.js')).toBe('a\\u001b[2Jb\\u202ec.js');
   });
 
   it('does not note small bundles growing by a few kilobytes', () => {

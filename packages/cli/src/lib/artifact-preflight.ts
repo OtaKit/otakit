@@ -7,7 +7,10 @@ import { validateBundleDirectory } from './zip.js';
 const MIB = 1024 * 1024;
 const MAX_UNPACKED_BYTES = 500_000_000;
 const INSTALLER = /\.(exe|msi|dmg|pkg|apk|ipa|appx|msix|deb|rpm)$/i;
-const ENV_FILE = /^\.env(\..+)?$/i;
+/** `.env`, `.env.production`…, but not templates such as `.env.example` that hold no values. */
+function isEnvFile(name: string): boolean {
+  return /^\.env(\..+)?$/i.test(name) && !/\.(example|sample|template|dist)$/i.test(name);
+}
 type Artifact = { path: string; bytes: number };
 
 export type ArtifactInspection = {
@@ -93,7 +96,7 @@ export function inspectArtifacts(
 
   // Content that should not ship: anyone with the app can read every bundle file.
   const segmentsOf = (file: Artifact) => file.path.split('/');
-  const envFiles = files.filter((file) => ENV_FILE.test(segmentsOf(file).at(-1) ?? ''));
+  const envFiles = files.filter((file) => isEnvFile(segmentsOf(file).at(-1) ?? ''));
   const gitFiles = files.filter((file) => segmentsOf(file).includes('.git'));
   const moduleFiles = files.filter((file) => segmentsOf(file).includes('node_modules'));
   if (envFiles.length > 0) {
@@ -116,8 +119,11 @@ export function inspectArtifacts(
   const sourceMaps = files.filter(
     (file) => !flagged.has(file) && file.path.toLowerCase().endsWith('.map'),
   );
+  // `.well-known` is served on purpose (for example for universal links).
   const hiddenFiles = files.filter(
-    (file) => !flagged.has(file) && segmentsOf(file).some((segment) => segment.startsWith('.')),
+    (file) =>
+      !flagged.has(file) &&
+      segmentsOf(file).some((segment) => segment.startsWith('.') && segment !== '.well-known'),
   );
   if (sourceMaps.length > 0) {
     notes.push(

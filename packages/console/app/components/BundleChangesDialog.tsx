@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CircleAlert, FileDiff, Info, LoaderCircle, Search } from 'lucide-react';
 
 import type { BundleSummaryItem } from '@/app/components/dashboard-types';
-import type { FileChangeStatus } from '@/lib/bundle-diff';
+import { printablePath, type FileChangeStatus } from '@/lib/bundle-diff';
 import type { BundleDiff } from '@/lib/services/bundle-diff';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -18,7 +18,10 @@ import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -26,6 +29,8 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
 const PREVIOUS = 'previous';
+/** Select values for "what a channel runs": `channel:` plus the name, empty for base. */
+const CHANNEL_PREFIX = 'channel:';
 /** Rows rendered at once; the search narrows the rest. */
 const MAX_ROWS = 500;
 
@@ -47,13 +52,32 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function changeSize(change: {
+  status: FileChangeStatus;
+  sizeBefore: number | null;
+  sizeAfter: number | null;
+}): string {
+  return change.status === 'changed'
+    ? `${formatBytes(change.sizeBefore)} → ${formatBytes(change.sizeAfter)}`
+    : formatBytes(change.sizeAfter ?? change.sizeBefore);
+}
+
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border bg-muted/20 px-3 py-2" title={hint}>
+    <div className="rounded-lg border bg-muted/20 px-3 py-2">
       <div className="text-[11px] text-muted-foreground">{label}</div>
       <div className="mt-0.5 truncate text-sm font-semibold tabular-nums">{value}</div>
+      {hint ? <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div> : null}
     </div>
   );
+}
+
+function diffQuery(against: string): string {
+  if (against === PREVIOUS) return '';
+  if (against.startsWith(CHANNEL_PREFIX)) {
+    return `?channel=${encodeURIComponent(against.slice(CHANNEL_PREFIX.length))}`;
+  }
+  return `?against=${encodeURIComponent(against)}`;
 }
 
 /**
@@ -88,8 +112,7 @@ export function BundleChangesDialog({
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = against === PREVIOUS ? '' : `?against=${encodeURIComponent(against)}`;
-    fetch(`/api/v1/apps/${appId}/bundles/${bundle.id}/diff${params}`, {
+    fetch(`/api/v1/apps/${appId}/bundles/${bundle.id}/diff${diffQuery(against)}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -120,7 +143,23 @@ export function BundleChangesDialog({
     );
   }, [diff, status, query]);
   const options = bundles.filter((item) => item.id !== bundle.id);
+  // Channels with a release for this bundle's runtime version: what their devices run.
+  const runtimeVersion = bundles.find((item) => item.id === bundle.id)?.runtimeVersion ?? null;
+  const channels = Array.from(
+    new Set(
+      bundles.flatMap((item) =>
+        item.currentTargets
+          .filter((target) => target.runtimeVersion === runtimeVersion)
+          .map((target) => target.channel ?? ''),
+      ),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
   const summary = diff?.summary ?? null;
+  const filtered = status !== 'all' || query.trim() !== '';
+  const baseRuntimeDiffers =
+    diff?.base !== null &&
+    diff?.base !== undefined &&
+    diff.base.runtimeVersion !== diff.target.runtimeVersion;
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -143,11 +182,32 @@ export function BundleChangesDialog({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={PREVIOUS}>Previous upload</SelectItem>
-              {options.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  <span className="font-mono">{item.version}</span>
-                </SelectItem>
-              ))}
+              {channels.length > 0 ? (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>What a channel runs</SelectLabel>
+                    {channels.map((channel) => (
+                      <SelectItem key={channel} value={`${CHANNEL_PREFIX}${channel}`}>
+                        {channel || 'base'}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              ) : null}
+              {options.length > 0 ? (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Bundle</SelectLabel>
+                    {options.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        <span className="font-mono">{item.version}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              ) : null}
             </SelectContent>
           </Select>
           {loading && result ? (
@@ -181,12 +241,31 @@ export function BundleChangesDialog({
                   {diff.base ? (
                     <>
                       Compared with <span className="font-mono">{diff.base.version}</span>
-                      {diff.baseSource === 'previous_upload' ? ', the previous upload' : ''}.
+                      {diff.baseSource === 'previous_upload'
+                        ? ', the previous upload'
+                        : diff.baseSource === 'channel'
+                          ? `, what ${against.slice(CHANNEL_PREFIX.length) || 'the base channel'} runs`
+                          : ''}
+                      .
                     </>
                   ) : (
                     'Nothing earlier to compare with: every file is new.'
                   )}
                 </p>
+                {diff.base && diff.baseSource === 'previous_upload' && channels.length > 0 ? (
+                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    Devices may run an older bundle than the previous upload. To see what they
+                    download, compare with what a channel runs.
+                  </p>
+                ) : null}
+                {baseRuntimeDiffers ? (
+                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    The two bundles are for different runtime versions, so no device updates from
+                    one to the other.
+                  </p>
+                ) : null}
                 <div className="grid grid-cols-3 gap-2">
                   <Stat label="Added" value={String(summary.added)} />
                   <Stat label="Changed" value={String(summary.changed)} />
@@ -203,16 +282,20 @@ export function BundleChangesDialog({
                     hint="Unpacked size of all files"
                   />
                   <Stat
-                    label="Devices download"
+                    label={
+                      diff.base && !baseRuntimeDiffers
+                        ? `Download from ${diff.base.version}`
+                        : 'Download'
+                    }
                     value={
-                      summary.downloadBytes === null
-                        ? `up to ${formatBytes(diff.target.size)}`
-                        : `≈ ${formatBytes(summary.downloadBytes)}`
+                      summary.downloadBytes === null || diff.target.strategy === 'deltas'
+                        ? `up to ${formatBytes(summary.downloadBytes ?? diff.target.size)}`
+                        : formatBytes(summary.downloadBytes)
                     }
                     hint={
                       diff.target.strategy === 'deltas'
-                        ? 'Delta updates download only files the device does not have yet.'
-                        : 'Zip updates download the whole archive.'
+                        ? 'Delta update: only files the device does not have yet.'
+                        : 'Zip update: the whole archive.'
                     }
                   />
                 </div>
@@ -248,7 +331,7 @@ export function BundleChangesDialog({
                         <p className="font-medium text-foreground">{warning.message}</p>
                         {warning.paths.length > 0 ? (
                           <p className="break-all font-mono text-muted-foreground">
-                            {warning.paths.join(', ')}
+                            {warning.paths.map(printablePath).join(', ')}
                             {warning.count > warning.paths.length
                               ? ` and ${warning.count - warning.paths.length} more`
                               : ''}
@@ -302,7 +385,7 @@ export function BundleChangesDialog({
                     <TableBody>
                       {rows.slice(0, MAX_ROWS).map((change) => (
                         <TableRow key={`${change.status}:${change.path}`}>
-                          <TableCell className="w-20">
+                          <TableCell className="w-16 sm:w-20">
                             <Badge
                               variant="outline"
                               className={cn(
@@ -313,16 +396,17 @@ export function BundleChangesDialog({
                               {STATUS_STYLES[change.status].label}
                             </Badge>
                           </TableCell>
-                          <TableCell
-                            className="max-w-0 truncate font-mono text-xs"
-                            title={change.path}
-                          >
-                            {change.path}
+                          <TableCell className="max-w-0 font-mono text-xs">
+                            <div className="truncate" title={printablePath(change.path)}>
+                              {printablePath(change.path)}
+                            </div>
+                            {/* On phones the size goes under the path, so the path keeps its width. */}
+                            <div className="text-[11px] tabular-nums text-muted-foreground sm:hidden">
+                              {changeSize(change)}
+                            </div>
                           </TableCell>
-                          <TableCell className="w-40 text-right text-xs tabular-nums text-muted-foreground">
-                            {change.status === 'changed'
-                              ? `${formatBytes(change.sizeBefore)} → ${formatBytes(change.sizeAfter)}`
-                              : formatBytes(change.sizeAfter ?? change.sizeBefore)}
+                          <TableCell className="hidden w-40 text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
+                            {changeSize(change)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -334,11 +418,17 @@ export function BundleChangesDialog({
                     </p>
                   ) : null}
                 </div>
-                {rows.length > MAX_ROWS || diff.unlistedChanges > 0 ? (
+                {rows.length > MAX_ROWS ? (
                   <p className="text-xs text-muted-foreground">
-                    Showing {Math.min(rows.length, MAX_ROWS)} of{' '}
-                    {rows.length + diff.unlistedChanges} files. Filter to find the rest
-                    {diff.unlistedChanges > 0 ? ', or use `otakit diff --json`' : ''}.
+                    Showing {MAX_ROWS} of {rows.length} {filtered ? 'matching ' : ''}files. Filter
+                    to find the rest.
+                  </p>
+                ) : null}
+                {diff.unlistedChanges > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {diff.unlistedChanges.toLocaleString('en-US')} more changed files are counted
+                    above but not listed here or in <code>otakit diff --json</code>, which list the
+                    first {diff.changes.length.toLocaleString('en-US')}.
                   </p>
                 ) : null}
               </section>

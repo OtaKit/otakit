@@ -89,7 +89,10 @@ function describeBundle(bundle: BundleRow): BundleDiffBundle {
   };
 }
 
-/** The bundle devices on the lane run outside a rollout, or null. */
+/**
+ * The bundle devices on the lane run outside a rollout. A lane without a
+ * release is an error (often a mistyped channel), not "nothing to compare".
+ */
 async function laneBundleId(
   database: PrismaClient,
   appId: string,
@@ -104,7 +107,14 @@ async function laneBundleId(
     select: { bundleId: true, previousBundleId: true, rolloutPercent: true },
   });
   const stable = current && isRolling(current) ? below : current;
-  if (!stable) return null;
+  if (!stable) {
+    throw new OtaKitServiceError(
+      'RELEASE_NOT_FOUND',
+      `No release on ${channel === null ? 'the base channel' : `channel "${channel}"`} for runtime version ${runtimeVersion ?? '(default)'}`,
+      404,
+      'Check the channel name, or compare with a bundle ID instead.',
+    );
+  }
   // Comparing the lane's own bundle with itself says nothing: use what it replaced.
   return stable.bundleId === target.id ? stable.previousBundleId : stable.bundleId;
 }
@@ -130,6 +140,9 @@ export async function getBundleDiff(
 ): Promise<BundleDiff> {
   const database = dependencies.database ?? db;
   const readFiles = dependencies.readFiles ?? getBundleFileList;
+  if (input.against !== undefined && input.channel !== undefined) {
+    throw new OtaKitServiceError('INVALID_INPUT', 'Pass either against or channel, not both', 400);
+  }
 
   const target = await database.bundle.findFirst({
     where: {

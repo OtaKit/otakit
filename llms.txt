@@ -237,7 +237,7 @@ The CLI resolves values in a deterministic order.
 
 ### otakit upload [path]
 
-Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices download ≈ 38.0 KB”.
+Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices on 1.4.1 download up to 38.0 KB”.
 
 Options
 - `[path]`: Bundle directory. If omitted, the CLI uses OTAKIT_BUILD_DIR or capacitor.config.* webDir.
@@ -346,13 +346,13 @@ otakit list --limit 20
 
 ### otakit diff <bundleId>
 
-Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices download, and warnings about content that should not ship. Encrypted bundles cannot be inspected.
+Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices on the base download (the whole archive for zip updates; at most the content they do not have yet for delta updates), and warnings about content that should not ship. The warnings help catch build mistakes; they are not a security scan. Encrypted bundles cannot be inspected.
 
 Options
 - `--against <bundleId>`: Compare with this bundle. Without --against, --channel or --base, the CLI compares with the previous upload of the same runtime version.
 - `--channel <channel>`: Compare with the bundle this channel runs.
 - `--base`: Compare with the bundle the base channel runs.
-- `--json`: Print the full comparison as JSON, every changed file included.
+- `--json`: Print the comparison as JSON, with up to 5,000 changed files (unlistedChanges counts the rest).
 
 Example
 
@@ -980,7 +980,7 @@ Response
 
 ### GET /api/v1/apps/:appId/bundles/:bundleId/diff
 
-Compare a bundle with another one. Without against or channel, the base is the previous upload of the same runtime version. Zip bundles are read from the archive's central directory and delta bundles from their file list; encrypted bundles cannot be inspected. downloadBytes is what a device on the base downloads: the archive for zip updates, only content it does not have yet for delta updates, or null when that depends on the device. Warning codes: env_file, git_directory and node_modules (warnings); source_map, dotfile, native_installer, large_new_file and size_increase (notes).
+Compare a bundle with another one. Without against or channel, the base is the previous upload of the same runtime version. Zip bundles are read from the archive's central directory and delta bundles from their file list; encrypted bundles cannot be inspected. channel compares with the bundle that channel runs for the target's runtime version (404 when the channel has no release for it); against and channel cannot be combined. downloadBytes is what a device on the base downloads: the whole archive for zip updates, at most the content it does not have yet for delta updates (it may already have more), or null when that depends on the device. changes lists up to 5,000 files; unlistedChanges counts the rest. Warning codes: env_file, git_directory and node_modules (warnings); source_map, dotfile, native_installer, large_new_file and size_increase (notes). Warnings help catch build mistakes; they are not a security scan.
 - Auth: Bearer
 - Query: ?against=<bundleId> or ?channel=<name> (empty for the base channel)
 

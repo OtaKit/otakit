@@ -1,4 +1,4 @@
-import { describeBundleDiff, formatBundleBytes } from '@otakit/mcp-core';
+import { describeBundleDiff, formatBundleBytes, printablePath } from '@otakit/mcp-core';
 
 import type { BundleDiff } from './api.js';
 
@@ -16,10 +16,16 @@ export function formatBundleDiff(diff: BundleDiff, limit = 30): string {
           : formatBundleBytes(
               (change.status === 'added' ? change.sizeAfter : change.sizeBefore) ?? 0,
             );
-      lines.push(`  ${SYMBOLS[change.status]} ${change.path}  (${size})`);
+      lines.push(`  ${SYMBOLS[change.status]} ${printablePath(change.path)}  (${size})`);
     }
-    const hidden = diff.changes.length - limit + diff.unlistedChanges;
-    if (hidden > 0) lines.push(`  … and ${hidden} more (use --json for all)`);
+    const hidden = Math.max(0, diff.changes.length - limit) + diff.unlistedChanges;
+    if (hidden > 0) {
+      lines.push(
+        diff.unlistedChanges > 0
+          ? `  … and ${hidden} more (--json lists the first ${diff.changes.length})`
+          : `  … and ${hidden} more (--json lists all)`,
+      );
+    }
   }
   for (const warning of diff.warnings) {
     const label = warning.severity === 'warning' ? 'Warning' : 'Note';
@@ -28,7 +34,9 @@ export function formatBundleDiff(diff: BundleDiff, limit = 30): string {
         ? ` and ${warning.count - warning.paths.length} more`
         : '';
     lines.push('', `${label}: ${warning.message}`);
-    if (warning.paths.length > 0) lines.push(`  ${warning.paths.join(', ')}${more}`);
+    if (warning.paths.length > 0) {
+      lines.push(`  ${warning.paths.map(printablePath).join(', ')}${more}`);
+    }
   }
   return lines.join('\n');
 }

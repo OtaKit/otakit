@@ -126,7 +126,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit upload"
           args="[path]"
-          description="Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices download ≈ 38.0 KB”."
+          description="Upload a bundle. Optionally release it immediately. Before uploading, the CLI warns about content that should not ship (.env files, .git, node_modules, native installers) and notes source maps and hidden files. After uploading, it prints what changed against the bundle the targeted channel runs, such as “+3 ~12 -1 · 4.1 MB → 4.3 MB · devices on 1.4.1 download up to 38.0 KB”."
           options={[
             {
               flag: '[path]',
@@ -300,7 +300,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit diff"
           args="<bundleId>"
-          description="Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices download, and warnings about content that should not ship. Encrypted bundles cannot be inspected."
+          description="Compare a bundle with another: files added, changed and removed, the unpacked size before and after, what devices on the base download (the whole archive for zip updates; at most the content they do not have yet for delta updates), and warnings about content that should not ship. The warnings help catch build mistakes; they are not a security scan. Encrypted bundles cannot be inspected."
           options={[
             {
               flag: '--against <bundleId>',
@@ -310,7 +310,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
             { flag: '--base', desc: 'Compare with the bundle the base channel runs.' },
             {
               flag: '--json',
-              desc: 'Print the full comparison as JSON, every changed file included.',
+              desc: 'Print the comparison as JSON, with up to 5,000 changed files (unlistedChanges counts the rest).',
             },
           ]}
           example="otakit diff 2ffbb928-96b1-4297-a5b7-c1633c104868 --channel production"

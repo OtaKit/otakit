@@ -102,6 +102,17 @@ describe('upload artifact preflight', () => {
     );
   });
 
+  it('does not warn about .env templates or .well-known files', () => {
+    mkdirSync(join(directory, '.well-known'));
+    writeFileSync(join(directory, '.well-known', 'apple-app-site-association'), '{}');
+    writeFileSync(join(directory, '.env.example'), 'API_URL=');
+
+    const result = preflightArtifacts(directory, { strict: true, onWarning: vi.fn() });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.notes).toEqual([expect.stringContaining('hidden file(s): ".env.example"')]);
+  });
+
   it('fails strict uploads on an .env file but not on a source map', () => {
     writeFileSync(join(directory, 'app.js.map'), '{}');
     expect(() => preflightArtifacts(directory, { strict: true, onWarning: vi.fn() })).not.toThrow();

@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import {
   PublicToolError,
-  describeBundleDiff,
+  bundleDiffEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -440,11 +440,8 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       against: optionalString(input, 'against'),
       channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
     });
-    return toolEnvelope(describeBundleDiff(diff), json(diff), {
-      warnings: diff.warnings
-        .filter((warning) => warning.severity === 'warning')
-        .map((warning) => `${warning.message} ${warning.paths.join(', ')}`),
-    });
+    const parts = bundleDiffEnvelopeParts(diff);
+    return toolEnvelope(parts.summary, json(parts.data), { warnings: parts.warnings });
   }
 
   private async deleteBundle(input: JsonObject): Promise<ToolEnvelope> {
