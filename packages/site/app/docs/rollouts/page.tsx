@@ -46,7 +46,8 @@ export default function RolloutsPage() {
         </li>
         <li>
           Devices on plugin versions before 3.1 ignore rollouts and stay on the previous release
-          until the rollout completes.
+          until the rollout completes. The release dialog shows how many recent updates on the
+          channel came from such plugins.
         </li>
         <li>
           The first release on a channel goes to every device, since there is nothing to fall back
