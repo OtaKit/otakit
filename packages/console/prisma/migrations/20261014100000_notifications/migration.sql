@@ -20,6 +20,7 @@ CREATE TABLE "NotificationDestination" (
     "enabled" BOOLEAN NOT NULL DEFAULT true,
     "disabledReason" TEXT,
     "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+    "failingSince" TIMESTAMP(3),
     "lastSuccessAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -33,7 +34,10 @@ CREATE TABLE "NotificationDelivery" (
     "destinationId" TEXT NOT NULL,
     "eventType" TEXT NOT NULL,
     "eventKey" TEXT NOT NULL,
+    "eventId" TEXT NOT NULL,
     "payload" TEXT NOT NULL,
+    "emailSentTo" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    "redeliveries" INTEGER NOT NULL DEFAULT 0,
     "status" "NotificationDeliveryStatus" NOT NULL DEFAULT 'pending',
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "nextAttemptAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,13 +81,18 @@ ALTER TABLE "NotificationDelivery" ADD CONSTRAINT "NotificationDelivery_destinat
 
 -- Every workspace starts with the alerts it already received by email: owners
 -- and admins hear about auto-reverts and usage warnings.
+-- Idempotent: the same statement runs again after the deploy for workspaces
+-- created in between (see the PR's deploy steps).
 INSERT INTO "NotificationDestination" ("id", "organizationId", "type", "name", "emailRecipients", "events", "updatedAt")
 SELECT
     gen_random_uuid()::text,
-    "id",
+    o."id",
     'email',
     'Owners and admins',
     '{"mode": "owners_admins"}'::jsonb,
     ARRAY['release.auto_reverted', 'release.auto_revert_suppressed', 'usage.warning'],
     CURRENT_TIMESTAMP
-FROM "Organization";
+FROM "Organization" o
+WHERE NOT EXISTS (
+    SELECT 1 FROM "NotificationDestination" d WHERE d."organizationId" = o."id"
+);

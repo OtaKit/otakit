@@ -205,7 +205,7 @@ async function queueUsageWarning(args: {
       usage: {
         threshold: args.threshold,
         downloadsCount: args.downloadsCount,
-        limit: args.limit,
+        downloadsLimit: args.limit,
         periodStart,
       },
     },

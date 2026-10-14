@@ -1,7 +1,7 @@
 import { recordAuditLog, type AuditActor } from './audit-log';
 import { AUTO_REVERT_REVERTED_BY, type AutoRevertAlertPayload } from './auto-revert-alerts';
 import { db } from './db';
-import { emitNotification } from './notifications/emit';
+import { emitNotification, notificationHealth } from './notifications/emit';
 import { isReleaseReliabilityEnabled } from './release-features';
 import { isOtaKitServiceError } from './services/errors';
 import { findReleaseSummary, revertRelease, revertReleaseLegacy } from './services/releases';
@@ -203,14 +203,7 @@ export async function runAutoRevertSweep(now: Date = new Date()): Promise<AutoRe
             actor: AUTO_REVERT_ACTOR,
             data: {
               release,
-              health: {
-                rollbacks: healthMetadata.rollbacks,
-                attempts: healthMetadata.attempts,
-                measuredRatePercent: healthMetadata.measuredRatePercent,
-                ratePercent: healthMetadata.ratePercent,
-                minSample: healthMetadata.minSample,
-                windowHours: healthMetadata.windowHours,
-              },
+              health: notificationHealth(healthMetadata),
             },
           });
         }

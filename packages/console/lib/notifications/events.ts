@@ -83,15 +83,21 @@ export function notificationEventLabel(type: string): string {
 
 export type NotificationActor = {
   type: 'user' | 'api_key' | 'system';
+  /** User ID or API key ID; null for system actors. */
+  id: string | null;
+  /** Email for users, the key's name for API keys, e.g. "auto-revert" for OtaKit itself. */
   label: string;
 };
 
+/** The rollback share auto-revert measured, and the thresholds it compared it with. */
 export type AutoRevertHealth = {
   rollbacks: number;
+  /** Applies plus rollbacks. */
   attempts: number;
-  measuredRatePercent: number;
-  ratePercent: number;
-  minSample: number;
+  /** rollbacks / attempts, in percent. */
+  rollbackSharePercent: number;
+  thresholdPercent: number;
+  thresholdMinSample: number;
   windowHours: number;
 };
 
@@ -107,7 +113,7 @@ export type NotificationBundle = {
 export type NotificationUsage = {
   threshold: 90 | 100;
   downloadsCount: number;
-  limit: number;
+  downloadsLimit: number;
   periodStart: string;
 };
 
@@ -123,7 +129,7 @@ export type NotificationEventFields =
     }
   | {
       type: 'release.rollout_updated';
-      data: { release: ReleaseSummary; previousPercent: number };
+      data: { release: ReleaseSummary; previousRolloutPercent: number };
     }
   | {
       type: 'release.reverted';
@@ -150,15 +156,17 @@ export type NotificationContext = {
   organization: { id: string; name: string };
   /** Null for workspace-wide events (usage, tests). */
   app: { id: string; slug: string } | null;
-  /** Who made the change; null when nobody did (usage, tests). */
+  /** Who made the change; null when nobody did (usage warnings). */
   actor: NotificationActor | null;
   /** Where to look in the dashboard. */
-  url: string;
+  dashboardUrl: string;
 };
 
 /** The JSON body of a notification: what webhooks receive and every format renders. */
 export type NotificationPayload = {
   [Fields in NotificationEventFields as Fields['type']]: {
+    /** Event ID, also sent as `webhook-id`: the same for every destination and retry. */
+    id: string;
     type: Fields['type'];
     timestamp: string;
     data: NotificationContext & Fields['data'];

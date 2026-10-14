@@ -5,14 +5,15 @@
       "date": "2026-10-14",
       "type": "feature",
       "title": "Webhooks and alerts",
-      "areas": ["Dashboard", "API"],
+      "areas": ["Dashboard"],
       "summary": "Get notified when releases go out, roll out, are reverted, or fail health checks: by email, in Slack or Discord, or as signed webhooks to your own systems.",
       "highlights": [
         "Add destinations in Settings → Notifications, choose the events, and optionally limit one to a single app.",
-        "Every release counts, whether it came from the dashboard, the CLI, CI, or an agent.",
+        "Covers every release, whether it comes from the dashboard, the CLI, CI, or an agent. Release notes appear in Slack, Discord and email messages.",
         "Webhooks follow the Standard Webhooks spec, so existing libraries verify them. Failed deliveries are retried for about a day.",
-        "Auto-revert and usage emails now run through the same system, so you can change who gets them."
+        "Auto-revert and usage emails now come from a default “Owners and admins” destination, so you can change who gets them or send them to Slack."
       ],
+      "requires": "Self-hosted servers need DATA_ENCRYPTION_KEY, CRON_SECRET and a call to /api/cron/notifications every minute.",
       "links": [
         {
           "label": "Webhooks and alerts guide",

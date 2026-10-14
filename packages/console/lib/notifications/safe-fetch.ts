@@ -12,7 +12,7 @@ import net from 'node:net';
  * plain http.
  */
 
-export const REQUEST_TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_URL_LENGTH = 2048;
 const MAX_RESPONSE_BYTES = 2048;
 
@@ -34,8 +34,8 @@ const BLOCKED_RANGES: Array<[string, number, 'ipv4' | 'ipv6']> = [
   ['203.0.113.0', 24, 'ipv4'], // documentation
   ['224.0.0.0', 4, 'ipv4'], // multicast
   ['240.0.0.0', 4, 'ipv4'], // reserved, broadcast
-  ['::', 128, 'ipv6'], // unspecified
-  ['::1', 128, 'ipv6'], // loopback
+  ['::', 96, 'ipv6'], // unspecified, loopback, IPv4-compatible (::a.b.c.d)
+  ['::ffff:0:0:0', 96, 'ipv6'], // IPv4-translated (SIIT)
   ['64:ff9b::', 96, 'ipv6'], // NAT64
   ['64:ff9b:1::', 48, 'ipv6'], // local NAT64
   ['100::', 64, 'ipv6'], // discard
@@ -44,6 +44,7 @@ const BLOCKED_RANGES: Array<[string, number, 'ipv4' | 'ipv6']> = [
   ['2002::', 16, 'ipv6'], // 6to4
   ['fc00::', 7, 'ipv6'], // unique local
   ['fe80::', 10, 'ipv6'], // link-local
+  ['fec0::', 10, 'ipv6'], // site-local (deprecated)
   ['ff00::', 8, 'ipv6'], // multicast
 ];
 

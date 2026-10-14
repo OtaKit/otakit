@@ -21,7 +21,10 @@ vi.mock('./db', () => ({
     auditLog: { findFirst: mocks.findAuditLog },
   },
 }));
-vi.mock('./notifications/emit', () => ({ emitNotification: mocks.emitNotification }));
+vi.mock('./notifications/emit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./notifications/emit')>()),
+  emitNotification: mocks.emitNotification,
+}));
 vi.mock('./release-features', () => ({ isReleaseReliabilityEnabled: () => true }));
 vi.mock('./services/releases', () => ({
   findReleaseSummary: mocks.findReleaseSummary,
@@ -101,9 +104,9 @@ describe('auto-revert failure handling', () => {
         health: {
           rollbacks: 10,
           attempts: 20,
-          measuredRatePercent: 50,
-          ratePercent: 20,
-          minSample: 10,
+          rollbackSharePercent: 50,
+          thresholdPercent: 20,
+          thresholdMinSample: 10,
           windowHours: 24,
         },
       },

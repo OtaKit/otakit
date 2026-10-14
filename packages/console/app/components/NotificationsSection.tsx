@@ -39,6 +39,16 @@ import type {
   NotificationDeliveryView,
   NotificationDestinationView,
 } from '@/lib/services/notifications';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -130,6 +140,35 @@ const EVENT_GROUPS = Array.from(new Set(NOTIFICATION_EVENTS.map((event) => event
   (group) => ({ group, events: NOTIFICATION_EVENTS.filter((event) => event.group === group) }),
 );
 
+/** The alerts that tell a team OtaKit reverted (or could not revert) a release. */
+const AUTO_REVERT_EVENTS: NotificationEventType[] = [
+  'release.auto_reverted',
+  'release.auto_revert_suppressed',
+];
+
+/**
+ * Whether removing `destination` (or narrowing it to `remaining` events) would
+ * leave auto-revert alerts with no enabled destination.
+ */
+function losesAutoRevertAlerts(
+  destinations: NotificationDestinationView[],
+  destination: NotificationDestinationView,
+  remaining: ReadonlySet<string> = new Set(),
+): boolean {
+  return AUTO_REVERT_EVENTS.some(
+    (event) =>
+      destination.enabled &&
+      destination.events.includes(event) &&
+      !remaining.has(event) &&
+      !destinations.some(
+        (other) => other.id !== destination.id && other.enabled && other.events.includes(event),
+      ),
+  );
+}
+
+const AUTO_REVERT_WARNING =
+  'No other destination receives auto-revert alerts. Releases are still reverted, but nobody is told.';
+
 function typeInfo(type: DestinationType) {
   return TYPES.find((item) => item.type === type) ?? TYPES[0];
 }
@@ -168,32 +207,51 @@ function target(destination: NotificationDestinationView): string {
   return 'Owners and admins';
 }
 
+function isFailing(destination: NotificationDestinationView): boolean {
+  return destination.enabled && destination.consecutiveFailures >= FAILING_AFTER_FAILURES;
+}
+
 function DestinationStatus({ destination }: { destination: NotificationDestinationView }) {
   if (!destination.enabled) {
-    const reason =
-      destination.disabledReason === 'endpoint_gone'
-        ? 'Turned off: the endpoint answered 410 Gone'
-        : destination.disabledReason === 'failing'
-          ? 'Turned off after failing for 3 days'
-          : 'Turned off';
     return (
-      <Badge variant="outline" className="text-[10px] font-normal" title={reason}>
+      <Badge variant="outline" className="text-[10px] font-normal">
         Off
       </Badge>
     );
   }
-  if (destination.consecutiveFailures >= FAILING_AFTER_FAILURES) {
+  if (isFailing(destination)) {
     return (
       <Badge
         variant="outline"
         className="border-amber-500/40 text-[10px] font-normal text-amber-600 dark:text-amber-400"
-        title={`${destination.consecutiveFailures} failed attempts in a row`}
       >
         Failing
       </Badge>
     );
   }
   return null;
+}
+
+/** Why a destination is off or failing, shown under its name (not only in a tooltip). */
+function statusNote(destination: NotificationDestinationView): string | null {
+  if (!destination.enabled) {
+    if (destination.disabledReason === 'endpoint_gone') {
+      return 'Turned off by OtaKit: the endpoint says it no longer exists.';
+    }
+    if (destination.disabledReason === 'failing') {
+      return 'Turned off by OtaKit after failing for 3 days.';
+    }
+    return null;
+  }
+  if (isFailing(destination)) {
+    const since = destination.failingSince ? ` since ${formatDate(destination.failingSince)}` : '';
+    return `${destination.consecutiveFailures} failed attempts in a row${since}. OtaKit turns it off after 3 days of failures.`;
+  }
+  return null;
+}
+
+function people(count: number): string {
+  return `${count} ${count === 1 ? 'person' : 'people'}`;
 }
 
 /** Workspace notifications: where release, bundle and usage events are sent. */
@@ -203,6 +261,10 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<NotificationDestinationView | 'new' | null>(null);
   const [deliveriesFor, setDeliveriesFor] = useState<NotificationDestinationView | null>(null);
+  const [confirming, setConfirming] = useState<{
+    action: 'delete' | 'turn_off';
+    destination: NotificationDestinationView;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -215,8 +277,15 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (canManage) void load();
-  }, [canManage, load]);
+    void load();
+  }, [load]);
+
+  // Links in notification emails end in #notifications.
+  useEffect(() => {
+    if (settings && window.location.hash === '#notifications') {
+      document.getElementById('notifications')?.scrollIntoView({ block: 'start' });
+    }
+  }, [settings]);
 
   function replace(destination: NotificationDestinationView) {
     setSettings((current) =>
@@ -244,7 +313,7 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
         toast.success(
           delivery.lastStatusCode
             ? `Test delivered (HTTP ${delivery.lastStatusCode})`
-            : 'Test email sent',
+            : `Test email sent to ${people(delivery.emailRecipients ?? 0)}`,
         );
       } else {
         toast.error(`Test failed: ${delivery.lastError ?? 'unknown error'}`);
@@ -267,7 +336,11 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
         body: JSON.stringify({ enabled }),
       });
       replace(updated);
-      toast.success(enabled ? `${destination.name} turned on` : `${destination.name} turned off`);
+      toast.success(
+        enabled
+          ? `Notifications to "${destination.name}" turned on`
+          : `Notifications to "${destination.name}" turned off`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update the destination');
     } finally {
@@ -276,7 +349,6 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
   }
 
   async function remove(destination: NotificationDestinationView) {
-    if (!confirm(`Delete ${destination.name}? Its delivery history is deleted too.`)) return;
     setBusy(destination.id);
     try {
       await request(`/api/v1/organization/notifications/${destination.id}`, { method: 'DELETE' });
@@ -288,7 +360,7 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
             }
           : current,
       );
-      toast.success(`${destination.name} deleted`);
+      toast.success(`"${destination.name}" deleted`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not delete the destination');
     } finally {
@@ -301,9 +373,17 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
     [settings?.apps],
   );
 
+  const confirmWarning =
+    confirming && settings
+      ? losesAutoRevertAlerts(settings.destinations, confirming.destination)
+      : false;
+
   return (
     <>
-      <div className="flex items-center justify-between border-b border-border bg-background px-5 pb-6 pt-8">
+      <div
+        id="notifications"
+        className="flex scroll-mt-16 items-center justify-between border-b border-border bg-background px-5 pb-6 pt-8"
+      >
         <div className="flex items-center gap-3">
           <BellRing className="size-6 shrink-0 text-muted-foreground" />
           <div className="flex flex-col gap-0.5">
@@ -327,11 +407,7 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
         ) : null}
       </div>
 
-      {!canManage ? (
-        <p className="p-5 text-sm text-muted-foreground">
-          Only owners and admins can manage notifications.
-        </p>
-      ) : !settings ? (
+      {!settings ? (
         <div className="flex items-center justify-center p-8 text-sm text-muted-foreground">
           {loadFailed ? (
             <Button variant="outline" size="sm" onClick={() => void load()}>
@@ -348,103 +424,168 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
           <p className="mx-auto mt-3 max-w-sm text-sm text-muted-foreground">
             Get notified when releases go out, are reverted, or fail health checks.
           </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => setEditing('new')}>
-            <Plus className="size-3.5" />
-            Add destination
-          </Button>
+          {canManage ? (
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => setEditing('new')}>
+              <Plus className="size-3.5" />
+              Add destination
+            </Button>
+          ) : (
+            <p className="mx-auto mt-2 max-w-sm text-xs text-muted-foreground">
+              Owners and admins can add destinations.
+            </p>
+          )}
         </div>
       ) : (
-        <Table>
-          <TableBody>
-            {settings.destinations.map((destination) => {
-              const info = typeInfo(destination.type);
-              const scope = destination.appId
-                ? (appSlugs.get(destination.appId) ?? 'One app')
-                : 'All apps';
-              return (
-                <TableRow
-                  key={destination.id}
-                  className={`h-14 ${destination.enabled ? '' : 'opacity-60'}`}
-                >
-                  <TableCell>
-                    <div className="flex min-w-0 items-center gap-3 pl-5">
-                      <info.icon className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm">{destination.name}</span>
-                          <DestinationStatus destination={destination} />
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {info.label} · {target(destination)}
+        <>
+          {canManage ? null : (
+            <p className="border-b border-border px-5 py-3 text-xs text-muted-foreground">
+              Where this workspace sends notifications. Owners and admins can change them.
+            </p>
+          )}
+          <Table>
+            <TableBody>
+              {settings.destinations.map((destination) => {
+                const info = typeInfo(destination.type);
+                const scope = destination.appId
+                  ? (appSlugs.get(destination.appId) ?? 'One app')
+                  : 'All apps';
+                const note = statusNote(destination);
+                return (
+                  <TableRow
+                    key={destination.id}
+                    className={`h-14 ${destination.enabled ? '' : 'opacity-60'}`}
+                  >
+                    <TableCell>
+                      <div className="flex min-w-0 items-center gap-3 pl-5">
+                        <info.icon className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm">{destination.name}</span>
+                            <DestinationStatus destination={destination} />
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {info.label} · {target(destination)}
+                          </div>
+                          {note ? (
+                            <div
+                              className={`whitespace-normal text-xs ${destination.enabled ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+                            >
+                              {note}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden w-44 text-right text-xs text-muted-foreground sm:table-cell">
-                    <div>
-                      {destination.events.length} event
-                      {destination.events.length === 1 ? '' : 's'}
-                    </div>
-                    <div className="truncate">{scope}</div>
-                  </TableCell>
-                  <TableCell className="w-12 pr-5 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="size-7 p-0"
-                          disabled={busy === destination.id}
-                          aria-label={`Actions for ${destination.name}`}
-                        >
-                          {busy === destination.id ? (
-                            <LoaderCircle className="size-3.5 animate-spin" />
-                          ) : (
-                            <MoreHorizontal className="size-3.5" />
-                          )}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditing(destination)}>
-                          <Pencil className="size-3.5" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void sendTest(destination)}>
-                          <Send className="size-3.5" />
-                          Send test
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setDeliveriesFor(destination)}>
-                          <History className="size-3.5" />
-                          Deliveries
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {destination.enabled ? (
-                          <DropdownMenuItem onClick={() => void setEnabled(destination, false)}>
-                            <PowerOff className="size-3.5" />
-                            Turn off
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => void setEnabled(destination, true)}>
-                            <Power className="size-3.5" />
-                            Turn on
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => void remove(destination)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    </TableCell>
+                    <TableCell className="hidden w-44 text-right text-xs text-muted-foreground sm:table-cell">
+                      <div>
+                        {destination.events.length} event
+                        {destination.events.length === 1 ? '' : 's'}
+                      </div>
+                      <div className="truncate">{scope}</div>
+                    </TableCell>
+                    <TableCell className="w-12 pr-5 text-right">
+                      {canManage ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="size-7 p-0"
+                              disabled={busy === destination.id}
+                              aria-label={`Actions for ${destination.name}`}
+                            >
+                              {busy === destination.id ? (
+                                <LoaderCircle className="size-3.5 animate-spin" />
+                              ) : (
+                                <MoreHorizontal className="size-3.5" />
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditing(destination)}>
+                              <Pencil className="size-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void sendTest(destination)}>
+                              <Send className="size-3.5" />
+                              Send test
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDeliveriesFor(destination)}>
+                              <History className="size-3.5" />
+                              Deliveries
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {destination.enabled ? (
+                              <DropdownMenuItem
+                                onClick={() => setConfirming({ action: 'turn_off', destination })}
+                              >
+                                <PowerOff className="size-3.5" />
+                                Turn off
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => void setEnabled(destination, true)}>
+                                <Power className="size-3.5" />
+                                Turn on
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setConfirming({ action: 'delete', destination })}
+                            >
+                              <Trash2 className="size-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </>
       )}
+
+      <AlertDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirming?.action === 'delete'
+                ? `Delete the "${confirming.destination.name}" destination?`
+                : `Turn off notifications to "${confirming?.destination.name}"?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirming?.action === 'delete'
+                ? 'Its delivery history is deleted too.'
+                : 'Nothing is sent to it until you turn it back on. Queued deliveries are dropped.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmWarning ? (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+              {AUTO_REVERT_WARNING}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirming?.action === 'delete' ? 'destructive' : 'default'}
+              onClick={() => {
+                if (!confirming) return;
+                if (confirming.action === 'delete') void remove(confirming.destination);
+                else void setEnabled(confirming.destination, false);
+              }}
+            >
+              {confirming?.action === 'delete' ? 'Delete' : 'Turn off'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {settings && editing ? (
         <DestinationDialog
@@ -453,10 +594,15 @@ export function NotificationsSection({ canManage }: { canManage: boolean }) {
           settings={settings}
           onClose={() => setEditing(null)}
           onSaved={replace}
+          onSendTest={sendTest}
         />
       ) : null}
       {deliveriesFor ? (
-        <DeliveriesDialog destination={deliveriesFor} onClose={() => setDeliveriesFor(null)} />
+        <DeliveriesDialog
+          destination={deliveriesFor}
+          onClose={() => setDeliveriesFor(null)}
+          onSendTest={() => sendTest(deliveriesFor)}
+        />
       ) : null}
     </>
   );
@@ -467,11 +613,13 @@ function DestinationDialog({
   settings,
   onClose,
   onSaved,
+  onSendTest,
 }: {
   destination: NotificationDestinationView | null;
   settings: Settings;
   onClose: () => void;
   onSaved: (destination: NotificationDestinationView) => void;
+  onSendTest: (destination: NotificationDestinationView) => Promise<void>;
 }) {
   const creating = destination === null;
   const [type, setType] = useState<DestinationType>(destination?.type ?? 'slack');
@@ -485,7 +633,11 @@ function DestinationDialog({
     destination?.emailRecipients ?? { mode: 'owners_admins' },
   );
   const [saving, setSaving] = useState(false);
-  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [created, setCreated] = useState<{
+    destination: NotificationDestinationView;
+    secret: string;
+  } | null>(null);
+  const [testing, setTesting] = useState(false);
   const info = typeInfo(type);
 
   function chooseType(next: DestinationType) {
@@ -530,9 +682,9 @@ function DestinationDialog({
           body: JSON.stringify({ ...body, type }),
         });
         onSaved(result.destination);
-        toast.success(`${result.destination.name} added`);
+        toast.success(`"${result.destination.name}" added`);
         if (result.secret) {
-          setCreatedSecret(result.secret);
+          setCreated({ destination: result.destination, secret: result.secret });
           return;
         }
       } else {
@@ -556,6 +708,8 @@ function DestinationDialog({
     name.trim().length > 0 &&
     events.size > 0 &&
     (type === 'email' ? recipients.mode === 'owners_admins' || memberIds.size > 0 : url.trim());
+  const losesAutoRevert =
+    destination !== null && losesAutoRevertAlerts(settings.destinations, destination, events);
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
@@ -563,23 +717,21 @@ function DestinationDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <info.icon className="size-4" />
-            {createdSecret
-              ? 'Webhook added'
-              : creating
-                ? 'Add destination'
-                : `Edit ${destination.name}`}
+            {created ? 'Webhook added' : creating ? 'Add destination' : 'Edit destination'}
           </DialogTitle>
           <DialogDescription>
-            {createdSecret
-              ? 'Use this secret to verify that requests come from OtaKit.'
-              : 'Choose where notifications go and which events they cover.'}
+            {created
+              ? 'Use this secret to verify that requests come from OtaKit, then send a test.'
+              : creating
+                ? 'Choose where notifications go and which events they cover.'
+                : `"${destination.name}": where notifications go and which events they cover.`}
           </DialogDescription>
         </DialogHeader>
 
-        {createdSecret ? (
+        {created ? (
           <SecretBox
-            secret={createdSecret}
-            note="Owners and admins can see it again in the webhook's settings."
+            secret={created.secret}
+            note="Owners and admins can see it again under Edit → Signing secret."
           />
         ) : (
           <div className="space-y-5">
@@ -638,7 +790,11 @@ function DestinationDialog({
                   </SelectContent>
                 </Select>
                 {recipients.mode === 'members' ? (
-                  <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                  <div
+                    role="group"
+                    aria-label="Members"
+                    className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3"
+                  >
                     {settings.members.map((member) => (
                       <label key={member.userId} className="flex items-center gap-2 text-sm">
                         <Checkbox
@@ -693,10 +849,16 @@ function DestinationDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {appId !== 'all' && events.has('usage.warning') ? (
+                <p className="text-xs text-muted-foreground">
+                  Usage warnings cover the whole workspace, so they are sent whichever app you
+                  choose.
+                </p>
+              ) : null}
             </div>
 
-            <div className="space-y-3">
-              <Label>Events</Label>
+            <fieldset className="space-y-3">
+              <legend className="mb-3 text-sm font-medium leading-none">Events</legend>
               {EVENT_GROUPS.map(({ group, events: groupEvents }) => (
                 <div key={group} className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">{group}</p>
@@ -717,7 +879,15 @@ function DestinationDialog({
                   ))}
                 </div>
               ))}
-            </div>
+              {events.size === 0 ? (
+                <p className="text-xs text-destructive">Choose at least one event.</p>
+              ) : null}
+              {losesAutoRevert ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  {AUTO_REVERT_WARNING}
+                </p>
+              ) : null}
+            </fieldset>
 
             {!creating && destination.type === 'webhook' ? (
               <SigningSecret destinationId={destination.id} />
@@ -726,8 +896,25 @@ function DestinationDialog({
         )}
 
         <DialogFooter>
-          {createdSecret ? (
-            <Button onClick={onClose}>Done</Button>
+          {created ? (
+            <>
+              <Button
+                variant="outline"
+                disabled={testing}
+                onClick={() => {
+                  setTesting(true);
+                  void onSendTest(created.destination).finally(() => setTesting(false));
+                }}
+              >
+                {testing ? (
+                  <LoaderCircle className="size-3.5 animate-spin" />
+                ) : (
+                  <Send className="size-3.5" />
+                )}
+                Send test
+              </Button>
+              <Button onClick={onClose}>Done</Button>
+            </>
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>
@@ -766,11 +953,16 @@ function SecretBox({ secret, note }: { secret: string; note?: string }) {
           variant="ghost"
           size="sm"
           className="size-7 shrink-0 p-0"
-          title="Copy"
+          title="Copy secret"
+          aria-label="Copy secret"
           onClick={() => {
-            void navigator.clipboard.writeText(secret);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            navigator.clipboard.writeText(secret).then(
+              () => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              },
+              () => toast.error('Could not copy. Select the secret and copy it.'),
+            );
           }}
         >
           {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
@@ -783,15 +975,10 @@ function SecretBox({ secret, note }: { secret: string; note?: string }) {
 function SigningSecret({ destinationId }: { destinationId: string }) {
   const [secret, setSecret] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
   const url = `/api/v1/organization/notifications/${destinationId}/secret`;
 
   async function load(method: 'GET' | 'POST') {
-    if (
-      method === 'POST' &&
-      !confirm('Rotate the signing secret? The current secret keeps working for 24 hours.')
-    ) {
-      return;
-    }
     setBusy(true);
     try {
       const result = await request<{ secret: string }>(url, { method });
@@ -807,6 +994,9 @@ function SigningSecret({ destinationId }: { destinationId: string }) {
   return (
     <div className="space-y-2">
       <Label>Signing secret</Label>
+      <p className="text-xs text-muted-foreground">
+        Revealing and rotating take effect immediately, without Save.
+      </p>
       {secret ? (
         <SecretBox secret={secret} />
       ) : (
@@ -823,11 +1013,26 @@ function SigningSecret({ destinationId }: { destinationId: string }) {
         size="sm"
         className="h-7 px-2 text-xs text-muted-foreground"
         disabled={busy}
-        onClick={() => void load('POST')}
+        onClick={() => setConfirmRotate(true)}
       >
         <RotateCw className="size-3" />
         Rotate secret
       </Button>
+      <AlertDialog open={confirmRotate} onOpenChange={setConfirmRotate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotate the signing secret?</AlertDialogTitle>
+            <AlertDialogDescription>
+              OtaKit signs with both secrets for 24 hours, so you can update your receiver before
+              the current one stops working.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void load('POST')}>Rotate</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -850,13 +1055,16 @@ function DeliveryStatus({ delivery }: { delivery: NotificationDeliveryView }) {
 function DeliveriesDialog({
   destination,
   onClose,
+  onSendTest,
 }: {
   destination: NotificationDestinationView;
   onClose: () => void;
+  onSendTest: () => Promise<void>;
 }) {
   const [deliveries, setDeliveries] = useState<NotificationDeliveryView[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [redelivering, setRedelivering] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
   const base = `/api/v1/organization/notifications/${destination.id}`;
 
   const load = useCallback(async () => {
@@ -903,7 +1111,8 @@ function DeliveriesDialog({
             Deliveries to {destination.name}
           </DialogTitle>
           <DialogDescription>
-            The last 50. Failed deliveries are retried for about a day.
+            The last 50 deliveries from the past 30 days. Failed deliveries are retried for about a
+            day.
           </DialogDescription>
         </DialogHeader>
         {deliveries === null ? (
@@ -911,9 +1120,28 @@ function DeliveriesDialog({
             <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
           </div>
         ) : deliveries.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Nothing sent yet. Use &ldquo;Send test&rdquo; to try it.
-          </p>
+          <div className="py-8 text-center">
+            <p className="text-sm text-muted-foreground">Nothing sent yet.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              disabled={testing}
+              onClick={() => {
+                setTesting(true);
+                void onSendTest()
+                  .then(load)
+                  .finally(() => setTesting(false));
+              }}
+            >
+              {testing ? (
+                <LoaderCircle className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
+              Send test
+            </Button>
+          </div>
         ) : (
           <Table>
             <TableBody>
@@ -926,11 +1154,22 @@ function DeliveriesDialog({
                       onClick={() => setExpanded(open ? null : delivery.id)}
                     >
                       <TableCell className="w-6 pr-0">
-                        {open ? (
-                          <ChevronDown className="size-3.5 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="size-3.5 text-muted-foreground" />
-                        )}
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          aria-label={`${open ? 'Hide' : 'Show'} details of ${notificationEventLabel(delivery.eventType)} from ${formatDate(delivery.createdAt)}`}
+                          className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpanded(open ? null : delivery.id);
+                          }}
+                        >
+                          {open ? (
+                            <ChevronDown className="size-3.5" />
+                          ) : (
+                            <ChevronRight className="size-3.5" />
+                          )}
+                        </button>
                       </TableCell>
                       <TableCell className="text-sm">
                         {notificationEventLabel(delivery.eventType)}
@@ -939,8 +1178,15 @@ function DeliveriesDialog({
                         <DeliveryStatus delivery={delivery} />
                       </TableCell>
                       <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
-                        {delivery.lastStatusCode ? `HTTP ${delivery.lastStatusCode}` : ''}
-                        {delivery.attempts > 1 ? ` · ${delivery.attempts} attempts` : ''}
+                        {[
+                          delivery.lastStatusCode ? `HTTP ${delivery.lastStatusCode}` : null,
+                          delivery.emailRecipients
+                            ? `to ${people(delivery.emailRecipients)}`
+                            : null,
+                          delivery.attempts > 1 ? `${delivery.attempts} attempts` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
                         {formatDate(delivery.createdAt)}
@@ -959,6 +1205,12 @@ function DeliveriesDialog({
                               Next attempt {formatDate(delivery.nextAttemptAt)}
                             </p>
                           ) : null}
+                          <p className="text-xs text-muted-foreground">
+                            Event payload <span className="font-mono">{delivery.eventId}</span>
+                            {destination.type === 'webhook'
+                              ? ' (the webhook-id header)'
+                              : '. Slack, Discord and email receive a formatted message.'}
+                          </p>
                           <pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed">
                             {JSON.stringify(delivery.payload, null, 2)}
                           </pre>
@@ -984,10 +1236,12 @@ function DeliveriesDialog({
                               size="sm"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void navigator.clipboard.writeText(
-                                  JSON.stringify(delivery.payload, null, 2),
-                                );
-                                toast.success('Payload copied');
+                                navigator.clipboard
+                                  .writeText(JSON.stringify(delivery.payload, null, 2))
+                                  .then(
+                                    () => toast.success('Payload copied'),
+                                    () => toast.error('Could not copy the payload'),
+                                  );
                               }}
                             >
                               <Copy className="size-3.5" />

@@ -16,8 +16,15 @@ import {
 import { AUTO_REVERT_REVERTED_BY, type AutoRevertAlertPayload } from '@/lib/auto-revert-alerts';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
-import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
-import { emitNotification, type NotificationEvent } from '@/lib/notifications/emit';
+import {
+  emitNotificationAfterCommit,
+  scheduleNotificationDelivery,
+} from '@/lib/notifications/deliver';
+import {
+  emitNotification,
+  notificationHealth,
+  type NotificationEvent,
+} from '@/lib/notifications/emit';
 import { revertCurrentRelease } from '@/lib/releases';
 import { FULL_ROLLOUT_PERCENT, isRolling, isRolloutPercent } from '@/lib/rollouts';
 import {
@@ -1042,9 +1049,7 @@ export async function publishReleaseLegacy(
     release: toReleaseSummary(release),
     previousRelease: currentRelease ? toReleaseSummary(currentRelease) : null,
   };
-  if ((await emitNotification(database, publishNotification(input, result))) > 0) {
-    scheduleNotificationDelivery();
-  }
+  await emitNotificationAfterCommit(database, publishNotification(input, result));
   return result;
 }
 
@@ -1323,14 +1328,7 @@ function revertNotification(
       data: {
         release: result.release,
         currentRelease: result.currentRelease,
-        health: {
-          rollbacks: health.rollbacks,
-          attempts: health.attempts,
-          measuredRatePercent: health.measuredRatePercent,
-          ratePercent: health.ratePercent,
-          minSample: health.minSample,
-          windowHours: health.windowHours,
-        },
+        health: notificationHealth(health),
       },
     };
   }
@@ -1471,7 +1469,7 @@ export async function updateRollout(
       organizationId: input.organizationId,
       appId: input.appId,
       actor: input.actor,
-      data: { release: result.release, previousPercent: result.previousPercent },
+      data: { release: result.release, previousRolloutPercent: result.previousPercent },
     }),
   });
 }
@@ -1631,9 +1629,7 @@ export async function revertReleaseLegacy(input: RevertReleaseInput): Promise<Re
       ? toReleaseSummary(outcome.nextCurrentRelease)
       : null,
   };
-  if ((await emitNotification(db, revertNotification(input, result))) > 0) {
-    scheduleNotificationDelivery();
-  }
+  await emitNotificationAfterCommit(db, revertNotification(input, result));
   return result;
 }
 

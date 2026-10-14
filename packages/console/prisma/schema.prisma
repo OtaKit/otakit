@@ -606,6 +606,9 @@ model NotificationDestination {
   // Set when OtaKit disabled it: 'endpoint_gone' (HTTP 410) or 'failing'.
   disabledReason           String?
   consecutiveFailures      Int                         @default(0)
+  // First failed attempt since the last success; OtaKit turns URL destinations
+  // off once they have failed for 72 hours.
+  failingSince             DateTime?
   lastSuccessAt            DateTime?
   createdAt                DateTime                    @default(now())
   updatedAt                DateTime                    @updatedAt
@@ -624,8 +627,16 @@ model NotificationDelivery {
   eventType      String
   // Identifies the event, so replays and retries never create a second row.
   eventKey       String
+  // Public event ID (payload `id`, header `webhook-id`): the same for every
+  // destination, retry and redelivery of one event.
+  eventId        String
   // The JSON body exactly as sent (text keeps its key order; JSONB would not).
   payload        String
+  // Email: recipients already sent to, so a retry only reaches the others.
+  emailSentTo    String[]                   @default([])
+  // Manual redeliveries; part of the email idempotency key, so a redelivery
+  // really sends again.
+  redeliveries   Int                        @default(0)
   status         NotificationDeliveryStatus @default(pending)
   attempts       Int                        @default(0)
   nextAttemptAt  DateTime                   @default(now())

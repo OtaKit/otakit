@@ -59,6 +59,8 @@ const ACTION_LABELS: Record<string, string> = {
   'notification_destination.updated': 'Notification destination changed',
   'notification_destination.deleted': 'Notification destination removed',
   'notification_destination.secret_rotated': 'Webhook secret rotated',
+  'notification_destination.secret_revealed': 'Webhook secret revealed',
+  'notification_destination.turned_off': 'Notification destination turned off by OtaKit',
 };
 
 function formatDate(value: string): string {

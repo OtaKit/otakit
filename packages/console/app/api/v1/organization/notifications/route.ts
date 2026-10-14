@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { invalidBody, jsonBody, notificationsAccess } from '@/lib/notifications/http';
+import {
+  invalidBody,
+  jsonBody,
+  notificationsAccess,
+  notificationsReadAccess,
+} from '@/lib/notifications/http';
 import { serviceErrorResponse } from '@/lib/services/http';
 import {
   createNotificationDestination,
@@ -10,10 +15,12 @@ import {
 export const runtime = 'nodejs';
 
 export async function GET() {
-  const access = await notificationsAccess();
+  const access = await notificationsReadAccess();
   if (access instanceof NextResponse) return access;
   try {
-    return NextResponse.json(await listNotificationSettings(access.organizationId));
+    return NextResponse.json(
+      await listNotificationSettings(access.organizationId, { readOnly: !access.canManage }),
+    );
   } catch (error) {
     return serviceErrorResponse(error);
   }

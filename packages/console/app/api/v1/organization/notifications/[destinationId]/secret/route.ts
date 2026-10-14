@@ -15,7 +15,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { destinationId } = await params;
   try {
     return NextResponse.json(
-      { secret: await revealWebhookSecret(access.organizationId, destinationId) },
+      { secret: await revealWebhookSecret(access, destinationId) },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {

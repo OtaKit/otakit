@@ -280,8 +280,10 @@ npx wrangler deploy`}</Pre>
         <li>
           <strong>Notifications</strong> — email, Slack, Discord and webhook alerts; see{' '}
           <A href="/docs/webhooks">Webhooks and Alerts</A>. Set <Code>DATA_ENCRYPTION_KEY</Code> (32
-          random bytes, base64) to store webhook signing secrets, and call{' '}
-          <Code>/api/cron/notifications</Code> every minute so failed deliveries are retried. Set{' '}
+          random bytes, base64) to store webhook signing secrets. Set <Code>CRON_SECRET</Code> and
+          call <Code>/api/cron/notifications</Code> every minute with it as a Bearer header (or{' '}
+          <Code>?secret=</Code>) so failed deliveries are retried; unlike the auto-revert endpoint,
+          this one refuses calls in production when <Code>CRON_SECRET</Code> is unset. Set{' '}
           <Code>NOTIFICATIONS_ALLOW_PRIVATE_URLS=true</Code> to post to addresses inside your
           network.
         </li>

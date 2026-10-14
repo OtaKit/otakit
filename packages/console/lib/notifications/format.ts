@@ -2,7 +2,7 @@ import { escapeHtml } from '@/lib/email';
 import type { ReleaseSummary } from '@/lib/services/releases';
 
 import { appUrl } from './emit';
-import { notificationEventLabel, type NotificationPayload } from './events';
+import { notificationEventLabel, type AutoRevertHealth, type NotificationPayload } from './events';
 
 /**
  * Human-readable notifications. describeEvent holds all copy; Slack, Discord and
@@ -14,6 +14,8 @@ export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 export type EventDescription = {
   title: string;
   lines: string[];
+  /** Release notes, shown as their own block. Plain text written by the team. */
+  notes: string | null;
   severity: NotificationSeverity;
   url: string;
 };
@@ -23,7 +25,10 @@ function lane(release: Pick<ReleaseSummary, 'channel' | 'runtimeVersion'>): stri
 }
 
 function byLine(payload: NotificationPayload): string[] {
-  return payload.data.actor ? [`By ${payload.data.actor.label}.`] : [];
+  const actor = payload.data.actor;
+  if (!actor) return [];
+  if (actor.type === 'api_key') return [`By API key "${actor.label}".`];
+  return [`By ${actor.label}.`];
 }
 
 function formatBytes(bytes: number): string {
@@ -32,15 +37,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function healthStats(health: {
-  rollbacks: number;
-  attempts: number;
-  measuredRatePercent: number;
-  ratePercent: number;
-  minSample: number;
-  windowHours: number;
-}): string {
-  return `${health.rollbacks} of ${health.attempts} devices rolled back (${health.measuredRatePercent}%) in the last ${health.windowHours} hours (trigger: >=${health.ratePercent}% of >=${health.minSample}).`;
+function healthStats(health: AutoRevertHealth): string {
+  return `${health.rollbacks} of ${health.attempts} update attempts rolled back (${health.rollbackSharePercent}%) in the last ${health.windowHours} hours. Threshold: ≥${health.thresholdPercent}% of ≥${health.thresholdMinSample}.`;
 }
 
 const NO_PREVIOUS_RELEASE =
@@ -48,42 +46,50 @@ const NO_PREVIOUS_RELEASE =
 
 export function describeEvent(payload: NotificationPayload): EventDescription {
   const slug = payload.data.app?.slug ?? '';
-  const url = payload.data.url;
+  const url = payload.data.dashboardUrl;
   switch (payload.type) {
     case 'release.published': {
       const { release, previousRelease, replacedRelease } = payload.data;
+      const rolling = release.rolloutPercent < 100;
       const lines: string[] = [];
-      if (release.rolloutPercent < 100) {
-        lines.push(`Rolling out to ${release.rolloutPercent}% of devices.`);
+      if (rolling) {
+        lines.push(
+          `${release.rolloutPercent}% of devices on this lane receive it; the rest stay on ${previousRelease?.bundleVersion ?? 'the previous release'}.`,
+        );
+      } else {
+        lines.push(
+          previousRelease
+            ? `Previous release: ${previousRelease.bundleVersion}.`
+            : 'First release on this lane.',
+        );
       }
-      lines.push(
-        previousRelease
-          ? `Previous release: ${previousRelease.bundleVersion}.`
-          : 'First release on this lane.',
-      );
       if (replacedRelease) {
         lines.push(`Replaced the rollout of ${replacedRelease.bundleVersion}.`);
       }
       return {
-        title: `Released ${slug} ${release.bundleVersion} (${lane(release)})`,
+        title: rolling
+          ? `Started rollout of ${slug} ${release.bundleVersion} to ${release.rolloutPercent}% (${lane(release)})`
+          : `Released ${slug} ${release.bundleVersion} (${lane(release)})`,
         lines: [...lines, ...byLine(payload)],
+        notes: release.notes?.trim() ? release.notes.trim() : null,
         severity: 'success',
         url,
       };
     }
     case 'release.rollout_updated': {
-      const { release, previousPercent } = payload.data;
+      const { release, previousRolloutPercent } = payload.data;
       return {
         title:
           release.rolloutPercent === 100
             ? `Rollout complete: ${slug} ${release.bundleVersion} (${lane(release)})`
-            : `Rollout of ${slug} ${release.bundleVersion} (${lane(release)}): ${previousPercent}% → ${release.rolloutPercent}%`,
+            : `Rollout of ${slug} ${release.bundleVersion} (${lane(release)}): ${previousRolloutPercent}% → ${release.rolloutPercent}%`,
         lines: [
           release.rolloutPercent === 100
             ? 'Every device on this lane now receives it.'
             : `${release.rolloutPercent}% of devices on this lane now receive it.`,
           ...byLine(payload),
         ],
+        notes: null,
         severity: 'info',
         url,
       };
@@ -101,6 +107,7 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
             : NO_PREVIOUS_RELEASE,
           ...byLine(payload),
         ],
+        notes: null,
         severity: 'warning',
         url,
       };
@@ -110,11 +117,12 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
       return {
         title: `Auto-reverted ${slug} ${release.bundleVersion} (${lane(release)})`,
         lines: [
-          `Release ${release.bundleVersion}: ${healthStats(health)}`,
+          healthStats(health),
           currentRelease
             ? `Reverted automatically. Devices now receive ${currentRelease.bundleVersion}.`
             : `Reverted automatically. ${NO_PREVIOUS_RELEASE}`,
         ],
+        notes: null,
         severity: 'critical',
         url,
       };
@@ -122,11 +130,12 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
     case 'release.auto_revert_suppressed': {
       const { release, health } = payload.data;
       return {
-        title: `Auto-revert suppressed for ${slug} (${lane(release)})`,
+        title: `Action needed: ${slug} ${release.bundleVersion} is unhealthy and was not auto-reverted (${lane(release)})`,
         lines: [
-          `Release ${release.bundleVersion}: ${healthStats(health)}`,
-          'Not reverted automatically: the previous release on this lane was already auto-reverted within the last 24 hours. Manual action needed.',
+          healthStats(health),
+          'Not reverted automatically, because the previous release on this lane was already auto-reverted in the last 24 hours. Review it and revert if needed.',
         ],
+        notes: null,
         severity: 'critical',
         url,
       };
@@ -139,6 +148,7 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
           `${formatBytes(bundle.size)}${bundle.runtimeVersion ? `, runtime ${bundle.runtimeVersion}` : ''}.`,
           ...byLine(payload),
         ],
+        notes: null,
         severity: 'info',
         url,
       };
@@ -153,9 +163,10 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
       return {
         title: `Usage reached ${usage.threshold}% for ${organization.name}`,
         lines: [
-          `${usage.threshold}% threshold reached for ${period}.`,
-          `Downloads: ${usage.downloadsCount.toLocaleString('en-US')} / ${usage.limit.toLocaleString('en-US')}`,
+          `${usage.threshold}% of the plan's downloads used in ${period}.`,
+          `Downloads: ${usage.downloadsCount.toLocaleString('en-US')} of ${usage.downloadsLimit.toLocaleString('en-US')}.`,
         ],
+        notes: null,
         severity: usage.threshold === 100 ? 'critical' : 'warning',
         url,
       };
@@ -163,7 +174,11 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
     case 'test.ping':
       return {
         title: 'Test notification from OtaKit',
-        lines: [payload.data.message],
+        lines: [
+          payload.data.message,
+          ...byLine(payload).map((line) => line.replace(/^By /, 'Sent by ')),
+        ],
+        notes: null,
         severity: 'info',
         url,
       };
@@ -176,29 +191,56 @@ function slackEscape(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-/** Body for a Slack incoming webhook (Block Kit, with `text` as the fallback). */
+const SLACK_COLORS: Record<NotificationSeverity, string> = {
+  info: '#3b82f6',
+  success: '#22c55e',
+  warning: '#f59e0b',
+  critical: '#ef4444',
+};
+
+/** Slack section text is limited to 3,000 characters. */
+const SLACK_TEXT_LIMIT = 3000;
+
+/**
+ * Body for a Slack incoming webhook: Block Kit inside a colored attachment (the
+ * bar shows severity), with an escaped `text` fallback for notifications.
+ */
 export function slackMessage(payload: NotificationPayload): Record<string, unknown> {
   const event = describeEvent(payload);
-  return {
-    text: event.title,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: [`*${slackEscape(event.title)}*`, ...event.lines.map(slackEscape)].join('\n'),
-        },
+  const blocks: Array<Record<string, unknown>> = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [`*${slackEscape(event.title)}*`, ...event.lines.map(slackEscape)]
+          .join('\n')
+          .slice(0, SLACK_TEXT_LIMIT),
       },
+    },
+  ];
+  if (event.notes) {
+    // plain_text: the team's own words are shown as written, never as markup.
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'plain_text',
+        text: `Release notes:\n${event.notes}`.slice(0, SLACK_TEXT_LIMIT),
+        emoji: false,
+      },
+    });
+  }
+  blocks.push({
+    type: 'context',
+    elements: [
       {
-        type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: `<${event.url}|Open in OtaKit> · ${slackEscape(payload.data.organization.name)}`,
-          },
-        ],
+        type: 'mrkdwn',
+        text: `<${event.url}|Open in OtaKit> · ${slackEscape(payload.data.organization.name)}`,
       },
     ],
+  });
+  return {
+    text: slackEscape(event.title),
+    attachments: [{ color: SLACK_COLORS[event.severity], blocks }],
   };
 }
 
@@ -211,14 +253,26 @@ const DISCORD_COLORS: Record<NotificationSeverity, number> = {
   critical: 0xef4444,
 };
 
+/**
+ * Embeds render Markdown, so text from versions, names and notes is escaped:
+ * a version like `[x](https://evil)` must not become a link.
+ */
+function discordEscape(value: string): string {
+  return value.replace(/([\\*_~`|>\[\]()#])/g, '\\$1');
+}
+
 /** Body for a Discord webhook: one embed, mentions disabled. */
 export function discordMessage(payload: NotificationPayload): Record<string, unknown> {
   const event = describeEvent(payload);
+  const description = [
+    ...event.lines.map(discordEscape),
+    ...(event.notes ? ['', '**Release notes**', discordEscape(event.notes)] : []),
+  ].join('\n');
   return {
     embeds: [
       {
-        title: event.title.slice(0, 256),
-        description: event.lines.join('\n').slice(0, 4096),
+        title: discordEscape(event.title).slice(0, 256),
+        description: description.slice(0, 4096),
         url: event.url,
         color: DISCORD_COLORS[event.severity],
         timestamp: payload.timestamp,
@@ -234,8 +288,8 @@ export function discordMessage(payload: NotificationPayload): Record<string, unk
 function emailFooter(payload: NotificationPayload, destinationName: string): string {
   const organization = payload.data.organization.name;
   return payload.type === 'test.ping'
-    ? `A test sent to "${destinationName}" in ${organization}.`
-    : `You receive this because "${destinationName}" in ${organization} includes ${notificationEventLabel(payload.type).toLowerCase()} notifications.`;
+    ? `A test sent to the "${destinationName}" destination in ${organization}.`
+    : `You get this email because the "${destinationName}" destination in ${organization} includes "${notificationEventLabel(payload.type)}". Owners and admins can change this in Settings → Notifications.`;
 }
 
 export function emailMessage(
@@ -243,18 +297,22 @@ export function emailMessage(
   destinationName: string,
 ): { subject: string; html: string; text: string } {
   const event = describeEvent(payload);
-  const settingsUrl = `${appUrl()}/dashboard/settings`;
+  const settingsUrl = `${appUrl()}/dashboard/settings?org=${encodeURIComponent(payload.data.organization.id)}#notifications`;
   const footer = emailFooter(payload, destinationName);
+  const notesHtml = event.notes
+    ? `<p><strong>Release notes</strong></p>\n<p style="white-space: pre-line;">${escapeHtml(event.notes)}</p>\n`
+    : '';
   const html = `
 <p><strong>${escapeHtml(event.title)}</strong></p>
 ${event.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('\n')}
-<p><a href="${escapeHtml(event.url)}">Open in OtaKit</a></p>
+${notesHtml}<p><a href="${escapeHtml(event.url)}">Open in OtaKit</a></p>
 <p style="color: #6b7280; font-size: 12px;">${escapeHtml(footer)} <a href="${escapeHtml(settingsUrl)}">Notification settings</a></p>
   `.trim();
   const text = [
     event.title,
     '',
     ...event.lines,
+    ...(event.notes ? ['', 'Release notes:', event.notes] : []),
     '',
     `Open in OtaKit: ${event.url}`,
     '',

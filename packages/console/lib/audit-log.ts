@@ -38,6 +38,8 @@ export type AuditAction =
   | 'notification_destination.created'
   | 'notification_destination.updated'
   | 'notification_destination.deleted'
+  | 'notification_destination.secret_revealed'
+  | 'notification_destination.turned_off'
   | 'notification_destination.secret_rotated';
 
 export type AuditActor = {

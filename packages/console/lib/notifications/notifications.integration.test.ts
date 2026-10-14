@@ -23,11 +23,13 @@ vi.mock('@/lib/cdn-purge', () => ({ purgeCdnUrls: vi.fn() }));
 
 import { AUTO_REVERT_REVERTED_BY } from '@/lib/auto-revert-alerts';
 import { db } from '@/lib/db';
+import * as rateLimit from '@/lib/rate-limit';
 import { encryptSecret, resetSecretBoxKeyForTests } from '@/lib/secret-box';
 import {
   createNotificationDestination,
   deleteNotificationDestination,
   listNotificationDeliveries,
+  listNotificationSettings,
   redeliverNotification,
   revealWebhookSecret,
   rotateWebhookSecret,
@@ -74,6 +76,7 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
         received.push({ path: request.url ?? '', headers: request.headers, body });
         if (request.url === '/fail') response.writeHead(500).end('boom');
         else if (request.url === '/gone') response.writeHead(410).end();
+        else if (request.url === '/slack-removed') response.writeHead(404).end('no_service');
         else if (request.url === '/redirect') {
           response.writeHead(302, { location: 'https://elsewhere.test/' }).end();
         } else response.writeHead(204).end();
@@ -209,26 +212,70 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     for (const destination of [otherApp, off, unsubscribed]) {
       await expect(deliveriesOf(destination.id)).resolves.toHaveLength(0);
     }
+    const eventIds = new Set<string>();
     for (const destination of [allApps, thisApp]) {
       const deliveries = await deliveriesOf(destination.id);
       expect(deliveries).toHaveLength(1);
       expect(deliveries[0]).toMatchObject({
         eventType: 'release.published',
         eventKey: `release.published:${result.release.id}`,
+        eventId: expect.stringMatching(/^evt_[0-9a-f]{32}$/),
         status: 'pending',
         payload: {
+          id: deliveries[0].eventId,
           type: 'release.published',
           data: {
             organization: { id: organizationId, name: 'Acme' },
             app: { id: appId, slug: `com.acme.${organizationId}` },
-            actor: { type: 'user', label: 'dev@acme.test' },
-            url: `https://console.example/dashboard?app=${appId}`,
-            release: { id: result.release.id, bundleVersion: '1.0.0', channel: 'production' },
+            actor: { type: 'user', id: 'notifications-test-user', label: 'dev@acme.test' },
+            dashboardUrl: `https://console.example/dashboard?org=${organizationId}&app=${appId}`,
+            release: {
+              id: result.release.id,
+              bundleVersion: '1.0.0',
+              channel: 'production',
+              notes: null,
+            },
             previousRelease: null,
           },
         },
       });
+      eventIds.add(deliveries[0].eventId);
     }
+    // One event, one ID, whichever destination receives it.
+    expect(eventIds.size).toBe(1);
+
+    // The payload is a public contract: a change to the REST API's release shape
+    // must be a deliberate change here too.
+    const [delivery] = await deliveriesOf(allApps.id);
+    const body = delivery.payload as { data: Record<string, unknown> };
+    expect(Object.keys(body)).toEqual(['id', 'type', 'timestamp', 'data']);
+    expect(Object.keys(body.data)).toEqual([
+      'organization',
+      'app',
+      'actor',
+      'dashboardUrl',
+      'release',
+      'previousRelease',
+    ]);
+    expect(Object.keys(body.data.release as object).sort()).toEqual([
+      'autoRevert',
+      'autoRevertMinSample',
+      'autoRevertRatePercent',
+      'bundleId',
+      'bundleVersion',
+      'channel',
+      'forceImmediate',
+      'id',
+      'notes',
+      'previousBundleId',
+      'previousBundleVersion',
+      'promotedAt',
+      'promotedBy',
+      'revertedAt',
+      'revertedBy',
+      'rolloutPercent',
+      'runtimeVersion',
+    ]);
   });
 
   it('reports rollout steps, reverts and auto-reverts', async () => {
@@ -283,17 +330,24 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     ]);
     expect(new Set(deliveries.map((delivery) => delivery.eventKey)).size).toBe(4);
     expect(deliveries[0].payload).toMatchObject({
-      data: { release: { rolloutPercent: 50 }, previousPercent: 10 },
+      data: { release: { rolloutPercent: 50 }, previousRolloutPercent: 10 },
     });
     expect(deliveries[2].payload).toMatchObject({
       data: { release: { id: rolling.release.id }, currentRelease: { id: stable.release.id } },
     });
     expect(deliveries[3].payload).toMatchObject({
       data: {
-        actor: { type: 'system', label: 'auto-revert' },
+        actor: { type: 'system', id: null, label: 'auto-revert' },
         release: { id: bad.release.id, revertedBy: AUTO_REVERT_REVERTED_BY },
         currentRelease: { id: stable.release.id },
-        health: { rollbacks: 12, attempts: 20, measuredRatePercent: 60, ratePercent: 20 },
+        health: {
+          rollbacks: 12,
+          attempts: 20,
+          rollbackSharePercent: 60,
+          thresholdPercent: 20,
+          thresholdMinSample: 10,
+          windowHours: 24,
+        },
       },
     });
   });
@@ -331,10 +385,11 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     });
     expect(verified).toMatchObject({ type: 'release.published' });
     // The body is sent exactly as emitted, in its original key order.
-    expect(Object.keys(JSON.parse(request.body))).toEqual(['type', 'timestamp', 'data']);
+    expect(Object.keys(JSON.parse(request.body))).toEqual(['id', 'type', 'timestamp', 'data']);
 
     const [delivery] = await deliveriesOf(destination.id);
-    expect(request.headers['webhook-id']).toBe(delivery.id);
+    expect(request.headers['webhook-id']).toBe(delivery.eventId);
+    expect(JSON.parse(request.body).id).toBe(delivery.eventId);
     expect(delivery).toMatchObject({ status: 'delivered', attempts: 1, lastStatusCode: 204 });
     await expect(
       db.notificationDestination.findUniqueOrThrow({ where: { id: destination.id } }),
@@ -416,7 +471,7 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
       where: { id: destination.id },
       data: {
         consecutiveFailures: 4,
-        lastSuccessAt: new Date(Date.now() - 73 * 60 * 60 * 1000),
+        failingSince: new Date(Date.now() - 73 * 60 * 60 * 1000),
       },
     });
     await publish(0);
@@ -425,6 +480,107 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
       db.notificationDestination.findUniqueOrThrow({ where: { id: destination.id } }),
     ).resolves.toMatchObject({ enabled: false, disabledReason: 'failing', consecutiveFailures: 5 });
     await expect(deliveriesOf(destination.id)).resolves.toMatchObject([{ status: 'failed' }]);
+    expect(mocks.sendNotificationEmail.mock.calls[0][0].text).toContain(
+      'has failed for 3 days, so OtaKit turned "/fail" off.',
+    );
+    await expect(
+      db.auditLog.findFirst({
+        where: { organizationId, targetId: destination.id },
+        select: { action: true, actorType: true, metadata: true },
+      }),
+    ).resolves.toMatchObject({
+      action: 'notification_destination.turned_off',
+      actorType: 'system',
+      metadata: { reason: 'failing', lastError: 'HTTP 500: boom' },
+    });
+  });
+
+  it('measures the three days from the first failure, not the last success', async () => {
+    const destination = await webhook('/fail');
+    // Quiet for three weeks, then a short outage: not reason enough to turn it off.
+    await db.notificationDestination.update({
+      where: { id: destination.id },
+      data: {
+        consecutiveFailures: 4,
+        lastSuccessAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+      },
+    });
+    await publish(0);
+    await deliverDueNotifications();
+    const row = await db.notificationDestination.findUniqueOrThrow({
+      where: { id: destination.id },
+    });
+    expect(row).toMatchObject({ enabled: true, consecutiveFailures: 5 });
+    expect(Math.abs(row.failingSince!.getTime() - Date.now())).toBeLessThan(60_000);
+
+    // A success clears the failure streak.
+    await db.notificationDestination.update({
+      where: { id: destination.id },
+      data: { url: `${base}/ok` },
+    });
+    const [delivery] = await deliveriesOf(destination.id);
+    await db.notificationDelivery.update({
+      where: { id: delivery.id },
+      data: { nextAttemptAt: new Date() },
+    });
+    await deliverDueNotifications();
+    await expect(
+      db.notificationDestination.findUniqueOrThrow({ where: { id: destination.id } }),
+    ).resolves.toMatchObject({ consecutiveFailures: 0, failingSince: null });
+  });
+
+  it('turns off a Slack destination whose hook was removed', async () => {
+    const slack = await db.notificationDestination.create({
+      data: {
+        organizationId,
+        type: 'slack',
+        name: 'Slack',
+        url: `${base}/slack-removed`,
+        events: ['release.published'],
+      },
+    });
+    await publish(0);
+    await deliverDueNotifications();
+    await expect(
+      db.notificationDestination.findUniqueOrThrow({ where: { id: slack.id } }),
+    ).resolves.toMatchObject({ enabled: false, disabledReason: 'endpoint_gone' });
+    await expect(deliveriesOf(slack.id)).resolves.toMatchObject([
+      { status: 'failed', lastError: 'HTTP 404: no_service' },
+    ]);
+  });
+
+  it('claims at most five deliveries per destination at a time', async () => {
+    const busy = await webhook('/ok', { events: ['bundle.uploaded'] });
+    const quiet = await webhook('/quiet', { events: ['release.published'] });
+    for (let index = 0; index < 12; index += 1) {
+      await emitNotification(db, {
+        type: 'bundle.uploaded',
+        key: `bundle.uploaded:busy:${index}`,
+        organizationId,
+        appId,
+        actor,
+        data: {
+          bundle: {
+            id: String(index),
+            version: `3.0.${index}`,
+            runtimeVersion: null,
+            size: 1,
+            strategy: 'zip',
+            createdAt: new Date().toISOString(),
+          },
+        },
+      });
+    }
+    // The quiet destination's event is the newest, yet goes out in the first batch.
+    await publish(0);
+    await deliverDueNotifications();
+    const quietIndex = received.findIndex((request) => request.path === '/quiet');
+    expect(quietIndex).toBeGreaterThanOrEqual(0);
+    expect(quietIndex).toBeLessThan(6);
+    await expect(
+      db.notificationDelivery.count({ where: { destinationId: busy.id, status: 'delivered' } }),
+    ).resolves.toBe(12);
+    await expect(deliveriesOf(quiet.id)).resolves.toMatchObject([{ status: 'delivered' }]);
   });
 
   it('never sends a delivery twice when workers race', async () => {
@@ -477,6 +633,20 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     ]);
   });
 
+  it('fails a delivery whose last attempt never finished', async () => {
+    const destination = await webhook('/ok');
+    await publish(0);
+    await db.notificationDelivery.updateMany({
+      where: { destinationId: destination.id },
+      data: { status: 'sending', claimedAt: new Date(Date.now() - 10 * 60 * 1000), attempts: 8 },
+    });
+    await expect(deliverDueNotifications()).resolves.toMatchObject({ claimed: 0 });
+    await expect(deliveriesOf(destination.id)).resolves.toMatchObject([
+      { status: 'failed', lastError: 'The last attempt did not finish' },
+    ]);
+    expect(received).toHaveLength(0);
+  });
+
   it('emails owners and admins, or the chosen members', async () => {
     const team = await createDefaultNotificationDestination(db, organizationId);
     const chosen = await db.notificationDestination.create({
@@ -498,7 +668,7 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
         usage: {
           threshold: 90,
           downloadsCount: 4500,
-          limit: 5000,
+          downloadsLimit: 5000,
           periodStart: '2026-10-01T00:00:00.000Z',
         },
       },
@@ -516,14 +686,56 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     expect(calls[0].subject).toBe('Usage reached 90% for Acme');
     const [teamDelivery] = await deliveriesOf(team.id);
     expect(calls.map((email) => email.idempotencyKey)).toContain(
-      `notification:${teamDelivery.id}:owner-${userIds.owner}@acme.test`,
+      `notification:${teamDelivery.id}:0:owner-${userIds.owner}@acme.test`,
     );
     await expect(deliveriesOf(chosen.id)).resolves.toMatchObject([{ status: 'delivered' }]);
+    expect(teamDelivery.emailSentTo.sort()).toEqual(
+      [`admin-${userIds.admin}@acme.test`, `owner-${userIds.owner}@acme.test`].sort(),
+    );
   });
 
-  it('retries an email delivery when the provider fails', async () => {
+  it('fails an email delivery when every chosen member has left', async () => {
+    const chosen = await db.notificationDestination.create({
+      data: {
+        organizationId,
+        type: 'email',
+        name: 'Billing',
+        emailRecipients: { mode: 'members', userIds: [randomUUID()] },
+        events: ['usage.warning'],
+      },
+    });
+    await emitNotification(db, {
+      type: 'usage.warning',
+      key: 'usage.warning:left',
+      organizationId,
+      appId: null,
+      actor: null,
+      data: {
+        usage: {
+          threshold: 90,
+          downloadsCount: 4500,
+          downloadsLimit: 5000,
+          periodStart: '2026-10-01T00:00:00.000Z',
+        },
+      },
+    });
+    await deliverDueNotifications();
+    expect(mocks.sendNotificationEmail).not.toHaveBeenCalled();
+    await expect(deliveriesOf(chosen.id)).resolves.toMatchObject([
+      {
+        status: 'pending',
+        lastError: 'No recipients: everyone this destination emails has left the workspace',
+      },
+    ]);
+  });
+
+  it('retries an email delivery only for the recipients that failed', async () => {
     const team = await createDefaultNotificationDestination(db, organizationId);
-    mocks.sendNotificationEmail.mockRejectedValueOnce(new Error('Resend failed: rate limited'));
+    const owner = `owner-${userIds.owner}@acme.test`;
+    const admin = `admin-${userIds.admin}@acme.test`;
+    mocks.sendNotificationEmail.mockImplementation(async (email: { to: string }) => {
+      if (email.to === admin) throw new Error('Resend failed: rate limited');
+    });
     await emitNotification(db, {
       type: 'usage.warning',
       key: 'usage',
@@ -534,15 +746,40 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
         usage: {
           threshold: 100,
           downloadsCount: 1,
-          limit: 1,
+          downloadsLimit: 1,
           periodStart: new Date().toISOString(),
         },
       },
     });
     await deliverDueNotifications();
-    await expect(deliveriesOf(team.id)).resolves.toMatchObject([
-      { status: 'pending', lastError: 'Resend failed: rate limited' },
-    ]);
+    let [delivery] = await deliveriesOf(team.id);
+    expect(delivery).toMatchObject({
+      status: 'pending',
+      lastError: 'Sent to 1 of 2 recipients; Resend failed: rate limited',
+      emailSentTo: [owner],
+    });
+
+    mocks.sendNotificationEmail.mockReset().mockResolvedValue(undefined);
+    await db.notificationDelivery.update({
+      where: { id: delivery.id },
+      data: { nextAttemptAt: new Date() },
+    });
+    await deliverDueNotifications();
+    expect(mocks.sendNotificationEmail.mock.calls.map(([email]) => email.to)).toEqual([admin]);
+    [delivery] = await deliveriesOf(team.id);
+    expect(delivery.status).toBe('delivered');
+    expect(delivery.emailSentTo.sort()).toEqual([admin, owner].sort());
+
+    // A manual redelivery sends to everyone again, under new idempotency keys.
+    mocks.sendNotificationEmail.mockClear();
+    await expect(
+      redeliverNotification(organizationId, team.id, delivery.id),
+    ).resolves.toMatchObject({ status: 'delivered', emailRecipients: 2 });
+    expect(
+      mocks.sendNotificationEmail.mock.calls.map(([email]) => email.idempotencyKey).sort(),
+    ).toEqual(
+      [`notification:${delivery.id}:1:${admin}`, `notification:${delivery.id}:1:${owner}`].sort(),
+    );
   });
 
   it('formats messages for Slack and Discord', async () => {
@@ -570,10 +807,13 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
     const byPath = Object.fromEntries(received.map((request) => [request.path, request]));
     expect(JSON.parse(byPath['/slack'].body)).toMatchObject({
       text: `Released com.acme.${organizationId} 1.0.0 (production / runtime ios-1)`,
-      blocks: [{ type: 'section' }, { type: 'context' }],
+      attachments: [{ color: '#22c55e', blocks: [{ type: 'section' }, { type: 'context' }] }],
     });
     expect(JSON.parse(byPath['/discord'].body)).toMatchObject({
-      embeds: [{ title: `Released com.acme.${organizationId} 1.0.0 (production / runtime ios-1)` }],
+      // Discord renders Markdown, so the parentheses are escaped.
+      embeds: [
+        { title: `Released com.acme.${organizationId} 1.0.0 \\(production / runtime ios-1\\)` },
+      ],
     });
     expect(byPath['/slack'].headers['webhook-signature']).toBeUndefined();
     for (const destination of [slack, discord]) {
@@ -598,7 +838,7 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
       });
       expect(row.secretCiphertext).toMatch(/^v1\./);
       expect(row.secretCiphertext).not.toContain(secret!.slice(6));
-      await expect(revealWebhookSecret(organizationId, destination.id)).resolves.toBe(secret);
+      await expect(revealWebhookSecret(context(), destination.id)).resolves.toBe(secret);
 
       const test = await sendTestNotification(context(), destination.id);
       expect(test).toMatchObject({
@@ -631,8 +871,28 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
         }),
       ).resolves.toEqual([
         { action: 'notification_destination.created' },
+        { action: 'notification_destination.secret_revealed' },
         { action: 'notification_destination.secret_rotated' },
       ]);
+      // Every test is its own event.
+      expect(received[0].headers['webhook-id']).not.toBe(received[1].headers['webhook-id']);
+    });
+
+    it('limits how often a destination can be tested', async () => {
+      const { destination } = await createNotificationDestination(context(), {
+        type: 'webhook',
+        name: 'CI',
+        url: `${base}/ok`,
+        events: ['release.published'],
+      });
+      const limit = vi.spyOn(rateLimit, 'checkRateLimit');
+      limit.mockResolvedValueOnce({ allowed: false });
+      await expect(sendTestNotification(context(), destination.id)).rejects.toMatchObject({
+        code: 'RATE_LIMITED',
+        status: 429,
+      });
+      expect(limit).toHaveBeenCalledWith('notification-test', destination.id, 5, 60);
+      expect(received).toHaveLength(0);
     });
 
     it('does not retry a failed test', async () => {
@@ -677,7 +937,12 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
       });
       await expect(
         db.notificationDestination.findUniqueOrThrow({ where: { id: destination.id } }),
-      ).resolves.toMatchObject({ enabled: true, consecutiveFailures: 0, url: `${base}/ok` });
+      ).resolves.toMatchObject({
+        enabled: true,
+        consecutiveFailures: 0,
+        failingSince: null,
+        url: `${base}/ok`,
+      });
       await expect(
         redeliverNotification(organizationId, destination.id, failed.id),
       ).resolves.toMatchObject({ id: failed.id, status: 'delivered', attempts: 1 });
@@ -744,12 +1009,56 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
           url: undefined,
           emailRecipients: { mode: 'members', userIds: [randomUUID()] },
         }),
-      ).rejects.toMatchObject({ message: 'Every recipient must be a member' });
+      ).rejects.toMatchObject({ message: 'Choose at least one member' });
+      // People who have left since the form was opened are dropped.
+      await expect(
+        create({
+          type: 'email',
+          emailRecipients: { mode: 'members', userIds: [userIds.admin, randomUUID()] },
+        }),
+      ).resolves.toMatchObject({
+        destination: { emailRecipients: { mode: 'members', userIds: [userIds.admin] } },
+      });
       await expect(
         create({ type: 'email', emailRecipients: { mode: 'members', userIds: [userIds.member] } }),
       ).resolves.toMatchObject({
         destination: { type: 'email', url: null, emailRecipients: { mode: 'members' } },
         secret: null,
+      });
+    });
+
+    it('shows only current members as email recipients', async () => {
+      const goneUser = randomUUID();
+      await db.notificationDestination.create({
+        data: {
+          organizationId,
+          type: 'email',
+          name: 'Billing',
+          emailRecipients: { mode: 'members', userIds: [userIds.member, goneUser] },
+          events: ['usage.warning'],
+        },
+      });
+      const settings = await listNotificationSettings(organizationId);
+      expect(settings.destinations).toMatchObject([
+        { name: 'Billing', emailRecipients: { mode: 'members', userIds: [userIds.member] } },
+      ]);
+    });
+
+    it('hides destination URLs from read-only viewers', async () => {
+      await db.notificationDestination.create({
+        data: {
+          organizationId,
+          type: 'slack',
+          name: 'Slack',
+          url: 'https://hooks.slack.com/services/T000/B000/secret-token',
+          events: ['release.published'],
+        },
+      });
+      await expect(
+        listNotificationSettings(organizationId, { readOnly: true }),
+      ).resolves.toMatchObject({ destinations: [{ url: 'https://hooks.slack.com' }] });
+      await expect(listNotificationSettings(organizationId)).resolves.toMatchObject({
+        destinations: [{ url: 'https://hooks.slack.com/services/T000/B000/secret-token' }],
       });
     });
 

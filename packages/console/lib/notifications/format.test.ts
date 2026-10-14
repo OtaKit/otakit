@@ -19,6 +19,7 @@ function release(overrides: Partial<ReleaseSummary> = {}): ReleaseSummary {
     autoRevertRatePercent: 20,
     autoRevertMinSample: 50,
     rolloutPercent: 100,
+    notes: null,
     promotedAt: '2026-10-01T12:00:00.000Z',
     promotedBy: 'dev@acme.com',
     revertedAt: null,
@@ -30,22 +31,23 @@ function release(overrides: Partial<ReleaseSummary> = {}): ReleaseSummary {
 const context: NotificationContext = {
   organization: { id: 'org-1', name: 'Acme' },
   app: { id: 'app-1', slug: 'com.acme.app' },
-  actor: { type: 'user', label: 'dev@acme.com' },
-  url: 'https://console.example/dashboard?app=app-1',
+  actor: { type: 'user', id: 'user-1', label: 'dev@acme.com' },
+  dashboardUrl: 'https://console.example/dashboard?org=org-1&app=app-1',
 };
 
 const health = {
   rollbacks: 12,
   attempts: 50,
-  measuredRatePercent: 24,
-  ratePercent: 20,
-  minSample: 50,
+  rollbackSharePercent: 24,
+  thresholdPercent: 20,
+  thresholdMinSample: 50,
   windowHours: 24,
 };
 
 /** A payload of `type` with `data` over the shared context fields. */
 function payload(type: NotificationPayload['type'], data: Record<string, unknown>) {
   return {
+    id: 'evt_1',
     type,
     timestamp: '2026-10-01T12:00:00.000Z',
     data: { ...context, ...data },
@@ -64,24 +66,41 @@ describe('describeEvent', () => {
     ).toEqual({
       title: 'Released com.acme.app 1.4.2 (production / runtime 2026.10)',
       lines: ['Previous release: 1.4.1.', 'By dev@acme.com.'],
+      notes: null,
       severity: 'success',
-      url: context.url,
+      url: context.dashboardUrl,
     });
   });
 
-  it('describes a first release that starts a rollout on the base channel', () => {
+  it('describes a release that starts a rollout', () => {
     const event = describeEvent(
       payload('release.published', {
         release: release({ channel: null, runtimeVersion: null, rolloutPercent: 10 }),
-        previousRelease: null,
+        previousRelease: release({ id: 'release-0', bundleVersion: '1.4.1' }),
+        actor: { type: 'api_key', id: 'key-1', label: 'CI' },
       }),
     );
-    expect(event.title).toBe('Released com.acme.app 1.4.2 (base)');
+    expect(event.title).toBe('Started rollout of com.acme.app 1.4.2 to 10% (base)');
     expect(event.lines).toEqual([
-      'Rolling out to 10% of devices.',
-      'First release on this lane.',
-      'By dev@acme.com.',
+      '10% of devices on this lane receive it; the rest stay on 1.4.1.',
+      'By API key "CI".',
     ]);
+  });
+
+  it('carries release notes, trimmed', () => {
+    expect(
+      describeEvent(
+        payload('release.published', {
+          release: release({ notes: '  Faster checkout.\nPhoto upload fixed.  ' }),
+          previousRelease: null,
+        }),
+      ).notes,
+    ).toBe('Faster checkout.\nPhoto upload fixed.');
+    expect(
+      describeEvent(
+        payload('release.published', { release: release({ notes: '   ' }), previousRelease: null }),
+      ).notes,
+    ).toBeNull();
   });
 
   it('describes rollout steps and completion', () => {
@@ -89,13 +108,14 @@ describe('describeEvent', () => {
       describeEvent(
         payload('release.rollout_updated', {
           release: release({ rolloutPercent: 50 }),
-          previousPercent: 10,
+          previousRolloutPercent: 10,
         }),
       ).title,
     ).toBe('Rollout of com.acme.app 1.4.2 (production / runtime 2026.10): 10% → 50%');
     expect(
-      describeEvent(payload('release.rollout_updated', { release: release(), previousPercent: 50 }))
-        .title,
+      describeEvent(
+        payload('release.rollout_updated', { release: release(), previousRolloutPercent: 50 }),
+      ).title,
     ).toBe('Rollout complete: com.acme.app 1.4.2 (production / runtime 2026.10)');
   });
 
@@ -118,13 +138,13 @@ describe('describeEvent', () => {
     ).toBe('Cancelled the rollout of com.acme.app 1.4.2 (production / runtime 2026.10)');
   });
 
-  it('keeps the auto-revert alert copy', () => {
+  it('describes auto-revert outcomes with event counts, not devices', () => {
     const event = describeEvent(
       payload('release.auto_reverted', {
         release: release(),
         currentRelease: null,
         health,
-        actor: { type: 'system', label: 'auto-revert' },
+        actor: { type: 'system', id: null, label: 'auto-revert' },
       }),
     );
     expect(event).toMatchObject({
@@ -132,16 +152,18 @@ describe('describeEvent', () => {
       severity: 'critical',
     });
     expect(event.lines).toEqual([
-      'Release 1.4.2: 12 of 50 devices rolled back (24%) in the last 24 hours (trigger: >=20% of >=50).',
+      '12 of 50 update attempts rolled back (24%) in the last 24 hours. Threshold: ≥20% of ≥50.',
       'Reverted automatically. No previous release on this lane — new installs receive the built-in bundle.',
     ]);
     expect(
       describeEvent(payload('release.auto_revert_suppressed', { release: release(), health }))
         .title,
-    ).toBe('Auto-revert suppressed for com.acme.app (production / runtime 2026.10)');
+    ).toBe(
+      'Action needed: com.acme.app 1.4.2 is unhealthy and was not auto-reverted (production / runtime 2026.10)',
+    );
   });
 
-  it('describes uploads and usage', () => {
+  it('describes uploads, usage and tests', () => {
     expect(
       describeEvent(
         payload('bundle.uploaded', {
@@ -167,15 +189,23 @@ describe('describeEvent', () => {
           usage: {
             threshold: 90,
             downloadsCount: 4500,
-            limit: 5000,
+            downloadsLimit: 5000,
             periodStart: '2026-10-01T00:00:00.000Z',
           },
         }),
       ),
     ).toMatchObject({
       title: 'Usage reached 90% for Acme',
-      lines: ['90% threshold reached for October 2026.', 'Downloads: 4,500 / 5,000'],
+      lines: ["90% of the plan's downloads used in October 2026.", 'Downloads: 4,500 of 5,000.'],
     });
+    expect(
+      describeEvent(
+        payload('test.ping', {
+          app: null,
+          message: 'This destination receives OtaKit notifications.',
+        }),
+      ).lines,
+    ).toEqual(['This destination receives OtaKit notifications.', 'Sent by dev@acme.com.']);
   });
 });
 
@@ -183,29 +213,58 @@ describe('message formats', () => {
   const hostile = payload('release.published', {
     organization: { id: 'org-1', name: 'Acme <script>' },
     app: { id: 'app-1', slug: 'a&b<c>' },
-    release: release(),
+    release: release({ bundleVersion: '[x](https://evil.test)' }),
     previousRelease: null,
   });
 
-  it('escapes Slack control characters and links to the dashboard', () => {
+  it('escapes Slack control characters, colors by severity and links to the dashboard', () => {
     const message = slackMessage(hostile) as {
       text: string;
-      blocks: Array<{ text?: { text: string }; elements?: Array<{ text: string }> }>;
+      attachments: Array<{
+        color: string;
+        blocks: Array<{ text?: { text: string }; elements?: Array<{ text: string }> }>;
+      }>;
     };
-    expect(message.text).toContain('a&b<c>');
-    expect(message.blocks[0].text?.text).toContain('*Released a&amp;b&lt;c&gt; 1.4.2');
-    expect(message.blocks[1].elements?.[0].text).toBe(
-      `<${context.url}|Open in OtaKit> · Acme &lt;script&gt;`,
+    expect(message.text).toBe(
+      'Released a&amp;b&lt;c&gt; [x](https://evil.test) (production / runtime 2026.10)',
+    );
+    const [attachment] = message.attachments;
+    expect(attachment.color).toBe('#22c55e');
+    expect(attachment.blocks[0].text?.text).toContain('*Released a&amp;b&lt;c&gt; ');
+    expect(attachment.blocks[1].elements?.[0].text).toBe(
+      `<${context.dashboardUrl}|Open in OtaKit> · Acme &lt;script&gt;`,
     );
   });
 
-  it('builds one Discord embed with mentions disabled', () => {
+  it('shows release notes as plain text in Slack', () => {
+    const message = slackMessage(
+      payload('release.published', {
+        release: release({ notes: 'Faster *checkout* <!channel>' }),
+        previousRelease: null,
+      }),
+    ) as {
+      attachments: Array<{
+        blocks: Array<{ type: string; text?: { type: string; text: string } }>;
+      }>;
+    };
+    expect(message.attachments[0].blocks[1]).toEqual({
+      type: 'section',
+      text: {
+        type: 'plain_text',
+        text: 'Release notes:\nFaster *checkout* <!channel>',
+        emoji: false,
+      },
+    });
+  });
+
+  it('builds one Discord embed with Markdown escaped and mentions disabled', () => {
     expect(discordMessage(hostile)).toEqual({
       embeds: [
         {
-          title: 'Released a&b<c> 1.4.2 (production / runtime 2026.10)',
+          title:
+            'Released a&b<c\\> \\[x\\]\\(https://evil.test\\) \\(production / runtime 2026.10\\)',
           description: 'First release on this lane.\nBy dev@acme.com.',
-          url: context.url,
+          url: context.dashboardUrl,
           color: 0x22c55e,
           timestamp: '2026-10-01T12:00:00.000Z',
           footer: { text: 'Acme <script>' },
@@ -213,18 +272,41 @@ describe('message formats', () => {
       ],
       allowed_mentions: { parse: [] },
     });
+    const withNotes = discordMessage(
+      payload('release.published', {
+        release: release({ notes: 'Fixed _photo_ upload' }),
+        previousRelease: null,
+      }),
+    ) as { embeds: Array<{ description: string }> };
+    expect(withNotes.embeds[0].description).toBe(
+      'First release on this lane.\nBy dev@acme.com.\n\n**Release notes**\nFixed \\_photo\\_ upload',
+    );
   });
 
-  it('escapes email HTML and says why the email was sent', () => {
+  it('escapes email HTML, shows notes and says why the email was sent', () => {
     const message = emailMessage(hostile, 'Releases');
-    expect(message.subject).toBe('Released a&b<c> 1.4.2 (production / runtime 2026.10)');
+    expect(message.subject).toBe(
+      'Released a&b<c> [x](https://evil.test) (production / runtime 2026.10)',
+    );
     expect(message.html).toContain('a&amp;b&lt;c&gt;');
     expect(message.html).not.toContain('<script>');
     expect(message.text).toContain(
-      'You receive this because "Releases" in Acme <script> includes release published notifications.',
+      'You get this email because the "Releases" destination in Acme <script> includes "Release published". Owners and admins can change this in Settings → Notifications.',
     );
     expect(message.text).toContain(
-      'Notification settings: https://console.example/dashboard/settings',
+      'Notification settings: https://console.example/dashboard/settings?org=org-1#notifications',
     );
+
+    const withNotes = emailMessage(
+      payload('release.published', {
+        release: release({ notes: 'Faster <b>checkout</b>' }),
+        previousRelease: null,
+      }),
+      'Releases',
+    );
+    expect(withNotes.html).toContain(
+      '<p style="white-space: pre-line;">Faster &lt;b&gt;checkout&lt;/b&gt;</p>',
+    );
+    expect(withNotes.text).toContain('Release notes:\nFaster <b>checkout</b>');
   });
 });

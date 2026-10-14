@@ -2004,30 +2004,31 @@ In the dashboard, open Settings → Notifications and add a destination. Owners 
 - Discord — in the channel settings, open Integrations → Webhooks, create one and paste its URL, which starts with `https://discord.com/api/webhooks/`.
 - Webhook — any HTTPS endpoint. OtaKit posts the JSON payload below and signs every request.
 
-Choose the events, and optionally limit the destination to one app. Use Send test to check the setup; the destination's Deliveries show what was sent, the response, and a Redeliver button.
+Choose the events, and optionally limit the destination to one app (usage warnings cover the whole workspace, so they are sent either way). Use Send test to check the setup; the destination's Deliveries show what was sent, the response, and a Redeliver button. Members who are not owners or admins see the list of destinations, without their URLs.
 
 ### Events
 - `release.published` — a bundle is released to a channel, at 100% or as the start of a rollout.
 - `release.rollout_updated` — a rollout moves to a new percentage or completes.
 - `release.reverted` — someone reverts a release or cancels a rollout.
-- `release.auto_reverted` — too many devices rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
+- `release.auto_reverted` — too many update attempts rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
 - `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
 - `bundle.uploaded` — a new bundle is uploaded.
 - `usage.warning` — monthly downloads reach 90% or 100% of the plan.
 
 ### Payload
 
-Webhooks receive a JSON body with the event `type`, a `timestamp`, and `data`. Release events carry the release in the same shape as the REST API and MCP tools:
+Webhooks receive a JSON body with the event `id`, its `type`, a `timestamp`, and `data`. Release events carry the release in the same shape as the REST API and MCP tools:
 
 ```txt
 {
+  "id": "evt_6f1c0e8a2b7d4c9e8f0a1b2c3d4e5f60",
   "type": "release.published",
   "timestamp": "2026-10-01T12:00:00.000Z",
   "data": {
     "organization": { "id": "…", "name": "Acme" },
     "app": { "id": "…", "slug": "com.acme.app" },
-    "actor": { "type": "user", "label": "dev@acme.com" },
-    "url": "https://console.otakit.app/dashboard?app=…",
+    "actor": { "type": "user", "id": "…", "label": "dev@acme.com" },
+    "dashboardUrl": "https://console.otakit.app/dashboard?org=…&app=…",
     "release": {
       "id": "…",
       "channel": "production",
@@ -2041,6 +2042,7 @@ Webhooks receive a JSON body with the event `type`, a `timestamp`, and `data`. R
       "autoRevertRatePercent": 20,
       "autoRevertMinSample": 50,
       "rolloutPercent": 100,
+      "notes": "Faster checkout. Photo upload fixed on Android.",
       "promotedAt": "2026-10-01T12:00:00.000Z",
       "promotedBy": "dev@acme.com",
       "revertedAt": null,
@@ -2052,17 +2054,21 @@ Webhooks receive a JSON body with the event `type`, a `timestamp`, and `data`. R
 ```
 
 Depending on the type, `data` also has:
-- `release.rollout_updated`: `previousPercent`.
+- `release.published`: `previousRelease` (or `null` for the first release on a lane), and `replacedRelease` when it replaced an active rollout.
+- `release.rollout_updated`: `previousRolloutPercent`.
 - `release.reverted`: `currentRelease`, the release devices receive now, or `null`.
-- `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts`, `measuredRatePercent` and the release's thresholds.
-- `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion` and `size`.
-- `usage.warning`: `usage` with `threshold`, `downloadsCount` and `limit`. `app` is `null`.
+- `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts` (applies plus rollbacks), `rollbackSharePercent`, the release's `thresholdPercent` and `thresholdMinSample`, and `windowHours`. Counts are events reported by devices, not unique devices.
+- `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion`, `size` in bytes, `strategy` (`zip` or `deltas`) and `createdAt` .
+- `usage.warning`: `usage` with `threshold` (90 or 100), `downloadsCount`, `downloadsLimit` and `periodStart`. `app` and `actor` are `null`.
+- `test.ping`, sent by Send test: `message`. `app` is `null`.
 
-`actor.type` is `user`, `api_key`, or `system` for auto-reverts. New fields and event types may be added; ignore the ones you do not use. “Send test” sends `test.ping`.
+`actor.type` is `user` (`label` is the email), `api_key` (`label` is the key's name), or `system` ( `label` is `auto-revert`, and `id` is `null`). New fields and event types may be added; ignore the ones you do not use.
+
+Notifications are queued with the change itself, so every committed change is reported exactly once per destination. Devices pick up a release once it is published to the CDN, normally within seconds of the notification.
 
 ### Verify signatures
 
-Requests follow the Standard Webhooks spec, so its libraries verify them. Each request has `webhook-id`, `webhook-timestamp` and `webhook-signature` headers. Find the signing secret (`whsec_…`) in the webhook's settings, and verify the raw request body before parsing it:
+Requests follow the Standard Webhooks spec, so its libraries verify them. Each request has `webhook-id` (the event's `id`), `webhook-timestamp` and `webhook-signature` headers, and the user agent `OtaKit-Webhooks/1.0`. Find the signing secret (`whsec_…`) under Settings → Notifications → ⋯ → Edit → Signing secret → Reveal, and verify the raw request body before parsing it:
 
 ```txt
 // npm install standardwebhooks
@@ -2099,15 +2105,16 @@ event = webhook.verify(request.get_data(), dict(request.headers))
 The libraries also reject requests older than five minutes, which stops replays. Rotate secret issues a new secret; for 24 hours requests carry signatures for both, so you can switch without missing events.
 
 ### Retries and failures
-- Answer with any 2xx status within 15 seconds. Do slow work after responding.
+- Answer with any 2xx status within 10 seconds. Do slow work after responding.
 - Other answers, timeouts and network errors are retried after 1 minute, 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours and 10 hours, then the delivery fails.
-- A retry keeps the same `webhook-id`; use it to ignore duplicates. Events can arrive out of order, so use `timestamp` when order matters.
+- Retries and Redeliver keep the event's `webhook-id`; use it to ignore duplicates. Events can arrive out of order, so use `timestamp` when order matters.
 - Redirects are not followed, and destinations must be public addresses.
-- A `410 Gone` answer turns the destination off at once. A destination that keeps failing for three days is turned off too. Owners and admins get an email either way; fix the endpoint and turn it back on in Settings.
+- A destination is turned off at once when the endpoint says it no longer exists: a `410 Gone` answer, or a deleted Slack or Discord webhook. It is also turned off when every delivery has failed for three days, with no success in between. Owners and admins get an email either way, and the audit log records it. Fix the endpoint and turn it back on in Settings.
+- Email is retried on the same schedule, and a retry only goes to the recipients who did not get it yet.
 
 ### Self-hosting
 
-Notifications need `DATA_ENCRYPTION_KEY` (32 random bytes, base64) to store webhook secrets, a scheduler calling `/api/cron/notifications` every minute for retries, and `RESEND_API_KEY` for email. To post to services inside your network, set `NOTIFICATIONS_ALLOW_PRIVATE_URLS=true`. The Self-hosting guide lists every setting.
+Notifications need `DATA_ENCRYPTION_KEY` (32 random bytes, base64) to store webhook secrets and `RESEND_API_KEY` for email. For retries, set `CRON_SECRET` and call `/api/cron/notifications` every minute with `Authorization: Bearer $CRON_SECRET` (or `?secret=`); in production the endpoint refuses calls when `CRON_SECRET` is not set. To post to services inside your network, set `NOTIFICATIONS_ALLOW_PRIVATE_URLS=true`. The Self-hosting guide lists every setting.
 
 ## Push Notifications
 
@@ -2784,10 +2791,19 @@ Webhooks and Alerts
 . Set
 
 DATA_ENCRYPTION_KEY
-(32 random bytes, base64) to store webhook signing secrets, and call
+(32 random bytes, base64) to store webhook signing secrets. Set
+
+CRON_SECRET
+and call
 
 /api/cron/notifications
-every minute so failed deliveries are retried. Set
+every minute with it as a Bearer header (or
+
+?secret=
+) so failed deliveries are retried; unlike the auto-revert endpoint, this one refuses calls in production when
+
+CRON_SECRET
+is unset. Set
 
 NOTIFICATIONS_ALLOW_PRIVATE_URLS=true
 to post to addresses inside your network.
@@ -2824,6 +2840,19 @@ New features, improvements and fixes, newest first. Plugin features need the plu
 
 Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.10.0 (2026-10-12), @otakit/push 0.1.1 (2026-09-27).
 
+### Webhooks and alerts (2026-10-14)
+
+Get notified when releases go out, roll out, are reverted, or fail health checks: by email, in Slack or Discord, or as signed webhooks to your own systems.
+
+- Add destinations in Settings → Notifications, choose the events, and optionally limit one to a single app.
+- Covers every release, whether it comes from the dashboard, the CLI, CI, or an agent. Release notes appear in Slack, Discord and email messages.
+- Webhooks follow the Standard Webhooks spec, so existing libraries verify them. Failed deliveries are retried for about a day.
+- Auto-revert and usage emails now come from a default “Owners and admins” destination, so you can change who gets them or send them to Slack.
+
+Requires: Self-hosted servers need DATA_ENCRYPTION_KEY, CRON_SECRET and a call to /api/cron/notifications every minute.
+
+Docs: Webhooks and alerts guide (/docs/webhooks)
+
 ### Release notes (2026-10-12, Plugin 3.3.0, CLI 1.10.0)
 
 Attach short plain-text notes to a release, such as "Faster checkout. Photo upload fixed on Android." Your team sees them next to the release, and the app can show them once after the update as a "What's new" screen.
@@ -2839,17 +2868,6 @@ otakit release --channel production --notes "Faster checkout."
 Requires: Plugin 3.3+ to show notes in the app. Older plugins ignore them and update as before.
 
 Docs: Release notes guide (/docs/release-notes)
-
-### Webhooks and alerts (2026-10-01)
-
-Get notified when releases go out, roll out, are reverted, or fail health checks: by email, in Slack or Discord, or as signed webhooks to your own systems.
-
-- Add destinations in Settings → Notifications, choose the events, and optionally limit one to a single app.
-- Every release counts, whether it came from the dashboard, the CLI, CI, or an agent.
-- Webhooks follow the Standard Webhooks spec, so existing libraries verify them. Failed deliveries are retried for about a day.
-- Auto-revert and usage emails now run through the same system, so you can change who gets them.
-
-Docs: Webhooks and alerts guide (/docs/webhooks)
 
 ### Preview links (2026-09-30, Plugin 3.2.0, CLI 1.9.0)
 

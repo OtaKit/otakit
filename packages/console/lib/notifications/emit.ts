@@ -1,10 +1,14 @@
+import crypto from 'node:crypto';
+
 import type { NotificationDestination, Prisma, PrismaClient } from '@prisma/client';
 
 import type { AuditActor } from '@/lib/audit-log';
+import type { AutoRevertAlertPayload } from '@/lib/auto-revert-alerts';
 
 import {
   DEFAULT_EMAIL_DESTINATION_NAME,
   DEFAULT_EMAIL_EVENTS,
+  type AutoRevertHealth,
   type NotificationActor,
   type NotificationEventFields,
   type NotificationPayload,
@@ -32,17 +36,50 @@ export function appUrl(): string {
   ).replace(/\/+$/, '');
 }
 
+/**
+ * The public actor: audit labels prefix API keys ("api-key:CI"), payloads carry
+ * the bare name with the type beside it.
+ */
 export function notificationActor(actor: AuditActor | null): NotificationActor | null {
   if (!actor) return null;
+  const type = actor.actorType === 'key' ? 'api_key' : actor.actorType;
   return {
-    type: actor.actorType === 'key' ? 'api_key' : actor.actorType,
-    label: actor.actorLabel,
+    type,
+    id: type === 'system' ? null : (actor.actorId ?? null),
+    label: type === 'api_key' ? actor.actorLabel.replace(/^api-key:/, '') : actor.actorLabel,
+  };
+}
+
+/**
+ * Event IDs are derived from the event key, so a replayed write that reaches
+ * emitNotification again names the same event.
+ */
+export function notificationEventId(organizationId: string, key: string): string {
+  const digest = crypto.createHash('sha256').update(`${organizationId}\n${key}`).digest('hex');
+  return `evt_${digest.slice(0, 32)}`;
+}
+
+/** Dashboard link for an app, switching to its workspace when another one is active. */
+export function appDashboardUrl(organizationId: string, appId: string): string {
+  return `${appUrl()}/dashboard?org=${encodeURIComponent(organizationId)}&app=${encodeURIComponent(appId)}`;
+}
+
+/** The health numbers of the audit record, under their public names. */
+export function notificationHealth(alert: AutoRevertAlertPayload): AutoRevertHealth {
+  return {
+    rollbacks: alert.rollbacks,
+    attempts: alert.attempts,
+    rollbackSharePercent: alert.measuredRatePercent,
+    thresholdPercent: alert.ratePercent,
+    thresholdMinSample: alert.minSample,
+    windowHours: alert.windowHours,
   };
 }
 
 export async function buildNotificationPayload(
   database: Database,
   event: NotificationEvent,
+  id: string = notificationEventId(event.organizationId, event.key),
 ): Promise<NotificationPayload> {
   const organization = await database.organization.findUniqueOrThrow({
     where: { id: event.organizationId },
@@ -55,15 +92,16 @@ export async function buildNotificationPayload(
       })
     : null;
   return {
+    id,
     type: event.type,
     timestamp: new Date().toISOString(),
     data: {
       organization,
       app,
       actor: notificationActor(event.actor),
-      url: app
-        ? `${appUrl()}/dashboard?app=${encodeURIComponent(app.id)}`
-        : `${appUrl()}/dashboard/settings`,
+      dashboardUrl: app
+        ? appDashboardUrl(organization.id, app.id)
+        : `${appUrl()}/dashboard/settings?org=${encodeURIComponent(organization.id)}`,
       ...event.data,
     },
   } as NotificationPayload;
@@ -97,6 +135,7 @@ export async function emitNotification(
       destinationId: destination.id,
       eventType: event.type,
       eventKey: event.key,
+      eventId: payload.id,
       payload: JSON.stringify(payload),
     })),
     skipDuplicates: true,

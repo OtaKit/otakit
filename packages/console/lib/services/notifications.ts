@@ -11,6 +11,7 @@ import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { deliverNow, disableDestination } from '@/lib/notifications/deliver';
 import { buildNotificationPayload } from '@/lib/notifications/emit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import {
   isNotificationEventType,
   MAX_DESTINATION_NAME_LENGTH,
@@ -30,6 +31,8 @@ export const MAX_NOTIFICATION_DESTINATIONS = 20;
 /** After a rotation the old secret keeps signing this long, so receivers can switch over. */
 const SECRET_OVERLAP_MS = 24 * 60 * 60 * 1000;
 const DELIVERY_PAGE_SIZE = 50;
+/** "Send test" makes OtaKit call the destination, so it is limited per destination. */
+const TEST_LIMIT = { requests: 5, windowSeconds: 60 };
 const DESTINATION_TYPES: NotificationDestinationType[] = ['email', 'webhook', 'slack', 'discord'];
 
 export type EmailRecipients = { mode: 'owners_admins' } | { mode: 'members'; userIds: string[] };
@@ -45,12 +48,15 @@ export type NotificationDestinationView = {
   enabled: boolean;
   disabledReason: string | null;
   consecutiveFailures: number;
+  failingSince: string | null;
   lastSuccessAt: string | null;
   createdAt: string;
 };
 
 export type NotificationDeliveryView = {
   id: string;
+  /** Event ID, the `webhook-id` header. */
+  eventId: string;
   eventType: string;
   status: NotificationDelivery['status'];
   attempts: number;
@@ -61,6 +67,8 @@ export type NotificationDeliveryView = {
   lastDurationMs: number | null;
   deliveredAt: string | null;
   createdAt: string;
+  /** Email: how many people it was sent to. */
+  emailRecipients: number | null;
   payload: unknown;
 };
 
@@ -87,26 +95,43 @@ function sealSecret(secret: string, destinationId: string): string {
   }
 }
 
-function toDestinationView(destination: NotificationDestination): NotificationDestinationView {
+/** Recipients as stored, minus members who have left the workspace since. */
+function currentRecipients(value: unknown, memberIds: Set<string>): EmailRecipients | null {
+  const recipients = value as EmailRecipients | null;
+  if (recipients?.mode !== 'members') return recipients;
+  return { mode: 'members', userIds: recipients.userIds.filter((id) => memberIds.has(id)) };
+}
+
+function toDestinationView(
+  destination: NotificationDestination,
+  memberIds?: Set<string>,
+): NotificationDestinationView {
   return {
     id: destination.id,
     type: destination.type,
     name: destination.name,
     url: destination.url,
     appId: destination.appId,
-    emailRecipients: destination.emailRecipients as EmailRecipients | null,
+    emailRecipients: memberIds
+      ? currentRecipients(destination.emailRecipients, memberIds)
+      : (destination.emailRecipients as EmailRecipients | null),
     events: destination.events,
     enabled: destination.enabled,
     disabledReason: destination.disabledReason,
     consecutiveFailures: destination.consecutiveFailures,
+    failingSince: destination.failingSince?.toISOString() ?? null,
     lastSuccessAt: destination.lastSuccessAt?.toISOString() ?? null,
     createdAt: destination.createdAt.toISOString(),
   };
 }
 
-function toDeliveryView(delivery: NotificationDelivery): NotificationDeliveryView {
+function toDeliveryView(
+  delivery: NotificationDelivery,
+  destinationType: NotificationDestinationType,
+): NotificationDeliveryView {
   return {
     id: delivery.id,
+    eventId: delivery.eventId,
     eventType: delivery.eventType,
     status: delivery.status,
     attempts: delivery.attempts,
@@ -117,6 +142,7 @@ function toDeliveryView(delivery: NotificationDelivery): NotificationDeliveryVie
     lastDurationMs: delivery.lastDurationMs,
     deliveredAt: delivery.deliveredAt?.toISOString() ?? null,
     createdAt: delivery.createdAt.toISOString(),
+    emailRecipients: destinationType === 'email' ? delivery.emailSentTo.length : null,
     payload: JSON.parse(delivery.payload) as unknown,
   };
 }
@@ -176,14 +202,16 @@ async function parseEmailRecipients(
     throw invalid('emailRecipients.mode must be owners_admins or members');
   }
   const userIds = Array.isArray(input.userIds) ? Array.from(new Set(input.userIds)) : [];
-  if (userIds.length === 0 || userIds.some((id) => typeof id !== 'string')) {
-    throw invalid('Choose at least one member');
-  }
-  const members = await db.organizationMember.count({
+  if (userIds.some((id) => typeof id !== 'string')) throw invalid('userIds must be strings');
+  // IDs of people who have left are dropped, so a form opened before they left still saves.
+  const members = await db.organizationMember.findMany({
     where: { organizationId, userId: { in: userIds as string[] } },
+    select: { userId: true },
   });
-  if (members !== userIds.length) throw invalid('Every recipient must be a member');
-  return { mode: 'members', userIds: userIds as string[] };
+  const memberIds = new Set(members.map((member) => member.userId));
+  const current = (userIds as string[]).filter((id) => memberIds.has(id));
+  if (current.length === 0) throw invalid('Choose at least one member');
+  return { mode: 'members', userIds: current };
 }
 
 async function findDestination(
@@ -209,7 +237,8 @@ function auditDestination(
     | 'notification_destination.created'
     | 'notification_destination.updated'
     | 'notification_destination.deleted'
-    | 'notification_destination.secret_rotated',
+    | 'notification_destination.secret_rotated'
+    | 'notification_destination.secret_revealed',
   destination: Pick<NotificationDestination, 'id' | 'name' | 'type'>,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
@@ -223,7 +252,23 @@ function auditDestination(
   });
 }
 
-export async function listNotificationSettings(organizationId: string): Promise<{
+/**
+ * Slack and Discord URLs are credentials (anyone with one can post), so a
+ * read-only view keeps only the host.
+ */
+function withoutUrlSecrets(view: NotificationDestinationView): NotificationDestinationView {
+  if (!view.url) return view;
+  try {
+    return { ...view, url: new URL(view.url).origin };
+  } catch {
+    return { ...view, url: null };
+  }
+}
+
+export async function listNotificationSettings(
+  organizationId: string,
+  options: { readOnly?: boolean } = {},
+): Promise<{
   destinations: NotificationDestinationView[];
   apps: Array<{ id: string; slug: string }>;
   members: Array<{ userId: string; email: string; role: string }>;
@@ -244,8 +289,12 @@ export async function listNotificationSettings(organizationId: string): Promise<
       select: { role: true, user: { select: { id: true, email: true } } },
     }),
   ]);
+  const memberIds = new Set(members.map((member) => member.user.id));
   return {
-    destinations: destinations.map(toDestinationView),
+    destinations: destinations.map((destination) => {
+      const view = toDestinationView(destination, memberIds);
+      return options.readOnly ? withoutUrlSecrets(view) : view;
+    }),
     apps,
     members: members.map((member) => ({
       userId: member.user.id,
@@ -340,7 +389,12 @@ export async function updateNotificationDestination(
     }
   }
   if (body.enabled === true && !existing.enabled) {
-    Object.assign(data, { enabled: true, disabledReason: null, consecutiveFailures: 0 });
+    Object.assign(data, {
+      enabled: true,
+      disabledReason: null,
+      consecutiveFailures: 0,
+      failingSince: null,
+    });
     changes.push('enabled');
   }
 
@@ -376,6 +430,20 @@ export async function sendTestNotification(
   destinationId: string,
 ): Promise<NotificationDeliveryView> {
   const destination = await findDestination(context.organizationId, destinationId);
+  const limit = await checkRateLimit(
+    'notification-test',
+    destination.id,
+    TEST_LIMIT.requests,
+    TEST_LIMIT.windowSeconds,
+  );
+  if (!limit.allowed) {
+    throw new OtaKitServiceError(
+      'RATE_LIMITED',
+      'Too many tests for this destination',
+      429,
+      'Wait a minute, then send another test.',
+    );
+  }
   const key = `${TEST_EVENT_TYPE}:${randomUUID()}`;
   const payload = await buildNotificationPayload(db, {
     type: TEST_EVENT_TYPE,
@@ -390,12 +458,14 @@ export async function sendTestNotification(
       destinationId: destination.id,
       eventType: TEST_EVENT_TYPE,
       eventKey: key,
+      eventId: payload.id,
       payload: JSON.stringify(payload),
     },
   });
   await deliverNow(delivery.id);
   return toDeliveryView(
     await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
+    destination.type,
   );
 }
 
@@ -411,11 +481,13 @@ async function findWebhook(
 }
 
 export async function revealWebhookSecret(
-  organizationId: string,
+  context: NotificationsContext,
   destinationId: string,
 ): Promise<string> {
-  const destination = await findWebhook(organizationId, destinationId);
-  return decryptSecret(destination.secretCiphertext, secretAad(destination.id));
+  const destination = await findWebhook(context.organizationId, destinationId);
+  const secret = decryptSecret(destination.secretCiphertext, secretAad(destination.id));
+  await auditDestination(context, 'notification_destination.secret_revealed', destination);
+  return secret;
 }
 
 /** New signing secret; the old one keeps signing for 24 hours alongside it. */
@@ -447,7 +519,7 @@ export async function listNotificationDeliveries(
     orderBy: { createdAt: 'desc' },
     take: DELIVERY_PAGE_SIZE,
   });
-  return deliveries.map(toDeliveryView);
+  return deliveries.map((delivery) => toDeliveryView(delivery, destination.type));
 }
 
 /** Attempt a delivery again now, with a fresh retry schedule if it fails. */
@@ -472,13 +544,23 @@ export async function redeliverNotification(
     );
   }
   if (delivery.status !== 'sending') {
+    // A redelivery sends again: email goes to every recipient once more, and
+    // webhooks keep the event's webhook-id so receivers can tell it is the same event.
     await db.notificationDelivery.updateMany({
       where: { id: delivery.id, status: { not: 'sending' } },
-      data: { status: 'pending', attempts: 0, nextAttemptAt: new Date(), claimedAt: null },
+      data: {
+        status: 'pending',
+        attempts: 0,
+        nextAttemptAt: new Date(),
+        claimedAt: null,
+        emailSentTo: [],
+        redeliveries: { increment: 1 },
+      },
     });
     await deliverNow(delivery.id);
   }
   return toDeliveryView(
     await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
+    destination.type,
   );
 }
