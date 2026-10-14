@@ -20,11 +20,11 @@ enum AppTelemetryClient {
 
   static func resume() { delivery.resume() }
 
-  /// Errors are kept over events when the outbox is full.
+  /// Errors and A/B test reports are kept over events when the outbox is full.
   enum Lane: String {
-    case error, event
+    case error, event, report
 
-    var priority: Int { self == .error ? 1 : 0 }
+    var priority: Int { self == .event ? 0 : 1 }
   }
 
   struct Batches {
@@ -103,9 +103,10 @@ enum AppTelemetryClient {
     return "\(lane.rawValue)|\(String(decoding: data, as: UTF8.self))"
   }
 
-  /// Persists the items for delivery to `{ingestUrl}/app-telemetry`.
+  /// Persists the items for delivery to `{ingestUrl}/app-telemetry`. A lane
+  /// overrides the one from the items' kind (A/B test reports).
   static func enqueue(
-    ingestUrl: String, appId: String, context: [String: Any], items: [Any]
+    ingestUrl: String, appId: String, context: [String: Any], items: [Any], lane override: Lane? = nil
   ) -> (accepted: Int, dropped: Int) {
     let base = ingestUrl.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
     guard let url = URL(string: "\(base)/app-telemetry"), url.scheme != nil else {
@@ -117,7 +118,7 @@ enum AppTelemetryClient {
     for index in batches.bodies.indices {
       let body = batches.bodies[index]
       let count = batches.itemCounts[index]
-      let lane = batches.lanes[index]
+      let lane = override ?? batches.lanes[index]
       if delivery.enqueue(
         url: url, appId: appId, body: body, priority: lane.priority,
         mergeKey: mergeKey(lane: lane, context: context), merge: mergeBatches) {

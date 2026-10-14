@@ -40,9 +40,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "getConfig", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "refreshConfig", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "enqueueAppTelemetry", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getExperimentContext", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "reportExperiment", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
+  private let experimentReports = ExperimentReports()
   private lazy var coordinator = UpdaterCoordinator(store: store)
   private var downloader = Downloader()
   private let zipUtils = ZipUtils()
@@ -620,6 +623,65 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       call.reject("At most \(AppTelemetryClient.maxBatchItems) items per call")
       return
     }
+    let result = AppTelemetryClient.enqueue(
+      ingestUrl: ingestUrl, appId: appId, context: appTelemetryContext(bundle: call.getObject("bundle")),
+      items: items)
+    call.resolve(["accepted": result.accepted, "dropped": result.dropped])
+  }
+
+  /// A/B tests (plugin 3.4+): the device's channel and runtime version, its
+  /// buckets for each experiment, and the reports it already made.
+  @objc func getExperimentContext(_ call: CAPPluginCall) {
+    guard let ids = call.options["experimentIds"] as? [String],
+          ids.count <= ExperimentAssignment.maxExperiments,
+          ids.allSatisfy(ExperimentAssignment.isExperimentId) else {
+      call.reject("experimentIds must be up to \(ExperimentAssignment.maxExperiments) experiment IDs")
+      return
+    }
+    let secret = store.assignmentSecret()
+    var buckets: [String: Any] = [:]
+    for id in ids { buckets[id] = ExperimentAssignment.buckets(secret: secret, experimentId: id) }
+    call.resolve([
+      "deviceChannel": configChannel() ?? NSNull(),
+      "runtimeVersion": runtimeVersion ?? NSNull(),
+      "buckets": buckets,
+      "reported": experimentReports.reported(experimentIds: ids)
+    ])
+  }
+
+  /// Stores an A/B test report for delivery unless the device already made it
+  /// (or has not made `requires`), and records it in the same step.
+  @objc func reportExperiment(_ call: CAPPluginCall) {
+    guard let appId else {
+      call.reject("appId is not configured")
+      return
+    }
+    guard let id = call.getString("experimentId"), ExperimentAssignment.isExperimentId(id),
+          let report = call.getString("report"), ExperimentAssignment.isReport(report),
+          let item = call.getObject("item"), item["kind"] as? String == "event" else {
+      call.reject("Invalid experiment report")
+      return
+    }
+    let requires = call.getString("requires")
+    guard requires == nil || requires == "exposure" else {
+      call.reject("requires must be exposure")
+      return
+    }
+    let context = appTelemetryContext(bundle: call.getObject("bundle"))
+    let ingestUrl = self.ingestUrl
+    let reported = experimentReports.record(
+      experimentId: id, report: report, requires: requires, now: Date().timeIntervalSince1970 * 1000
+    ) {
+      AppTelemetryClient.enqueue(
+        ingestUrl: ingestUrl, appId: appId, context: context, items: [item], lane: .report
+      ).accepted == 1
+    }
+    call.resolve(["reported": reported])
+  }
+
+  /// The device context of app telemetry, with the bundle the JavaScript runs
+  /// from when it says so.
+  private func appTelemetryContext(bundle: JSObject?) -> [String: Any] {
     let current = coordinator.snapshotState(isStagedBundleUsable: isBundleUsable).current
     var context: [String: Any] = [
       "platform": "ios",
@@ -636,7 +698,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     // The bundle the JavaScript runs from: after an update or a rollback the
     // current bundle changes before the reload, while the old JavaScript still
     // sends its last errors.
-    if let bundle = call.getObject("bundle"),
+    if let bundle,
        let version = bundle["bundleVersion"] as? String, !version.isEmpty, version.count <= 64 {
       context["bundleVersion"] = version
       context["releaseId"] = (bundle["releaseId"] as? String).flatMap { $0.count <= 64 ? $0 : nil }
@@ -647,9 +709,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       }
     }
     if let runtimeVersion { context["runtimeVersion"] = runtimeVersion }
-    let result = AppTelemetryClient.enqueue(
-      ingestUrl: ingestUrl, appId: appId, context: context, items: items)
-    call.resolve(["accepted": result.accepted, "dropped": result.dropped])
+    return context
   }
 
   /// setChannel's override, else the configured channel. Preview links never

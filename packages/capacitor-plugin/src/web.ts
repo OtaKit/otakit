@@ -1,6 +1,7 @@
 import { WebPlugin } from '@capacitor/core';
 
 import type {
+  ExperimentContext,
   AppTelemetryBundle,
   AppTelemetryItem,
   OtaKitBridgePlugin,
@@ -87,6 +88,15 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
   }): Promise<{ accepted: number; dropped: number }> {
     // Error tracking runs in the iOS and Android apps.
     return { accepted: 0, dropped: options.items.length };
+  }
+
+  async getExperimentContext(): Promise<ExperimentContext> {
+    // A/B tests run in the iOS and Android apps; web has no config to test.
+    return { deviceChannel: null, runtimeVersion: null, buckets: {}, reported: {} };
+  }
+
+  async reportExperiment(): Promise<{ reported: boolean }> {
+    return { reported: false };
   }
 
   private static readonly NO_CONFIG: NativeRemoteConfig = {

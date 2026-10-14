@@ -4,6 +4,7 @@ import type {
   OtaKitBridgePlugin,
   OtaKitPlugin,
   BundleInfo,
+  EventProperties,
   NativeRemoteConfig,
   OtaKitEventName,
   RemoteConfig,
@@ -12,6 +13,7 @@ import type {
 } from './definitions';
 import { createAnalytics } from './analytics';
 import { createErrorTracking } from './error-tracking';
+import { createExperiments } from './experiments';
 import { createTelemetry } from './telemetry';
 
 const NativeOtaKit = registerPlugin<OtaKitBridgePlugin>('OtaKit', {
@@ -102,6 +104,16 @@ async function nativeConfig(
   }
 }
 
+/** The config with the overrides of the A/B tests this device is in. */
+async function withExperiments<C extends RemoteConfig<RemoteConfigValues>>(
+  native: NativeRemoteConfig | null | undefined,
+  config: C,
+): Promise<C> {
+  if (config.source === 'defaults') return config;
+  config.values = await experiments.applyToConfig(native, config.values);
+  return config;
+}
+
 const OtaKit: OtaKitPlugin = {
   getState: () => NativeOtaKit.getState(),
   check: () => NativeOtaKit.check(),
@@ -118,34 +130,44 @@ const OtaKit: OtaKitPlugin = {
   markReleaseNotesSeen: () => NativeOtaKit.markReleaseNotesSeen(),
   getConfig: async <T extends RemoteConfigValues = RemoteConfigValues>(options?: {
     defaults?: T;
-  }): Promise<RemoteConfig<T>> =>
-    toRemoteConfig(await nativeConfig(() => NativeOtaKit.getConfig()), options?.defaults),
+  }): Promise<RemoteConfig<T>> => {
+    const native = await nativeConfig(() => NativeOtaKit.getConfig());
+    return withExperiments(native, toRemoteConfig(native, options?.defaults));
+  },
   refreshConfig: async <T extends RemoteConfigValues = RemoteConfigValues>(options?: {
     defaults?: T;
   }): Promise<RemoteConfigRefreshResult<T>> => {
     const native = await nativeConfig(() => NativeOtaKit.refreshConfig());
-    const config: RemoteConfigRefreshResult<T> = toRemoteConfig(native, options?.defaults);
+    const config: RemoteConfigRefreshResult<T> = await withExperiments(
+      native,
+      toRemoteConfig(native, options?.defaults),
+    );
     if (native?.error) config.error = native.error;
     return config;
   },
+  getVariant: (key: string) => experiments.getVariant(key),
   // NativeOtaKit is the registerPlugin proxy, which implements Capacitor's
   // listener API; this plain-object wrapper must forward it explicitly.
   addListener: ((eventName: OtaKitEventName, listenerFunc: (event: unknown) => void) =>
     NativeOtaKit.addListener(
       eventName,
       eventName === 'configChanged'
-        ? (event: unknown) => listenerFunc(toRemoteConfig(event as NativeRemoteConfig, undefined))
+        ? (event: unknown) => {
+            const native = event as NativeRemoteConfig;
+            void withExperiments(native, toRemoteConfig(native, undefined)).then(listenerFunc);
+          }
         : listenerFunc,
     )) as OtaKitPlugin['addListener'],
   removeAllListeners: () => NativeOtaKit.removeAllListeners(),
-  track: (name, properties) => analytics.track(name, properties),
+  track: (name, properties) => track(name, properties),
 };
 
 // One buffer for errors and events, flushed to the native outbox.
 const telemetry = createTelemetry(NativeOtaKit, {
   isNative: () => Capacitor.isNativePlatform(),
 });
-const errorTracking = createErrorTracking(telemetry);
+const experiments = createExperiments(NativeOtaKit, telemetry);
+const errorTracking = createErrorTracking(telemetry, { onSent: () => experiments.onError() });
 const analytics = createAnalytics(telemetry);
 
 /**
@@ -186,7 +208,11 @@ export const testErrorTracking = errorTracking.testErrorTracking;
  * track('checkout_completed', { plan: 'pro', value: 49 });
  * ```
  */
-export const track = analytics.track;
+export function track(name: string, properties?: EventProperties): boolean {
+  // A/B test goals count even when analytics sampling or beforeSend drops the event.
+  experiments.onEvent(name);
+  return analytics.track(name, properties);
+}
 
 /**
  * Optional setup for custom events: sends `$session_start` once per app

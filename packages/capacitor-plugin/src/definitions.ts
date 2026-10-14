@@ -423,11 +423,11 @@ export interface OtaKitPlugin {
   ): Promise<PluginListenerHandle>;
 
   /**
-   * The app's remote config over your defaults (plugin 3.4+). Answers
-   * instantly from the device: the plugin fetches config at launch and when
-   * the app returns to the foreground (at most every `checkInterval`), and
-   * emits `configChanged` when it changes. With an older native plugin it
-   * returns your defaults.
+   * The app's remote config over your defaults (plugin 3.4+), with the
+   * overrides of the A/B tests this device is in. Answers instantly from the
+   * device: the plugin fetches config at launch and when the app returns to
+   * the foreground (at most every `checkInterval`), and emits `configChanged`
+   * when it changes. With an older native plugin it returns your defaults.
    *
    * ```ts
    * const { values } = await OtaKit.getConfig({ defaults: { checkoutEnabled: true } });
@@ -445,6 +445,19 @@ export interface OtaKitPlugin {
   refreshConfig<T extends RemoteConfigValues = RemoteConfigValues>(
     options?: GetConfigOptions<T>,
   ): Promise<RemoteConfigRefreshResult<T>>;
+
+  /**
+   * This device's variant in a running A/B test (plugin 3.4+): `'control'`,
+   * another variant key, or null when the device is not in the test (outside
+   * its traffic or audience, no such running test, an older native plugin, or
+   * web). The first call counts the device as exposed to the test.
+   *
+   * ```ts
+   * const variant = await OtaKit.getVariant('new_onboarding');
+   * if (variant === 'b') showNewOnboarding();
+   * ```
+   */
+  getVariant(key: string): Promise<string | null>;
 
   /**
    * End the active preview link and return to the normal release.
@@ -559,6 +572,22 @@ export type AppTelemetryBundle = {
   channel: string | null;
 };
 
+/**
+ * What native knows for A/B tests (plugin 3.4+): the device's channel and
+ * runtime version, its buckets (1-100) for each experiment, computed from a
+ * random secret that never leaves the device, and the reports it already
+ * made. Internal to the plugin.
+ */
+export type ExperimentContext = {
+  deviceChannel: string | null;
+  runtimeVersion: string | null;
+  buckets: Record<string, { traffic: number; variant: number }>;
+  reported: Record<string, string[]>;
+};
+
+/** A report a device makes at most once per experiment. Internal to the plugin. */
+export type ExperimentReport = 'exposure' | 'error' | `conversion:${string}`;
+
 export interface OtaKitBridgePlugin {
   getState(): Promise<OtaKitState>;
   check(): Promise<CheckResult>;
@@ -578,6 +607,14 @@ export interface OtaKitBridgePlugin {
     items: AppTelemetryItem[];
     bundle?: AppTelemetryBundle;
   }): Promise<{ accepted: number; dropped: number }>;
+  getExperimentContext(options: { experimentIds: string[] }): Promise<ExperimentContext>;
+  reportExperiment(options: {
+    experimentId: string;
+    report: ExperimentReport;
+    requires?: 'exposure';
+    item: AppTelemetryItem;
+    bundle?: AppTelemetryBundle;
+  }): Promise<{ reported: boolean }>;
   addListener(
     eventName: OtaKitEventName,
     listenerFunc: (event: unknown) => void,

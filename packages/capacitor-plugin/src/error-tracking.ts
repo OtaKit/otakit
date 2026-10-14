@@ -123,7 +123,10 @@ export type ErrorTracking = {
   testErrorTracking(): Promise<boolean>;
 };
 
-export function createErrorTracking(telemetry: Telemetry): ErrorTracking {
+export function createErrorTracking(
+  telemetry: Telemetry,
+  hooks: { onSent?: () => void } = {},
+): ErrorTracking {
   const env = telemetry.env;
   let options: ErrorTrackingOptions | null = null;
   let listening = false;
@@ -220,7 +223,9 @@ export function createErrorTracking(telemetry: Telemetry): ErrorTracking {
 
   function capture(value: unknown, details: Parameters<typeof build>[1]): string | null {
     const item = build(value, details);
-    return item && telemetry.push(item) ? item.eventId : null;
+    if (!item || !telemetry.push(item)) return null;
+    hooks.onSent?.();
+    return item.eventId;
   }
 
   function onError(event: Event) {

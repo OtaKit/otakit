@@ -101,6 +101,7 @@ public class UpdaterPlugin extends Plugin {
   private final ZipUtils zipUtils = new ZipUtils();
 
   private BundleStore store;
+  private Experiments.Reports experimentReports;
   private UpdaterCoordinator coordinator;
   private final UpdateOwner updateOwner;
   private final DocumentReadyBridge documentReadyBridge = new DocumentReadyBridge();
@@ -180,6 +181,9 @@ public class UpdaterPlugin extends Plugin {
     this.channel = trimToNull(getConfig().getString("channel"));
     this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
     this.store = new BundleStore(getContext(), builtinVersion, nativeBuild, this.runtimeVersion);
+    this.experimentReports = new Experiments.Reports(
+      getContext().getSharedPreferences("otakit_experiments", android.content.Context.MODE_PRIVATE)
+    );
     this.coordinator = new UpdaterCoordinator(this.store);
     this.allowInsecureUrls = getConfig().getBoolean("allowInsecureUrls", false);
     this.launchPolicy = resolvePolicy(getConfig().getString("launchPolicy"), Policy.APPLY_STAGED);
@@ -761,44 +765,12 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     try {
-      BundleInfo current = coordinator.snapshotState(this::isBundleUsable).current;
-      org.json.JSONObject context = new org.json.JSONObject()
-        .put("platform", "android")
-        .put("sessionId", AppTelemetryClient.SESSION_ID)
-        .put("bundleVersion", current.isBuiltin() ? "builtin" : current.version)
-        .put("nativeBuild", coordinator.getNativeBuild())
-        .put("osVersion", Build.VERSION.RELEASE)
-        .put("sdkVersion", SDKVersion.VALUE);
-      if (current.releaseId != null) context.put("releaseId", current.releaseId);
-      String channel = Preview.reportedChannel(
-        current.isBuiltin() ? configChannel() : current.channel
+      int[] result = AppTelemetryClient.enqueue(
+        ingestUrl,
+        appId,
+        appTelemetryContext(call.getObject("bundle")),
+        items
       );
-      if (channel != null) context.put("channel", channel);
-      if (runtimeVersion != null) context.put("runtimeVersion", runtimeVersion);
-      // The bundle the JavaScript runs from: after an update or a rollback the current bundle
-      // changes before the reload, while the old JavaScript still sends its last errors.
-      JSObject bundle = call.getObject("bundle");
-      String bundleVersion = bundle != null ? bundle.optString("bundleVersion", "") : "";
-      if (!bundleVersion.isEmpty() && bundleVersion.length() <= 64) {
-        context.put("bundleVersion", bundleVersion);
-        Object releaseId = bundle.opt("releaseId");
-        context.remove("releaseId");
-        if (releaseId instanceof String && ((String) releaseId).length() <= 64) context.put(
-          "releaseId",
-          releaseId
-        );
-        Object bundleChannel = bundle.opt("channel");
-        if (
-          bundleChannel instanceof String &&
-          !((String) bundleChannel).isEmpty() &&
-          ((String) bundleChannel).length() <= 64
-        ) {
-          context.put("channel", bundleChannel);
-        } else if (!"builtin".equals(bundleVersion)) {
-          context.remove("channel");
-        }
-      }
-      int[] result = AppTelemetryClient.enqueue(ingestUrl, appId, context, items);
       JSObject data = new JSObject();
       data.put("accepted", result[0]);
       data.put("dropped", result[1]);
@@ -806,6 +778,144 @@ public class UpdaterPlugin extends Plugin {
     } catch (Exception error) {
       call.reject("Could not store app telemetry");
     }
+  }
+
+  /**
+   * A/B tests (plugin 3.4+): the device's channel and runtime version, its buckets for each
+   * experiment, and the reports it already made.
+   */
+  @PluginMethod
+  public void getExperimentContext(PluginCall call) {
+    java.util.List<String> ids = new java.util.ArrayList<>();
+    try {
+      org.json.JSONArray list = call.getData().getJSONArray("experimentIds");
+      if (list.length() > Experiments.MAX_EXPERIMENTS) throw new IllegalArgumentException();
+      for (int i = 0; i < list.length(); i++) {
+        String id = list.getString(i);
+        if (!Experiments.isExperimentId(id)) throw new IllegalArgumentException();
+        ids.add(id);
+      }
+    } catch (Exception error) {
+      call.reject("experimentIds must be up to " + Experiments.MAX_EXPERIMENTS + " experiment IDs");
+      return;
+    }
+    String secret = store.assignmentSecret();
+    JSObject buckets = new JSObject();
+    for (String id : ids) {
+      int[] values = Experiments.buckets(secret, id);
+      JSObject bucket = new JSObject();
+      bucket.put("traffic", values[0]);
+      bucket.put("variant", values[1]);
+      buckets.put(id, bucket);
+    }
+    JSObject reported = new JSObject();
+    for (java.util.Map.Entry<String, java.util.List<String>> entry : experimentReports
+      .reported(ids)
+      .entrySet()) {
+      reported.put(entry.getKey(), new org.json.JSONArray(entry.getValue()));
+    }
+    JSObject data = new JSObject();
+    String deviceChannel = configChannel();
+    data.put("deviceChannel", deviceChannel != null ? deviceChannel : org.json.JSONObject.NULL);
+    data.put("runtimeVersion", runtimeVersion != null ? runtimeVersion : org.json.JSONObject.NULL);
+    data.put("buckets", buckets);
+    data.put("reported", reported);
+    call.resolve(data);
+  }
+
+  /**
+   * Stores an A/B test report for delivery unless the device already made it (or has not made
+   * requires), and records it in the same step.
+   */
+  @PluginMethod
+  public void reportExperiment(PluginCall call) {
+    if (appId == null) {
+      call.reject("appId is not configured");
+      return;
+    }
+    String id = call.getString("experimentId");
+    String report = call.getString("report");
+    String requires = call.getString("requires");
+    JSObject item = call.getObject("item");
+    if (
+      !Experiments.isExperimentId(id) ||
+      !Experiments.isReport(report) ||
+      item == null ||
+      !"event".equals(item.optString("kind"))
+    ) {
+      call.reject("Invalid experiment report");
+      return;
+    }
+    if (requires != null && !requires.equals("exposure")) {
+      call.reject("requires must be exposure");
+      return;
+    }
+    try {
+      org.json.JSONObject context = appTelemetryContext(call.getObject("bundle"));
+      String url = ingestUrl;
+      String app = appId;
+      boolean reported = experimentReports.record(
+        id,
+        report,
+        requires,
+        System.currentTimeMillis(),
+        () ->
+          AppTelemetryClient.enqueue(
+            url,
+            app,
+            context,
+            new org.json.JSONArray().put(item),
+            AppTelemetryClient.Lane.REPORT
+          )[0] ==
+          1
+      );
+      JSObject data = new JSObject();
+      data.put("reported", reported);
+      call.resolve(data);
+    } catch (Exception error) {
+      call.reject("Could not store the experiment report");
+    }
+  }
+
+  /** The device context of app telemetry, with the bundle the JavaScript runs from when given. */
+  private org.json.JSONObject appTelemetryContext(JSObject bundle) throws Exception {
+    BundleInfo current = coordinator.snapshotState(this::isBundleUsable).current;
+    org.json.JSONObject context = new org.json.JSONObject()
+      .put("platform", "android")
+      .put("sessionId", AppTelemetryClient.SESSION_ID)
+      .put("bundleVersion", current.isBuiltin() ? "builtin" : current.version)
+      .put("nativeBuild", coordinator.getNativeBuild())
+      .put("osVersion", Build.VERSION.RELEASE)
+      .put("sdkVersion", SDKVersion.VALUE);
+    if (current.releaseId != null) context.put("releaseId", current.releaseId);
+    String channel = Preview.reportedChannel(
+      current.isBuiltin() ? configChannel() : current.channel
+    );
+    if (channel != null) context.put("channel", channel);
+    if (runtimeVersion != null) context.put("runtimeVersion", runtimeVersion);
+    // The bundle the JavaScript runs from: after an update or a rollback the current bundle
+    // changes before the reload, while the old JavaScript still sends its last errors.
+    String bundleVersion = bundle != null ? bundle.optString("bundleVersion", "") : "";
+    if (!bundleVersion.isEmpty() && bundleVersion.length() <= 64) {
+      context.put("bundleVersion", bundleVersion);
+      Object releaseId = bundle.opt("releaseId");
+      context.remove("releaseId");
+      if (releaseId instanceof String && ((String) releaseId).length() <= 64) context.put(
+        "releaseId",
+        releaseId
+      );
+      Object bundleChannel = bundle.opt("channel");
+      if (
+        bundleChannel instanceof String &&
+        !((String) bundleChannel).isEmpty() &&
+        ((String) bundleChannel).length() <= 64
+      ) {
+        context.put("channel", bundleChannel);
+      } else if (!"builtin".equals(bundleVersion)) {
+        context.remove("channel");
+      }
+    }
+    return context;
   }
 
   /**
