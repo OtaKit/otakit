@@ -178,8 +178,8 @@ export const testErrorTracking = errorTracking.testErrorTracking;
 
 /**
  * Send a custom event (plugin 3.4+): a name of 1-64 letters, numbers, ".",
- * "_", ":" or "-", and up to 20 properties with string, number or boolean
- * values. OtaKit adds the release, channel, platform and OS version. Returns
+ * "_", ":" or "-" (with a letter or number), and up to 20 properties with
+ * string, number or boolean values. OtaKit adds the release, channel, platform and OS version. Returns
  * false when the event was dropped. Also available as `OtaKit.track()`.
  *
  * ```ts

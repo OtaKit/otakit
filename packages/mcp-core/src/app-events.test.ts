@@ -82,7 +82,7 @@ describe('custom event envelopes', () => {
         ],
       }),
     ).toBe(
-      '"checkout_completed" per 1,000 applies on plugin 3.4+, oldest release first, difference against the oldest: 1.4.1: 10; 1.4.2: 15 (+50%). The app sends no session events (initAnalytics()), so rates use applies, which is less precise.',
+      '"checkout_completed" per 1,000 applies on plugin 3.4+, oldest release first, difference against the oldest release with a rate above 0: 1.4.1: 10; 1.4.2: 15 (+50%). No release has app launches recorded (initAnalytics()), so rates use applies, which is less precise.',
     );
   });
 });

@@ -404,7 +404,7 @@ await OtaKit.apply();`}</Pre>
         <Method
           name="track(name, properties?)"
           returns="boolean"
-          description="Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-', and up to 20 string, number or boolean properties. Returns false when the event was dropped."
+          description="Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-' (with a letter or number), and up to 20 string, number or boolean properties. Returns false when the event was dropped."
         />
         <Method
           name="initAnalytics(options?)"

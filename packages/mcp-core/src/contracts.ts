@@ -95,7 +95,7 @@ export const releaseIdSchema = z.string().uuid().describe('OtaKit release ID');
 export const previewIdSchema = z.string().uuid().describe('OtaKit preview link ID');
 export const appEventNameSchema = z
   .string()
-  .regex(/^(?:[A-Za-z0-9_.:-]{1,64}|\$session_start)$/)
+  .regex(/^(?:(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}|\$session_start)$/)
   .describe('Custom event name, from list_app_events');
 export const errorFingerprintSchema = z
   .string()

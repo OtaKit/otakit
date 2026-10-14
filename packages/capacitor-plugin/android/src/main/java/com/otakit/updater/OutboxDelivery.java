@@ -43,9 +43,21 @@ final class OutboxDelivery {
 
   /** Persists the body for delivery; false when it could not be stored. */
   synchronized boolean enqueue(String url, String appId, String body) {
+    return enqueue(url, appId, body, 0, null, null);
+  }
+
+  /** As enqueue, with a priority and merging (see EventOutbox.enqueue). */
+  synchronized boolean enqueue(
+    String url,
+    String appId,
+    String body,
+    int priority,
+    String mergeKey,
+    EventOutbox.Merge merge
+  ) {
     try {
       if (outbox == null) throw new java.io.IOException("Outbox unavailable");
-      outbox.enqueue(url, appId, body, System.currentTimeMillis());
+      outbox.enqueue(url, appId, body, System.currentTimeMillis(), priority, mergeKey, merge);
       schedule();
       return true;
     } catch (Exception error) {

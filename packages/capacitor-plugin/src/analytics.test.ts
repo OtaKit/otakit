@@ -5,15 +5,24 @@ import type { AppTelemetryItem } from './definitions';
 import { createErrorTracking } from './error-tracking';
 import { createTelemetry } from './telemetry';
 
-function setup(options: { native?: boolean; random?: number; sessionStarted?: boolean } = {}) {
+function setup(
+  options: {
+    native?: boolean;
+    random?: number;
+    sessionStarted?: string | null;
+    current?: { id: string; version: string; releaseId?: string };
+  } = {},
+) {
   let ids = 0;
-  let sessionStarted = options.sessionStarted ?? false;
+  let sessionStarted = options.sessionStarted ?? null;
   const native = {
     enqueueAppTelemetry: vi.fn(async ({ items }: { items: AppTelemetryItem[] }) => ({
       accepted: items.length,
       dropped: 0,
     })),
-    getState: vi.fn(async () => ({ current: { id: 'builtin', version: '1.0' } })),
+    getState: vi.fn(async () => ({
+      current: options.current ?? { id: 'builtin', version: '1.0' },
+    })),
   };
   const telemetry = createTelemetry(native as never, {
     isNative: () => options.native ?? true,
@@ -24,7 +33,10 @@ function setup(options: { native?: boolean; random?: number; sessionStarted?: bo
     uuid: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
     now: () => new Date('2026-10-14T12:00:00.000Z'),
   });
-  const flag = { get: () => sessionStarted, set: () => void (sessionStarted = true) };
+  const flag = {
+    get: () => sessionStarted,
+    set: (value: string) => void (sessionStarted = value),
+  };
   const analytics = createAnalytics(telemetry, flag);
   const sent = () =>
     native.enqueueAppTelemetry.mock.calls.flatMap(
@@ -94,24 +106,47 @@ describe('track', () => {
 });
 
 describe('initAnalytics', () => {
-  it('sends $session_start once per app launch', async () => {
+  it('sends $session_start once per app launch and bundle', async () => {
     const { analytics, telemetry, sent, sessionStarted } = setup();
     analytics.initAnalytics();
     analytics.initAnalytics();
+    await vi.advanceTimersByTimeAsync(0);
     await telemetry.flush();
     expect(sent().map((item) => (item as { name: string }).name)).toEqual(['$session_start']);
-    expect(sessionStarted()).toBe(true);
+    expect(sessionStarted()).toBe('|builtin');
 
-    // After a reload in the same launch (an OTA update), it is not sent again.
-    const reloaded = setup({ sessionStarted: true });
+    // A reload of the same bundle in the same launch does not send it again...
+    const reloaded = setup({ sessionStarted: '|builtin' });
     reloaded.analytics.initAnalytics();
+    await vi.advanceTimersByTimeAsync(0);
     await reloaded.telemetry.flush();
     expect(reloaded.sent()).toEqual([]);
 
+    // ...but a reload into an update does: the launch also counts for the new release.
+    const updated = setup({
+      sessionStarted: '|builtin',
+      current: { id: 'b1', version: '1.4.2', releaseId: 'release-2' },
+    });
+    updated.analytics.initAnalytics();
+    await vi.advanceTimersByTimeAsync(0);
+    await updated.telemetry.flush();
+    expect(updated.sent().map((item) => (item as { name: string }).name)).toEqual([
+      '$session_start',
+    ]);
+    expect(updated.sessionStarted()).toBe('release-2|1.4.2');
+
     const off = setup();
     off.analytics.initAnalytics({ sessionEvents: false });
+    await vi.advanceTimersByTimeAsync(0);
     await off.telemetry.flush();
     expect(off.sent()).toEqual([]);
+  });
+
+  it('applies sampleRate even after an earlier track()', () => {
+    const { analytics } = setup({ random: 0.5 });
+    expect(analytics.track('early')).toBe(true);
+    analytics.initAnalytics({ sampleRate: 0.4, sessionEvents: false });
+    expect(analytics.track('late')).toBe(false);
   });
 
   it('samples whole app launches and applies beforeSend to tracked events only', async () => {
@@ -131,6 +166,7 @@ describe('initAnalytics', () => {
               properties: { ...event.properties, extra: 1 },
             } as never),
     });
+    await vi.advanceTimersByTimeAsync(0);
     expect(analytics.track('drop')).toBe(false);
     expect(analytics.track('kept', { a: 'b' })).toBe(true);
     await telemetry.flush();

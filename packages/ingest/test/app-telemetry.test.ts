@@ -294,11 +294,14 @@ describe('custom events', () => {
         eventItem({ name: 'has space' }),
         eventItem({ name: '$custom' }),
         eventItem({ name: 'n'.repeat(65) }),
+        // Dot segments would change the URL of the event's dashboard page.
+        eventItem({ name: '.' }),
+        eventItem({ name: '..' }),
         eventItem({ eventId: 'x' }),
         eventItem({ properties }),
       ],
     });
-    expect(await response.json()).toEqual({ accepted: true, items: 1, dropped: 4 });
+    expect(await response.json()).toEqual({ accepted: true, items: 1, dropped: 6 });
     const kept = JSON.parse(queued()[0].body.row.properties) as Record<string, string>;
     expect(Object.keys(kept)).toHaveLength(20);
     expect(kept.long).toHaveLength(200);

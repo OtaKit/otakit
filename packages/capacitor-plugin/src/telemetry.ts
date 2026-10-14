@@ -62,6 +62,8 @@ export type Telemetry = {
   env: TelemetryEnvironment;
   /** Listen for page hide and read the bundle once; later calls do nothing. */
   start(): void;
+  /** The bundle this JavaScript runs from, once read (null when it cannot be read). */
+  ready(): Promise<AppTelemetryBundle | null>;
   /** Queue an item for the next flush. False when telemetry is off (an older native plugin). */
   push(item: AppTelemetryItem): boolean;
   /** Hand one item to the native plugin right away; true when it was stored. */
@@ -88,6 +90,7 @@ export function createTelemetry(
   let flushing: Promise<void> | null = null;
   /** The bundle this JavaScript runs from; null until getState() answers. */
   let bundle: AppTelemetryBundle | null = null;
+  let bundleRead: Promise<AppTelemetryBundle | null> = Promise.resolve(null);
   const warned = new Set<string>();
 
   function warnOnce(key: string, message: string) {
@@ -150,7 +153,7 @@ export function createTelemetry(
     start() {
       if (started) return;
       started = true;
-      native
+      bundleRead = native
         .getState()
         .then(({ current }) => {
           bundle = {
@@ -158,15 +161,18 @@ export function createTelemetry(
             releaseId: current.releaseId ?? null,
             channel: current.channel ?? null,
           };
+          return bundle;
         })
         .catch(() => {
           // Native then uses its current bundle.
+          return null;
         });
       env.target?.addEventListener('pagehide', () => void flush());
       env.document?.addEventListener('visibilitychange', () => {
         if (env.document?.visibilityState === 'hidden') void flush();
       });
     },
+    ready: () => bundleRead,
     push(item) {
       if (off) return false;
       buffer.push(item);

@@ -120,9 +120,11 @@ export function appEventReleasesSummary(result: ReleasesLike): string {
     .join('; ');
   const basisNote =
     result.basis === 'applies'
-      ? ' The app sends no session events (initAnalytics()), so rates use applies, which is less precise.'
-      : '';
-  return `"${result.name}" per ${per}, oldest release first, difference against the oldest: ${rates}.${basisNote}`;
+      ? ' No release has app launches recorded (initAnalytics()), so rates use applies, which is less precise.'
+      : result.releases.some((release) => release.perThousand === null)
+        ? ' – means no app launches were recorded on that release.'
+        : '';
+  return `"${result.name}" per ${per}, oldest release first, difference against the oldest release with a rate above 0: ${rates}.${basisNote}`;
 }
 
 export function appEventQueryWarnings(analyticsAvailable: boolean): string[] {

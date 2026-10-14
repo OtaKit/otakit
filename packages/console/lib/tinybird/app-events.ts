@@ -63,13 +63,28 @@ export type AppEventNameCounts = {
   events: number;
   /** App launches with the event. */
   sessions: number;
-  /** Events in the period before the range, as long as the range. */
+  /** Events in the range up to `compareTo`, to compare with `previousEvents`. */
+  comparedEvents: number;
+  /** Events in [previousFrom, previousTo): as long as the compared part of the range. */
   previousEvents: number;
 };
 
-/** Event names with counts in [from, to) and in [previousFrom, from). */
+/** The names pipe returns at most this many names, most events first. */
+export const APP_EVENT_NAMES_LIMIT = 200;
+
+/**
+ * Event names with counts in [from, to), and for the change: [from, compareTo)
+ * against [previousFrom, previousTo). Optionally one name.
+ */
 export async function listAppEventNames(
-  filters: AppEventFilters & { from: Date; to: Date; previousFrom: Date },
+  filters: AppEventFilters & {
+    from: Date;
+    to: Date;
+    previousFrom: Date;
+    compareTo?: Date;
+    previousTo?: Date;
+    name?: string;
+  },
 ): Promise<AnalyticsResult<AppEventNameCounts[]>> {
   if (!isTinybirdConfigured()) return unavailable('listAppEventNames', []);
   const params = {
@@ -77,12 +92,17 @@ export async function listAppEventNames(
     previous_from_ts: filters.previousFrom.toISOString(),
     from_ts: filters.from.toISOString(),
     to_ts: filters.to.toISOString(),
+    ...(filters.compareTo ? { compare_to_ts: filters.compareTo.toISOString() } : {}),
+    ...(filters.previousTo ? { previous_to_ts: filters.previousTo.toISOString() } : {}),
+    ...(filters.name ? { name: filters.name } : {}),
+    limit: APP_EVENT_NAMES_LIMIT,
   };
   try {
     const rows = await cached<{
       name?: string | null;
       events?: Count;
       sessions?: Count;
+      compared_events?: Count;
       previous_events?: Count;
     }>(NAMES_PIPE, params);
     return {
@@ -94,6 +114,7 @@ export async function listAppEventNames(
                 name,
                 events: count(row.events),
                 sessions: count(row.sessions),
+                comparedEvents: count(row.compared_events ?? row.events),
                 previousEvents: count(row.previous_events),
               },
             ]

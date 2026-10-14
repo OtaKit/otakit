@@ -838,7 +838,7 @@ Plugin 3.4+. See Remote Config , Error Tracking and Analytics for the guides.
 - `initErrorTracking(options?)` -> `void`: Import it from @otakit/capacitor-updater and call it once at startup. Sends uncaught errors and unhandled promise rejections, scrubbed of emails, tokens and query strings. Options: sampleRate, ignoreErrors, beforeSend, maxEventsPerSession.
 - `captureError(error, { tags }?)` -> `string | null`: Send an error you caught yourself, marked handled. Returns its event ID, or null when it was dropped.
 - `testErrorTracking()` -> `Promise<boolean>`: Send one test error to check the setup; it appears in the dashboard within a minute.
-- `track(name, properties?)` -> `boolean`: Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-', and up to 20 string, number or boolean properties. Returns false when the event was dropped.
+- `track(name, properties?)` -> `boolean`: Send a custom event (also OtaKit.track()): a name of 1-64 letters, numbers, '.', '_', ':' or '-' (with a letter or number), and up to 20 string, number or boolean properties. Returns false when the event was dropped.
 - `initAnalytics(options?)` -> `void`: Optional, once at startup: sends $session_start once per app launch so releases compare per 1,000 launches. Options: sessionEvents, sampleRate, beforeSend, maxEventsPerSession.
 
 ### Advanced Overrides
@@ -1501,7 +1501,7 @@ Custom events from `track()` (plugin 3.4+). Ranges: `24h`, `7d` (by hour), `30d`
 
 ### GET /api/v1/apps/:appId/analytics/events
 
-Event names with events in the range, most first, with app launches with the event (sessions) and the change against the previous period of the same length. trend=1 adds buckets per name.
+Event names with events in the range, most first, with app launches with the event (sessions) and the change against the same elapsed part of the previous period. trend=1 adds buckets per name. At most 200 names (truncated: true).
 - Auth: Bearer
 - Query: ?range=7d&platform=&releaseId=&channel=&trend=1
 
@@ -1522,7 +1522,7 @@ Response
 
 ### GET /api/v1/apps/:appId/analytics/events/:name
 
-One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range.
+One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range or the period before.
 - Auth: Bearer
 - Query: ?range=7d&platform=&releaseId=&channel=
 
@@ -2402,10 +2402,10 @@ initAnalytics();
 
 track('checkout_completed', { plan: 'pro', value: 49 });
 ```
-- Names use 1–64 letters, numbers, `.`, `_`, `:` and `-`, such as `checkout_completed`. Keep IDs out of names: put them in properties, or leave them out.
+- Names use 1–64 letters, numbers, `.`, `_`, `:` and `-`, with at least one letter or number, such as `checkout_completed`. Keep IDs out of names: put them in properties, or leave them out.
 - Up to 20 properties with string (up to 200 characters), number or boolean values. Other values are left out. `OtaKit.track()` is the same function.
-- `track()` works without `initAnalytics()`. With it, the plugin sends `$session_start` once per app launch, so releases can be compared per 1,000 app launches.
-- Events are buffered for up to 5 seconds and delivered from a native outbox that survives reloads, crashes and offline periods for up to 3 days, together with errors .
+- `track()` works without `initAnalytics()`. With it, the plugin sends `$session_start` once per app launch, and again when an update reloads the app into a new release, so releases can be compared per 1,000 app launches.
+- Events are buffered for up to 5 seconds and delivered from a native outbox that survives reloads, crashes and offline periods of up to 3 days (a few thousand events; when it is full, the oldest events go first and errors are kept), together with errors .
 - On web, and with a native plugin older than 3.4, nothing is sent.
 
 ```txt
@@ -2422,7 +2422,7 @@ initAnalytics({
 
 ### In the dashboard
 
-The app's Analytics section lists events with their count, app launches, trend, and change against the previous period of the same length. Filter by time range (up to 90 days), platform and release. Live shows events as they arrive, to check the setup.
+The app's Analytics section lists events with their count, app launches, trend, and change against the same part of the previous period. Filter by time range (up to 90 days), platform and release. Live shows events as they arrive, to check the setup.
 
 An event shows:
 - Events per hour or day.
@@ -2451,7 +2451,7 @@ Custom
 
 ### Privacy
 
-Nothing is sent until your code calls `track()` or `initAnalytics()`. Events carry no user or device identifier: app launches are counted with a random ID that is made at each launch and never stored on the phone. You choose the properties, so keep personal data out of them, or remove it in `beforeSend`.
+Nothing is sent until your code calls `track()` or `initAnalytics()`. Events carry no user or device identifier: app launches are counted with a random ID that is made at each launch, kept in memory, and saved only with events waiting to be sent. You choose the properties, so keep personal data out of them, or remove it in `beforeSend`.
 
 For the App Store privacy label, declare Product Interaction, not linked to the user's identity and not used for tracking. In Google Play's Data safety form, declare App interactions under App activity, collected for analytics, not shared.
 

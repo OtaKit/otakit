@@ -36,8 +36,9 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
           Names use 1–64 letters, numbers, <Code>.</Code>, <Code>_</Code>, <Code>:</Code> and{' '}
-          <Code>-</Code>, such as <Code>checkout_completed</Code>. Keep IDs out of names: put them
-          in properties, or leave them out.
+          <Code>-</Code>, with at least one letter or number, such as{' '}
+          <Code>checkout_completed</Code>. Keep IDs out of names: put them in properties, or leave
+          them out.
         </li>
         <li>
           Up to 20 properties with string (up to 200 characters), number or boolean values. Other
@@ -45,12 +46,13 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
         </li>
         <li>
           <Code>track()</Code> works without <Code>initAnalytics()</Code>. With it, the plugin sends{' '}
-          <Code>$session_start</Code> once per app launch, so releases can be compared per 1,000 app
-          launches.
+          <Code>$session_start</Code> once per app launch, and again when an update reloads the app
+          into a new release, so releases can be compared per 1,000 app launches.
         </li>
         <li>
           Events are buffered for up to 5 seconds and delivered from a native outbox that survives
-          reloads, crashes and offline periods for up to 3 days, together with{' '}
+          reloads, crashes and offline periods of up to 3 days (a few thousand events; when it is
+          full, the oldest events go first and errors are kept), together with{' '}
           <Link
             href="/docs/error-tracking"
             className="font-medium text-foreground underline underline-offset-4"
@@ -76,7 +78,7 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
       <H2>In the dashboard</H2>
       <P>
         The app&apos;s <strong>Analytics</strong> section lists events with their count, app
-        launches, trend, and change against the previous period of the same length. Filter by time
+        launches, trend, and change against the same part of the previous period. Filter by time
         range (up to 90 days), platform and release. <strong>Live</strong> shows events as they
         arrive, to check the setup.
       </P>
@@ -153,8 +155,9 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
       <P>
         Nothing is sent until your code calls <Code>track()</Code> or <Code>initAnalytics()</Code>.
         Events carry no user or device identifier: app launches are counted with a random ID that is
-        made at each launch and never stored on the phone. You choose the properties, so keep
-        personal data out of them, or remove it in <Code>beforeSend</Code>.
+        made at each launch, kept in memory, and saved only with events waiting to be sent. You
+        choose the properties, so keep personal data out of them, or remove it in{' '}
+        <Code>beforeSend</Code>.
       </P>
       <P>
         For the App Store privacy label, declare <strong>Product Interaction</strong>, not linked to

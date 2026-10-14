@@ -1,6 +1,8 @@
 DESCRIPTION >
-    Custom event names of one app with events and sessions in [from_ts, to_ts), and events
-    in the previous period [previous_from_ts, from_ts). Hour-aligned times.
+    Custom event names of one app with events and sessions in [from_ts, to_ts). For the
+    change against the previous period: events in [from_ts, compare_to_ts) and in
+    [previous_from_ts, previous_to_ts), periods of the same elapsed length. Optional `name`.
+    Hour-aligned times.
 
 TOKEN otakit_web READ
 
@@ -11,11 +13,21 @@ SQL >
         name,
         uniqExactMergeIf(event_ids_uniq_exact_state, bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)) AS events,
         uniqExactMergeIf(session_ids_uniq_exact_state, bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)) AS sessions,
-        uniqExactMergeIf(event_ids_uniq_exact_state, bucket < parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)) AS previous_events
+        uniqExactMergeIf(
+            event_ids_uniq_exact_state,
+            bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+            AND bucket < parseDateTime64BestEffort({{ String(compare_to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+        ) AS compared_events,
+        uniqExactMergeIf(
+            event_ids_uniq_exact_state,
+            bucket < parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+            AND bucket < parseDateTime64BestEffort({{ String(previous_to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+        ) AS previous_events
     FROM app_event_hourly
     WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
       AND bucket >= parseDateTime64BestEffort({{ String(previous_from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
       AND bucket < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+      AND ({{ String(name, '') }} = '' OR name = {{ String(name, '') }})
       AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
       AND ({{ String(release_id, '') }} = '' OR release_id = {{ String(release_id, '') }})
       {% if defined(channel_is_null) %}

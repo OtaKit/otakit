@@ -184,7 +184,7 @@ export async function parseErrorItem(
   };
 }
 
-const EVENT_NAME = /^[A-Za-z0-9_.:-]{1,64}$/;
+const EVENT_NAME = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
 /** Names OtaKit sends itself; apps cannot use the `$` prefix. */
 export const RESERVED_EVENT_NAMES = new Set(['$session_start']);
 const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;

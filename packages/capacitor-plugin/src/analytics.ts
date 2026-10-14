@@ -12,12 +12,13 @@ import type { Telemetry } from './telemetry';
  * channel, platform and OS version on the device.
  */
 
-const EVENT_NAME = /^[A-Za-z0-9_.:-]{1,64}$/;
+const EVENT_NAME = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
 const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
 const MAX_PROPERTIES = 20;
 const MAX_VALUE = 200;
 const DEFAULT_MAX_PER_SESSION = 1_000;
 const SESSION_START = '$session_start';
+/** The bundle the last `$session_start` of this app launch was sent from. */
 const SESSION_FLAG = 'otakit:session_start';
 
 /** Valid properties only: up to 20 keys, string (cut to 200), finite number or boolean values. */
@@ -34,19 +35,21 @@ function properties(raw: unknown): Record<string, string | number | boolean> {
   return result;
 }
 
+export type SessionFlag = { get(): string | null; set(value: string): void };
+
 /** sessionStorage survives a reload (an OTA update) but not a new app launch. */
-function sessionStorageFlag(): { get(): boolean; set(): void } {
+function sessionStorageFlag(): SessionFlag {
   return {
     get() {
       try {
-        return globalThis.sessionStorage?.getItem(SESSION_FLAG) === '1';
+        return globalThis.sessionStorage?.getItem(SESSION_FLAG) ?? null;
       } catch {
-        return false;
+        return null;
       }
     },
-    set() {
+    set(value) {
       try {
-        globalThis.sessionStorage?.setItem(SESSION_FLAG, '1');
+        globalThis.sessionStorage?.setItem(SESSION_FLAG, value);
       } catch {
         // A duplicate $session_start in one app launch is harmless: sessions count once.
       }
@@ -61,7 +64,7 @@ export type Analytics = {
 
 export function createAnalytics(
   telemetry: Telemetry,
-  sessionFlag: { get(): boolean; set(): void } = sessionStorageFlag(),
+  sessionFlag: SessionFlag = sessionStorageFlag(),
 ): Analytics {
   const env = telemetry.env;
   let options: AnalyticsOptions = {};
@@ -85,7 +88,7 @@ export function createAnalytics(
     if (!reserved && (typeof name !== 'string' || !EVENT_NAME.test(name))) {
       telemetry.warnOnce(
         'event-name',
-        `Dropped event ${JSON.stringify(name)}: names use 1-64 letters, numbers, ".", "_", ":" or "-".`,
+        `Dropped event ${JSON.stringify(name)}: names use 1-64 letters, numbers, ".", "_", ":" or "-", with a letter or number.`,
       );
       return false;
     }
@@ -136,13 +139,21 @@ export function createAnalytics(
         throw new Error('sampleRate must be a number from 0 to 1');
       }
       options = { ...next };
+      // Decide again with this sampleRate, even when an earlier track() already did.
+      sampled = null;
       if (!env.isNative()) {
         send(SESSION_START, {}, true);
         return;
       }
       telemetry.start();
-      if ((next.sessionEvents ?? true) && !sessionFlag.get()) {
-        if (send(SESSION_START, {}, true)) sessionFlag.set();
+      if (next.sessionEvents ?? true) {
+        // Once per app launch and bundle: after an update reloads the app, the
+        // launch also counts for the new release.
+        void telemetry.ready().then((bundle) => {
+          const key = bundle ? `${bundle.releaseId ?? ''}|${bundle.bundleVersion}` : '';
+          if (sessionFlag.get() === key) return;
+          if (send(SESSION_START, {}, true)) sessionFlag.set(key);
+        });
       }
     },
     track(name: string, eventProperties?: EventProperties) {

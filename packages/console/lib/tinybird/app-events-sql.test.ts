@@ -102,12 +102,29 @@ describe('app_event_names', () => {
         ...parameters,
       });
     expect(names()).toEqual([
-      { name: 'checkout_completed', events: 2, sessions: 2, previous_events: 0 },
-      { name: '$session_start', events: 1, sessions: 1, previous_events: 0 },
+      {
+        name: 'checkout_completed',
+        events: 2,
+        sessions: 2,
+        compared_events: 2,
+        previous_events: 0,
+      },
+      { name: '$session_start', events: 1, sessions: 1, compared_events: 1, previous_events: 0 },
     ]);
     expect(names({ previous_from_ts: '2026-10-12T09:00:00.000Z' })[0]).toMatchObject({
       previous_events: 1,
     });
+    // The change compares the elapsed part of both periods.
+    expect(
+      names({
+        previous_from_ts: '2026-10-12T09:00:00.000Z',
+        compare_to_ts: '2026-10-13T11:00:00.000Z',
+        previous_to_ts: '2026-10-12T09:00:00.000Z',
+      })[0],
+    ).toMatchObject({ events: 2, compared_events: 1, previous_events: 0 });
+    expect(names({ name: '$session_start' })).toEqual([
+      { name: '$session_start', events: 1, sessions: 1, compared_events: 1, previous_events: 0 },
+    ]);
     expect(names({ platform: 'android' })).toEqual([]);
   });
 });

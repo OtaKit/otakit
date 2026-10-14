@@ -5,6 +5,7 @@ import {
   getAppEventBreakdown,
   getAppEventReleaseCounts,
   getAppEventTimeseries,
+  APP_EVENT_NAMES_LIMIT,
   listAppEventNames,
   listLiveAppEvents,
   type AppEventBucket,
@@ -35,7 +36,7 @@ export const APP_EVENT_RANGES = {
 } as const;
 export type AppEventRange = keyof typeof APP_EVENT_RANGES;
 const DEFAULT_RANGE: AppEventRange = '7d';
-const EVENT_NAME = /^[A-Za-z0-9_.:-]{1,64}$/;
+const EVENT_NAME = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
 const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
 
 type Context = { organizationId: string; appId: string };
@@ -95,7 +96,9 @@ export function parseAppEventFilters(input: {
 
 function parseName(name: unknown): string {
   if (typeof name !== 'string' || (!EVENT_NAME.test(name) && name !== SESSION_START)) {
-    throw invalid('Event names use 1-64 letters, numbers, ".", "_", ":" or "-"');
+    throw invalid(
+      'Event names use 1-64 letters, numbers, ".", "_", ":" or "-", with a letter or number',
+    );
   }
   return name;
 }
@@ -103,20 +106,33 @@ function parseName(name: unknown): string {
 /**
  * Bucket-aligned window up to the end of the current hour (24h, 7d) or UTC
  * day (30d, 90d), so every bucket is whole and repeated reads share a cache
- * entry. The previous period is as long, just before it.
+ * entry. The previous period is as long, just before it. The change compares
+ * the range up to the current hour with the same elapsed part of the previous
+ * period, so a partly elapsed hour or day never reads as a drop.
  */
 export function appEventWindow(
   range: AppEventRange,
   now: Date = new Date(),
-): { from: Date; to: Date; previousFrom: Date; daily: boolean } {
+): {
+  from: Date;
+  to: Date;
+  previousFrom: Date;
+  compareTo: Date;
+  previousTo: Date;
+  daily: boolean;
+} {
   const length = APP_EVENT_RANGES[range];
   const daily = length > 7 * DAY_MS;
   const step = daily ? DAY_MS : HOUR_MS;
   const to = Math.floor(now.getTime() / step) * step + step;
+  const from = to - length;
+  const compareTo = Math.max(from + HOUR_MS, Math.floor(now.getTime() / HOUR_MS) * HOUR_MS);
   return {
-    from: new Date(to - length),
+    from: new Date(from),
     to: new Date(to),
     previousFrom: new Date(to - 2 * length),
+    compareTo: new Date(compareTo),
+    previousTo: new Date(compareTo - length),
     daily,
   };
 }
@@ -151,8 +167,12 @@ export type AppEventSummary = {
   events: number;
   /** App launches with the event. */
   sessions: number;
+  /** Events in the same elapsed part of the previous period. */
   previousEvents: number;
-  /** Change against the previous period of the same length; null without a base. */
+  /**
+   * Change against the previous period, up to the current hour in both; null
+   * without events before.
+   */
   changePercent: number | null;
   /** Events per hour (24h, 7d) or day; only when requested. */
   trend?: AppEventBucket[];
@@ -167,6 +187,8 @@ export type AppEventList = {
   usage: TelemetryUsageStatus;
   /** The app sent events in the last 90 days: false shows the setup. */
   hasEvents: boolean;
+  /** Only the 200 names with the most events are listed. */
+  truncated: boolean;
   analyticsAvailable: boolean;
   dataTrust: typeof DATA_TRUST;
 };
@@ -201,9 +223,9 @@ export async function listAppEvents(
   const sessionRow = names.data.find((row) => row.name === SESSION_START);
   const events = names.data
     .filter((row) => !row.name.startsWith('$') && (row.events > 0 || row.previousEvents > 0))
-    .map((row) => ({
+    .map(({ comparedEvents, ...row }) => ({
       ...row,
-      changePercent: changePercent(row.events, row.previousEvents),
+      changePercent: changePercent(comparedEvents, row.previousEvents),
       ...(trend ? { trend: trend.data.get(row.name) ?? [] } : {}),
     }));
   let hasEvents = names.data.length > 0;
@@ -217,6 +239,7 @@ export async function listAppEvents(
     range: rangeInfo(range, window),
     usage,
     hasEvents,
+    truncated: names.data.length >= APP_EVENT_NAMES_LIMIT,
     analyticsAvailable: names.available,
     dataTrust: DATA_TRUST,
   };
@@ -268,7 +291,7 @@ export async function getAppEvent(
     channel: filters.channel,
   };
   const [names, series, recent] = await Promise.all([
-    listAppEventNames({ ...query, ...window }),
+    listAppEventNames({ ...query, ...window, name }),
     getAppEventTimeseries({
       ...query,
       name,
@@ -283,7 +306,7 @@ export async function getAppEvent(
   if (!row) {
     throw new OtaKitServiceError(
       'APP_EVENT_NOT_FOUND',
-      `No "${name}" events in the last ${range}`,
+      `No "${name}" events in the last ${range} or the period before`,
       404,
       'List events with list_app_events (or GET /api/v1/apps/:appId/analytics/events), or widen the range.',
     );
@@ -299,7 +322,7 @@ export async function getAppEvent(
     events: row.events,
     sessions: row.sessions,
     previousEvents: row.previousEvents,
-    changePercent: changePercent(row.events, row.previousEvents),
+    changePercent: changePercent(row.comparedEvents, row.previousEvents),
     series: fillBuckets(series.data.get(name) ?? [], window),
     propertyKeys: [...keyCounts]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -377,19 +400,20 @@ export type AppEventReleaseRow = {
   events: number;
   /** App launches with the event. */
   sessions: number;
-  /** Rate base: app launches ($session_start) or applies on plugin 3.4+. */
+  /** Rate base: app launches ($session_start) or applies on plugin 3.4+; 0 when none were recorded. */
   base: number;
   /** Events per 1,000 of the base; null without a base. */
   perThousand: number | null;
-  /** Against the oldest release in the comparison; null for it, or without rates. */
+  /** Against the oldest release shown with a rate above 0; null for it, or without a rate. */
   differencePercent: number | null;
 };
 
 export type AppEventReleaseComparison = {
   name: string;
   /**
-   * sessions: per 1,000 app launches (the app sends session events);
-   * applies: per 1,000 applies on plugin 3.4+, less precise.
+   * sessions: per 1,000 app launches (the app sends session events; a release
+   * without recorded launches has no rate); applies: per 1,000 applies on
+   * plugin 3.4+, less precise, when no release has session events.
    */
   basis: 'sessions' | 'applies';
   releases: AppEventReleaseRow[];
@@ -397,10 +421,19 @@ export type AppEventReleaseComparison = {
   dataTrust: typeof DATA_TRUST;
 };
 
+/** Releases looked at for the default comparison; the 5 latest with data are shown. */
+const COMPARISON_CANDIDATES = 50;
+
+/** Two decimals under 10 so rare events keep their differences, one above. */
+function roundRate(value: number): number {
+  return value < 10 ? Math.round(value * 100) / 100 : Math.round(value * 10) / 10;
+}
+
 /**
  * One event across releases, oldest first: events per 1,000 app launches (or
- * applies), and the difference from the oldest release with a rate. Default:
- * the 5 latest releases of the channel (or of every channel) that have data.
+ * applies), and the difference from the oldest release with a rate above 0.
+ * Default: the 5 latest releases of the channel (or of every channel) with
+ * events or a base.
  */
 export async function compareAppEventReleases(
   ctx: Context,
@@ -421,7 +454,7 @@ export async function compareAppEventReleases(
           : {}),
     },
     orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-    take: requested.length > 0 ? requested.length : 20,
+    take: requested.length > 0 ? requested.length : COMPARISON_CANDIDATES * 2,
     select: {
       id: true,
       channel: true,
@@ -431,56 +464,58 @@ export async function compareAppEventReleases(
       bundle: { select: { version: true } },
     },
   });
-  const chosen = releases
+  const candidates = releases
     .filter((release) => requested.length > 0 || !isPreviewChannel(release.channel))
-    .slice(0, requested.length > 0 ? 10 : 5)
-    .reverse();
-  const ids = chosen.map((release) => release.id);
+    .slice(0, requested.length > 0 ? 10 : COMPARISON_CANDIDATES);
+  const ids = candidates.map((release) => release.id);
   const [counts, applies] = await Promise.all([
     getAppEventReleaseCounts(ctx.appId, name, ids),
     getReleaseCapableApplies(ctx.appId, ids),
   ]);
   if (!counts.available) throw unavailableError();
-  const withEvents = chosen.filter((release) => (counts.data.get(release.id)?.events ?? 0) > 0);
-  const basis =
-    withEvents.length > 0 &&
-    withEvents.every((release) => (counts.data.get(release.id)?.allSessions ?? 0) > 0)
-      ? 'sessions'
-      : 'applies';
-  const rows = chosen.map((release) => {
+  const basis = candidates.some((release) => (counts.data.get(release.id)?.allSessions ?? 0) > 0)
+    ? 'sessions'
+    : 'applies';
+  const rows = candidates.map((release) => {
     const count = counts.data.get(release.id);
     const base = basis === 'sessions' ? (count?.allSessions ?? 0) : (applies?.get(release.id) ?? 0);
     const events = count?.events ?? 0;
     return {
-      releaseId: release.id,
-      bundleVersion: release.bundle.version,
-      channel: release.channel,
-      promotedAt: release.promotedAt.toISOString(),
-      rolloutPercent: release.rolloutPercent,
-      revertedAt: release.revertedAt?.toISOString() ?? null,
-      events,
-      sessions: count?.sessions ?? 0,
-      base,
-      perThousand: base > 0 ? Math.round((events / base) * 10_000) / 10 : null,
-      differencePercent: null as number | null,
+      row: {
+        releaseId: release.id,
+        bundleVersion: release.bundle.version,
+        channel: release.channel,
+        promotedAt: release.promotedAt.toISOString(),
+        rolloutPercent: release.rolloutPercent,
+        revertedAt: release.revertedAt?.toISOString() ?? null,
+        events,
+        sessions: count?.sessions ?? 0,
+        base,
+        perThousand: base > 0 ? roundRate((events / base) * 1000) : null,
+        differencePercent: null as number | null,
+      },
+      rate: base > 0 ? events / base : null,
     };
   });
-  // By default, releases without any data (no events and no base) are left out.
-  const shown = requested.length > 0 ? rows : rows.filter((row) => row.events > 0 || row.base > 0);
-  // The baseline is the oldest release with a rate.
-  const baselineIndex = shown.findIndex((row) => row.perThousand !== null);
-  const baseline = baselineIndex >= 0 ? shown[baselineIndex].perThousand : null;
-  if (baseline) {
-    for (const row of shown.slice(baselineIndex + 1)) {
-      if (row.perThousand !== null) {
-        row.differencePercent = Math.round(((row.perThousand - baseline) / baseline) * 1000) / 10;
+  // By default, the 5 latest releases with any data (events or a base).
+  const shown = (
+    requested.length > 0
+      ? rows
+      : rows.filter(({ row }) => row.events > 0 || row.base > 0).slice(0, 5)
+  ).reverse();
+  // Differences use exact rates, against the oldest release with a rate above 0.
+  const baseline = shown.find(({ rate }) => rate !== null && rate > 0);
+  if (baseline?.rate) {
+    for (const { row, rate } of shown.slice(shown.indexOf(baseline) + 1)) {
+      if (rate !== null) {
+        row.differencePercent = Math.round(((rate - baseline.rate) / baseline.rate) * 1000) / 10;
       }
     }
   }
   return {
     name,
     basis,
-    releases: shown,
+    releases: shown.map(({ row }) => row),
     analyticsAvailable: counts.available && applies !== null,
     dataTrust: DATA_TRUST,
   };

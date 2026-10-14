@@ -387,6 +387,7 @@ export function AnalyticsSection({
                 {data.sessions === null
                   ? 'App launches are not counted: call initAnalytics() to compare releases per 1,000 launches.'
                   : `${formatCount(data.sessions)} app launches in this range.`}
+                {data.truncated ? ' Showing the 200 events that happened most.' : ''}
               </p>
               <Table className="table-fixed sm:min-w-[680px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6">
                 <TableHeader>
@@ -435,7 +436,7 @@ export function AnalyticsSection({
                       </TableCell>
                       <TableCell
                         className="text-right text-xs"
-                        title={`${formatCount(event.previousEvents)} in the previous period`}
+                        title={`${formatCount(event.previousEvents)} in the same part of the previous period`}
                       >
                         <ChangeBadge percent={event.changePercent} />
                       </TableCell>
@@ -454,6 +455,8 @@ export function AnalyticsSection({
           name={openEvent}
           initialRange={range}
           releases={releases}
+          platform={platform === 'all' ? null : platform}
+          release={releaseOptions.find((release) => release.id === releaseId) ?? null}
           onClose={() => setOpenEvent(null)}
         />
       ) : null}

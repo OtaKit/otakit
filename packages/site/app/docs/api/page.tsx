@@ -471,7 +471,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "hasEvents": true,
   "analyticsAvailable": true
 }`}
-          description="Event names with events in the range, most first, with app launches with the event (sessions) and the change against the previous period of the same length. trend=1 adds buckets per name."
+          description="Event names with events in the range, most first, with app launches with the event (sessions) and the change against the same elapsed part of the previous period. trend=1 adds buckets per name. At most 200 names (truncated: true)."
         />
         <Endpoint
           method="GET"
@@ -481,7 +481,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           response={`{ "name": "checkout_completed", "events": 120, "sessions": 80, "previousEvents": 100,
   "changePercent": 20, "series": [{ "start": "ISO timestamp", "events": 5, "sessions": 4 }],
   "propertyKeys": ["plan", "value"], "range": { ... }, "analyticsAvailable": true }`}
-          description="One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range."
+          description="One event: totals, every bucket of the range (zero when empty), and the property keys of its recent events. 404 APP_EVENT_NOT_FOUND without events in the range or the period before."
         />
         <Endpoint
           method="GET"

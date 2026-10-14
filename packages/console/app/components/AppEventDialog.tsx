@@ -193,7 +193,18 @@ function Releases({ result }: { result: AppEventReleaseComparison }) {
                   </span>
                 </td>
                 <td className="py-1.5 pr-3 text-right tabular-nums">{formatCount(row.events)}</td>
-                <td className="py-1.5 pr-3 text-right tabular-nums">{row.perThousand ?? '–'}</td>
+                <td
+                  className="py-1.5 pr-3 text-right tabular-nums"
+                  title={
+                    row.perThousand === null
+                      ? result.basis === 'sessions'
+                        ? 'No app launches recorded on this release'
+                        : 'No applies recorded on this release'
+                      : undefined
+                  }
+                >
+                  {row.perThousand ?? '–'}
+                </td>
                 <td className="py-1.5 text-right">
                   <ChangeBadge percent={row.differencePercent} />
                 </td>
@@ -205,8 +216,13 @@ function Releases({ result }: { result: AppEventReleaseComparison }) {
       <div className="mt-2 flex items-center justify-between gap-2">
         <p className="text-[11px] text-muted-foreground">
           {result.basis === 'sessions'
-            ? 'Events per 1,000 app launches on each release, from initAnalytics().'
-            : 'The app sends no session events, so rates use applies on plugin 3.4+: less precise. Call initAnalytics() to count launches.'}
+            ? `Events per 1,000 app launches on each release, from initAnalytics().${
+                result.releases.some((row) => row.perThousand === null)
+                  ? ' – : no launches recorded on that release.'
+                  : ''
+              }`
+            : 'No release has app launches recorded, so rates use applies on plugin 3.4+: less precise. Call initAnalytics() to count launches.'}
+          {!result.analyticsAvailable ? ' Some rates could not be loaded.' : ''}
         </p>
         <CopyButton
           value={csv}
@@ -226,21 +242,37 @@ export function AppEventDialog({
   name,
   initialRange,
   releases,
+  platform,
+  release,
   onClose,
 }: {
   appId: string;
   name: string;
   initialRange: AppEventRange;
   releases: ReleaseHistoryItem[];
+  /** The section's filters, which the totals, chart and split follow. */
+  platform: 'ios' | 'android' | null;
+  release: { id: string; bundleVersion: string; channel: string | null } | null;
   onClose: () => void;
 }) {
   const [range, setRange] = useState<AppEventRange>(initialRange);
   const [property, setProperty] = useState<string | null>(null);
   const [channel, setChannel] = useState<string>(ALL_CHANNELS);
   const base = `/api/v1/apps/${appId}/analytics/events/${encodeURIComponent(name)}`;
-  const detail = useJson<AppEventDetail>(`${base}?range=${range}`);
+  const filterQuery =
+    (platform ? `&platform=${platform}` : '') +
+    (release ? `&releaseId=${encodeURIComponent(release.id)}` : '');
+  const filterLabel = [
+    platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : null,
+    release ? `release ${release.bundleVersion}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const detail = useJson<AppEventDetail>(`${base}?range=${range}${filterQuery}`);
   const breakdown = useJson<AppEventBreakdownResult>(
-    property ? `${base}/breakdown?range=${range}&property=${encodeURIComponent(property)}` : null,
+    property
+      ? `${base}/breakdown?range=${range}&property=${encodeURIComponent(property)}${filterQuery}`
+      : null,
   );
   const comparison = useJson<AppEventReleaseComparison>(
     channel === ALL_CHANNELS
@@ -261,7 +293,8 @@ export function AppEventDialog({
             {data ? (
               <>
                 {formatCount(data.events)} events in {formatCount(data.sessions)} app launches in
-                the {RANGE_LABELS[range]} ·{' '}
+                the {RANGE_LABELS[range]}
+                {filterLabel ? ` (${filterLabel})` : ''} ·{' '}
                 {data.changePercent === null ? (
                   'none in the period before'
                 ) : (
@@ -302,6 +335,12 @@ export function AppEventDialog({
           </div>
         ) : (
           <div className="space-y-6">
+            {!data.analyticsAvailable ? (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                Part of the analytics data could not be loaded, so the chart can be incomplete. Try
+                again shortly.
+              </p>
+            ) : null}
             <section>
               <p className="mb-1 text-xs font-medium text-muted-foreground">
                 Events per {data.range.bucket}
@@ -350,8 +389,8 @@ export function AppEventDialog({
                   <InfoHint label="About the release comparison">
                     <p className="text-xs">
                       The 5 latest releases with data, of one channel or of all, oldest first, each
-                      with all its events (up to 13 months). The difference is against the oldest
-                      release shown.
+                      with all its events on every platform (up to 13 months). The difference is
+                      against the oldest release shown with a rate above 0.
                     </p>
                   </InfoHint>
                 </p>
