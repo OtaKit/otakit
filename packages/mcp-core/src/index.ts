@@ -1,3 +1,4 @@
+export * from './app-events';
 export * from './bundle-diff';
 export * from './catalog';
 export * from './contracts';

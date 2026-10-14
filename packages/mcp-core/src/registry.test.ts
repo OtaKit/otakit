@@ -9,11 +9,11 @@ import { createOtaKitMcpServer } from './registry';
 
 describe('OtaKit MCP tool catalog', () => {
   it('defines every planned tool exactly once and keeps local/remote mode boundaries', () => {
-    expect(OTAKIT_TOOL_CATALOG).toHaveLength(29);
-    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(29);
+    expect(OTAKIT_TOOL_CATALOG).toHaveLength(31);
+    expect(new Set(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).size).toBe(31);
     expect(OTAKIT_TOOL_CATALOG.map((tool) => tool.name)).toEqual([...OTAKIT_TOOL_NAMES]);
-    expect(toolDefinitionsForMode('local')).toHaveLength(29);
-    expect(toolDefinitionsForMode('remote')).toHaveLength(25);
+    expect(toolDefinitionsForMode('local')).toHaveLength(31);
+    expect(toolDefinitionsForMode('remote')).toHaveLength(27);
     expect(toolDefinitionsForMode('remote').map((tool) => tool.name)).not.toContain(
       'inspect_project',
     );
@@ -239,7 +239,7 @@ describe('OtaKit MCP registry transport', () => {
     });
     const { tools } = await remote.client.listTools();
     const catalog = new Map(OTAKIT_TOOL_CATALOG.map((tool) => [tool.name, tool]));
-    expect(tools).toHaveLength(25);
+    expect(tools).toHaveLength(27);
     for (const tool of tools) {
       expect(tool.title, tool.name).toBeTruthy();
       expect(tool.annotations?.title, tool.name).toBe(tool.title);
@@ -297,7 +297,7 @@ describe('OtaKit MCP registry transport', () => {
     const listed = await client.listTools();
     expect(client.getInstructions()).toContain('Uploading a bundle does not publish it.');
     expect(client.getInstructions()).toContain('remote connection');
-    expect(listed.tools).toHaveLength(25);
+    expect(listed.tools).toHaveLength(27);
     expect(listed.tools.find((tool) => tool.name === 'get_context')).toMatchObject({
       annotations: { readOnlyHint: true },
     });
