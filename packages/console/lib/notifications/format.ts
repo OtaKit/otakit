@@ -150,7 +150,7 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
           lines: [
             config.channel
               ? `Devices on ${config.channel} now use the base channel's config.`
-              : 'Apps now use their code defaults and the values they last received.',
+              : 'Apps now use their code defaults.',
             ...said,
             ...byLine(payload),
           ],

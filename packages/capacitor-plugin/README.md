@@ -346,12 +346,13 @@ A small JSON object per channel that you change in the dashboard, with
 store build: kill switches, URLs, limits, banners. Plugin 3.4+ reads it.
 
 ```ts
-const { values } = await OtaKit.getConfig({
-  defaults: { checkoutEnabled: true, helpUrl: 'https://example.com/help' },
-});
-if (!values.checkoutEnabled) hideCheckout();
+const defaults = { checkoutEnabled: true, helpUrl: 'https://example.com/help' };
 
-OtaKit.addListener('configChanged', (config) => applyConfig(config.values)); // remote values only
+// Add the listener first: a change fetched at launch is delivered to it.
+OtaKit.addListener('configChanged', (next) => applyConfig({ ...defaults, ...next.values }));
+
+const { values } = await OtaKit.getConfig({ defaults });
+applyConfig(values);
 ```
 
 - `getConfig()` answers from the device instantly: the config saved by the

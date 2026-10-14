@@ -181,7 +181,7 @@ final class RemoteConfigClientTests: XCTestCase {
     XCTAssertNil(empty.file)
     XCTAssertEqual(empty.toDictionary()["source"] as? String, "none")
 
-    let result = await first.refresh(context("production"))
+    let result = await first.refresh(context("production")).result
     XCTAssertNil(result.error)
     XCTAssertTrue(result.changed)
     XCTAssertEqual(result.snapshot.file?.version, 12)
@@ -195,7 +195,7 @@ final class RemoteConfigClientTests: XCTestCase {
 
     // An unchanged file is confirmed with the ETag.
     ConfigStubProtocol.reply(productionPath, 304)
-    let again = await first.refresh(context("production"))
+    let again = await first.refresh(context("production")).result
     XCTAssertFalse(again.changed)
     XCTAssertEqual(ConfigStubProtocol.requests.last?.value(forHTTPHeaderField: "If-None-Match"), "\"v12\"")
   }
@@ -203,7 +203,7 @@ final class RemoteConfigClientTests: XCTestCase {
   func testFallsBackToTheBaseConfigWithoutChannelConfig() async throws {
     ConfigStubProtocol.reply(betaPath, 404)
     ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
-    let result = await client().refresh(context("beta"))
+    let result = await client().refresh(context("beta")).result
     XCTAssertEqual(result.snapshot.file?.version, 3)
     XCTAssertNil(result.snapshot.file?.channel)
     XCTAssertNotNil(result.snapshot.file?.experimentsJson)
@@ -214,7 +214,7 @@ final class RemoteConfigClientTests: XCTestCase {
     ConfigStubProtocol.reply(betaPath, 200, RemoteConfigTests.betaDeleted)
     ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
     let configClient = client()
-    let result = await configClient.refresh(context("beta"))
+    let result = await configClient.refresh(context("beta")).result
     XCTAssertEqual(result.snapshot.file?.version, 3)
     XCTAssertNil(result.snapshot.file?.channel)
 
@@ -222,7 +222,7 @@ final class RemoteConfigClientTests: XCTestCase {
     ConfigStubProtocol.reset()
     ConfigStubProtocol.reply(betaPath, 200, RemoteConfigTests.betaDeleted)
     ConfigStubProtocol.reply(basePath, 404)
-    let none = await client().refresh(context("beta"))
+    let none = await client().refresh(context("beta")).result
     XCTAssertNotNil(none.snapshot.file, "the base copy saved by the first client is kept")
   }
 
@@ -230,7 +230,7 @@ final class RemoteConfigClientTests: XCTestCase {
     let older = RemoteConfigTests.production.replacingOccurrences(of: "\"version\": 12", with: "\"version\": 11")
     ConfigStubProtocol.reply(productionPath, 200, RemoteConfigTests.production)
     let configClient = client()
-    _ = await configClient.refresh(context("production"))
+    _ = await configClient.refresh(context("production")).result
     // Version 11 with the version-12 signature would fail verification anyway;
     // an unsigned setup shows the replay rule on its own.
     ConfigStubProtocol.reply(productionPath, 200, older)
@@ -241,7 +241,7 @@ final class RemoteConfigClientTests: XCTestCase {
       trustedKeys: [],
       allowInsecureUrls: false
     )
-    let replayed = await configClient.refresh(unsigned)
+    let replayed = await configClient.refresh(unsigned).result
     XCTAssertEqual(replayed.snapshot.file?.version, 12)
     XCTAssertFalse(replayed.changed)
   }
@@ -249,28 +249,81 @@ final class RemoteConfigClientTests: XCTestCase {
   func testKeepsTheVerifiedCopyWhenTheFileGoesMissingOrTheNetworkFails() async throws {
     ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
     let configClient = client()
-    _ = await configClient.refresh(context(nil))
+    _ = await configClient.refresh(context(nil)).result
 
     ConfigStubProtocol.reply(basePath, 404)
-    let missing = await configClient.refresh(context(nil))
+    let missing = await configClient.refresh(context(nil)).result
     XCTAssertEqual(missing.snapshot.file?.version, 3)
     XCTAssertNil(missing.error)
 
     ConfigStubProtocol.reply(basePath, 503)
-    let failed = await configClient.refresh(context(nil))
+    let failed = await configClient.refresh(context(nil)).result
     XCTAssertEqual(failed.snapshot.file?.version, 3)
     XCTAssertEqual(failed.error, "http_503")
 
     ConfigStubProtocol.reply(basePath, 200, "{ not json")
-    let broken = await configClient.refresh(context(nil))
+    let broken = await configClient.refresh(context(nil)).result
     XCTAssertEqual(broken.snapshot.file?.version, 3)
     XCTAssertEqual(broken.error, "invalid_config")
+  }
+
+  func testStartsOverForAnotherApp() async throws {
+    ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
+    let configClient = client()
+    _ = await configClient.refresh(context(nil)).result
+    // Another app ID on the same install: nothing carries over, not even the
+    // highest version seen, so its version 1 is accepted.
+    let other = RemoteConfigClient.Context(
+      cdnUrl: "https://cdn.test",
+      appId: "11111111-2222-4333-8444-555555555555",
+      channel: nil,
+      trustedKeys: [],
+      allowInsecureUrls: false
+    )
+    let otherPath = "/config/11111111-2222-4333-8444-555555555555/__base__/config.json"
+    let otherFile = RemoteConfigTests.base
+      .replacingOccurrences(of: RemoteConfigClientTests.appId, with: other.appId)
+      .replacingOccurrences(of: "\"version\": 3", with: "\"version\": 1")
+    ConfigStubProtocol.reply(otherPath, 200, otherFile)
+    let switched = await configClient.refresh(other).result
+    XCTAssertEqual(switched.snapshot.file?.version, 1)
+    XCTAssertEqual(switched.snapshot.file?.appId, other.appId)
+    let oldApp = await configClient.snapshot(appId: RemoteConfigClientTests.appId, channel: nil)
+    XCTAssertNil(oldApp.file)
+  }
+
+  func testSharesAFetchOnlyForTheSameChannel() async throws {
+    ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
+    ConfigStubProtocol.reply(productionPath, 200, RemoteConfigTests.production)
+    let configClient = client()
+    async let first = configClient.refresh(context(nil))
+    async let same = configClient.refresh(context(nil))
+    let results = await [first, same]
+    XCTAssertEqual(results.filter { $0.ownFetch }.count, 1, "one fetch, one report")
+    async let base = configClient.refresh(context(nil))
+    async let production = configClient.refresh(context("production"))
+    let (baseResult, productionResult) = await (base, production)
+    XCTAssertTrue(productionResult.ownFetch, "another channel fetches on its own")
+    XCTAssertEqual(productionResult.result.snapshot.file?.channel, "production")
+    XCTAssertEqual(baseResult.result.snapshot.file?.version, 3)
+  }
+
+  func testUsesTheBaseCopyWhenAChannelIsDeletedAndTheBaseFetchFails() async throws {
+    ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
+    let configClient = client()
+    _ = await configClient.refresh(context(nil)).result
+    ConfigStubProtocol.reply(betaPath, 200, RemoteConfigTests.betaDeleted)
+    ConfigStubProtocol.reply(basePath, 503)
+    let result = await configClient.refresh(context("beta")).result
+    XCTAssertEqual(result.error, "http_503")
+    XCTAssertEqual(result.snapshot.file?.version, 3)
+    XCTAssertNil(result.snapshot.file?.channel)
   }
 
   func testANewChannelShowsTheBaseConfigUntilItsFirstFetch() async throws {
     ConfigStubProtocol.reply(basePath, 200, RemoteConfigTests.base)
     let configClient = client()
-    _ = await configClient.refresh(context(nil))
+    _ = await configClient.refresh(context(nil)).result
     let beforeFetch = await configClient.snapshot(appId: RemoteConfigClientTests.appId, channel: "production")
     XCTAssertEqual(beforeFetch.file?.version, 3)
     let skipsRecentFetch = await configClient.shouldSkip(intervalMs: 600_000)

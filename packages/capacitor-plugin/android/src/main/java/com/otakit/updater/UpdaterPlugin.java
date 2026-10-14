@@ -774,7 +774,9 @@ public class UpdaterPlugin extends Plugin {
     RemoteConfig.RefreshResult result = remoteConfig.refresh(
       new RemoteConfig.Context(cdnUrl, appId, configChannel(), manifestKeys, allowInsecureUrls)
     );
-    if (result.changed) emitEvent("configChanged", toJSObject(result.snapshot.toMap()));
+    // Retained until a listener is added: the launch fetch can finish before the app's
+    // JavaScript has registered one.
+    if (result.changed) notifyListeners("configChanged", toJSObject(result.snapshot.toMap()), true);
     return result;
   }
 

@@ -106,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 /**
  * Delete a channel's config: `?channel=&expectedVersion=`. Its devices then use
  * the base channel's config; deleting the base config leaves apps on their
- * code defaults (and the values they cached).
+ * code defaults.
  */
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { appId } = await params;

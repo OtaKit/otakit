@@ -6,6 +6,7 @@ CREATE TABLE "RemoteConfig" (
     "channelKey" TEXT NOT NULL,
     "currentVersion" INTEGER NOT NULL,
     "syncedVersion" INTEGER NOT NULL DEFAULT 0,
+    "syncedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

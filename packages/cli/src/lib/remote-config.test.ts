@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { RemoteConfigState } from './api.js';
 import {
   describeKeyChanges,
+  describeValue,
   formatRemoteConfig,
   formatRemoteConfigHistory,
   parseConfigValue,
@@ -33,6 +34,17 @@ describe('parseConfigValue', () => {
     expect(parseConfigValue('Back at 14:00')).toBe('Back at 14:00');
     expect(parseConfigValue('5', true)).toBe('5');
     expect(parseConfigValue('false', true)).toBe('false');
+  });
+
+  it('keeps numbers that would not read back as typed as text', () => {
+    expect(parseConfigValue('1.10')).toBe('1.10');
+    expect(parseConfigValue('2.0')).toBe('2.0');
+    expect(parseConfigValue('1e3')).toBe('1e3');
+    expect(parseConfigValue('12345678901234567890')).toBe('12345678901234567890');
+    expect(parseConfigValue('-3.5')).toBe(-3.5);
+    expect(describeValue('1.10')).toBe('"1.10" (text)');
+    expect(describeValue(false)).toBe('false (boolean)');
+    expect(describeValue([1])).toBe('[1] (list)');
   });
 });
 

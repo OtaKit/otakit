@@ -30,13 +30,13 @@ export default function RemoteConfigPage() {
       <H2>Read it in your app</H2>
       <Pre>{`import { OtaKit } from '@otakit/capacitor-updater';
 
-const config = await OtaKit.getConfig({
-  defaults: { checkoutEnabled: true, helpUrl: 'https://example.com/help' },
-});
-if (!config.values.checkoutEnabled) hideCheckout();
+const defaults = { checkoutEnabled: true, helpUrl: 'https://example.com/help' };
 
-// Fetched later (for example after the app returns to the foreground)
-OtaKit.addListener('configChanged', (next) => applyConfig({ ...defaults, ...next.values }));`}</Pre>
+// Add the listener first: a change fetched at launch is delivered to it.
+OtaKit.addListener('configChanged', (next) => applyConfig({ ...defaults, ...next.values }));
+
+const config = await OtaKit.getConfig({ defaults });
+applyConfig(config.values);`}</Pre>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
           <Code>getConfig()</Code> answers instantly from the device: the config saved by the last

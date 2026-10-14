@@ -86,9 +86,16 @@ function invalid(message: string): OtaKitServiceError {
   return new OtaKitServiceError('INVALID_INPUT', message, 400);
 }
 
+/** Names that would read as the base channel in a URL or a signed payload. */
+const RESERVED_CONFIG_CHANNELS = new Set(['__base__', 'null']);
+
 export function parseConfigChannel(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string' || !isReleasableChannelName(value)) {
+  if (
+    typeof value !== 'string' ||
+    !isReleasableChannelName(value) ||
+    RESERVED_CONFIG_CHANNELS.has(value.toLowerCase())
+  ) {
     throw new OtaKitServiceError(
       'INVALID_LANE',
       'Invalid channel. Use null or omit it for the base channel.',
@@ -219,7 +226,7 @@ export async function syncRemoteConfigFile(
       });
       await tx.remoteConfig.update({
         where: { id: config.id },
-        data: { syncedVersion: latest.version },
+        data: { syncedVersion: latest.version, syncedAt: new Date() },
       });
     }, TRANSACTION_OPTIONS);
     return 'published';
@@ -233,13 +240,29 @@ export async function syncRemoteConfigFile(
   }
 }
 
-/** Write every file whose latest version has not reached the CDN yet. */
+/**
+ * Signatures expire a year after signing, and a config can stay unchanged for
+ * longer, so files are signed again (same version) well before that.
+ */
+const RESIGN_AFTER_MS = 330 * 24 * 60 * 60 * 1000;
+
+/**
+ * Write every file whose latest version has not reached the CDN yet, and sign
+ * again the ones written more than 330 days ago.
+ */
 export async function reconcileRemoteConfigFiles(
   database: PrismaClient = db,
+  now = new Date(),
 ): Promise<{ checked: number; repaired: number; pending: number }> {
   const stale = await database.remoteConfig.findMany({
-    where: { syncedVersion: { lt: database.remoteConfig.fields.currentVersion } },
+    where: {
+      OR: [
+        { syncedVersion: { lt: database.remoteConfig.fields.currentVersion } },
+        { syncedAt: { lt: new Date(now.getTime() - RESIGN_AFTER_MS) } },
+      ],
+    },
     select: { appId: true, channel: true },
+    orderBy: { updatedAt: 'asc' },
     take: 100,
   });
   let repaired = 0;
@@ -429,7 +452,11 @@ export async function publishRemoteConfig(
   return { ...result, warnings: validation.warnings };
 }
 
-/** Set and remove top-level keys of the latest version. */
+/**
+ * Set and remove top-level keys of the latest version. A channel without its
+ * own config starts from the base channel's values, so its devices keep every
+ * base key (a kill switch included) plus the change.
+ */
 export async function patchRemoteConfig(
   context: Context,
   input: {
@@ -459,8 +486,18 @@ export async function patchRemoteConfig(
   await ensureChannelAllowed(context.organizationId, channel);
 
   let warnings: ConfigWarning[] = [];
+  // Read outside the channel's lock: a base change in between only means the
+  // new channel config starts from those values, as if it came a moment later.
+  const baseValues =
+    channel === null
+      ? {}
+      : await (async () => {
+          const base = await findConfig(db, context.appId, null);
+          const latest = base?.versions[0];
+          return latest && !latest.deleted ? parseValues(latest.valuesJson) : {};
+        })();
   const result = await writeVersion(context, { channel, expectedVersion, message }, (latest) => {
-    const current = latest && !latest.deleted ? parseValues(latest.valuesJson) : {};
+    const current = latest && !latest.deleted ? parseValues(latest.valuesJson) : baseValues;
     const values: ConfigValues = {};
     for (const [key, value] of Object.entries(current)) {
       if (!(unset as string[]).includes(key)) values[key] = value;
@@ -528,7 +565,10 @@ export async function restoreRemoteConfig(
   return { ...result, warnings: validation.ok ? validation.warnings : [] };
 }
 
-/** Delete a channel's config: its file goes away and its devices use the base config. */
+/**
+ * Delete a channel's config, as a signed deletion file: devices on a named
+ * channel then use the base config, apps on the base channel their defaults.
+ */
 export async function deleteRemoteConfig(
   context: Context,
   input: { channel: unknown; expectedVersion: unknown; message?: unknown },

@@ -3,15 +3,36 @@ import type { RemoteConfigHistoryEntry, RemoteConfigState } from './api.js';
 /**
  * A value typed on the command line: JSON when it parses (`false`, `5`,
  * `{"a":1}`, `"quoted"`), otherwise the text itself, so URLs and words need
- * no extra quoting. `--string` keeps the text even when it looks like JSON.
+ * no extra quoting. A number that would not read back exactly as typed
+ * (`1.10`, `2.0`, `1e3`, a huge integer) stays text. `--string` keeps the text
+ * even when it looks like JSON.
  */
 export function parseConfigValue(raw: string, asString = false): unknown {
   if (asString) return raw;
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return raw;
   }
+  if (typeof parsed === 'number' && String(parsed) !== raw.trim()) return raw;
+  return parsed;
+}
+
+/** "false (boolean)", "\"1.10\" (text)", for confirming what `set` stored. */
+export function describeValue(value: unknown): string {
+  const type =
+    value === null
+      ? 'null'
+      : Array.isArray(value)
+        ? 'list'
+        : typeof value === 'string'
+          ? 'text'
+          : typeof value === 'object'
+            ? 'object'
+            : typeof value;
+  const shown = JSON.stringify(value);
+  return `${shown.length > 80 ? `${shown.slice(0, 79)}…` : shown} (${type})`;
 }
 
 export function keyCount(values: Record<string, unknown> | null): string {

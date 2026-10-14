@@ -17,7 +17,9 @@ function keyList(values: Record<string, unknown>): string {
   const keys = Object.keys(values);
   if (keys.length === 0) return 'no keys';
   const shown = keys.slice(0, 8).join(', ');
-  return keys.length > 8 ? `${keys.length} keys (${shown}, …)` : `${keys.length} ${keys.length === 1 ? 'key' : 'keys'} (${shown})`;
+  return keys.length > 8
+    ? `${keys.length} keys (${shown}, …)`
+    : `${keys.length} ${keys.length === 1 ? 'key' : 'keys'} (${shown})`;
 }
 
 /** One sentence for get_remote_config. */

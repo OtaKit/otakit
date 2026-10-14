@@ -476,7 +476,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     name: 'set_remote_config',
     title: 'Change OtaKit remote config',
     description:
-      "Set and remove top-level keys of a channel's remote config, publishing a new version. Apps on plugin 3.4+ pick it up on their next fetch (at launch, or on resume after checkInterval). Fails when expectedVersion is not the latest version. Values are public: secrets do not belong in config.",
+      "Set and remove top-level keys of a channel's remote config, publishing a new version. A named channel without its own config starts from the base channel's values. Apps on plugin 3.4+ pick it up on their next fetch (at launch, or on resume after checkInterval). Fails when expectedVersion is not the latest version. Values are public: secrets do not belong in config.",
     modes: both,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,

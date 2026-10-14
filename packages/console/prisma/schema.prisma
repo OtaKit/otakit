@@ -669,9 +669,12 @@ model RemoteConfig {
   /// Latest version. Versions start at 1 and never repeat, deletes included,
   /// so devices can refuse an older file (replay).
   currentVersion Int
-  /// Version the CDN file was last written (or deleted) for; lower than
-  /// currentVersion while a write is pending repair.
+  /// Version the CDN file was last written for; lower than currentVersion
+  /// while a write is pending repair.
   syncedVersion  Int                   @default(0)
+  /// When the file was last written. Signatures expire after a year, so old
+  /// files are signed again.
+  syncedAt       DateTime?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   versions       RemoteConfigVersion[]
@@ -689,7 +692,8 @@ model RemoteConfigVersion {
   valuesJson      String
   /// Running experiments (A/B tests), exactly as signed; null when there are none.
   experimentsJson String?
-  /// The channel's config was deleted in this version: no file, devices use the base config.
+  /// The channel's config was deleted in this version (a signed deletion file):
+  /// devices on a named channel use the base config, base apps their defaults.
   deleted         Boolean      @default(false)
   /// Why it changed, shown in history and notifications.
   message         String?

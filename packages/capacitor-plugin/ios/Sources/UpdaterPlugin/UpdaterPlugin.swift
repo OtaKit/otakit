@@ -609,7 +609,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     if respectInterval, await remoteConfig.shouldSkip(intervalMs: checkIntervalMs) {
       return nil
     }
-    let result = await remoteConfig.refresh(
+    let (result, ownFetch) = await remoteConfig.refresh(
       RemoteConfigClient.Context(
         cdnUrl: cdnUrl,
         appId: appId,
@@ -618,8 +618,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         allowInsecureUrls: allowInsecureUrls
       )
     )
-    if result.changed {
-      emitEvent("configChanged", result.snapshot.toDictionary())
+    if result.changed && ownFetch {
+      // Retained until a listener is added: the launch fetch can finish before
+      // the app's JavaScript has registered one.
+      notifyListeners("configChanged", data: result.snapshot.toDictionary(), retainUntilConsumed: true)
     }
     return result
   }

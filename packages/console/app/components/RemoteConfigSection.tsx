@@ -260,7 +260,7 @@ export function RemoteConfigSection({
           </div>
         ) : (
           <div className="space-y-4 border-b border-border bg-background px-6 py-5">
-            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Channel">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Channel">
               {chips.map((key) => {
                 const config = byKey.get(key);
                 const active = key === selected;
@@ -274,8 +274,7 @@ export function RemoteConfigSection({
                   <button
                     key={key}
                     type="button"
-                    role="tab"
-                    aria-selected={active}
+                    aria-pressed={active}
                     onClick={() => setSelected(key)}
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors',
@@ -446,6 +445,7 @@ export function RemoteConfigSection({
             setHistoryFor(undefined);
             await load();
           }}
+          onStale={load}
         />
       ) : null}
 
@@ -583,7 +583,7 @@ function ConfigEditorDialog({
 
         {reviewing && changes && validation?.ok ? (
           <div className="space-y-3">
-            <ul className="space-y-1 rounded-md border p-3 font-mono text-xs">
+            <ul className="space-y-1 break-all rounded-md border p-3 font-mono text-xs">
               {changes.added.map((key) => (
                 <li key={`+${key}`} className="text-emerald-600 dark:text-emerald-400">
                   + {key}: {preview(validation.values[key])}
@@ -680,12 +680,15 @@ function HistoryDialog({
   currentVersion,
   onClose,
   onRestored,
+  onStale,
 }: {
   base: string;
   channel: string | null;
   currentVersion: number;
   onClose: () => void;
   onRestored: () => Promise<void>;
+  /** The config changed meanwhile: reload it so a retry uses the new version. */
+  onStale: () => Promise<void>;
 }) {
   const [versions, setVersions] = useState<RemoteConfigHistoryEntry[] | null>(null);
   const [open, setOpen] = useState<number | null>(null);
@@ -719,6 +722,10 @@ function HistoryDialog({
       await onRestored();
     } catch (error) {
       toast.error(staleOrFailure(error, 'Could not restore'));
+      if ((error as ApiError).code === 'STALE_CONFIG_VERSION') {
+        onClose();
+        await onStale();
+      }
     } finally {
       setRestoring(null);
     }

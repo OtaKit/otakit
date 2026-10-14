@@ -299,6 +299,70 @@ public class RemoteConfigTest {
   }
 
   @Test
+  public void answersFromTheDeviceWhileAFetchIsStillRunning() throws Exception {
+    transport.reply(BASE_PATH, 200, BASE, null);
+    RemoteConfig.Client configClient = client();
+    configClient.refresh(context(null, KEYS));
+
+    java.util.concurrent.CountDownLatch requested = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    RemoteConfig.Client slow = new RemoteConfig.Client(
+      new RemoteConfig.Store(new java.io.File(temporary.getRoot(), "config")),
+      (url, etag) -> {
+        requested.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+        }
+        return new RemoteConfig.Response(304, "", null);
+      }
+    );
+    Thread fetch = new Thread(() -> slow.refresh(context(null, KEYS)));
+    fetch.start();
+    assertTrue(requested.await(5, java.util.concurrent.TimeUnit.SECONDS));
+    long started = System.nanoTime();
+    assertEquals(3L, slow.snapshot(APP_ID, null).file.version);
+    assertTrue(slow.shouldSkip(0) == false);
+    assertTrue(System.nanoTime() - started < 1_000_000_000L);
+    release.countDown();
+    fetch.join(5000);
+  }
+
+  @Test
+  public void startsOverForAnotherApp() throws Exception {
+    transport.reply(BASE_PATH, 200, BASE, null);
+    RemoteConfig.Client configClient = client();
+    configClient.refresh(context(null, KEYS));
+    String otherApp = "11111111-2222-4333-8444-555555555555";
+    transport.reply(
+      "/config/" + otherApp + "/__base__/config.json",
+      200,
+      tamper(tamper(BASE, "appId", otherApp), "version", 1),
+      null
+    );
+    RemoteConfig.RefreshResult switched = configClient.refresh(
+      new RemoteConfig.Context("https://cdn.test", otherApp, null, Collections.emptyList(), false)
+    );
+    // Version 1 is accepted: the other app's counters did not carry over.
+    assertEquals(1L, switched.snapshot.file.version);
+    assertNull(configClient.snapshot(APP_ID, null).file);
+  }
+
+  @Test
+  public void usesTheBaseCopyWhenAChannelIsDeletedAndTheBaseFetchFails() throws Exception {
+    transport.reply(BASE_PATH, 200, BASE, null);
+    RemoteConfig.Client configClient = client();
+    configClient.refresh(context(null, KEYS));
+    transport.reply(BETA_PATH, 200, BETA_DELETED, null);
+    transport.reply(BASE_PATH, 503, "", null);
+    RemoteConfig.RefreshResult result = configClient.refresh(context("beta", KEYS));
+    assertEquals("http_503", result.error);
+    assertEquals(3L, result.snapshot.file.version);
+    assertNull(result.snapshot.file.channel);
+  }
+
+  @Test
   public void aNewChannelShowsTheBaseConfigUntilItsFirstFetch() throws Exception {
     transport.reply(BASE_PATH, 200, BASE, null);
     RemoteConfig.Client configClient = client();

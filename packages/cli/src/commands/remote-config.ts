@@ -10,6 +10,7 @@ import {
   channelLabel,
   describeKeyChanges,
   formatRemoteConfig,
+  describeValue,
   formatRemoteConfigHistory,
   keyCount,
   parseConfigValue,
@@ -90,7 +91,11 @@ const listCommand = new Command('list')
       }
       for (const config of configs) {
         const state =
-          config.status === 'live' ? keyCount(config.values) : 'deleted (uses the base config)';
+          config.status === 'live'
+            ? keyCount(config.values)
+            : config.channel === null
+              ? 'deleted (apps use their code defaults)'
+              : 'deleted (uses the base config)';
         console.log(`${config.channel ?? 'base'}  v${config.version}  ${state}`);
       }
     });
@@ -115,7 +120,9 @@ const getCommand = withCommon(
 
 const setCommand = withCommon(
   new Command('set')
-    .description('Set one key; the value is JSON when it parses (false, 5, {"a":1}), else text')
+    .description(
+      'Set one key; the value is JSON when it parses (false, 5, {"a":1}), else text. A channel without its own config starts from the base values.',
+    )
     .argument('<key>', 'Top-level key')
     .argument('<value>', 'New value')
     .option('--string', 'Store the value as text even if it looks like JSON')
@@ -125,10 +132,12 @@ const setCommand = withCommon(
     const api = await client(options);
     const channel = selectedChannel(options);
     const current = await api.getRemoteConfig(channel);
+    const parsed = parseConfigValue(value, options.string);
+    if (!options.json) console.log(`${key} = ${describeValue(parsed)}`);
     printWrite(
       await api.patchRemoteConfig({
         channel,
-        set: { [key]: parseConfigValue(value, options.string) },
+        set: { [key]: parsed },
         expectedVersion: current.version,
         message: options.message,
       }),

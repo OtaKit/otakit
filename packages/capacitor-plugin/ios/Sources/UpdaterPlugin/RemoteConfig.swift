@@ -133,7 +133,8 @@ actor RemoteConfigClient {
   private var state: RemoteConfigState
   /// Source keys fetched or confirmed in this process.
   private var freshSources: Set<String> = []
-  private var inFlight: Task<RefreshResult, Never>?
+  private var inFlight: (id: Int, appId: String, channel: String?, task: Task<RefreshResult, Never>)?
+  private var refreshCount = 0
 
   init(store: RemoteConfigStore, session: URLSession? = nil) {
     self.store = store
@@ -153,6 +154,9 @@ actor RemoteConfigClient {
 
   /// The config the app sees now, without any network access.
   func snapshot(appId: String, channel: String?) -> RemoteConfigSnapshot {
+    guard state.appId == nil || state.appId == appId else {
+      return RemoteConfigSnapshot(file: nil, fetchedAt: nil, fresh: false)
+    }
     let appKey = RemoteConfigClient.key(channel)
     let sourceKey: String?
     if let resolved = state.resolved[appKey] {
@@ -179,13 +183,23 @@ actor RemoteConfigClient {
     return Date().timeIntervalSince1970 * 1000 - state.lastFetchAt < Double(intervalMs)
   }
 
-  func refresh(_ context: Context) async -> RefreshResult {
-    if let inFlight { return await inFlight.value }
+  /// Fetch now. Callers that arrive while a fetch for the same app and channel
+  /// runs share its result (`ownFetch` false, so only one of them reports a
+  /// change); a fetch for another channel (setChannel meanwhile) runs anew.
+  func refresh(_ context: Context) async -> (result: RefreshResult, ownFetch: Bool) {
+    if let current = inFlight {
+      let result = await current.task.value
+      if current.appId == context.appId && current.channel == context.channel {
+        return (result, false)
+      }
+    }
+    refreshCount += 1
+    let id = refreshCount
     let task = Task { await self.performRefresh(context) }
-    inFlight = task
+    inFlight = (id, context.appId, context.channel, task)
     let result = await task.value
-    inFlight = nil
-    return result
+    if inFlight?.id == id { inFlight = nil }
+    return (result, true)
   }
 
   private enum Outcome {
@@ -195,6 +209,11 @@ actor RemoteConfigClient {
   }
 
   private func performRefresh(_ context: Context) async -> RefreshResult {
+    if state.appId != context.appId {
+      state = RemoteConfigState()
+      state.appId = context.appId
+      freshSources = []
+    }
     let before = snapshot(appId: context.appId, channel: context.channel)
     var error: String?
     do {
@@ -204,6 +223,10 @@ actor RemoteConfigClient {
         let own = try await fetchSource(channel: channel, context: context)
         if let own, !own.file.deleted {
           resolvedKey = RemoteConfigClient.key(channel)
+        } else {
+          // No config of its own (or a signed deletion): use the base copy
+          // already on the device even if the base fetch below fails.
+          state.resolved[appKey] = RemoteConfigClient.baseKey
         }
       }
       if resolvedKey == nil {

@@ -241,6 +241,61 @@ databaseDescribe('remote config (PostgreSQL integration)', () => {
     ).rejects.toMatchObject({ message: 'Pass keys to set or unset' });
   });
 
+  it('refuses channel names that would read as the base channel', async () => {
+    for (const channel of ['__base__', 'null', 'NULL']) {
+      await expect(
+        service.publishRemoteConfig(context(), { channel, values: { a: 1 }, expectedVersion: 0 }),
+      ).rejects.toMatchObject({ code: 'INVALID_LANE' });
+    }
+  });
+
+  it('starts a channel’s own config from the base values when keys are set on it', async () => {
+    await service.publishRemoteConfig(context(), {
+      channel: null,
+      values: { checkoutEnabled: false, helpUrl: 'https://example.com/help' },
+      expectedVersion: 0,
+    });
+    const beta = await service.patchRemoteConfig(context(), {
+      channel: 'beta',
+      set: { banner: 'Beta build' },
+      expectedVersion: 0,
+    });
+    // The base kill switch still reaches beta devices.
+    expect(beta.config).toMatchObject({
+      channel: 'beta',
+      version: 1,
+      values: { checkoutEnabled: false, helpUrl: 'https://example.com/help', banner: 'Beta build' },
+    });
+    // A replace (PUT) is still exactly what was sent.
+    const replaced = await service.publishRemoteConfig(context(), {
+      channel: 'beta',
+      values: { banner: 'Only this' },
+      expectedVersion: 1,
+    });
+    expect(replaced.config.values).toEqual({ banner: 'Only this' });
+  });
+
+  it('signs a file again before its signature expires, with the same version', async () => {
+    await service.publishRemoteConfig(context(), {
+      channel: null,
+      values: { a: 1 },
+      expectedVersion: 0,
+    });
+    const first = fileOf(null)!;
+    await db.remoteConfig.updateMany({
+      where: { appId },
+      data: { syncedAt: new Date(Date.now() - 331 * 24 * 60 * 60 * 1000) },
+    });
+    storage.putTextObject.mockClear();
+    await expect(service.reconcileRemoteConfigFiles()).resolves.toMatchObject({ repaired: 1 });
+    expect(storage.putTextObject).toHaveBeenCalledTimes(1);
+    expect(fileOf(null)).toMatchObject({ version: 1, valuesJson: first.valuesJson });
+    expect(verify(fileOf(null)!)).toBe(true);
+    // Fresh files are left alone.
+    storage.putTextObject.mockClear();
+    await expect(service.reconcileRemoteConfigFiles()).resolves.toMatchObject({ checked: 0 });
+  });
+
   it('warns about values that look like secrets without refusing them', async () => {
     const result = await service.publishRemoteConfig(context(), {
       channel: null,

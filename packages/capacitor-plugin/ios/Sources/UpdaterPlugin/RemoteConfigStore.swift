@@ -55,6 +55,9 @@ struct RemoteConfigState: Codable, Equatable {
     var fetchedAt: Double
   }
 
+  /// The app this state belongs to; another appId starts over, so no file or
+  /// version counter carries over to a different app.
+  var appId: String?
   /// Source key (channel, or `__base__`) → its last verified file.
   var sources: [String: Source] = [:]
   /// App channel key → the source key it uses, or "" for no config.

@@ -279,6 +279,8 @@ final class RemoteConfig {
       }
     }
 
+    /** The app this state belongs to; another appId starts over. */
+    String appId;
     final Map<String, Source> sources = new HashMap<>();
     /** App channel key → the source key it uses, or "" for no config. */
     final Map<String, String> resolved = new HashMap<>();
@@ -299,6 +301,7 @@ final class RemoteConfig {
       json.put("resolved", new JSONObject(resolved));
       json.put("maxVersions", new JSONObject(maxVersions));
       json.put("lastFetchAt", lastFetchAt);
+      json.put("appId", appId != null ? appId : JSONObject.NULL);
       return json;
     }
 
@@ -334,6 +337,7 @@ final class RemoteConfig {
         }
       }
       state.lastFetchAt = json.optLong("lastFetchAt", 0);
+      state.appId = json.isNull("appId") ? null : json.optString("appId", null);
       return state;
     }
   }
@@ -466,10 +470,16 @@ final class RemoteConfig {
   }
 
   /** Fetches, verifies and keeps the app's remote config. Refreshes run one at a time. */
+  /**
+   * Fetches, verifies and keeps the app's remote config. Refreshes run one at a time on the
+   * plugin's config executor. The state lock is held only to read and apply state, never during
+   * a network call, so getConfig() answers at once even while a slow fetch runs.
+   */
   static final class Client {
 
     private final Store store;
     private final Transport transport;
+    private final Object lock = new Object();
     private State state;
     /** Source keys fetched or confirmed in this process. */
     private final Set<String> freshSources = new HashSet<>();
@@ -481,7 +491,14 @@ final class RemoteConfig {
     }
 
     /** The config the app sees now, without any network access. */
-    synchronized Snapshot snapshot(String appId, String channel) {
+    Snapshot snapshot(String appId, String channel) {
+      synchronized (lock) {
+        return snapshotLocked(appId, channel);
+      }
+    }
+
+    private Snapshot snapshotLocked(String appId, String channel) {
+      if (state.appId != null && !state.appId.equals(appId)) return new Snapshot(null, null, false);
       String appKey = key(channel);
       String sourceKey;
       if (state.resolved.containsKey(appKey)) {
@@ -500,37 +517,61 @@ final class RemoteConfig {
     }
 
     /** Whether a resume should skip fetching because the last one was recent. */
-    synchronized boolean shouldSkip(long intervalMs) {
-      if (intervalMs <= 0 || state.lastFetchAt <= 0) return false;
-      return System.currentTimeMillis() - state.lastFetchAt < intervalMs;
+    boolean shouldSkip(long intervalMs) {
+      synchronized (lock) {
+        if (intervalMs <= 0 || state.lastFetchAt <= 0) return false;
+        return System.currentTimeMillis() - state.lastFetchAt < intervalMs;
+      }
     }
 
-    synchronized RefreshResult refresh(Context context) {
-      Snapshot before = snapshot(context.appId, context.channel);
+    RefreshResult refresh(Context context) {
+      Snapshot before;
+      synchronized (lock) {
+        if (state.appId == null || !state.appId.equals(context.appId)) {
+          // Another app on this install: no file or version counter carries over.
+          state = new State();
+          state.appId = context.appId;
+          freshSources.clear();
+        }
+        before = snapshotLocked(context.appId, context.channel);
+      }
       String error = null;
+      String appKey = key(context.channel);
       try {
-        String appKey = key(context.channel);
         String resolvedKey = null;
         if (context.channel != null) {
           State.Source own = fetchSource(context.channel, context);
-          if (own != null && !own.file.deleted) resolvedKey = key(context.channel);
+          if (own != null && !own.file.deleted) {
+            resolvedKey = key(context.channel);
+          } else {
+            // No config of its own (or a signed deletion): use the base copy already on the
+            // device even if the base fetch below fails.
+            synchronized (lock) {
+              state.resolved.put(appKey, BASE_KEY);
+            }
+          }
         }
         if (resolvedKey == null) {
           State.Source base = fetchSource(null, context);
           resolvedKey = base != null && !base.file.deleted ? BASE_KEY : "";
         }
-        state.resolved.put(appKey, resolvedKey);
+        synchronized (lock) {
+          state.resolved.put(appKey, resolvedKey);
+        }
       } catch (Exception failure) {
         error = describe(failure);
         android.util.Log.w("OtaKit", "Remote config refresh failed: " + error);
       }
-      state.lastFetchAt = System.currentTimeMillis();
-      try {
-        store.save(state);
-      } catch (Exception saveError) {
-        android.util.Log.w("OtaKit", "Cannot save remote config", saveError);
+      Snapshot after;
+      synchronized (lock) {
+        state.lastFetchAt = System.currentTimeMillis();
+        try {
+          store.save(state);
+        } catch (Exception saveError) {
+          android.util.Log.w("OtaKit", "Cannot save remote config", saveError);
+        }
+        after = snapshotLocked(context.appId, context.channel);
       }
-      Snapshot after = snapshot(context.appId, context.channel);
       return new RefreshResult(after, after.differs(before), error);
     }
 
@@ -540,54 +581,64 @@ final class RemoteConfig {
      */
     private State.Source fetchSource(String channel, Context context) throws Exception {
       String sourceKey = key(channel);
-      State.Source known = state.sources.get(sourceKey);
-      if (known != null && !known.file.appId.equals(context.appId)) known = null;
+      State.Source known;
+      synchronized (lock) {
+        known = state.sources.get(sourceKey);
+        if (known != null && !known.file.appId.equals(context.appId)) known = null;
+      }
+      // Unlocked: the network may take many seconds.
       Response response = transport.get(url(channel, context), known != null ? known.etag : null);
+      ConfigFile parsed =
+        response.status == 200
+          ? parse(response.body, context.appId, channel, context.trustedKeys)
+          : null;
       long now = System.currentTimeMillis();
-      switch (response.status) {
-        case 200: {
-          ConfigFile file = parse(response.body, context.appId, channel, context.trustedKeys);
-          Long max = state.maxVersions.get(sourceKey);
-          if (max != null && file.version < max) {
-            // An older file than one already accepted: a stale cache or a replay.
-            android.util.Log.w(
-              "OtaKit",
-              "Ignoring remote config version " +
-                file.version +
-                " for " +
-                sourceKey +
-                ": already saw " +
-                max
+      synchronized (lock) {
+        switch (response.status) {
+          case 200: {
+            Long max = state.maxVersions.get(sourceKey);
+            if (max != null && parsed.version < max) {
+              // An older file than one already accepted: a stale cache or a replay.
+              android.util.Log.w(
+                "OtaKit",
+                "Ignoring remote config version " +
+                  parsed.version +
+                  " for " +
+                  sourceKey +
+                  ": already saw " +
+                  max
+              );
+              return known;
+            }
+            state.maxVersions.put(
+              sourceKey,
+              max != null ? Math.max(max, parsed.version) : parsed.version
             );
+            State.Source source = new State.Source(parsed, response.etag, now);
+            state.sources.put(sourceKey, source);
+            freshSources.add(sourceKey);
+            return source;
+          }
+          case 304:
+            if (known == null) return null;
+            known.fetchedAt = now;
+            freshSources.add(sourceKey);
             return known;
-          }
-          state.maxVersions.put(
-            sourceKey,
-            max != null ? Math.max(max, file.version) : file.version
-          );
-          State.Source source = new State.Source(file, response.etag, now);
-          state.sources.put(sourceKey, source);
-          freshSources.add(sourceKey);
-          return source;
+          case 403:
+          case 404:
+            // The server writes a signed deletion instead of removing a file, so a missing file
+            // the device has seen before is not trusted to mean "gone". (R2 answers 403 without
+            // list access.)
+            if (known != null) {
+              android.util.Log.w(
+                "OtaKit",
+                "Remote config for " + sourceKey + " is missing; keeping the last verified copy"
+              );
+            }
+            return known;
+          default:
+            throw new IOException("http_" + response.status);
         }
-        case 304:
-          if (known == null) return null;
-          known.fetchedAt = now;
-          freshSources.add(sourceKey);
-          return known;
-        case 403:
-        case 404:
-          // The server writes a signed deletion instead of removing a file, so a missing file the
-          // device has seen before is not trusted to mean "gone". (R2 answers 403 without list access.)
-          if (known != null) {
-            android.util.Log.w(
-              "OtaKit",
-              "Remote config for " + sourceKey + " is missing; keeping the last verified copy"
-            );
-          }
-          return known;
-        default:
-          throw new IOException("http_" + response.status);
       }
     }
 
