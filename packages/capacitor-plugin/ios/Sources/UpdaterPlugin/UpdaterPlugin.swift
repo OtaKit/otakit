@@ -531,7 +531,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve(["text": text, "version": current.version, "releaseId": releaseId])
   }
 
+  /// Marks the notes of `releaseId` seen (the release whose notes the app
+  /// showed, plugin 3.4+), else of the running release. Passing the ID keeps
+  /// an update applied in between from being marked instead.
   @objc func markReleaseNotesSeen(_ call: CAPPluginCall) {
+    if let raw = call.getString("releaseId") {
+      let releaseId = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !releaseId.isEmpty, releaseId.count <= 64 else {
+        call.reject("releaseId must be the ID from getUnseenReleaseNotes()")
+        return
+      }
+      store.markReleaseNotesSeen(releaseId)
+      call.resolve()
+      return
+    }
     let current = store.getCurrentBundle()
     if current.notes != nil, let releaseId = current.releaseId {
       store.markReleaseNotesSeen(releaseId)
@@ -960,6 +973,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     let selection = parsed.map { Rollout.select($0, secret: store.assignmentSecret()) }
     rememberRollout(selection?.state)
+    if let manifest = selection?.manifest, let failure = manifest.notesFailure {
+      // The update goes on without its notes; report why they were dropped.
+      sendDeviceEvent(action: .checkError, bundleVersion: manifest.version, runtimeVersion: runtimeVersion,
+        channel: channel, releaseId: manifest.releaseId, detail: failure.detail, attemptId: checkId,
+        phase: failure.phase)
+    }
     return selection?.manifest
   }
 

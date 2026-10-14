@@ -475,8 +475,12 @@ export interface OtaKitPlugin {
    */
   getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
 
-  /** Mark the running release's notes as shown (plugin 3.3+). */
-  markReleaseNotesSeen(): Promise<void>;
+  /**
+   * Mark release notes as shown (plugin 3.3+). Pass the `releaseId` from
+   * `getUnseenReleaseNotes()` (plugin 3.4+), so an update applied while the
+   * notes were open is not marked instead; without it, the running release's.
+   */
+  markReleaseNotesSeen(options?: { releaseId?: string }): Promise<void>;
 
   /**
    * Send a custom event (plugin 3.4+), the same as the `track` export.
@@ -600,7 +604,7 @@ export interface OtaKitBridgePlugin {
   getChannel(): Promise<ChannelInfo>;
   stopPreview(): Promise<void>;
   getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
-  markReleaseNotesSeen(): Promise<void>;
+  markReleaseNotesSeen(options?: { releaseId?: string }): Promise<void>;
   getConfig(): Promise<NativeRemoteConfig>;
   refreshConfig(): Promise<NativeRemoteConfig>;
   enqueueAppTelemetry(options: {

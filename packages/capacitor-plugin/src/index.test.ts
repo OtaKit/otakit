@@ -6,6 +6,7 @@ const native = vi.hoisted(() => ({
   addListener: vi.fn(),
   getExperimentContext: vi.fn(),
   reportExperiment: vi.fn(),
+  markReleaseNotesSeen: vi.fn(async () => undefined),
   getState: vi.fn(async () => ({ current: { id: 'builtin', version: '1.0' } })),
   enqueueAppTelemetry: vi.fn(async () => ({ accepted: 1, dropped: 0 })),
 }));
@@ -173,5 +174,13 @@ describe('A/B tests', () => {
       'exposure',
       'conversion:purchase_completed',
     ]);
+  });
+});
+
+describe('release notes', () => {
+  it('marks the notes of the release the app showed', async () => {
+    await OtaKit.markReleaseNotesSeen({ releaseId: 'release-1' });
+    await OtaKit.markReleaseNotesSeen();
+    expect(native.markReleaseNotesSeen.mock.calls).toEqual([[{ releaseId: 'release-1' }], [{}]]);
   });
 });

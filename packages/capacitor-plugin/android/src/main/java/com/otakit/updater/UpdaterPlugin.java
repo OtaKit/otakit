@@ -995,6 +995,19 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void markReleaseNotesSeen(PluginCall call) {
+    // The release whose notes the app showed (plugin 3.4+), else the running one: passing the ID
+    // keeps an update applied in between from being marked instead.
+    String requested = call.getString("releaseId");
+    if (requested != null) {
+      String releaseId = requested.trim();
+      if (releaseId.isEmpty() || releaseId.length() > 64) {
+        call.reject("releaseId must be the ID from getUnseenReleaseNotes()");
+        return;
+      }
+      store.markReleaseNotesSeen(releaseId);
+      call.resolve();
+      return;
+    }
     BundleInfo current = store.getCurrentBundle();
     if (current.notes != null && current.releaseId != null) {
       store.markReleaseNotesSeen(current.releaseId);
@@ -1275,7 +1288,21 @@ public class UpdaterPlugin extends Plugin {
     }
     Rollout.Selection selection = Rollout.select(parsed, store.assignmentSecret());
     lastRollout = selection.state;
-    return selection.manifest;
+    ManifestClient.LatestManifest manifest = selection.manifest;
+    if (manifest != null && manifest.notesFailure != null) {
+      // The update goes on without its notes; report why they were dropped.
+      sendDeviceEvent(
+        "check_error",
+        manifest.version,
+        runtimeVersion,
+        channel,
+        manifest.releaseId,
+        manifest.notesFailure.detail,
+        checkId,
+        manifest.notesFailure.phase
+      );
+    }
+    return manifest;
   }
 
   private CheckResolution checkLatest(boolean respectInterval, String channel) throws Exception {

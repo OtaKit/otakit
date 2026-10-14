@@ -823,7 +823,7 @@ plugins: {
 - `getLastFailure()` -> `BundleInfo | null`: Returns information about the most recent failed update (rollback). Useful for diagnostics and crash reporting. Returns null if no failure has occurred.
 - `stopPreview()` -> `void`: End the active preview link and return to the normal release (plugin 3.2+). Terminal operation while a preview bundle is running: the app reloads into the release.
 - `getUnseenReleaseNotes()` -> `ReleaseNotes | null`: The running release's notes, until markReleaseNotesSeen() is called (plugin 3.3+). Show them once in a What's new screen, rendered as text. See Release Notes.
-- `markReleaseNotesSeen()` -> `void`: Mark the running release's notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes.
+- `markReleaseNotesSeen({ releaseId }?)` -> `void`: Mark notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes. Pass the releaseId you showed (plugin 3.4+): an update applied while the notes were open is then not marked instead. Without it, the running release's.
 
 The plugin also emits lifecycle events — `updateAvailable`, `updateStaged`, `updateApplied`, `downloadFailed`, and `rollback` — via `OtaKit.addListener(...)`. See Events & Listeners for the full reference and the startup reconciliation pattern.
 
@@ -2396,7 +2396,7 @@ try {
   const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
   if (notes) {
     showWhatsNew(notes.text);
-    await OtaKit.markReleaseNotesSeen();
+    await OtaKit.markReleaseNotesSeen({ releaseId: notes.releaseId });
   }
 } catch {
   // A native shell on plugin 3.2 or older doesn't have these methods.
@@ -2418,7 +2418,7 @@ Fix a typo or polish the copy from the release's menu in the dashboard (&ldquo;E
 
 ### Security
 
-Notes travel in their own signed block of the release manifest. The app only shows notes signed for that exact release, so they cannot be changed in transit. Older plugin versions ignore the block and update as before.
+Notes travel in their own signed block of the release manifest. The app only shows notes signed for that exact release, so they cannot be changed in transit. From plugin 3.4, notes that fail verification are reported as a check error (`notes_signature_invalid` and similar) in the app's events; the update itself goes on without them. Older plugin versions ignore the block and update as before.
 
 ## Remote Config
 

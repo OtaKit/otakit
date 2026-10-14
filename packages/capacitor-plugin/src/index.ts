@@ -127,7 +127,8 @@ const OtaKit: OtaKitPlugin = {
   getChannel: () => NativeOtaKit.getChannel(),
   stopPreview: () => NativeOtaKit.stopPreview(),
   getUnseenReleaseNotes: async () => normalizeNullable(await NativeOtaKit.getUnseenReleaseNotes()),
-  markReleaseNotesSeen: () => NativeOtaKit.markReleaseNotesSeen(),
+  markReleaseNotesSeen: (options?: { releaseId?: string }) =>
+    NativeOtaKit.markReleaseNotesSeen(options?.releaseId ? { releaseId: options.releaseId } : {}),
   getConfig: async <T extends RemoteConfigValues = RemoteConfigValues>(options?: {
     defaults?: T;
   }): Promise<RemoteConfig<T>> => {
