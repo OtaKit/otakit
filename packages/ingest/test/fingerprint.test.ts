@@ -150,6 +150,21 @@ describe('groupError', () => {
     );
   });
 
+  it('keeps quoted values apart when there is no stack to tell errors apart', async () => {
+    const timeout = await groupError({
+      name: 'UnhandledRejection',
+      message: '{"code":"E_TIMEOUT","attempt":2}',
+      stack: null,
+    });
+    const auth = await groupError({
+      name: 'UnhandledRejection',
+      message: '{"code":"E_AUTH","attempt":2}',
+      stack: null,
+    });
+    expect(timeout.normalizedMessage).toBe('{"code":"E_TIMEOUT","attempt":<n>}');
+    expect(timeout.fingerprint).not.toBe(auth.fingerprint);
+  });
+
   it('groups by name and message when there is no stack', async () => {
     const a = await groupError({ name: 'Error', message: 'Timeout after 30000ms', stack: null });
     const b = await groupError({ name: 'Error', message: 'Timeout after 15000ms', stack: '' });

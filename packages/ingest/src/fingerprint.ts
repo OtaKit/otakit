@@ -108,12 +108,15 @@ const NUMBER = /\d+(?:\.\d+)?/g;
 /**
  * The message with its variable parts replaced, so "id 123 not found" and "id 456 not found" group.
  * URLs keep only their normalized path: build hashes and hosts vary, and alerts quote this text.
+ * Quoted values are kept when the error has no stack (`quoted: false`): the message is then all
+ * there is to tell rejections like `{"code":"E_TIMEOUT"}` and `{"code":"E_AUTH"}` apart.
  */
-export function normalizeMessage(message: string): string {
+export function normalizeMessage(message: string, options: { quoted?: boolean } = {}): string {
+  const replaceQuoted = options.quoted ?? true;
   return message
     .replace(URL_IN_MESSAGE, (url) => normalizeFile(url) || '<url>')
     .replace(UUID, '<id>')
-    .replace(QUOTED, '<str>')
+    .replace(QUOTED, (quoted) => (replaceQuoted ? '<str>' : quoted))
     .replace(HEX, (value) => (/\d/.test(value) ? '<id>' : value))
     .replace(NUMBER, '<n>')
     .replace(/\s+/g, ' ')
@@ -148,7 +151,7 @@ export async function groupError(input: {
 }): Promise<ErrorGrouping> {
   const frames = parseStack(input.stack);
   const inApp = frames.filter((frame) => frame.inApp);
-  const normalizedMessage = normalizeMessage(input.message);
+  const normalizedMessage = normalizeMessage(input.message, { quoted: frames.length > 0 });
   const key = [input.name, normalizedMessage, ...inApp.slice(0, 3).map(frameKey)].join('\n');
   const top = inApp[0] ?? frames[0];
   return {
