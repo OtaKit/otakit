@@ -1,0 +1,43 @@
+DESCRIPTION >
+    One custom event split by a property in [from_ts, to_ts): the top 10 values by events,
+    and a total row (is_total = 1). An empty value means the property was not set. Reads
+    raw events (90 days).
+
+TOKEN otakit_web READ
+
+NODE property_values
+SQL >
+    %
+    SELECT
+        event_id,
+        session_id,
+        JSONExtractString(properties, {{ String(property, '__missing_property__') }}) AS value
+    FROM app_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND name = {{ String(name, '__missing_name__') }}
+      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+      AND received_at < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+      AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+      AND ({{ String(release_id, '') }} = '' OR release_id = {{ String(release_id, '') }})
+      {% if defined(channel_is_null) %}
+        AND (({{ UInt8(channel_is_null) }} = 1 AND coalesce(channel, '') = '')
+             OR ({{ UInt8(channel_is_null) }} = 0 AND channel = {{ String(channel, '') }}))
+      {% end %}
+
+NODE breakdown
+SQL >
+    %
+    SELECT * FROM (
+        SELECT value, 0 AS is_total, uniqExact(event_id) AS events, uniqExact(session_id) AS sessions
+        FROM property_values
+        GROUP BY value
+        ORDER BY events DESC, value
+        LIMIT 10
+    )
+    UNION ALL
+    SELECT * FROM (
+        SELECT '' AS value, 1 AS is_total, uniqExact(event_id) AS events, uniqExact(session_id) AS sessions
+        FROM property_values
+    )
+
+TYPE ENDPOINT

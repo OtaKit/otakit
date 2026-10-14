@@ -1,0 +1,18 @@
+DESCRIPTION >
+    Hourly custom event counts per name, release, channel and platform: unique
+    events and unique sessions (app launches). Kept 13 months.
+
+SCHEMA >
+    `bucket` DateTime('UTC'),
+    `app_id` String,
+    `name` LowCardinality(String),
+    `release_id` String,
+    `channel` String,
+    `platform` LowCardinality(String),
+    `event_ids_uniq_exact_state` AggregateFunction(uniqExact, String),
+    `session_ids_uniq_exact_state` AggregateFunction(uniqExact, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(bucket)"
+ENGINE_SORTING_KEY "app_id, bucket, name, release_id, channel, platform"
+ENGINE_TTL "bucket + toIntervalDay(395)"

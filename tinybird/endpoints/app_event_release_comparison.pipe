@@ -1,0 +1,23 @@
+DESCRIPTION >
+    One custom event per release (13 months): events, sessions with the event, and
+    sessions with $session_start (all app launches, when the app sends session events).
+
+TOKEN otakit_web READ
+
+NODE release_counts
+SQL >
+    %
+    SELECT
+        release_id,
+        uniqExactMergeIf(event_ids_uniq_exact_state, name = {{ String(name, '__missing_name__') }}) AS events,
+        uniqExactMergeIf(session_ids_uniq_exact_state, name = {{ String(name, '__missing_name__') }}) AS sessions,
+        uniqExactMergeIf(session_ids_uniq_exact_state, name = '$session_start') AS all_sessions
+    FROM app_event_hourly
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND name IN ({{ String(name, '__missing_name__') }}, '$session_start')
+      AND release_id != ''
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), release_id)
+    GROUP BY release_id
+    ORDER BY release_id
+
+TYPE ENDPOINT

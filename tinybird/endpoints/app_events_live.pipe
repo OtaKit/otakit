@@ -1,0 +1,45 @@
+DESCRIPTION >
+    The latest custom events of one app since since_ts, newest first, once per event_id,
+    optionally of one name. Reads raw events.
+
+TOKEN otakit_web READ
+
+NODE recent_events
+SQL >
+    %
+    SELECT *
+    FROM app_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND ({{ String(name, '') }} = '' OR name = {{ String(name, '') }})
+      AND received_at >= parseDateTime64BestEffort({{ String(since_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+    ORDER BY received_at DESC
+    LIMIT 1000
+
+NODE first_receipts
+SQL >
+    %
+    SELECT
+        *,
+        row_number() OVER (PARTITION BY event_id ORDER BY received_at) AS receipt_number
+    FROM recent_events
+
+NODE latest_events
+SQL >
+    %
+    SELECT
+        event_id,
+        toUnixTimestamp64Milli(received_at) AS received_at_ms,
+        toUnixTimestamp64Milli(occurred_at) AS occurred_at_ms,
+        name,
+        properties,
+        platform,
+        release_id,
+        bundle_version,
+        channel,
+        os_version
+    FROM first_receipts
+    WHERE receipt_number = 1
+    ORDER BY received_at DESC
+    LIMIT {{ UInt32(limit, 100) }}
+
+TYPE ENDPOINT

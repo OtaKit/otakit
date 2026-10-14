@@ -26,6 +26,15 @@ analytics and error tracking. It is mainly relevant for advanced self-hosted set
 - `endpoints/error_issue_releases.pipe`
 - `endpoints/release_capable_applies.pipe`
 - `endpoints/app_error_usage.pipe`
+- `datasources/app_events_raw.datasource`
+- `datasources/app_event_hourly.datasource`
+- `materializations/app_event_hourly_mv.pipe`
+- `endpoints/app_event_names.pipe`
+- `endpoints/app_event_timeseries.pipe`
+- `endpoints/app_event_breakdown.pipe`
+- `endpoints/app_event_release_comparison.pipe`
+- `endpoints/app_events_live.pipe`
+- `endpoints/app_event_usage.pipe`
 
 ## Required names
 
@@ -36,6 +45,8 @@ The web app and ingest service expect these resource names:
   - `device_event_daily_counts`
   - `app_errors_raw`
   - `app_error_daily`
+  - `app_events_raw`
+  - `app_event_hourly`
 - endpoints:
   - `app_events_recent`
   - `release_event_counts`
@@ -46,6 +57,8 @@ The web app and ingest service expect these resource names:
   - `error_activity`, `error_groups`, `error_group_samples`, `error_group_breakdown`,
     `error_group_buckets`, `error_issue_releases`, `release_error_counts`,
     `release_capable_applies`, `app_error_usage`
+  - `app_event_names`, `app_event_timeseries`, `app_event_breakdown`,
+    `app_event_release_comparison`, `app_events_live`, `app_event_usage`
 
 ## Event schema requirements
 
@@ -99,3 +112,12 @@ retry received in another bucket in both; totals do not.
 Error rates per 1,000 applies (`release_capable_applies`) count only applies from
 devices whose native plugin can report errors (3.4+, from `native_sdk_version`), so a
 release is not compared against devices that could not have reported anything.
+
+## Custom events
+
+`OtaKit.track()` (plugin 3.4+) writes one row per event to `app_events_raw` (90 days), with
+its properties as a JSON object of string values. `app_event_hourly` keeps unique events and
+unique sessions (app launches) per hour, name, release, channel and platform for 13 months.
+`$session_start`, sent once per app launch by `initAnalytics()`, is the denominator of
+per-session rates in `app_event_release_comparison`.
+
