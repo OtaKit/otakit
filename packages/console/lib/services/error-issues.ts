@@ -568,3 +568,64 @@ export async function getErrorTrackingStatus(
         ).catch(() => null);
   return { events, limit, pausedUntil };
 }
+
+export type ReleaseErrorComparison = {
+  release: ReleaseErrorSummary & { releaseId: string; bundleVersion: string };
+  /** The release that was live on the lane when this one was published. */
+  previous: (ReleaseErrorSummary & { releaseId: string; bundleVersion: string }) | null;
+  analyticsAvailable: boolean;
+};
+
+/** A release's errors next to the release it replaced on its lane. */
+export async function getReleaseErrorComparison(
+  ctx: Context,
+  releaseId: string,
+): Promise<ReleaseErrorComparison> {
+  const release = await db.release.findFirst({
+    where: { id: releaseId, appId: ctx.appId, app: { organizationId: ctx.organizationId } },
+    select: {
+      id: true,
+      channel: true,
+      promotedAt: true,
+      bundle: { select: { version: true, runtimeVersion: true } },
+    },
+  });
+  if (!release) throw new OtaKitServiceError('RELEASE_NOT_FOUND', 'Release not found', 404);
+  const previous = await db.release.findFirst({
+    where: {
+      appId: ctx.appId,
+      channel: release.channel,
+      bundle: { is: { runtimeVersion: release.bundle.runtimeVersion } },
+      promotedAt: { lt: release.promotedAt },
+      OR: [{ revertedAt: null }, { revertedAt: { gt: release.promotedAt } }],
+    },
+    orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, bundle: { select: { version: true } } },
+  });
+  const summaries = await getReleaseErrorSummaries(
+    ctx.appId,
+    previous ? [release.id, previous.id] : [release.id],
+  );
+  const empty: ReleaseErrorSummary = {
+    events: 0,
+    issues: 0,
+    newIssues: 0,
+    applies: 0,
+    perThousandApplies: null,
+  };
+  return {
+    release: {
+      ...(summaries?.get(release.id) ?? empty),
+      releaseId: release.id,
+      bundleVersion: release.bundle.version,
+    },
+    previous: previous
+      ? {
+          ...(summaries?.get(previous.id) ?? empty),
+          releaseId: previous.id,
+          bundleVersion: previous.bundle.version,
+        }
+      : null,
+    analyticsAvailable: summaries !== null,
+  };
+}
