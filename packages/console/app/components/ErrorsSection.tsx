@@ -388,15 +388,19 @@ export function ErrorsSection({
           ) : (
             <div className="relative">
               <div className={cn('overflow-auto', loading && 'opacity-60')}>
-                <Table className="min-w-[760px] table-fixed [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6">
+                <Table className="table-fixed sm:min-w-[760px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-auto">Issue</TableHead>
-                      <TableHead className="w-28">Trend</TableHead>
-                      <TableHead className="w-20 text-right">Events</TableHead>
-                      <TableHead className="w-20 text-right">Sessions</TableHead>
-                      <TableHead className="w-20 text-right">Releases</TableHead>
-                      <TableHead className="w-28">Last seen</TableHead>
+                      <TableHead className="hidden w-28 sm:table-cell">Trend</TableHead>
+                      <TableHead className="hidden w-20 text-right sm:table-cell">Events</TableHead>
+                      <TableHead className="hidden w-20 text-right sm:table-cell">
+                        Sessions
+                      </TableHead>
+                      <TableHead className="hidden w-20 text-right sm:table-cell">
+                        Releases
+                      </TableHead>
+                      <TableHead className="hidden w-28 sm:table-cell">Last seen</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -501,18 +505,27 @@ function IssueRow({
           {issue.topFrame && issue.lastMessage ? ' · ' : null}
           {issue.lastMessage}
         </p>
+        <p className="mt-0.5 text-xs text-muted-foreground sm:hidden">
+          {formatCount(issue.events)} {issue.events === 1 ? 'event' : 'events'} ·{' '}
+          {relativeTime(issue.lastSeenAt)}
+        </p>
       </TableCell>
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         <Sparkline trend={issue.trend ?? []} range={range} />
       </TableCell>
-      <TableCell className="text-right text-xs tabular-nums">{formatCount(issue.events)}</TableCell>
-      <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+      <TableCell className="hidden text-right text-xs tabular-nums sm:table-cell">
+        {formatCount(issue.events)}
+      </TableCell>
+      <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
         {formatCount(issue.sessions)}
       </TableCell>
-      <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+      <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
         {formatCount(issue.releases)}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground" title={issue.lastSeenAt}>
+      <TableCell
+        className="hidden text-xs text-muted-foreground sm:table-cell"
+        title={issue.lastSeenAt}
+      >
         {relativeTime(issue.lastSeenAt)}
       </TableCell>
     </TableRow>

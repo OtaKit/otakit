@@ -2183,7 +2183,7 @@ export function ProductDashboard({
               {/* Errors */}
               {selectedApp ? (
                 <ErrorsSection
-                  key={selectedApp.id}
+                  key={`errors-${selectedApp.id}`}
                   appId={selectedApp.id}
                   releases={releaseHistory}
                   docsUrl={docsUrl}
