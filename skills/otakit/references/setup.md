@@ -61,4 +61,3 @@ With plugin 3.4+, apps send custom events with `track(name, properties)`; one
 compared per 1,000 launches. Add it only when the user asks for analytics, keep
 IDs out of event names, and keep personal data out of properties. The store
 privacy declaration is product interaction, not linked to identity.
-

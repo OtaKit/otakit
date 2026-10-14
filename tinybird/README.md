@@ -120,4 +120,3 @@ its properties as a JSON object of string values. `app_event_hourly` keeps uniqu
 unique sessions (app launches) per hour, name, release, channel and platform for 13 months.
 `$session_start`, sent once per app launch by `initAnalytics()`, is the denominator of
 per-session rates in `app_event_release_comparison`.
-
