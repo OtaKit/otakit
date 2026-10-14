@@ -533,8 +533,11 @@ function IssueRow({
       <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
         {formatCount(issue.sessions)}
       </TableCell>
-      <TableCell className="hidden text-right text-xs tabular-nums text-muted-foreground sm:table-cell">
-        {formatCount(issue.releases)}
+      <TableCell
+        className="hidden text-right text-xs tabular-nums text-muted-foreground sm:table-cell"
+        title={issue.releases === 0 ? 'Only on the built-in bundle' : undefined}
+      >
+        {issue.releases === 0 ? '–' : formatCount(issue.releases)}
       </TableCell>
       <TableCell
         className="hidden text-xs text-muted-foreground sm:table-cell"
