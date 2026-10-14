@@ -139,9 +139,9 @@ otakit upload --release`}</Pre>
       <H2>Keep delta updates small</H2>
       <P>
         With <Code>updateStrategy: &apos;deltas&apos;</Code>, OtaKit only downloads files whose{' '}
-        <em>contents</em> changed since the device&rsquo;s last bundle — images, fonts, and unchanged
-        chunks are reused from the on-device cache. Anything that rewrites files on every build
-        defeats that.
+        <em>contents</em> changed since the device&rsquo;s last bundle — images, fonts, and
+        unchanged chunks are reused from the on-device cache. Anything that rewrites files on every
+        build defeats that.
       </P>
       <P>
         The common culprit is a <strong>non-deterministic build ID</strong>. Next.js (static export)

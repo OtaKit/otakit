@@ -36,3 +36,20 @@ registered, create it only after confirming the organization and slug. Run a
 compatibility check when a current release and local native-package evidence are
 available. Prefer an upload-only first run so the bundle can be reviewed before
 publication.
+
+## Optional: error tracking
+
+With plugin 3.4+, one call at startup sends uncaught errors and unhandled
+promise rejections, grouped into issues per OTA release:
+
+```ts
+import { initErrorTracking } from '@otakit/capacitor-updater';
+
+initErrorTracking();
+```
+
+Add it only when the user asks for error tracking. It scrubs emails, tokens and
+URL query strings on the device; `beforeSend` handles app-specific data.
+`testErrorTracking()` sends one test error to confirm the setup. Mention that
+the app's store privacy declarations need crash or diagnostic data (not linked
+to identity).

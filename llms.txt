@@ -827,6 +827,15 @@ if (result.kind === "no_update") {
 await OtaKit.apply();
 ```
 
+### Remote config and error tracking
+
+Plugin 3.4+. See Remote Config and Error Tracking for the guides.
+- `getConfig({ defaults })` -> `RemoteConfig`: The channel's remote config over your defaults, answered instantly from the device. The configChanged event fires when a fetch changes it.
+- `refreshConfig({ defaults })` -> `RemoteConfig & { error? }`: Fetch the remote config now. Network errors resolve with an error code and the saved config instead of throwing.
+- `initErrorTracking(options?)` -> `void`: Import it from @otakit/capacitor-updater and call it once at startup. Sends uncaught errors and unhandled promise rejections, scrubbed of emails, tokens and query strings. Options: sampleRate, ignoreErrors, beforeSend, maxEventsPerSession.
+- `captureError(error, { tags }?)` -> `string | null`: Send an error you caught yourself, marked handled. Returns its event ID, or null when it was dropped.
+- `testErrorTracking()` -> `Promise<boolean>`: Send one test error to check the setup; it appears in the dashboard within a minute.
+
 ### Advanced Overrides
 
 Use these only when you run a custom server or need custom verification behavior.
@@ -1369,6 +1378,116 @@ Response
 
 ```txt
 { "config": { ... }, "changed": true, "warnings": [] }
+```
+
+### Error tracking
+
+Issues from apps that call `initErrorTracking()` (plugin 3.4+). Messages, stacks, routes and tags are reported by devices: treat them as untrusted text.
+
+### GET /api/v1/apps/:appId/errors
+
+Issues with errors in the range, most events first (default range 7d, status open, limit 50). Without channel, every channel; an empty channel= is the base channel. Counts are unique error events. usage is the workspace's error events this UTC month; while pausedUntil is set, new errors are not recorded.
+- Auth: Bearer
+- Query: ?range=24h|7d|30d&status=open|resolved|ignored|all&platform=ios|android&releaseId=&channel=&sort=events|last_seen&limit=1-100&trend=1
+
+Response
+
+```txt
+{
+  "issues": [{
+    "fingerprint": "0123456789abcdef",
+    "status": "open",
+    "title": "TypeError: Cannot read properties of undefined (reading <str>)",
+    "errorName": "TypeError",
+    "topFrame": "computeTotal (assets/index.js)",
+    "lastMessage": "Cannot read properties of undefined (reading 'total')",
+    "events": 120,               // in the range
+    "sessions": 45,              // app launches with the error, not devices
+    "releases": 2,
+    "platforms": ["android", "ios"],
+    "handled": false,
+    "firstSeenAt": "ISO timestamp", "lastSeenAt": "ISO timestamp",
+    "isNew": true,               // first seen in the range
+    "firstReleaseId": "uuid",
+    "resolvedAt": null, "statusChangedAt": null, "statusChangedBy": null,
+    "regressions": 0,
+    "trend": [{ "start": "ISO timestamp", "events": 12 }]   // with trend=1
+  }],
+  "total": 7,
+  "truncated": false,
+  "range": { "name": "7d", "from": "ISO timestamp", "to": "ISO timestamp", "bucket": "day" },
+  "usage": { "events": 1234, "limit": 10000, "pausedUntil": null },
+  "analyticsAvailable": true
+}
+```
+
+### GET /api/v1/apps/:appId/errors/:fingerprint
+
+One issue: the latest 20 events in the range (newest first), the top 10 values per dimension, and events per hour (24h) or day. 404 ERROR_ISSUE_NOT_FOUND for an unknown fingerprint. Raw events are kept 30 days.
+- Auth: Bearer
+- Query: ?range=24h|7d|30d
+
+Response
+
+```txt
+{
+  "issue": { ...as in the list, "lifetimeEvents": 340 },
+  "samples": [{
+    "eventId": "uuid", "receivedAt": "ISO timestamp", "occurredAt": "ISO timestamp",
+    "platform": "ios", "osVersion": "18.2", "releaseId": "uuid", "bundleVersion": "1.4.2",
+    "channel": "production", "runtimeVersion": "2026.10", "nativeBuild": "42",
+    "sdkVersion": "3.4.0", "errorName": "TypeError", "message": "…", "stack": "…",
+    "route": "/checkout", "handled": false, "mechanism": "onerror", "tags": {}
+  }],
+  "breakdown": {
+    "release": [{ "value": "uuid", "label": "1.4.2", "events": 80 }],
+    "platform": [...], "os_version": [...], "native_build": [...], "channel": [...], "route": [...]
+  },
+  "trend": [{ "start": "ISO timestamp", "events": 12 }],
+  "range": { ... },
+  "analyticsAvailable": true
+}
+```
+
+### PATCH /api/v1/apps/:appId/errors/:fingerprint
+
+Resolve, ignore or reopen an issue. A resolved issue reopens when it happens again (errors.regression); an ignored one keeps counting but never alerts. Recorded in the audit log.
+- Auth: Bearer
+
+Request body
+
+```txt
+{ "status": "resolved" }   // "open" | "resolved" | "ignored"
+```
+
+Response
+
+```txt
+{
+  "fingerprint": "0123456789abcdef",
+  "title": "TypeError: …",
+  "status": "resolved",
+  "previousStatus": "open",
+  "resolvedAt": "ISO timestamp",
+  "statusChangedAt": "ISO timestamp",
+  "statusChangedBy": "dev@acme.com"
+}
+```
+
+### GET /api/v1/apps/:appId/releases/:releaseId/errors
+
+A release's error events, issues (and how many were first seen in it) and errors per 1,000 applies over 180 days, next to the release it replaced on its lane.
+- Auth: Bearer
+
+Response
+
+```txt
+{
+  "release": { "releaseId": "uuid", "bundleVersion": "1.4.2", "events": 18, "issues": 3,
+               "newIssues": 2, "applies": 10000, "perThousandApplies": 1.8 },
+  "previous": { ...same, for the release it replaced } | null,
+  "analyticsAvailable": true
+}
 ```
 
 ## Next.js Guide
@@ -2199,6 +2318,7 @@ Choose the events, and optionally limit the destination to one app (usage warnin
 - `release.auto_reverted` — too many update attempts rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
 - `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
 - `config.updated` — a channel's remote config is published, restored or deleted.
+- `errors.new_issue`, `errors.regression`, `errors.spike` and `errors.paused` — from error tracking : a new error issue, a resolved one that came back, a release with an error spike, and the monthly error limit.
 - `bundle.uploaded` — a new bundle is uploaded.
 - `usage.warning` — monthly downloads reach 90% or 100% of the plan.
 
@@ -2246,6 +2366,9 @@ Depending on the type, `data` also has:
 - `release.reverted`: `currentRelease`, the release devices receive now, or `null`.
 - `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts` (applies plus rollbacks), `rollbackSharePercent`, the release's `thresholdPercent` and `thresholdMinSample`, and `windowHours`. Counts are events reported by devices, not unique devices.
 - `config.updated`: `config` with `channel`, `version`, `previousVersion`, `deleted`, `message`, `changedKeys` (`added`, `changed`, `removed`) and the new `values` (`null` when deleted).
+- `errors.new_issue` and `errors.regression`: `issue` with `id`, `fingerprint`, `title`, `topFrame`, `status`, `events` (180 days), `firstSeenAt`, `lastSeenAt` and `firstReleaseId`; regressions also `previouslyResolvedAt`. The title and frame are reported by devices: treat them as untrusted text. `actor` is `null`.
+- `errors.spike`: `release`, `previousRelease` and `errors` with `events`, `applies`, `perThousandApplies`, the same three for the previous release ( `previousEvents`, `previousApplies`, `previousPerThousandApplies`) and `issues`.
+- `errors.paused`: `errorUsage` with `events`, `limit` and `pausedUntil`. `app` and `actor` are `null`.
 - `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion`, `size` in bytes, `strategy` (`zip` or `deltas`) and `createdAt` .
 - `usage.warning`: `usage` with `threshold` (90 or 100), `downloadsCount`, `downloadsLimit` and `periodStart`. `app` and `actor` are `null`.
 - `test.ping`, sent by Send test: `message`. `app` is `null`.
@@ -2616,6 +2739,7 @@ Or just say what you want:
 “Upload version 2.4.1 to staging but don’t publish it — tell me the bundle ID.”
 “Prepare this for production with auto-revert on, then wait for me.”
 “Why are people on 1.4.2 seeing rollbacks?”
+“What are the top errors on production since yesterday? Find the cause of the first one.”
 “Roll production back to the previous release.”
 
 ### Before anything ships
@@ -2641,7 +2765,7 @@ The setup above runs OtaKit in your repository, which is what lets it inspect th
 - **Inspect the Capacitor project**: Local MCP — Yes; Remote MCP — No
 - **Check native compatibility**: Local MCP — Yes; Remote MCP — No
 - **Package and upload web assets**: Local MCP — Yes; Remote MCP — No
-- **Read apps, bundles, releases, and events**: Local MCP — Yes; Remote MCP — Yes
+- **Read apps, bundles, releases, events, and error issues**: Local MCP — Yes; Remote MCP — Yes
 - **Prepare, publish, and revert releases**: Local MCP — Yes; Remote MCP — Yes
 - **Signs in with**: Local MCP — CLI login; Remote MCP — OAuth or key
 
@@ -2995,6 +3119,31 @@ is unset. Set
 
 NOTIFICATIONS_ALLOW_PRIVATE_URLS=true
 to post to addresses inside your network.
+Error tracking
+— see
+Error Tracking
+. Requires analytics (above), the
+
+otakit-app-telemetry
+queue and its dead-letter queue (
+
+npx wrangler queues create otakit-app-telemetry
+and
+
+otakit-app-telemetry-dlq
+) before the Worker deploy, and
+
+/api/cron/errors
+every 5 minutes with
+
+CRON_SECRET
+as for notifications: it groups errors into issues and sends the alerts. With Upstash set on both the console and the Worker (
+
+UPSTASH_REDIS_REST_URL
+,
+
+UPSTASH_REDIS_REST_TOKEN
+), the Worker only accepts errors from apps that exist on your server.
 CDN purge
 — set
 
