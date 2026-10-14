@@ -77,6 +77,9 @@ function relativeTime(iso: string, now = Date.now()): string {
   return `${Math.round(hours / 24)} days ago`;
 }
 
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
 /** Axis and tooltip labels: hours in the viewer's time zone, days as UTC dates. */
 function timeLabels(granularity: 'hour' | 'day', range: ReleaseTimeseriesRange) {
   const day = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -95,9 +98,39 @@ function timeLabels(granularity: 'hour' | 'day', range: ReleaseTimeseriesRange) 
         : range === '24h'
           ? hour.format(value)
           : localDay.format(value),
-    tooltip: (value: number) =>
-      granularity === 'day' ? `${day.format(value)} (UTC)` : dayHour.format(value),
+    /** One bucket: "Oct 10, 10:00–11:00", or "Oct 10 (UTC)". */
+    bucket: (start: number, end: number) =>
+      granularity === 'day'
+        ? `${day.format(start)} (UTC)`
+        : `${dayHour.format(start)}–${hour.format(end)}`,
+    /** A moment, such as a marker: "Oct 10, 10:32". */
+    at: (value: number) => dayHour.format(value),
+    /** A running total at the end of a bucket: "By Oct 10, 11:00", or "Through Oct 10 (UTC)". */
+    total: (start: number, end: number) =>
+      granularity === 'day' ? `Through ${day.format(start)} (UTC)` : `By ${dayHour.format(end)}`,
   };
+}
+
+/**
+ * Explicit ticks where automatic ones would repeat a label: one per local day
+ * for 7 days of hours, and every fifth UTC day for 30 days. 24 hours of hours
+ * label well on their own.
+ */
+function axisTicks(range: ReleaseTimeseriesRange, from: number, to: number): number[] | undefined {
+  const ticks: number[] = [];
+  if (range === '7d') {
+    const midnight = new Date(from);
+    midnight.setHours(24, 0, 0, 0);
+    for (let next = midnight; next.getTime() <= to; next.setDate(next.getDate() + 1)) {
+      ticks.push(next.getTime());
+    }
+    return ticks;
+  }
+  if (range === '30d') {
+    for (let next = from; next <= to; next += 5 * DAY_MS) ticks.push(next);
+    return ticks;
+  }
+  return undefined;
 }
 
 function Stat({
@@ -190,10 +223,23 @@ export function ReleaseHealthDialog({
   const error = result?.error ?? null;
 
   const labels = useMemo(() => (data ? timeLabels(data.granularity, data.range) : null), [data]);
-  const points = useMemo(
-    () => (data?.buckets ?? []).map((bucket) => ({ ...bucket, t: Date.parse(bucket.start) })),
-    [data],
-  );
+  // Per-bucket counts sit at the middle of their bucket; the running total of
+  // applies at its end (from 0 at the start of the range), so a curve never
+  // rises before the release that caused it.
+  const points = useMemo(() => {
+    if (!data) return { perBucket: [], cumulative: [] };
+    const bucketMs = data.granularity === 'day' ? DAY_MS : HOUR_MS;
+    const from = Date.parse(data.from);
+    const perBucket = data.buckets.map((bucket) => {
+      const start = Date.parse(bucket.start);
+      return { ...bucket, start, end: start + bucketMs, t: start + bucketMs / 2 };
+    });
+    const cumulative = [
+      { start: from - bucketMs, end: from, t: from, appliedTotal: 0, total: true },
+      ...perBucket.map((point) => ({ ...point, t: point.end, total: true })),
+    ];
+    return { perBucket, cumulative };
+  }, [data]);
   const lane = useMemo(() => {
     if (!data?.lane) return null;
     const releases = data.lane.releases.filter((item) => item.applied.some((value) => value > 0));
@@ -205,10 +251,16 @@ export function ReleaseHealthDialog({
         color: LANE_COLORS[index % LANE_COLORS.length],
       };
     });
-    const rows = data.buckets.map((bucket, index) => ({
-      t: Date.parse(bucket.start),
-      ...Object.fromEntries(releases.map((item) => [item.id, item.applied[index] ?? 0])),
-    }));
+    const bucketMs = data.granularity === 'day' ? DAY_MS : HOUR_MS;
+    const rows = data.buckets.map((bucket, index) => {
+      const start = Date.parse(bucket.start);
+      return {
+        start,
+        end: start + bucketMs,
+        t: start + bucketMs / 2,
+        ...Object.fromEntries(releases.map((item) => [item.id, item.applied[index] ?? 0])),
+      };
+    });
     return { releases, config, rows };
   }, [data, release.id]);
 
@@ -233,10 +285,10 @@ export function ReleaseHealthDialog({
     totals !== undefined &&
     totals.downloads + totals.applied + totals.downloadErrors + totals.rollbacks === 0;
   const domain: [number, number] | undefined = data
-    ? [
-        Date.parse(data.from),
-        Date.parse(data.to) - (data.granularity === 'day' ? 86_400_000 : 3_600_000),
-      ]
+    ? [Date.parse(data.from), Date.parse(data.to)]
+    : undefined;
+  const ticks = data
+    ? axisTicks(data.range, Date.parse(data.from), Date.parse(data.to))
     : undefined;
   const markers = data?.markers ?? [];
 
@@ -246,6 +298,7 @@ export function ReleaseHealthDialog({
       type="number"
       scale="time"
       domain={domain}
+      ticks={ticks}
       tickFormatter={labels.tick}
       tickLine={false}
       axisLine={false}
@@ -256,7 +309,15 @@ export function ReleaseHealthDialog({
     <ChartTooltip
       content={
         <ChartTooltipContent
-          labelFormatter={(_, payload) => labels.tooltip(Number(payload?.[0]?.payload?.t))}
+          labelFormatter={(_, payload) => {
+            const point = payload?.[0]?.payload as
+              | { start: number; end: number; total?: boolean }
+              | undefined;
+            if (!point) return '';
+            return point.total
+              ? labels.total(point.start, point.end)
+              : labels.bucket(point.start, point.end);
+          }}
         />
       }
     />
@@ -342,7 +403,7 @@ export function ReleaseHealthDialog({
               <Stat
                 label="Rollbacks"
                 value={formatNumber(data.totals.rollbacks)}
-                tone={data.totals.rollbacks > 0 ? 'danger' : undefined}
+                tone={shareTone}
               />
               <Stat
                 label="Rollback share"
@@ -354,11 +415,7 @@ export function ReleaseHealthDialog({
                     : 'Rollbacks ÷ (applies + rollbacks).'
                 }
               />
-              <Stat
-                label="Download errors"
-                value={formatNumber(data.totals.downloadErrors)}
-                tone={data.totals.downloadErrors > 0 ? 'warning' : undefined}
-              />
+              <Stat label="Download errors" value={formatNumber(data.totals.downloadErrors)} />
               <Stat label="Downloads" value={formatNumber(data.totals.downloads)} />
             </div>
 
@@ -374,7 +431,7 @@ export function ReleaseHealthDialog({
                     config={{ appliedTotal: { label: 'Applies', color: 'var(--chart-2)' } }}
                     className="mt-2 aspect-auto h-44 w-full"
                   >
-                    <AreaChart data={points} margin={{ left: 0, right: 8, top: 8 }}>
+                    <AreaChart data={points.cumulative} margin={{ left: 0, right: 8, top: 8 }}>
                       <CartesianGrid vertical={false} />
                       {xAxis}
                       <YAxis width={40} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -401,7 +458,7 @@ export function ReleaseHealthDialog({
                             className="h-3 w-0 border-l border-dashed"
                             style={{ borderColor: MARKER_COLORS[marker.type] }}
                           />
-                          {marker.label} · {labels.tooltip(Date.parse(marker.at))}
+                          {marker.label} · {labels.at(Date.parse(marker.at))}
                         </li>
                       ))}
                     </ul>
@@ -415,11 +472,11 @@ export function ReleaseHealthDialog({
                   <ChartContainer
                     config={{
                       rollbacks: { label: 'Rollbacks', color: 'var(--destructive)' },
-                      downloadErrors: { label: 'Download errors', color: 'var(--chart-4)' },
+                      downloadErrors: { label: 'Download errors', color: '#f59e0b' },
                     }}
                     className="mt-2 aspect-auto h-36 w-full"
                   >
-                    <LineChart data={points} margin={{ left: 0, right: 8, top: 8 }}>
+                    <LineChart data={points.perBucket} margin={{ left: 0, right: 8, top: 8 }}>
                       <CartesianGrid vertical={false} />
                       {xAxis}
                       <YAxis width={40} tickLine={false} axisLine={false} allowDecimals={false} />
