@@ -11,7 +11,7 @@ import { db } from '@/lib/db';
 import { escapeHtml, sendNotificationEmail } from '@/lib/email';
 import { decryptSecret } from '@/lib/secret-box';
 
-import { emitNotification, type NotificationEvent } from './emit';
+import { appUrl, emitNotification, type NotificationEvent } from './emit';
 import { TEST_EVENT_TYPE, type NotificationPayload } from './events';
 import { discordMessage, emailMessage, slackMessage } from './format';
 import { postJson } from './safe-fetch';
@@ -391,14 +391,15 @@ async function alertDisabled(
       ? `${target} says this endpoint no longer exists, so OtaKit turned "${destination.name}" off.`
       : `Every delivery to ${target} has failed for 3 days, so OtaKit turned "${destination.name}" off.`;
   const next = 'Fix the endpoint, then turn the destination back on in Settings → Notifications.';
+  const settingsUrl = `${appUrl()}/dashboard/settings?org=${encodeURIComponent(destination.organizationId)}#notifications`;
   const subject = `Notifications to "${destination.name}" turned off (${organization?.name ?? 'OtaKit'})`;
   await Promise.allSettled(
     recipients.map((to) =>
       sendNotificationEmail({
         to,
         subject,
-        html: `<p>${escapeHtml(why)}</p>\n<p>${escapeHtml(next)}</p>`,
-        text: `${why}\n${next}`,
+        html: `<p>${escapeHtml(why)}</p>\n<p>${escapeHtml(next)}</p>\n<p><a href="${escapeHtml(settingsUrl)}">Notification settings</a></p>`,
+        text: `${why}\n${next}\nNotification settings: ${settingsUrl}`,
       }),
     ),
   );

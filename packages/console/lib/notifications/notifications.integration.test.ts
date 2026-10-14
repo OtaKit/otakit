@@ -810,10 +810,7 @@ databaseDescribe('notifications (PostgreSQL integration)', () => {
       attachments: [{ color: '#22c55e', blocks: [{ type: 'section' }, { type: 'context' }] }],
     });
     expect(JSON.parse(byPath['/discord'].body)).toMatchObject({
-      // Discord renders Markdown, so the parentheses are escaped.
-      embeds: [
-        { title: `Released com.acme.${organizationId} 1.0.0 \\(production / runtime ios-1\\)` },
-      ],
+      embeds: [{ title: `Released com.acme.${organizationId} 1.0.0 (production / runtime ios-1)` }],
     });
     expect(byPath['/slack'].headers['webhook-signature']).toBeUndefined();
     for (const destination of [slack, discord]) {

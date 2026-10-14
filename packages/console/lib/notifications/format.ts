@@ -254,11 +254,13 @@ const DISCORD_COLORS: Record<NotificationSeverity, number> = {
 };
 
 /**
- * Embeds render Markdown, so text from versions, names and notes is escaped:
- * a version like `[x](https://evil)` must not become a link.
+ * Embed descriptions render Markdown, so text from versions, names and notes
+ * is escaped: a version like `[x](https://evil)` must not become a link
+ * (breaking the brackets is enough) or a heading, quote or spoiler. Titles
+ * are sent as they are: they never render links.
  */
 function discordEscape(value: string): string {
-  return value.replace(/([\\*_~`|>\[\]()#])/g, '\\$1');
+  return value.replace(/([\\*_~`|>[\]#])/g, '\\$1');
 }
 
 /** Body for a Discord webhook: one embed, mentions disabled. */
@@ -271,7 +273,7 @@ export function discordMessage(payload: NotificationPayload): Record<string, unk
   return {
     embeds: [
       {
-        title: discordEscape(event.title).slice(0, 256),
+        title: event.title.slice(0, 256),
         description: description.slice(0, 4096),
         url: event.url,
         color: DISCORD_COLORS[event.severity],

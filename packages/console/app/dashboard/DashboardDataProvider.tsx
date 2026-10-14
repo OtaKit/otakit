@@ -64,7 +64,9 @@ function WorkspaceFromUrl({ initialData }: { initialData: DashboardInitialData }
       return;
     }
     if (!initialData.memberships.some((membership) => membership.organizationId === requested)) {
-      toast.error('That link is for a workspace you are not a member of.');
+      // The Toaster mounts after the page on a full load; a toast sent before
+      // it subscribes is lost, so send it after this commit.
+      setTimeout(() => toast.error('That link is for a workspace you are not a member of.'), 0);
       router.replace(withoutOrg(), { scroll: false });
       return;
     }
@@ -82,7 +84,10 @@ function WorkspaceFromUrl({ initialData }: { initialData: DashboardInitialData }
         router.refresh();
       })
       .catch(() => {
-        toast.error('Could not open that workspace. Switch to it in Settings.');
+        setTimeout(
+          () => toast.error('Could not open that workspace. Switch to it in Settings.'),
+          0,
+        );
         router.replace(withoutOrg(), { scroll: false });
       });
   }, [requested, initialData, pathname, router, searchParams]);

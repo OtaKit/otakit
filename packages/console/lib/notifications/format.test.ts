@@ -261,8 +261,7 @@ describe('message formats', () => {
     expect(discordMessage(hostile)).toEqual({
       embeds: [
         {
-          title:
-            'Released a&b<c\\> \\[x\\]\\(https://evil.test\\) \\(production / runtime 2026.10\\)',
+          title: 'Released a&b<c> [x](https://evil.test) (production / runtime 2026.10)',
           description: 'First release on this lane.\nBy dev@acme.com.',
           url: context.dashboardUrl,
           color: 0x22c55e,

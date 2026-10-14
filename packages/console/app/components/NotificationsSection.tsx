@@ -1037,6 +1037,21 @@ function SigningSecret({ destinationId }: { destinationId: string }) {
   );
 }
 
+/** What a delivery was about, from its payload: "1.4.2 · production", "beta v13". */
+function deliverySubject(payload: unknown): string | null {
+  const data = (payload as { data?: Record<string, unknown> } | null)?.data;
+  if (!data) return null;
+  const release = data.release as { bundleVersion?: string; channel?: string | null } | undefined;
+  if (release?.bundleVersion) return `${release.bundleVersion} · ${release.channel ?? 'base'}`;
+  const bundle = data.bundle as { version?: string } | undefined;
+  if (bundle?.version) return bundle.version;
+  const config = data.config as { channel?: string | null; version?: number } | undefined;
+  if (config?.version !== undefined) return `${config.channel ?? 'base'} v${config.version}`;
+  const usage = data.usage as { threshold?: number } | undefined;
+  if (usage?.threshold !== undefined) return `${usage.threshold}%`;
+  return null;
+}
+
 function DeliveryStatus({ delivery }: { delivery: NotificationDeliveryView }) {
   const styles: Record<NotificationDeliveryView['status'], [string, string]> = {
     delivered: ['Delivered', 'text-emerald-600 dark:text-emerald-400 border-emerald-500/40'],
@@ -1171,8 +1186,20 @@ function DeliveriesDialog({
                           )}
                         </button>
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {notificationEventLabel(delivery.eventType)}
+                      <TableCell className="max-w-0 text-sm">
+                        <div className="truncate">
+                          {notificationEventLabel(delivery.eventType)}
+                          {deliverySubject(delivery.payload) ? (
+                            <span className="text-muted-foreground">
+                              {' '}
+                              · {deliverySubject(delivery.payload)}
+                            </span>
+                          ) : null}
+                        </div>
+                        {/* On phones the date moves under the event, so nothing is clipped. */}
+                        <div className="text-xs text-muted-foreground sm:hidden">
+                          {formatDate(delivery.createdAt)}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <DeliveryStatus delivery={delivery} />
@@ -1188,13 +1215,17 @@ function DeliveriesDialog({
                           .filter(Boolean)
                           .join(' · ')}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
+                      <TableCell className="hidden whitespace-nowrap text-right text-xs text-muted-foreground sm:table-cell">
                         {formatDate(delivery.createdAt)}
                       </TableCell>
                     </TableRow>
                     {open ? (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={5} className="space-y-3 whitespace-normal bg-muted/30">
+                        {/* max-w-0: the payload scrolls inside the cell instead of widening the table. */}
+                        <TableCell
+                          colSpan={5}
+                          className="max-w-0 space-y-3 whitespace-normal bg-muted/30"
+                        >
                           {delivery.lastError ? (
                             <p className="break-words text-xs text-destructive">
                               {delivery.lastError}
