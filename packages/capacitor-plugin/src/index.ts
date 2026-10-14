@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
 import type {
   OtaKitBridgePlugin,
@@ -10,6 +10,7 @@ import type {
   RemoteConfigRefreshResult,
   RemoteConfigValues,
 } from './definitions';
+import { createErrorTracking } from './error-tracking';
 
 const NativeOtaKit = registerPlugin<OtaKitBridgePlugin>('OtaKit', {
   web: () => import('./web').then((m) => new m.OtaKitWeb()),
@@ -136,6 +137,38 @@ const OtaKit: OtaKitPlugin = {
     )) as OtaKitPlugin['addListener'],
   removeAllListeners: () => NativeOtaKit.removeAllListeners(),
 };
+
+const errorTracking = createErrorTracking(NativeOtaKit, {
+  isNative: () => Capacitor.isNativePlatform(),
+});
+
+/**
+ * Send uncaught errors and unhandled promise rejections to OtaKit (plugin
+ * 3.4+), grouped into issues per OTA release. Call it once, as early as
+ * possible (for example in main.ts). Emails, tokens and URL query strings are
+ * removed before anything leaves the device. Does nothing on web.
+ *
+ * ```ts
+ * import { initErrorTracking } from '@otakit/capacitor-updater';
+ *
+ * initErrorTracking();
+ * ```
+ */
+export const initErrorTracking = errorTracking.initErrorTracking;
+
+/**
+ * Send an error you caught yourself (marked handled). Returns its event ID,
+ * or null when it was dropped (sampling, `ignoreErrors`, `beforeSend`, or the
+ * per-session limits). Call `initErrorTracking()` first.
+ */
+export const captureError = errorTracking.captureError;
+
+/**
+ * Send one test error to check the setup; it appears in the dashboard's
+ * Errors section within a minute. Resolves true when the native plugin stored
+ * it for delivery.
+ */
+export const testErrorTracking = errorTracking.testErrorTracking;
 
 export * from './definitions';
 export { OtaKit };

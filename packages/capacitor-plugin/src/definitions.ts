@@ -471,6 +471,50 @@ export interface OtaKitPlugin {
   removeAllListeners(): Promise<void>;
 }
 
+/**
+ * An error as `initErrorTracking()` sends it (plugin 3.4+). `beforeSend` can
+ * change it or drop it. Messages, stacks, routes and tags are scrubbed of
+ * emails, tokens and URL query strings before `beforeSend` sees them.
+ */
+export interface CapturedError {
+  eventId: string;
+  occurredAt: string;
+  name: string;
+  message: string;
+  stack: string | null;
+  /** `location.pathname` and `location.hash`, without query strings. */
+  route: string | null;
+  /** True for `captureError()`; false for uncaught errors and rejections. */
+  handled: boolean;
+  mechanism: 'onerror' | 'unhandledrejection' | 'manual';
+  tags: Record<string, string>;
+}
+
+export interface ErrorTrackingOptions {
+  /** Share of errors to send, from 0 to 1. Default 1 (all). */
+  sampleRate?: number;
+  /**
+   * Errors to drop. A string matches anywhere in `"name: message"`; a RegExp
+   * is tested against it.
+   */
+  ignoreErrors?: Array<string | RegExp>;
+  /** Change an error before it is sent, or return null to drop it. */
+  beforeSend?: (error: CapturedError) => CapturedError | null;
+  /**
+   * At most this many errors per page load (app launch or reload), and the
+   * same error at most 5 times. Default 100.
+   */
+  maxEventsPerSession?: number;
+}
+
+export interface CaptureErrorOptions {
+  /** Up to 10 tags; keys of letters, numbers and `_.:-`, values up to 100 characters. */
+  tags?: Record<string, string | number | boolean>;
+}
+
+/** One app telemetry item, as JavaScript hands it to the native plugin. */
+export type AppTelemetryItem = CapturedError & { kind: 'error' };
+
 export interface OtaKitBridgePlugin {
   getState(): Promise<OtaKitState>;
   check(): Promise<CheckResult>;
@@ -486,6 +530,9 @@ export interface OtaKitBridgePlugin {
   markReleaseNotesSeen(): Promise<void>;
   getConfig(): Promise<NativeRemoteConfig>;
   refreshConfig(): Promise<NativeRemoteConfig>;
+  enqueueAppTelemetry(options: {
+    items: AppTelemetryItem[];
+  }): Promise<{ accepted: number; dropped: number }>;
   addListener(
     eventName: OtaKitEventName,
     listenerFunc: (event: unknown) => void,

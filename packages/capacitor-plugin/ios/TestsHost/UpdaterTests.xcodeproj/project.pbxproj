@@ -26,6 +26,7 @@
 		DEE1B184887D1D26DF30CC9A /* OtakitCapacitorUpdater in Frameworks */ = {isa = PBXBuildFile; productRef = 91B9DAB6C51C87443AB0FF9B /* OtakitCapacitorUpdater */; };
 		EC59989B021B565DBD561351 /* ManifestKeyConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07130731747353452B859E1 /* ManifestKeyConfigTests.swift */; };
 		F0AE5E6D95EE2D2C7793783B /* RemoteConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4508EFC0DFD813C24D7954D0 /* RemoteConfigTests.swift */; };
+		F106408F2ABECC442AD5D21E /* AppTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9C9872516E393B6FE7E6A0 /* AppTelemetryTests.swift */; };
 		F7D2700C1A1A1980F98B8DD1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2953F5F476ED4A1EE237CFA1 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -58,6 +59,7 @@
 		CAC8777A1EE843A51974C5DA /* DocumentReadyBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentReadyBridgeTests.swift; sourceTree = "<group>"; };
 		E1E8E9F587858B1860ACD53B /* DownloadRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRetryTests.swift; sourceTree = "<group>"; };
 		E2C00EDE0F6DDE6186074F9A /* UpdaterCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterCoordinatorTests.swift; sourceTree = "<group>"; };
+		ED9C9872516E393B6FE7E6A0 /* AppTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTelemetryTests.swift; sourceTree = "<group>"; };
 		F07130731747353452B859E1 /* ManifestKeyConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManifestKeyConfigTests.swift; sourceTree = "<group>"; };
 		F5A2F2672201381E84F3FF46 /* ReleaseNotesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesTests.swift; sourceTree = "<group>"; };
 		F8B9BF979A98C5415B4B9D48 /* EventOutboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventOutboxTests.swift; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 		6EB94267A864C2D335854018 /* UpdaterPluginTests */ = {
 			isa = PBXGroup;
 			children = (
+				ED9C9872516E393B6FE7E6A0 /* AppTelemetryTests.swift */,
 				B7E5287FDB9E163692C5D238 /* BundleCryptoTests.swift */,
 				51F983AE74BB1C527825B02F /* BundlePersistenceTests.swift */,
 				FA726BAD1656EA4DB11E541F /* CheckFailureTests.swift */,
@@ -216,6 +219,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F106408F2ABECC442AD5D21E /* AppTelemetryTests.swift in Sources */,
 				7787F42F699921A379B7D508 /* BundleCryptoTests.swift in Sources */,
 				9727BF67179C771D52F78E9A /* BundlePersistenceTests.swift in Sources */,
 				37ADC9201460753C27B3445B /* CheckFailureTests.swift in Sources */,
