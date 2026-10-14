@@ -30,9 +30,9 @@ SQL >
         action,
         toUnixTimestamp(
             {% if defined(daily) %}
-            toStartOfDay(first_received_at)
+            toStartOfDay(first_received_at, 'UTC')
             {% else %}
-            toStartOfHour(first_received_at)
+            toStartOfHour(first_received_at, 'UTC')
             {% end %}
         ) AS bucket_start,
         count() AS events_count,

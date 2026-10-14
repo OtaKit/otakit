@@ -45,4 +45,17 @@ describe('cachedJson', () => {
     ).rejects.toThrow('Tinybird failed');
     expect(store.set).toHaveBeenCalledTimes(1);
   });
+
+  it('does not wait for a slow cache', async () => {
+    vi.useFakeTimers();
+    try {
+      store.get.mockReturnValue(new Promise(() => {}));
+      store.set.mockReturnValue(new Promise(() => {}));
+      const result = cachedJson('key', 60, async () => 'fresh');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(result).resolves.toBe('fresh');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

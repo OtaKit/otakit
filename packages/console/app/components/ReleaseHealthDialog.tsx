@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 
 import type { ReleaseHistoryItem } from '@/app/components/dashboard-types';
+import { InfoHint } from '@/app/components/InfoHint';
 import type {
   ReleaseTimeseries,
   ReleaseTimeseriesMarker,
@@ -111,8 +112,15 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-muted/20 px-3 py-2" title={hint}>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+    <div className="rounded-lg border bg-muted/20 px-3 py-2">
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        {label}
+        {hint ? (
+          <InfoHint label={`About ${label.toLowerCase()}`}>
+            <p className="text-xs">{hint}</p>
+          </InfoHint>
+        ) : null}
+      </div>
       <div
         className={cn(
           'mt-0.5 text-lg font-semibold tabular-nums',
@@ -206,8 +214,15 @@ export function ReleaseHealthDialog({
 
   const totals = data?.totals;
   const share = totals?.rollbackSharePercent ?? null;
+  // Colored only where it compares like with auto-revert: the same 24-hour
+  // window and at least the minimum sample. One rollback of two is not 50%.
+  const comparable =
+    release.autoRevert &&
+    data?.range === '24h' &&
+    totals !== undefined &&
+    totals.applied + totals.rollbacks >= release.autoRevertMinSample;
   const shareTone =
-    share === null || !release.autoRevert
+    share === null || !comparable
       ? undefined
       : share >= release.autoRevertRatePercent
         ? 'danger'
@@ -335,7 +350,7 @@ export function ReleaseHealthDialog({
                 tone={shareTone}
                 hint={
                   release.autoRevert
-                    ? `Rollbacks ÷ (applies + rollbacks). Auto-revert at ≥${release.autoRevertRatePercent}% of ≥${release.autoRevertMinSample} in 24 hours.`
+                    ? `Rollbacks ÷ (applies + rollbacks). Auto-revert acts at ≥${release.autoRevertRatePercent}% of ≥${release.autoRevertMinSample} in 24 hours; the color follows that rule on the 24-hour range.`
                     : 'Rollbacks ÷ (applies + rollbacks).'
                 }
               />

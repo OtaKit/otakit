@@ -1,6 +1,7 @@
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  releaseTimeseriesEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -581,11 +582,8 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       range: isReleaseTimeseriesRange(range) ? range : undefined,
       platform: (optionalString(input, 'platform') as 'ios' | 'android' | undefined) ?? null,
     });
-    return toolEnvelope('Read client-reported release events over time.', json(timeseries), {
-      warnings: [
-        'Event counts are client-reported and are not unique devices, adoption, or authenticated installations.',
-      ],
-    });
+    const parts = releaseTimeseriesEnvelopeParts(timeseries);
+    return toolEnvelope(parts.summary, json(timeseries), { warnings: parts.warnings });
   }
 
   private async listEvents(input: JsonObject): Promise<ToolEnvelope> {

@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  releaseTimeseriesEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -29,6 +30,9 @@ import { collectNativePackages, type NativePackage } from '../lib/native-deps.js
 import { inspectOtaKitProject } from '../lib/project-inspect.js';
 import { findRolloutConflict } from '../lib/rollout.js';
 import { resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
+
+/** What the timeseries summary reads; the rest of the REST response passes through. */
+type ReleaseTimeseriesResponse = Parameters<typeof releaseTimeseriesEnvelopeParts>[0] & JsonObject;
 
 export type LocalMcpConnectionContext = {
   serverUrl: string;
@@ -624,7 +628,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
 
   private async getReleaseTimeseries(input: JsonObject): Promise<ToolEnvelope> {
     const appId = this.resolveAppId(input);
-    const timeseries = await this.api(appId).request<JsonObject>(
+    const timeseries = await this.api(appId).request<ReleaseTimeseriesResponse>(
       `/api/v1/apps/${encodeURIComponent(appId)}/releases/${encodeURIComponent(stringInput(input, 'releaseId'))}/timeseries${queryString(
         {
           range: optionalString(input, 'range'),
@@ -632,11 +636,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
         },
       )}`,
     );
-    return toolEnvelope('Read client-reported release events over time.', json(timeseries), {
+    const parts = releaseTimeseriesEnvelopeParts(timeseries);
+    return toolEnvelope(parts.summary, json(timeseries), {
       links: [this.appLink(appId, 'View release health')],
-      warnings: [
-        'Event counts are client-reported and are not unique devices, adoption, or authenticated installations.',
-      ],
+      warnings: parts.warnings,
     });
   }
 

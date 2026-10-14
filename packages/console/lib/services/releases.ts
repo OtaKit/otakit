@@ -36,7 +36,8 @@ import {
 
 const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RELEASE_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
-const ROLLOUT_REPLACED_BY = 'system:rollout-replaced';
+/** `Release.revertedBy` of a rolling release that a newer rollout replaced. */
+export const ROLLOUT_REPLACED_BY = 'system:rollout-replaced';
 
 export const releaseWithBundlesInclude = {
   bundle: {

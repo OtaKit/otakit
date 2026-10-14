@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { db } from '@/lib/db';
 import type { getReleaseEventTimeseries } from '@/lib/tinybird/events';
 
-import { getReleaseTimeseries } from './release-timeseries';
+import { getReleaseTimeseries, isReleaseTimeseriesRange } from './release-timeseries';
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 
@@ -247,6 +247,24 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
       type: 'reverted',
       label: 'Rollout cancelled',
     });
+    const replaced = await release(2, {
+      promotedAt: at('2026-09-10T05:00:00.000Z'),
+      rolloutPercent: 20,
+      revertedAt: at('2026-09-10T06:00:00.000Z'),
+      revertedBy: 'system:rollout-replaced',
+    });
+    expect((await timeseries(replaced.id, { range: '24h' })).markers).toContainEqual({
+      at: '2026-09-10T06:00:00.000Z',
+      type: 'reverted',
+      label: 'Replaced by a newer rollout',
+    });
+  });
+
+  it('accepts only real range names', () => {
+    expect(['24h', '7d', '30d'].every(isReleaseTimeseriesRange)).toBe(true);
+    expect(['toString', 'constructor', '__proto__', '1d'].some(isReleaseTimeseriesRange)).toBe(
+      false,
+    );
   });
 
   it('adds the lane: recent releases of the same channel and runtime, oldest first', async () => {

@@ -6,7 +6,12 @@ import { db } from '@/lib/db';
 import { getReleaseEventTimeseries, type ReleaseEventTimeseriesPoint } from '@/lib/tinybird/events';
 
 import { OtaKitServiceError } from './errors';
-import { releaseWithBundlesInclude, toReleaseSummary, type ReleaseSummary } from './releases';
+import {
+  releaseWithBundlesInclude,
+  ROLLOUT_REPLACED_BY,
+  toReleaseSummary,
+  type ReleaseSummary,
+} from './releases';
 
 /**
  * Release health over time: client-reported events per hourly or daily bucket,
@@ -31,7 +36,8 @@ const LANE_RELEASES = 6;
 const YOUNG_RELEASE_MS = 2 * DAY_MS;
 
 export function isReleaseTimeseriesRange(value: unknown): value is ReleaseTimeseriesRange {
-  return typeof value === 'string' && value in RANGES;
+  // Own keys only: `in` would also accept "toString" or "constructor".
+  return typeof value === 'string' && Object.hasOwn(RANGES, value);
 }
 
 export type ReleaseTimeseriesCounts = {
@@ -282,12 +288,15 @@ async function releaseMarkers(
     markers.push({
       at: release.revertedAt.toISOString(),
       type: automatic ? 'auto_reverted' : 'reverted',
-      // Reverting a release that never reached 100% is how a rollout is cancelled.
+      // Reverting a release that never reached 100% is how a rollout is
+      // cancelled, unless a newer rollout replaced it.
       label: automatic
         ? 'Auto-reverted'
-        : release.rolloutPercent < 100
-          ? 'Rollout cancelled'
-          : 'Reverted',
+        : release.revertedBy === ROLLOUT_REPLACED_BY
+          ? 'Replaced by a newer rollout'
+          : release.rolloutPercent < 100
+            ? 'Rollout cancelled'
+            : 'Reverted',
     });
   }
   return markers.sort((left, right) => left.at.localeCompare(right.at));

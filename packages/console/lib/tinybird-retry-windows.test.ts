@@ -152,8 +152,17 @@ beforeEach(() => {
     return value;
   });
   db.function('toDate', (value) => String(value).slice(0, 10));
-  db.function('toStartOfHour', (value) => `${String(value).slice(0, 13)}:00:00.000Z`);
-  db.function('toStartOfDay', (value) => `${String(value).slice(0, 10)}T00:00:00.000Z`);
+  // The pipe passes 'UTC' as the time zone; stored values are UTC already.
+  db.function(
+    'toStartOfHour',
+    { varargs: true },
+    (value) => `${String(value).slice(0, 13)}:00:00.000Z`,
+  );
+  db.function(
+    'toStartOfDay',
+    { varargs: true },
+    (value) => `${String(value).slice(0, 10)}T00:00:00.000Z`,
+  );
   db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
   db.function('splitByChar', (separator, value) =>
     JSON.stringify(String(value).split(String(separator))),
