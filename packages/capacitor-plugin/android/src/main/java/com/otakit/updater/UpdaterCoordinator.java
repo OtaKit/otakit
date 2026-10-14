@@ -410,6 +410,36 @@ final class UpdaterCoordinator {
     });
   }
 
+  /**
+   * After a check, a staged bundle the server no longer targets is unstaged so it is never applied:
+   * its rollout was lowered or canceled, its release reverted, the channel changed, or another
+   * release is now the target. Without a release on the channel (latest null), a bundle staged for
+   * that channel is unstaged. Returns the bundle to clean up.
+   */
+  List<String> unstageObsoleteBundle(ManifestClient.LatestManifest latest, String targetChannel)
+    throws Exception {
+    return withStateLock(() -> {
+      String stagedId = store.getStagedBundleId();
+      if (stagedId == null) return java.util.Collections.<String>emptyList();
+      BundleInfo staged = store.getBundle(stagedId);
+      if (staged == null) {
+        store.setStagedBundleId(null);
+        return java.util.Collections.<String>emptyList();
+      }
+      if (latest != null) {
+        if (doesBundleMatchLatest(staged, latest, targetChannel)) {
+          return java.util.Collections.<String>emptyList();
+        }
+      } else if (!java.util.Objects.equals(trimToNull(staged.channel), targetChannel)) {
+        return java.util.Collections.<String>emptyList();
+      }
+      store.setStagedBundleId(null);
+      return store.protectedBundleIds().contains(staged.id)
+        ? java.util.Collections.<String>emptyList()
+        : java.util.Collections.singletonList(staged.id);
+    });
+  }
+
   List<String> stageDownloadedBundle(BundleInfo bundle) throws Exception {
     return withStateLock(() -> {
       if (bundle.isBuiltin() || store.protectedBundleIds().contains(bundle.id)) {
