@@ -88,10 +88,10 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
           days.
         </li>
         <li>
-          A comparison of the latest releases of a channel: events per 1,000 app launches on each
-          release, and the difference from the oldest. Without <Code>initAnalytics()</Code>, rates
-          use applies from phones on plugin 3.4+, which is less precise. Counts per release are kept
-          13 months.
+          A comparison of the 5 latest releases with data, of all channels or of one: events per
+          1,000 app launches on each release, and the difference from the oldest. Without{' '}
+          <Code>initAnalytics()</Code>, rates use applies from phones on plugin 3.4+, which is less
+          precise. Counts per release are kept 13 months.
         </li>
       </ul>
       <P>Tables can be copied as CSV.</P>

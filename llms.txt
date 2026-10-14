@@ -1550,7 +1550,7 @@ Response
 
 ### GET /api/v1/apps/:appId/analytics/events/:name/releases
 
-One event across releases, oldest first (default: the 5 latest releases of the channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest.
+One event across releases, oldest first (default: the 5 latest releases with data, of every channel or of ?channel=, empty for the base channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest.
 - Auth: Bearer
 - Query: ?releaseIds=a,b (up to 10) or ?channel=production
 
@@ -2427,7 +2427,7 @@ The app's Analytics section lists events with their count, app launches, trend, 
 An event shows:
 - Events per hour or day.
 - A split by any property: the 10 most common values and the rest. Raw events are kept 90 days.
-- A comparison of the latest releases of a channel: events per 1,000 app launches on each release, and the difference from the oldest. Without `initAnalytics()`, rates use applies from phones on plugin 3.4+, which is less precise. Counts per release are kept 13 months.
+- A comparison of the 5 latest releases with data, of all channels or of one: events per 1,000 app launches on each release, and the difference from the oldest. Without `initAnalytics()`, rates use applies from phones on plugin 3.4+, which is less precise. Counts per release are kept 13 months.
 
 Tables can be copied as CSV.
 

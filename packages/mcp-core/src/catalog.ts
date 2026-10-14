@@ -448,7 +448,9 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
         .array(releaseIdSchema)
         .max(10)
         .optional()
-        .describe('Releases to compare for view releases (default: the 5 latest)'),
+        .describe(
+          'Releases to compare for view releases (default: the 5 latest releases with data, any channel)',
+        ),
       range: z
         .enum(['24h', '7d', '30d', '90d'])
         .optional()

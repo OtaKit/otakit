@@ -502,7 +502,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "releases": [{ "releaseId": "uuid", "bundleVersion": "1.4.1", "channel": "production",
                  "events": 120, "sessions": 80, "base": 9000, "perThousand": 13.3,
                  "differencePercent": null }], "analyticsAvailable": true }`}
-          description="One event across releases, oldest first (default: the 5 latest releases of the channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest."
+          description="One event across releases, oldest first (default: the 5 latest releases with data, of every channel or of ?channel=, empty for the base channel): events per 1,000 app launches, or per 1,000 applies on plugin 3.4+ when the app sends no session events, and the difference from the oldest."
         />
         <Endpoint
           method="GET"

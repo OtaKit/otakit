@@ -109,11 +109,15 @@ export function TrendChart({
   color?: string;
 }) {
   const hourly = range.bucket === 'hour';
+  // Over more than a day of hours the ticks name the day; the tooltip has the hour.
+  const multiDay = Date.parse(range.to) - Date.parse(range.from) > 26 * 3_600_000;
   const tick = new Intl.DateTimeFormat(
     'en-US',
-    hourly
-      ? { hour: '2-digit', minute: '2-digit' }
-      : { month: 'short', day: 'numeric', timeZone: 'UTC' },
+    !hourly
+      ? { month: 'short', day: 'numeric', timeZone: 'UTC' }
+      : multiDay
+        ? { month: 'short', day: 'numeric' }
+        : { hour: '2-digit', minute: '2-digit' },
   );
   const label = new Intl.DateTimeFormat(
     'en-US',
@@ -122,6 +126,17 @@ export function TrendChart({
       : { month: 'short', day: 'numeric', timeZone: 'UTC' },
   );
   const data = trendBuckets(trend, range);
+  // One tick at the first hour of each local day.
+  const dayTicks =
+    hourly && multiDay
+      ? data
+          .filter(
+            (bucket, index) =>
+              index > 0 &&
+              new Date(bucket.start).getDate() !== new Date(data[index - 1].start).getDate(),
+          )
+          .map((bucket) => bucket.start)
+      : undefined;
   return (
     <ChartContainer
       config={{ events: { label: 'Events', color } }}
@@ -134,6 +149,7 @@ export function TrendChart({
           tickLine={false}
           axisLine={false}
           minTickGap={24}
+          ticks={dayTicks}
           tickFormatter={(value: number) => tick.format(value)}
         />
         <YAxis width={32} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -153,20 +169,15 @@ export function TrendChart({
   );
 }
 
-/** A change in percent, green up and red down; a dash without a base. */
+/** A change in percent, in neutral colors (more of an event is not always good); a dash without a base. */
 export function ChangeBadge({ percent }: { percent: number | null }) {
   if (percent === null) return <span className="text-muted-foreground">–</span>;
   return (
     <span
-      className={cn(
-        'tabular-nums',
-        percent > 0 && 'text-emerald-700 dark:text-emerald-400',
-        percent < 0 && 'text-rose-700 dark:text-rose-400',
-        percent === 0 && 'text-muted-foreground',
-      )}
+      className={cn('tabular-nums', percent === 0 ? 'text-muted-foreground' : 'text-foreground')}
     >
-      {percent > 0 ? '+' : ''}
-      {percent}%
+      {percent > 0 ? '+' : percent < 0 ? '−' : ''}
+      {Math.abs(percent)}%
     </span>
   );
 }

@@ -36,6 +36,7 @@ const RANGE_LABELS: Record<AppEventRange, string> = {
   '90d': 'last 90 days',
 };
 const NONE = '__none__';
+const ALL_CHANNELS = '__all__';
 
 /** One CSV field: quoted, with quotes doubled. */
 function csvField(value: string | number | null): string {
@@ -235,17 +236,16 @@ export function AppEventDialog({
 }) {
   const [range, setRange] = useState<AppEventRange>(initialRange);
   const [property, setProperty] = useState<string | null>(null);
-  const [channel, setChannel] = useState<string>(() => {
-    const latest = releases.find((release) => !release.revertedAt);
-    return latest?.channel ?? NONE;
-  });
+  const [channel, setChannel] = useState<string>(ALL_CHANNELS);
   const base = `/api/v1/apps/${appId}/analytics/events/${encodeURIComponent(name)}`;
   const detail = useJson<AppEventDetail>(`${base}?range=${range}`);
   const breakdown = useJson<AppEventBreakdownResult>(
     property ? `${base}/breakdown?range=${range}&property=${encodeURIComponent(property)}` : null,
   );
   const comparison = useJson<AppEventReleaseComparison>(
-    `${base}/releases?channel=${channel === NONE ? '' : encodeURIComponent(channel)}`,
+    channel === ALL_CHANNELS
+      ? `${base}/releases`
+      : `${base}/releases?channel=${channel === NONE ? '' : encodeURIComponent(channel)}`,
   );
   const channels = Array.from(new Set(releases.map((release) => release.channel ?? NONE))).filter(
     (value) => !value.startsWith('__preview'),
@@ -261,8 +261,14 @@ export function AppEventDialog({
             {data ? (
               <>
                 {formatCount(data.events)} events in {formatCount(data.sessions)} app launches in
-                the {RANGE_LABELS[range]} · <ChangeBadge percent={data.changePercent} /> against the
-                previous period
+                the {RANGE_LABELS[range]} ·{' '}
+                {data.changePercent === null ? (
+                  'none in the period before'
+                ) : (
+                  <>
+                    <ChangeBadge percent={data.changePercent} /> against the period before
+                  </>
+                )}
               </>
             ) : detail.error ? (
               'Could not load the event.'
@@ -343,8 +349,9 @@ export function AppEventDialog({
                   By release
                   <InfoHint label="About the release comparison">
                     <p className="text-xs">
-                      The 5 latest releases of the channel, oldest first, each with all its events
-                      (up to 13 months). The difference is against the oldest release shown.
+                      The 5 latest releases with data, of one channel or of all, oldest first, each
+                      with all its events (up to 13 months). The difference is against the oldest
+                      release shown.
                     </p>
                   </InfoHint>
                 </p>
@@ -354,6 +361,7 @@ export function AppEventDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={ALL_CHANNELS}>All channels</SelectItem>
                       {channels.map((value) => (
                         <SelectItem key={value} value={value}>
                           {value === NONE ? 'base' : value}
