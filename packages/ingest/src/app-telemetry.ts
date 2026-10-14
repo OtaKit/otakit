@@ -196,6 +196,12 @@ export const RESERVED_EVENT_NAMES = new Set([
   '$conversion',
   '$experiment_error',
 ]);
+const EXPERIMENT_REPORTS = new Set(['$exposure', '$conversion', '$experiment_error']);
+
+/** An A/B test report, which a device sends at most once per test. */
+export function isExperimentReport(message: TelemetryMessage): boolean {
+  return message.kind === 'event' && EXPERIMENT_REPORTS.has(message.row.name);
+}
 const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
 const MAX_PROPERTIES = 20;
 const MAX_PROPERTY_VALUE = 200;

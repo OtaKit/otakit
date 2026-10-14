@@ -95,12 +95,14 @@ track('purchase_completed');`}</Pre>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
           <strong>Key</strong>, used in <Code>getVariant()</Code>. It is unique among the app&apos;s
-          draft and running tests; once a test ends, the key can be used again.
+          draft and running tests; once a test ends, the key can be used again (the earlier test
+          stays reachable by its ID).
         </li>
         <li>
           <strong>Config</strong>: the base config, which reaches every channel without its own
           config, or a channel&apos;s own config. On the base config, a test can be limited to some
-          channels. Optionally, limit it to runtime versions.
+          channels, except channels with their own config, which never read the base config.
+          Optionally, limit it to runtime versions.
         </li>
         <li>
           <strong>Devices in the test</strong>: the share of devices that join (default 100%). The
@@ -158,23 +160,31 @@ track('purchase_completed');`}</Pre>
         <li>The share of devices with an error after joining (the guardrail).</li>
         <li>The other goals, and conversion by day.</li>
       </ul>
-      <P>The verdict reads:</P>
+      <P>
+        The result is decided once, at a fixed point: the first full day (UTC) on which the test ran
+        7 days, every variant has 100 conversions, and every variant reached the planned sample, the
+        devices needed to detect a 20% change at control&apos;s rate. Until then the results show
+        who leads, but no winner: deciding whenever someone looks would pick a winner in about a
+        third of tests where nothing differs. With a fixed point it is about 5%.
+      </P>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
-          <strong>Not enough data yet</strong> until the test ran 7 days and every variant has 100
-          conversions. Checking early is fine; deciding early is not.
+          <strong>Not enough data yet</strong>, then <strong>No result yet: B leads</strong>, until
+          that day. The results say how many devices are still needed.
         </li>
         <li>
-          <strong>B is better</strong> when one variant has at least 95% probability to be the best.
-          When it is control, keep the current values.
+          <strong>B is better</strong> when, on that day&apos;s data, B has at least 95% probability
+          to be the best (more with several variants: 97.5% with two besides control, 98.3% with
+          three). When it is control, keep the current values.
         </li>
         <li>
-          <strong>No clear difference</strong> when every variant reached the planned sample (the
-          devices needed to detect a 20% change) without a winner.
+          <strong>No clear difference</strong> when no variant got there. The verdict stays; data
+          after that day still shows in the table.
         </li>
         <li>
-          <strong>B has more errors</strong> when a variant has more devices with errors than
-          control with at least 95% probability (and at least 10 such devices), at any time.
+          <strong>B has more errors</strong>, at any time from the third day, when B has more
+          devices with errors than control with at least 99.5% probability (more with several
+          variants) and at least 10 such devices.
         </li>
       </ul>
       <P>
@@ -198,6 +208,11 @@ track('purchase_completed');`}</Pre>
         value before and after. Shipping control keeps the values. <strong>Stop</strong> ends a test
         without changing values: devices get the normal config on their next fetch.
       </P>
+      <P>
+        A code test has no values to ship. After it ends, <Code>getVariant()</Code> returns{' '}
+        <Code>null</Code>, so to keep the winning variant, make its code path the default in your
+        app, then stop the test.
+      </P>
 
       <Separator className="my-10" />
 
@@ -206,7 +221,8 @@ track('purchase_completed');`}</Pre>
 otakit experiments results paywall_title
 otakit experiments create --file test.json --start
 otakit experiments stop paywall_title
-otakit experiments ship paywall_title --variant b`}</Pre>
+otakit experiments ship paywall_title --variant b
+otakit experiments delete old_test`}</Pre>
       <P>
         The{' '}
         <Link href="/docs/api" className="font-medium text-foreground underline underline-offset-4">
@@ -229,11 +245,13 @@ otakit experiments ship paywall_title --variant b`}</Pre>
         <li>
           Reports are custom events (<Code>$exposure</Code>, <Code>$conversion</Code>,{' '}
           <Code>$experiment_error</Code>) and count toward the monthly custom events limit, once per
-          device and test each. When analytics is paused by the limit, results say so.
+          device and test each. They are recorded even while the limit pauses other events, since a
+          device never sends them again.
         </li>
         <li>
-          Up to 10 running tests per config, 5 variants per test, 8 KiB of overrides per variant.
-          Config values are public to anyone with the app, test values included.
+          Up to 10 running tests per config, 5 variants per test, 8 KiB of overrides per variant,
+          and a config file devices can read (63 KB with its values and tests). Config values are
+          public to anyone with the app, test values included.
         </li>
         <li>
           Devices with JavaScript or a native plugin older than 3.4 are not in tests: they keep the

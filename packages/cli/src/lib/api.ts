@@ -48,9 +48,9 @@ export type ExperimentSummary = {
 
 export type ExperimentVerdict =
   | { kind: 'collecting'; daysLeft: number; conversionsNeeded: number }
-  | { kind: 'leading'; variant: string; probability: number }
-  | { kind: 'winner'; variant: string; probability: number }
-  | { kind: 'no_difference' }
+  | { kind: 'leading'; variant: string; probability: number; devicesNeeded: number | null }
+  | { kind: 'winner'; variant: string; probability: number; decidedOn: string }
+  | { kind: 'no_difference'; decidedOn: string }
   | { kind: 'guardrail'; variant: string; probability: number };
 
 export type ExperimentVariantResult = {
@@ -81,7 +81,6 @@ export type ExperimentResults = {
     day: string;
     variants: Array<{ key: string; exposed: number; converted: number }>;
   }>;
-  analyticsPausedUntil: string | null;
   analyticsAvailable: boolean;
 };
 

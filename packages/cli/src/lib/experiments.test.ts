@@ -52,9 +52,9 @@ describe('experiment output', () => {
       ]),
     ).toBe(
       [
-        'KEY           STATUS     CONFIG       VARIANTS             GOAL',
-        'paywall_copy  running    base config  control 50% / b 50%  purchase_completed',
-        'old_test      shipped b  beta config  control 50% / b 50%  purchase_completed',
+        'ID                                    KEY           STATUS     CONFIG       VARIANTS             GOAL',
+        '0b1d2c3e-0000-4000-8000-00000000000a  paywall_copy  running    base config  control 50% / b 50%  purchase_completed',
+        '0b1d2c3e-0000-4000-8000-00000000000a  old_test      shipped b  beta config  control 50% / b 50%  purchase_completed',
       ].join('\n'),
     );
   });
@@ -64,19 +64,18 @@ describe('experiment output', () => {
       experiment,
       daysRunning: 10,
       analyticsAvailable: true,
-      analyticsPausedUntil: null,
       series: [],
       stats: {
         comparable: true,
         plannedPerVariant: 3841,
-        verdict: { kind: 'winner', variant: 'b', probability: 0.98 },
+        verdict: { kind: 'winner', variant: 'b', probability: 0.98, decidedOn: '2026-10-09' },
         variants: [variant('control', 1000, 100, 0.02), variant('b', 1000, 130, 0.98)],
       },
     };
     expect(formatExperimentResults(result)).toBe(
       [
         'paywall_copy · running · base config · goal purchase_completed · 10 days',
-        'b is better: 98.0% probability to be best.',
+        'b is better: 98.0% probability to be best at the planned sample (2026-10-09).',
         '',
         'VARIANT  DEVICES  CONVERTED  RATE   LIFT (95%)          BEST   ERRORS',
         'control  1,000    100        10.0%  –                   2.0%   3',

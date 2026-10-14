@@ -6,17 +6,30 @@
  * rate has the posterior Beta(1 + converted, 1 + exposed - converted); the
  * probabilities and lift intervals come from seeded draws, so the same counts
  * always give the same numbers. Safe to import from client components.
+ *
+ * The result is decided once, at a fixed horizon: on the data of the first
+ * full day when the test ran 7 days, every variant has 100 conversions and
+ * every variant reached the planned sample. Deciding on whatever the data
+ * shows whenever someone looks would find a winner in about a third of tests
+ * without any real difference; a fixed horizon keeps that near 5%.
  */
 
 export const CONTROL_VARIANT = 'control';
-/** A verdict needs this many days since the start... */
+/** A result needs this many days since the start... */
 export const MIN_DAYS = 7;
 /** ...and this many converted devices in every variant. */
 export const MIN_CONVERSIONS = 100;
-/** Probability to be best (or worse on errors) that counts as a result. */
+/**
+ * Probability to be best that decides the result: for control as is, for a
+ * variant divided among the variants (0.95 with one variant, 0.983 with three).
+ */
 export const DECISION_PROBABILITY = 0.95;
-/** A guardrail flag needs at least this many devices with errors in the variant. */
+/** Probability of more devices with errors that flags a variant, divided among the variants. */
+export const GUARDRAIL_PROBABILITY = 0.995;
+/** A guardrail flag needs at least this many devices with errors in the variant... */
 export const MIN_GUARDRAIL_ERRORS = 10;
+/** ...and this many days since the start. */
+export const MIN_GUARDRAIL_DAYS = 3;
 /** The planned sample detects a relative change of this size... */
 export const PLANNED_RELATIVE_CHANGE = 0.2;
 const Z_ALPHA = 1.959964; // two-sided 0.05
@@ -62,13 +75,23 @@ export type VariantResult = GoalResult & {
 export type ExperimentVerdict =
   /** Under the minimum days or conversions. */
   | { kind: 'collecting'; daysLeft: number; conversionsNeeded: number }
-  /** Enough data, no decision yet. */
-  | { kind: 'leading'; variant: string; probability: number }
-  | { kind: 'winner'; variant: string; probability: number }
-  /** The planned sample is reached and no variant is clearly best. */
-  | { kind: 'no_difference' }
+  /** Enough days and conversions, the planned sample not reached yet: no result. */
+  | { kind: 'leading'; variant: string; probability: number; devicesNeeded: number | null }
+  /** Decided on `decidedOn` (UTC day) at the planned sample. */
+  | { kind: 'winner'; variant: string; probability: number; decidedOn: string }
+  /** Decided at the planned sample without a variant clearly best. */
+  | { kind: 'no_difference'; decidedOn: string }
   /** A variant has clearly more devices with errors than control. */
   | { kind: 'guardrail'; variant: string; probability: number };
+
+/** Cumulative devices per variant through the end of a UTC day. */
+export type DailyCounts = {
+  day: string;
+  variants: Array<{ key: string; exposed: number; converted: number }>;
+};
+
+/** The data a result is decided on: the first full day that met every condition. */
+export type ExperimentDecision = DailyCounts & { daysRunning: number; plannedPerVariant: number };
 
 export type ExperimentStats = {
   /**
@@ -207,11 +230,46 @@ function clampCounts(counts: VariantCounts): VariantCounts {
  * Analyse an experiment. `variants` must start with control. `daysRunning`
  * counts whole and partial days since the start (until the stop when stopped).
  */
+/** The probability to be best a variant needs to win, for `variants` variants with control. */
+export function decisionThreshold(variant: string, variants: number): number {
+  return variant === CONTROL_VARIANT
+    ? DECISION_PROBABILITY
+    : 1 - (1 - DECISION_PROBABILITY) / Math.max(1, variants - 1);
+}
+
+/**
+ * The first day of `series` (ascending) that ended by `cutoffMs` and on which
+ * the test had run 7 days, every variant had 100 conversions, and every
+ * variant had the planned sample for control's rate on that day.
+ */
+export function findDecision(
+  series: DailyCounts[],
+  startedAtMs: number,
+  cutoffMs: number,
+): ExperimentDecision | null {
+  for (const point of series) {
+    const dayEnd = Date.parse(`${point.day}T00:00:00.000Z`) + 86_400_000;
+    if (dayEnd > cutoffMs) break;
+    const daysRunning = (dayEnd - startedAtMs) / 86_400_000;
+    if (daysRunning < MIN_DAYS || point.variants.length < 2) continue;
+    if (point.variants.some((variant) => variant.converted < MIN_CONVERSIONS)) continue;
+    const control = point.variants[0];
+    const planned = plannedSamplePerVariant(
+      control.exposed > 0 ? control.converted / control.exposed : null,
+    );
+    if (planned === null || point.variants.some((variant) => variant.exposed < planned)) continue;
+    return { ...point, daysRunning, plannedPerVariant: planned };
+  }
+  return null;
+}
+
 export function analyzeExperiment(input: {
   variants: VariantCounts[];
   daysRunning: number;
   seed: string;
   draws?: number;
+  /** The decision point (findDecision), or null while there is none. */
+  decision?: ExperimentDecision | null;
 }): ExperimentStats {
   const variants = input.variants.map(clampCounts);
   const draws = input.draws ?? DEFAULT_DRAWS;
@@ -248,6 +306,7 @@ export function analyzeExperiment(input: {
     ]),
   );
 
+  const guardrailThreshold = 1 - (1 - GUARDRAIL_PROBABILITY) / Math.max(1, variants.length - 1);
   const results: VariantResult[] = variants.map((variant, index) => {
     const isControl = index === 0;
     const rate = (value: number) =>
@@ -270,8 +329,9 @@ export function analyzeExperiment(input: {
       probabilityMoreErrors,
       guardrail:
         probabilityMoreErrors !== null &&
-        probabilityMoreErrors >= DECISION_PROBABILITY &&
-        variant.errors >= MIN_GUARDRAIL_ERRORS
+        probabilityMoreErrors >= guardrailThreshold &&
+        variant.errors >= MIN_GUARDRAIL_ERRORS &&
+        input.daysRunning >= MIN_GUARDRAIL_DAYS
           ? 'worse'
           : 'ok',
       secondary: Object.fromEntries(
@@ -296,18 +356,45 @@ export function analyzeExperiment(input: {
 
   const control = results[0];
   const plannedPerVariant = plannedSamplePerVariant(control?.rate ?? null);
+  const decided = input.decision ? decide(input.decision, input.seed, draws) : null;
   return {
     comparable: variants.every((variant) => variant.exposed > 0),
     variants: results,
-    verdict: verdictOf(results, input.daysRunning, plannedPerVariant),
+    verdict: verdictOf(results, input.daysRunning, plannedPerVariant, decided),
     plannedPerVariant,
   };
+}
+
+/** The result on the decision day's data: a winner past its threshold, else no difference. */
+function decide(
+  decision: ExperimentDecision,
+  seed: string,
+  draws: number,
+): Extract<ExperimentVerdict, { kind: 'winner' | 'no_difference' }> {
+  const snapshot = analyzeExperiment({
+    variants: decision.variants.map((variant) => ({ ...variant, errors: 0 })),
+    daysRunning: decision.daysRunning,
+    seed: `${seed}|${decision.day}`,
+    draws,
+  });
+  const leader = [...snapshot.variants].sort(
+    (left, right) => right.probabilityBest - left.probabilityBest,
+  )[0];
+  return leader.probabilityBest >= decisionThreshold(leader.key, snapshot.variants.length)
+    ? {
+        kind: 'winner',
+        variant: leader.key,
+        probability: leader.probabilityBest,
+        decidedOn: decision.day,
+      }
+    : { kind: 'no_difference', decidedOn: decision.day };
 }
 
 function verdictOf(
   results: VariantResult[],
   daysRunning: number,
   plannedPerVariant: number | null,
+  decided: Extract<ExperimentVerdict, { kind: 'winner' | 'no_difference' }> | null,
 ): ExperimentVerdict {
   const harmful = results
     .filter((variant) => variant.guardrail === 'worse')
@@ -321,6 +408,7 @@ function verdictOf(
       probability: harmful.probabilityMoreErrors ?? 0,
     };
   }
+  if (decided) return decided;
   const conversionsNeeded = Math.max(
     0,
     ...results.map((variant) => MIN_CONVERSIONS - variant.converted),
@@ -332,14 +420,11 @@ function verdictOf(
   const leader = [...results].sort(
     (left, right) => right.probabilityBest - left.probabilityBest,
   )[0];
-  if (leader.probabilityBest >= DECISION_PROBABILITY) {
-    return { kind: 'winner', variant: leader.key, probability: leader.probabilityBest };
-  }
-  if (
-    plannedPerVariant !== null &&
-    results.every((variant) => variant.exposed >= plannedPerVariant)
-  ) {
-    return { kind: 'no_difference' };
-  }
-  return { kind: 'leading', variant: leader.key, probability: leader.probabilityBest };
+  const smallest = Math.min(...results.map((variant) => variant.exposed));
+  return {
+    kind: 'leading',
+    variant: leader.key,
+    probability: leader.probabilityBest,
+    devicesNeeded: plannedPerVariant === null ? null : Math.max(0, plannedPerVariant - smallest),
+  };
 }

@@ -20,11 +20,19 @@ enum AppTelemetryClient {
 
   static func resume() { delivery.resume() }
 
-  /// Errors and A/B test reports are kept over events when the outbox is full.
+  /// When the outbox is full, events go first, then errors. A/B test reports
+  /// go last: each is sent once per device and test, so a lost one is never
+  /// sent again.
   enum Lane: String {
     case error, event, report
 
-    var priority: Int { self == .event ? 0 : 1 }
+    var priority: Int {
+      switch self {
+      case .event: return 0
+      case .error: return 1
+      case .report: return 2
+      }
+    }
   }
 
   struct Batches {

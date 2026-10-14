@@ -247,13 +247,18 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
     }
     case 'experiment.stopped': {
       const { experiment } = payload.data;
+      const shipped = experiment.variants.find(
+        (variant) => variant.key === experiment.shippedVariant,
+      );
       return experiment.shippedVariant
         ? {
             title: `A/B test ended, ${experiment.shippedVariant} shipped: ${experiment.name} (${slug})`,
             lines: [
               experiment.shippedVariant === 'control'
                 ? `Every device gets ${experimentConfig(experiment)} as before.`
-                : `The values of ${experiment.shippedVariant} are now part of ${experimentConfig(experiment)} for every device.`,
+                : shipped?.changesConfig
+                  ? `The values of ${experiment.shippedVariant} are now part of ${experimentConfig(experiment)} for every device.`
+                  : `${experiment.shippedVariant} changes no config values: getVariant() now returns null, so make ${experiment.shippedVariant}'s code path the default in your app to keep it.`,
               ...byLine(payload),
             ],
             notes: null,
@@ -309,7 +314,9 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
           ...variantLines(variants),
           verdict.variant === 'control'
             ? 'Stop the test to keep the current values.'
-            : `Ship ${verdict.variant} from the dashboard to give every device its values.`,
+            : experiment.variants.find((variant) => variant.key === verdict.variant)?.changesConfig
+              ? `Ship ${verdict.variant} from the dashboard to give every device its values.`
+              : `Make ${verdict.variant}'s code path the default in your app, then stop the test.`,
         ],
         notes: null,
         severity: 'success',

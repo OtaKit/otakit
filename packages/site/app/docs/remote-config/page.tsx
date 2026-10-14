@@ -130,7 +130,9 @@ otakit remote-config restore 12`}</Pre>
         runs on a config: devices in a variant get its values for the keys it overrides, through the
         same <Code>getConfig()</Code>. Starting, stopping and shipping a test publish new config
         versions, and shipping a variant writes its values into the config for everyone. Values you
-        publish meanwhile keep the running tests.
+        publish meanwhile keep the running tests. Giving a channel its own config takes its devices
+        out of tests on the base config: OtaKit warns, and refuses when a running test targets that
+        channel by name.
       </P>
 
       <Separator className="my-10" />

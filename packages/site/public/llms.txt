@@ -560,7 +560,7 @@ otakit remote-config restore 12 --channel beta
 
 ### otakit experiments list
 
-List the app's A/B tests with their status, config, variants and goal. experiments results <key> shows devices and conversion per variant, lift, errors and the verdict.
+List the app's A/B tests with their ID, key, status, config, variants and goal. experiments results <key or ID> shows devices and conversion per variant, lift, errors and the verdict.
 
 Options
 - `--json`: Print machine-readable JSON output.
@@ -589,7 +589,7 @@ otakit experiments create --file paywall-test.json --start --yes
 
 ### otakit experiments stop <experiment>
 
-Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test.
+Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test; experiments delete <key> deletes a test that is not running.
 
 Options
 - `--yes`: Skip the confirmation prompt (required in CI).
@@ -1332,7 +1332,7 @@ Response
 
 ### PUT /api/v1/apps/:appId/config
 
-Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets; config is public.
+Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets (config is public), and devices of a channel that gets its own config leaving A/B tests on the base config; 409 CONFIG_HAS_EXPERIMENTS when a running base-config test targets that channel by name.
 - Auth: Bearer
 
 Request body
@@ -1653,7 +1653,7 @@ Response
 
 ### POST /api/v1/apps/:appId/experiments
 
-Create a draft. 2-5 variants, control first and without overrides, whole-percent weights that add up to 100, overrides of up to 8 KB per variant. 409 EXPERIMENT_KEY_TAKEN when a draft or running test has the key.
+Create a draft. 2-5 variants, control first and without overrides, whole-percent weights that add up to 100, overrides of up to 8 KB per variant. Keys cannot look like an ID or be 'estimate'. 409 EXPERIMENT_KEY_TAKEN when a draft or running test has the key; 409 EXPERIMENT_CONFLICT when a base-config audience names a channel with its own config.
 - Auth: Bearer
 
 Request body
@@ -1698,7 +1698,7 @@ Response
 
 ### POST /api/v1/apps/:appId/experiments/:experiment/start
 
-Start a draft: writes a config version that carries it, so devices get their variant on their next config fetch. 403 PLAN_REQUIRED or EXPERIMENT_LIMIT_REACHED over the plan's running tests per app; 409 CONFIG_REQUIRED for a channel without its own config; 409 EXPERIMENT_CONFLICT when a running test on the config overrides the same key.
+Start a draft: writes a config version that carries it, so devices get their variant on their next config fetch. 403 PLAN_REQUIRED or EXPERIMENT_LIMIT_REACHED over the plan's running tests per app; 409 CONFIG_REQUIRED for a channel without its own config; 409 EXPERIMENT_CONFLICT when a running test on the config overrides the same key; 400 when the config file would be over the 63 KB devices read.
 - Auth: Bearer
 
 Response
@@ -1720,7 +1720,7 @@ Response
 
 ### POST /api/v1/apps/:appId/experiments/:experiment/ship
 
-Ship a variant of a running or stopped test: its overrides become part of the config's values for every device, and the test ends. Shipping control keeps the values.
+Ship a variant of a running or stopped test: its overrides become part of the config's values for every device, and the test ends. Shipping control, or a variant without overrides, keeps the values: getVariant() then returns null, so a code test's winner belongs in the app's code.
 - Auth: Bearer
 
 Request body
@@ -1749,7 +1749,7 @@ Response
 
 ### GET /api/v1/apps/:appId/experiments/:experiment/results
 
-Devices per variant (each reports once), conversion, lift against control with a 95% interval, probability to be best, devices with errors, and the verdict: collecting, leading, winner, no_difference or guardrail. stats is null before the test starts.
+Devices per variant (each reports once), conversion, lift against control with a 95% interval, probability to be best, devices with errors, and the verdict: collecting, leading (with devicesNeeded), winner or no_difference (decided once, on decidedOn: the first full day with 7 days, 100 conversions per variant and the planned sample), or guardrail. stats is null before the test starts.
 - Auth: Bearer
 
 Response
@@ -1764,26 +1764,25 @@ Response
                    "lift": { "low": 0.11, "median": 0.38, "high": 0.72 },
                    "errors": 12, "errorRate": 0.01, "probabilityMoreErrors": 0.3, "guardrail": "ok",
                    "secondary": { "signup": { "converted": 300, "rate": 0.25, ... } } }],
-    "verdict": { "kind": "winner", "variant": "b", "probability": 0.998 },
+    "verdict": { "kind": "winner", "variant": "b", "probability": 0.998, "decidedOn": "2026-10-09" },
     "plannedPerVariant": 3771
   },
   "daysRunning": 8.1,
   "series": [{ "day": "2026-10-14", "variants": [{ "key": "b", "exposed": 1200, "converted": 168 }] }],
-  "analyticsPausedUntil": null,
   "analyticsAvailable": true
 }
 ```
 
 ### GET /api/v1/apps/:appId/experiments/estimate
 
-A rough sample size for a new test from the last 14 days: app launches a day ($session_start), the share of launches with the goal, and devices per variant to detect a 20% change.
+For a new test, from the last 14 days: app launches a day ($session_start) and the share of launches with the goal. Devices convert if they reach the goal at any launch, so the share of devices is usually higher.
 - Auth: Bearer
 - Query: ?goal=purchase_completed&channel=production
 
 Response
 
 ```txt
-{ "launchesPerDay": 1000, "goalShare": 0.05, "plannedPerVariant": 6900, "analyticsAvailable": true }
+{ "launchesPerDay": 1000, "goalShare": 0.05, "analyticsAvailable": true }
 ```
 
 ## Next.js Guide
@@ -2479,7 +2478,7 @@ Deleting a channel's config sends its devices back to the base config. Deleting 
 
 ### A/B tests
 
-An A/B test runs on a config: devices in a variant get its values for the keys it overrides, through the same `getConfig()`. Starting, stopping and shipping a test publish new config versions, and shipping a variant writes its values into the config for everyone. Values you publish meanwhile keep the running tests.
+An A/B test runs on a config: devices in a variant get its values for the keys it overrides, through the same `getConfig()`. Starting, stopping and shipping a test publish new config versions, and shipping a variant writes its values into the config for everyone. Values you publish meanwhile keep the running tests. Giving a channel its own config takes its devices out of tests on the base config: OtaKit warns, and refuses when a running test targets that channel by name.
 
 ### Limits and rules
 - A JSON object of up to 16 KB with at most 200 top-level keys.
@@ -2660,7 +2659,7 @@ Pro
 Enterprise
 Custom
 
-`$session_start` counts as an event, as do the once-per-device reports of A/B tests . Months are calendar months in UTC. Above the limit, new events are not recorded until the next month, and the `analytics.paused` notification goes to the default email destination. Upgrading resumes recording within minutes. Self-hosted servers without billing have no limit.
+`$session_start` counts as an event, as do the once-per-device reports of A/B tests . Months are calendar months in UTC. Above the limit, new events (except A/B test reports, which devices send only once) are not recorded until the next month, and the `analytics.paused` notification goes to the default email destination. Upgrading resumes recording within minutes. Self-hosted servers without billing have no limit.
 
 ### Privacy
 
@@ -2703,8 +2702,8 @@ track('purchase_completed');
 ### Create and start a test
 
 In the dashboard, the app's A/B tests section creates tests:
-- Key, used in `getVariant()`. It is unique among the app's draft and running tests; once a test ends, the key can be used again.
-- Config: the base config, which reaches every channel without its own config, or a channel's own config. On the base config, a test can be limited to some channels. Optionally, limit it to runtime versions.
+- Key, used in `getVariant()`. It is unique among the app's draft and running tests; once a test ends, the key can be used again (the earlier test stays reachable by its ID).
+- Config: the base config, which reaches every channel without its own config, or a channel's own config. On the base config, a test can be limited to some channels, except channels with their own config, which never read the base config. Optionally, limit it to runtime versions.
 - Devices in the test: the share of devices that join (default 100%). The rest keep the normal values and are not counted.
 - Variants: `control`, which keeps the normal values, and up to 4 more, with weights that add up to 100 and the config values each one overrides (leave them empty for a code test).
 - Goal and up to 3 other goals. The dialog estimates how many devices a clear result needs, from the last 14 days of events.
@@ -2723,17 +2722,19 @@ Each device reports at most once per test: when it joins, the first time it trac
 - The share of devices with an error after joining (the guardrail).
 - The other goals, and conversion by day.
 
-The verdict reads:
-- Not enough data yet until the test ran 7 days and every variant has 100 conversions. Checking early is fine; deciding early is not.
-- B is better when one variant has at least 95% probability to be the best. When it is control, keep the current values.
-- No clear difference when every variant reached the planned sample (the devices needed to detect a 20% change) without a winner.
-- B has more errors when a variant has more devices with errors than control with at least 95% probability (and at least 10 such devices), at any time.
+The result is decided once, at a fixed point: the first full day (UTC) on which the test ran 7 days, every variant has 100 conversions, and every variant reached the planned sample, the devices needed to detect a 20% change at control's rate. Until then the results show who leads, but no winner: deciding whenever someone looks would pick a winner in about a third of tests where nothing differs. With a fixed point it is about 5%.
+- Not enough data yet, then No result yet: B leads, until that day. The results say how many devices are still needed.
+- B is better when, on that day's data, B has at least 95% probability to be the best (more with several variants: 97.5% with two besides control, 98.3% with three). When it is control, keep the current values.
+- No clear difference when no variant got there. The verdict stays; data after that day still shows in the table.
+- B has more errors, at any time from the third day, when B has more devices with errors than control with at least 99.5% probability (more with several variants) and at least 10 such devices.
 
 Each verdict is sent once as the `experiment.verdict_reached` notification , by email to owners and admins by default. Results stay readable after a test ends, for 13 months.
 
 ### Ship the winner
 
 Ship on a running or stopped test writes the variant's values into the config for every device, as a new config version, and ends the test. The dialog shows each value before and after. Shipping control keeps the values. Stop ends a test without changing values: devices get the normal config on their next fetch.
+
+A code test has no values to ship. After it ends, `getVariant()` returns `null`, so to keep the winning variant, make its code path the default in your app, then stop the test.
 
 ### CLI, API and agents
 
@@ -2743,14 +2744,15 @@ otakit experiments results paywall_title
 otakit experiments create --file test.json --start
 otakit experiments stop paywall_title
 otakit experiments ship paywall_title --variant b
+otakit experiments delete old_test
 ```
 
 The REST API has the same operations. Agents use the MCP tools `list_experiments`, `get_experiment_results`, `stop_experiment` and `ship_experiment_variant`; stopping and shipping ask for approval in clients that support it.
 
 ### Privacy and limits
 - No user or device identifiers are sent. The device keeps its secret and a list of the reports it made for its 50 newest tests.
-- Reports are custom events (`$exposure`, `$conversion`, `$experiment_error`) and count toward the monthly custom events limit, once per device and test each. When analytics is paused by the limit, results say so.
-- Up to 10 running tests per config, 5 variants per test, 8 KiB of overrides per variant. Config values are public to anyone with the app, test values included.
+- Reports are custom events (`$exposure`, `$conversion`, `$experiment_error`) and count toward the monthly custom events limit, once per device and test each. They are recorded even while the limit pauses other events, since a device never sends them again.
+- Up to 10 running tests per config, 5 variants per test, 8 KiB of overrides per variant, and a config file devices can read (63 KB with its values and tests). Config values are public to anyone with the app, test values included.
 - Devices with JavaScript or a native plugin older than 3.4 are not in tests: they keep the normal values and are not counted.
 
 ## Update Strategies

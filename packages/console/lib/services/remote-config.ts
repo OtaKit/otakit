@@ -2,7 +2,12 @@ import type { Prisma, PrismaClient, RemoteConfig, RemoteConfigVersion } from '@p
 
 import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
 import { getOrganizationEntitlements } from '@/lib/billing/service';
-import { buildConfigUrl, writeConfigFile } from '@/lib/config-files';
+import {
+  buildConfigUrl,
+  configFileBytes,
+  MAX_CONFIG_FILE_BYTES,
+  writeConfigFile,
+} from '@/lib/config-files';
 import { db } from '@/lib/db';
 import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
 import { emitNotification } from '@/lib/notifications/emit';
@@ -187,6 +192,29 @@ function toState(
   };
 }
 
+/** Refuse a version whose file devices would ignore as too large. */
+function ensureFileFits(input: {
+  appId: string;
+  channel: string | null;
+  version: number;
+  valuesJson: string;
+  experimentsJson: string | null;
+}): void {
+  const bytes = configFileBytes({
+    ...input,
+    deleted: false,
+    updatedAt: new Date(0).toISOString(),
+  });
+  if (bytes > MAX_CONFIG_FILE_BYTES) {
+    const kb = (value: number) => `${Math.ceil(value / 1024).toLocaleString('en-US')} KB`;
+    throw new OtaKitServiceError(
+      'INVALID_INPUT',
+      `The config file would be ${kb(bytes)}${input.experimentsJson ? ' with its running A/B tests' : ''}; devices read files up to ${kb(MAX_CONFIG_FILE_BYTES)}. Use fewer or smaller values${input.experimentsJson ? ' or test overrides' : ''}.`,
+      400,
+    );
+  }
+}
+
 function staleVersion(current: number): OtaKitServiceError {
   return new OtaKitServiceError(
     'STALE_CONFIG_VERSION',
@@ -343,8 +371,9 @@ async function writeVersion(
   next: (
     latest: RemoteConfigVersion | null,
   ) => { valuesJson: string; values: ConfigValues } | null | undefined,
-): Promise<{ config: RemoteConfigState; changed: boolean }> {
+): Promise<{ config: RemoteConfigState; changed: boolean; warnings: ConfigWarning[] }> {
   const { appId } = context;
+  let warnings: ConfigWarning[] = [];
   const committed = await db.$transaction(async (tx) => {
     await ensureApp(tx, context.organizationId, appId);
     await lockTransaction(tx, lockKey(appId, input.channel));
@@ -360,6 +389,18 @@ async function writeVersion(
 
     const version = current + 1;
     const deleted = update === null;
+    if (update && !live && input.channel !== null) {
+      warnings = await leaveBaseExperiments(tx, appId, input.channel);
+    }
+    if (update) {
+      ensureFileFits({
+        appId,
+        channel: input.channel,
+        version,
+        valuesJson: update.valuesJson,
+        experimentsJson: latest?.experimentsJson ?? null,
+      });
+    }
     const saved = config
       ? await tx.remoteConfig.update({
           where: { id: config.id },
@@ -432,7 +473,49 @@ async function writeVersion(
   return {
     config: toState(appId, input.channel, await findConfig(db, appId, input.channel)),
     changed: committed !== null,
+    warnings,
   };
+}
+
+/**
+ * A channel that gets its own config stops reading the base config, so its
+ * devices leave A/B tests running there. Refused when a test targets that
+ * channel by name; otherwise a warning. Takes the base config's lock, so a
+ * test cannot start on it in between.
+ */
+async function leaveBaseExperiments(
+  tx: Prisma.TransactionClient,
+  appId: string,
+  channel: string,
+): Promise<ConfigWarning[]> {
+  await lockTransaction(tx, lockKey(appId, null));
+  const running = await tx.experiment.findMany({
+    where: { appId, channelKey: configChannelKey(null), status: 'running' },
+    select: { key: true, audienceChannels: true },
+    orderBy: { startedAt: 'asc' },
+  });
+  const named = running.filter(
+    (experiment) =>
+      Array.isArray(experiment.audienceChannels) &&
+      (experiment.audienceChannels as Array<string | null>).includes(channel),
+  );
+  if (named.length > 0) {
+    throw new OtaKitServiceError(
+      'CONFIG_HAS_EXPERIMENTS',
+      `The A/B ${named.length === 1 ? 'test' : 'tests'} ${named.map((experiment) => experiment.key).join(', ')} ${named.length === 1 ? 'runs' : 'run'} on the base config for devices on ${channel}; a ${channel} config of its own would take them out. Stop ${named.length === 1 ? 'it' : 'them'} first.`,
+      409,
+    );
+  }
+  const everyone = running.filter((experiment) => !Array.isArray(experiment.audienceChannels));
+  return everyone.length === 0
+    ? []
+    : [
+        {
+          key: '',
+          reason: 'experiment',
+          message: `Devices on ${channel} leave the A/B ${everyone.length === 1 ? 'test' : 'tests'} running on the base config (${everyone.map((experiment) => experiment.key).join(', ')}): from now on they read the ${channel} config.`,
+        },
+      ];
 }
 
 /** Replace a channel's config with `values`. */
@@ -452,7 +535,7 @@ export async function publishRemoteConfig(
       ? undefined
       : { valuesJson: validation.valuesJson, values: validation.values },
   );
-  return { ...result, warnings: validation.warnings };
+  return { ...result, warnings: [...validation.warnings, ...result.warnings] };
 }
 
 /**
@@ -521,7 +604,7 @@ export async function patchRemoteConfig(
       ? undefined
       : { valuesJson: validation.valuesJson, values: validation.values };
   });
-  return { ...result, warnings };
+  return { ...result, warnings: [...warnings, ...result.warnings] };
 }
 
 /** Publish the values of an earlier version as a new version. */
@@ -565,7 +648,10 @@ export async function restoreRemoteConfig(
         ? undefined
         : { valuesJson: restored.valuesJson, values },
   );
-  return { ...result, warnings: validation.ok ? validation.warnings : [] };
+  return {
+    ...result,
+    warnings: [...(validation.ok ? validation.warnings : []), ...result.warnings],
+  };
 }
 
 /**
@@ -664,6 +750,13 @@ export async function writeConfigFileVersion(
   const { appId } = context;
   const version = input.file.version + 1;
   const valuesJson = input.values?.valuesJson ?? input.file.valuesJson ?? '{}';
+  ensureFileFits({
+    appId,
+    channel: input.channel,
+    version,
+    valuesJson,
+    experimentsJson: input.experimentsJson,
+  });
   const saved = input.file.configId
     ? await tx.remoteConfig.update({
         where: { id: input.file.configId },

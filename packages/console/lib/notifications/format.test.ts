@@ -458,8 +458,8 @@ describe('A/B test notifications', () => {
     channel: null,
     goalEvent: 'purchase_completed',
     variants: [
-      { key: 'control', weight: 50 },
-      { key: 'b', weight: 50 },
+      { key: 'control', weight: 50, changesConfig: false },
+      { key: 'b', weight: 50, changesConfig: true },
     ],
     startedAt: '2026-10-01T12:00:00.000Z',
     stoppedAt: null,
@@ -498,6 +498,35 @@ describe('A/B test notifications', () => {
       ],
       severity: 'success',
     });
+  });
+
+  it('tells code-only tests to change the code', () => {
+    const codeOnly = {
+      ...experiment,
+      variants: [
+        { key: 'control', weight: 50, changesConfig: false },
+        { key: 'b', weight: 50, changesConfig: false },
+      ],
+    };
+    expect(
+      describeEvent(
+        payload('experiment.stopped', {
+          experiment: { ...codeOnly, status: 'shipped', shippedVariant: 'b' },
+        }),
+      ).lines[0],
+    ).toBe(
+      "b changes no config values: getVariant() now returns null, so make b's code path the default in your app to keep it.",
+    );
+    expect(
+      describeEvent(
+        payload('experiment.verdict_reached', {
+          actor: null,
+          experiment: codeOnly,
+          variants,
+          verdict: { kind: 'winner', variant: 'b', probability: 0.99 },
+        }),
+      ).lines.at(-1),
+    ).toBe("Make b's code path the default in your app, then stop the test.");
   });
 
   it('describes verdicts', () => {

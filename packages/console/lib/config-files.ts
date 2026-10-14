@@ -28,6 +28,18 @@ export type ConfigFile = {
   signature: ManifestSignature | null;
 };
 
+/**
+ * Devices ignore config files over 64 KiB. Values (16 KiB) and A/B tests are
+ * each limited, but the file escapes both texts again, so the whole file is
+ * checked, with room left for the signature.
+ */
+export const MAX_CONFIG_FILE_BYTES = 63 * 1024;
+
+/** Size of the file as written, without its signature (a few hundred bytes). */
+export function configFileBytes(input: Omit<ConfigFile, 'signature'>): number {
+  return new TextEncoder().encode(JSON.stringify({ ...input, signature: null })).length;
+}
+
 export function buildConfigStorageKey(appId: string, channel: string | null): string {
   return `${CONFIG_PREFIX}/${appId}/${configChannelKey(channel)}/config.json`;
 }

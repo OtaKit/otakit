@@ -41,8 +41,23 @@ describe('experiment summaries', () => {
     ).toBe(
       'Not enough data yet: a result needs 3 more days and 40 more conversions in the smallest variant.',
     );
-    expect(experimentVerdictSentence({ kind: 'winner', variant: 'b', probability: 0.9812 })).toBe(
-      'b is better: 98.1% probability to be best.',
+    expect(
+      experimentVerdictSentence({
+        kind: 'winner',
+        variant: 'b',
+        probability: 0.9812,
+        decidedOn: '2026-10-09',
+      }),
+    ).toBe('b is better: 98.1% probability to be best at the planned sample (2026-10-09).');
+    expect(
+      experimentVerdictSentence({
+        kind: 'leading',
+        variant: 'b',
+        probability: 0.9,
+        devicesNeeded: 1200,
+      }),
+    ).toBe(
+      'No result yet: b leads with 90.0% probability to be best; the result is decided once, at the planned sample (1,200 more devices in the smallest variant).',
     );
     expect(experimentVerdictSentence({ kind: 'guardrail', variant: 'b', probability: 0.97 })).toBe(
       'b has more devices with errors than control (97.0% probability).',
@@ -54,10 +69,9 @@ describe('experiment summaries', () => {
       experiment,
       daysRunning: 10,
       analyticsAvailable: true,
-      analyticsPausedUntil: '2026-11-01T00:00:00.000Z',
       stats: {
         plannedPerVariant: 3841,
-        verdict: { kind: 'winner', variant: 'b', probability: 0.98 },
+        verdict: { kind: 'winner', variant: 'b', probability: 0.98, decidedOn: '2026-10-09' },
         variants: [
           {
             key: 'control',
@@ -83,18 +97,15 @@ describe('experiment summaries', () => {
       },
     });
     expect(parts.summary).toBe(
-      'paywall_copy (running, 10 days, goal purchase_completed): b is better: 98.0% probability to be best. control: 10.0% of 1,000 devices converted, 2.0% to be best; b: 13.0% of 1,000 devices converted, lift +30% (+2% to +61%), 98.0% to be best.',
+      'paywall_copy (running, 10 days, goal purchase_completed): b is better: 98.0% probability to be best at the planned sample (2026-10-09). control: 10.0% of 1,000 devices converted, 2.0% to be best; b: 13.0% of 1,000 devices converted, lift +30% (+2% to +61%), 98.0% to be best.',
     );
-    expect(parts.warnings).toEqual([
-      'Custom events are paused by the plan limit until 2026-11-01: new test reports are not recorded.',
-    ]);
+    expect(parts.warnings).toEqual([]);
     // Without devices in every variant, no lifts or probabilities.
     expect(
       experimentResultsParts({
         experiment,
         daysRunning: 0.2,
         analyticsAvailable: true,
-        analyticsPausedUntil: null,
         stats: {
           comparable: false,
           plannedPerVariant: null,
@@ -132,7 +143,6 @@ describe('experiment summaries', () => {
         stats: null,
         daysRunning: 0,
         analyticsAvailable: false,
-        analyticsPausedUntil: null,
       }),
     ).toEqual({
       summary: 'paywall_copy has not started, so it has no results yet.',

@@ -239,7 +239,8 @@ export type NotificationExperiment = {
   /** The config file it runs in; null for the base config. */
   channel: string | null;
   goalEvent: string;
-  variants: Array<{ key: string; weight: number }>;
+  /** changesConfig: the variant overrides config values; false for code-only variants. */
+  variants: Array<{ key: string; weight: number; changesConfig: boolean }>;
   startedAt: string | null;
   stoppedAt: string | null;
   shippedVariant: string | null;

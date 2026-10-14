@@ -47,14 +47,24 @@ final class AppTelemetryClient {
     return delivery.hasPending();
   }
 
-  /** Errors and A/B test reports are kept over events when the outbox is full. */
+  /**
+   * When the outbox is full, events go first, then errors. A/B test reports go last: each is sent
+   * once per device and test, so a lost one is never sent again.
+   */
   enum Lane {
     ERROR,
     EVENT,
     REPORT;
 
     int priority() {
-      return this == EVENT ? 0 : 1;
+      switch (this) {
+        case EVENT:
+          return 0;
+        case ERROR:
+          return 1;
+        default:
+          return 2;
+      }
     }
   }
 

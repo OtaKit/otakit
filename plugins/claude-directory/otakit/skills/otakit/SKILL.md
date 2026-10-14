@@ -89,8 +89,8 @@ on plugin 3.4+, which is less precise: say which one you report.
 
 For A/B tests (plugin 3.4+), use `list_experiments`, then
 `get_experiment_results` with a test key or ID. Report the verdict as the
-results state it: before 7 days and 100 conversions per variant it is "not
-enough data yet", even when one variant leads. A test's counts are devices:
+results state it: the result is decided once, at the planned sample, so before
+that it is "no result yet", even when one variant leads. A test's counts are devices:
 each device reports joining, each goal and its first error once, without any
 identifier. Show what changes and wait before `stop_experiment` or
 `ship_experiment_variant`:

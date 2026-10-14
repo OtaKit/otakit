@@ -150,10 +150,10 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
         >
           A/B tests
         </Link>
-        . Months are calendar months in UTC. Above the limit, new events are not recorded until the
-        next month, and the <Code>analytics.paused</Code> notification goes to the default email
-        destination. Upgrading resumes recording within minutes. Self-hosted servers without billing
-        have no limit.
+        . Months are calendar months in UTC. Above the limit, new events (except A/B test reports,
+        which devices send only once) are not recorded until the next month, and the{' '}
+        <Code>analytics.paused</Code> notification goes to the default email destination. Upgrading
+        resumes recording within minutes. Self-hosted servers without billing have no limit.
       </P>
 
       <Separator className="my-10" />

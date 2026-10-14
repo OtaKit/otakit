@@ -35,8 +35,9 @@ export function formatExperimentList(experiments: ExperimentSummary[]): string {
     return 'No A/B tests yet. Create one in the dashboard, or with `otakit experiments create --file test.json`.';
   }
   return table([
-    ['KEY', 'STATUS', 'CONFIG', 'VARIANTS', 'GOAL'],
+    ['ID', 'KEY', 'STATUS', 'CONFIG', 'VARIANTS', 'GOAL'],
     ...experiments.map((experiment) => [
+      experiment.id,
       experiment.key,
       experiment.status === 'shipped' && experiment.shippedVariant
         ? `shipped ${experiment.shippedVariant}`
@@ -79,11 +80,6 @@ export function formatExperimentResults(result: ExperimentResults): string {
   }
   if (!result.analyticsAvailable) {
     lines.push('Analytics are unavailable right now: counts can be incomplete.');
-  }
-  if (result.analyticsPausedUntil) {
-    lines.push(
-      `Custom events are paused by the plan limit until ${result.analyticsPausedUntil.slice(0, 10)}: new reports are not recorded.`,
-    );
   }
   return lines.join('\n');
 }

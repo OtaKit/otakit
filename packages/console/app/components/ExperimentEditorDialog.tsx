@@ -159,6 +159,7 @@ export function ExperimentEditorDialog({
   releaseChannels,
   onClose,
   onSaved,
+  onDeleted,
   onUpgrade,
 }: {
   appId: string;
@@ -168,6 +169,8 @@ export function ExperimentEditorDialog({
   releaseChannels: string[];
   onClose: () => void;
   onSaved: (experiment: ExperimentSummary, started: boolean) => void;
+  /** A draft was deleted. */
+  onDeleted?: () => void;
   onUpgrade?: () => void;
 }) {
   const editing = experiment !== null && !duplicate;
@@ -178,6 +181,7 @@ export function ExperimentEditorDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmStart, setConfirmStart] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     void request<{ configs: RemoteConfigState[] }>(`/api/v1/apps/${appId}/config/channels`)
@@ -196,7 +200,17 @@ export function ExperimentEditorDialog({
   }, [configs]);
   const fileConfig = configs?.find((config) => (config.channel ?? BASE) === draft.file) ?? null;
   const fileKeys = Object.keys(fileConfig?.status === 'live' ? (fileConfig.values ?? {}) : {});
-  const audienceOptions = useMemo(() => [BASE_CHANNEL, ...releaseChannels], [releaseChannels]);
+  // Channels with releases, and any the draft already names; a channel with its
+  // own config never reads the base config, so it cannot be in a base test.
+  const audienceOptions = useMemo(
+    () => Array.from(new Set([BASE_CHANNEL, ...releaseChannels, ...draft.audience])),
+    [releaseChannels, draft.audience],
+  );
+  const ownConfig = new Set(
+    (configs ?? [])
+      .filter((config) => config.channel !== null && config.status === 'live')
+      .map((config) => config.channel as string),
+  );
 
   const goal = draft.goalEvent.trim();
   const estimateChannel = draft.file === BASE ? null : draft.file;
@@ -399,8 +413,17 @@ export function ExperimentEditorDialog({
                 {draft.someChannels ? (
                   <div className="flex flex-wrap gap-3 pl-6">
                     {audienceOptions.map((channel) => (
-                      <label key={channel} className="flex items-center gap-1.5 text-xs">
+                      <label
+                        key={channel}
+                        className="flex items-center gap-1.5 text-xs"
+                        title={
+                          ownConfig.has(channel)
+                            ? `${channel} has its own config: run the test on the ${channel} config`
+                            : undefined
+                        }
+                      >
                         <Checkbox
+                          disabled={ownConfig.has(channel) && !draft.audience.includes(channel)}
                           checked={draft.audience.includes(channel)}
                           onCheckedChange={(checked) =>
                             update({
@@ -412,6 +435,9 @@ export function ExperimentEditorDialog({
                           }
                         />
                         {channel === BASE_CHANNEL ? 'base channel' : channel}
+                        {ownConfig.has(channel) ? (
+                          <span className="text-muted-foreground">(own config)</span>
+                        ) : null}
                       </label>
                     ))}
                   </div>
@@ -573,7 +599,9 @@ export function ExperimentEditorDialog({
             </p>
             {estimate && goal ? (
               <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                {estimate.launchesPerDay === null || estimate.goalShare === null ? (
+                {!estimate.analyticsAvailable ? (
+                  'Analytics are unavailable right now, so there is no estimate.'
+                ) : estimate.launchesPerDay === null || estimate.goalShare === null ? (
                   <>
                     No app launches recorded in the last 14 days. Call <code>initAnalytics()</code>{' '}
                     to see an estimate.
@@ -587,10 +615,9 @@ export function ExperimentEditorDialog({
                   <>
                     Last 14 days: about {estimate.launchesPerDay.toLocaleString('en-US')} app
                     launches a day; <span className="font-mono">{goal}</span> happened in{' '}
-                    {formatShare(estimate.goalShare)} of them.
-                    {estimate.plannedPerVariant
-                      ? ` To detect a 20% change, plan for about ${estimate.plannedPerVariant.toLocaleString('en-US')} devices per variant (a rough guide).`
-                      : ''}
+                    {formatShare(estimate.goalShare)} of them. A result needs 7 days, 100 converted
+                    devices per variant, and enough devices to detect a 20% change at the rate
+                    control reaches; the results show how many.
                   </>
                 )}
               </p>
@@ -605,6 +632,17 @@ export function ExperimentEditorDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
+          {editing ? (
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive sm:mr-auto"
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="size-3.5" />
+              Delete draft
+            </Button>
+          ) : null}
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
@@ -624,6 +662,41 @@ export function ExperimentEditorDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete the draft {experiment?.key}?</AlertDialogTitle>
+            <AlertDialogDescription>It never ran, so nothing else changes.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                if (!experiment) return;
+                setBusy(true);
+                void request(`/api/v1/apps/${appId}/experiments/${experiment.id}`, {
+                  method: 'DELETE',
+                })
+                  .then(() => {
+                    toast.success(`Deleted ${experiment.key}`);
+                    onDeleted?.();
+                  })
+                  .catch((failure: ApiError) => setError(failure.message))
+                  .finally(() => {
+                    setBusy(false);
+                    setConfirmDelete(false);
+                  });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmStart} onOpenChange={(open) => !open && setConfirmStart(false)}>
         <AlertDialogContent>

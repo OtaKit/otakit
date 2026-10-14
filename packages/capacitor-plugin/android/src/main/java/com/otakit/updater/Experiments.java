@@ -62,13 +62,25 @@ final class Experiments {
       boolean store() throws Exception;
     }
 
+    /**
+     * Shared by every plugin instance in the process (more than one bridge), so a report is never
+     * made twice.
+     */
+    private static final Object LOCK = new Object();
+
     private final SharedPreferences prefs;
 
     Reports(SharedPreferences prefs) {
       this.prefs = prefs;
     }
 
-    synchronized Map<String, List<String>> reported(List<String> experimentIds) {
+    Map<String, List<String>> reported(List<String> experimentIds) {
+      synchronized (LOCK) {
+        return reportedLocked(experimentIds);
+      }
+    }
+
+    private Map<String, List<String>> reportedLocked(List<String> experimentIds) {
       JSONObject records = load();
       Map<String, List<String>> result = new HashMap<>();
       for (String id : experimentIds) {
@@ -88,7 +100,13 @@ final class Experiments {
      * Runs store and records the report, unless the device already made it or has not made
      * requires. True when the report was stored now.
      */
-    synchronized boolean record(
+    boolean record(String experimentId, String report, String requires, long now, Store store) {
+      synchronized (LOCK) {
+        return recordLocked(experimentId, report, requires, now, store);
+      }
+    }
+
+    private boolean recordLocked(
       String experimentId,
       String report,
       String requires,

@@ -95,7 +95,10 @@ export function verdictView(results: ExperimentResults): VerdictView | null {
   const stats = results.stats;
   if (!stats) return null;
   const verdict: ExperimentVerdict = stats.verdict;
-  const planned = stats.plannedPerVariant;
+  const ended = results.experiment.status !== 'running';
+  const changesConfig = (key: string) =>
+    Object.keys(results.experiment.variants.find((variant) => variant.key === key)?.overrides ?? {})
+      .length > 0;
   switch (verdict.kind) {
     case 'collecting': {
       const needs = [
@@ -106,41 +109,69 @@ export function verdictView(results: ExperimentResults): VerdictView | null {
           ? `${verdict.conversionsNeeded.toLocaleString('en-US')} more conversions in the smallest variant`
           : null,
       ].filter(Boolean);
-      return {
-        title: 'Not enough data yet',
-        detail: `A result needs at least 7 days and 100 conversions per variant: ${needs.join(' and ')}.`,
-        tone: 'neutral',
-        icon: FlaskConical,
-      };
+      return ended
+        ? {
+            title: 'Stopped before a result',
+            detail:
+              'A result needs at least 7 days, 100 conversions per variant and the planned sample.',
+            tone: 'neutral',
+            icon: FlaskConical,
+          }
+        : {
+            title: 'Not enough data yet',
+            detail: `A result needs at least 7 days and 100 conversions per variant: ${needs.join(' and ')}, then the planned sample.`,
+            tone: 'neutral',
+            icon: FlaskConical,
+          };
     }
-    case 'leading':
-      return {
-        title: `No winner yet: ${verdict.variant} leads`,
-        detail: `${formatProbability(verdict.probability)} probability that ${verdict.variant} is the best variant. A result needs 95%${planned ? `, or about ${planned.toLocaleString('en-US')} devices per variant for "no clear difference"` : ''}.`,
-        tone: 'neutral',
-        icon: FlaskConical,
-      };
-    case 'winner':
+    case 'leading': {
+      const sample =
+        verdict.devicesNeeded !== null && stats.plannedPerVariant !== null
+          ? `about ${stats.plannedPerVariant.toLocaleString('en-US')} devices per variant (${verdict.devicesNeeded.toLocaleString('en-US')} more in the smallest)`
+          : 'the planned sample';
+      return ended
+        ? {
+            title: `Stopped without a result: ${verdict.variant} led`,
+            detail: `${formatProbability(verdict.probability)} probability that ${verdict.variant} was the best variant, before ${sample}.`,
+            tone: 'neutral',
+            icon: FlaskConical,
+          }
+        : {
+            title: `No result yet: ${verdict.variant} leads`,
+            detail: `${formatProbability(verdict.probability)} probability that ${verdict.variant} is the best variant so far. The result is decided once, at ${sample}, so that checking early cannot pick a false winner.`,
+            tone: 'neutral',
+            icon: FlaskConical,
+          };
+    }
+    case 'winner': {
+      const next =
+        verdict.variant === 'control'
+          ? ended
+            ? ''
+            : ' Stop the test to keep the current values.'
+          : ended
+            ? ''
+            : changesConfig(verdict.variant)
+              ? ` Ship ${verdict.variant} to give every device its values.`
+              : ` Make ${verdict.variant}'s code path the default in your app, then stop the test.`;
       return {
         title: verdict.variant === 'control' ? 'Control is better' : `${verdict.variant} is better`,
-        detail: `${formatProbability(verdict.probability)} probability that ${verdict.variant} is the best variant for ${results.experiment.goalEvent}.${
-          verdict.variant === 'control' ? ' Stop the test to keep the current values.' : ''
-        }`,
+        detail: `${formatProbability(verdict.probability)} probability that ${verdict.variant} is the best variant for ${results.experiment.goalEvent}, at the planned sample on ${formatDay(`${verdict.decidedOn}T12:00:00.000Z`)}.${next}`,
         tone: 'success',
         icon: Trophy,
       };
+    }
     case 'no_difference':
       return {
         title: 'No clear difference',
-        detail:
-          'The planned sample is reached and no variant is clearly better. Keep control, or ship the variant you prefer.',
+        detail: `At the planned sample on ${formatDay(`${verdict.decidedOn}T12:00:00.000Z`)}, no variant was clearly better.${ended ? '' : ' Keep control, or ship the variant you prefer.'}`,
         tone: 'neutral',
         icon: Sparkles,
       };
     case 'guardrail':
       return {
         title: `${verdict.variant} has more errors`,
-        detail: `${formatProbability(verdict.probability)} probability that more devices hit an error on ${verdict.variant} than on control. Consider stopping the test.`,
+        detail: `${formatProbability(verdict.probability)} probability that more devices hit an error on ${verdict.variant} than on control.${ended ? '' : ' Consider stopping the test.'}`,
         tone: 'warning',
         icon: ShieldAlert,
       };
@@ -157,7 +188,7 @@ export function verdictShort(results: ExperimentResults | undefined): string | n
         ? `Collecting · ${verdict.daysLeft} ${verdict.daysLeft === 1 ? 'day' : 'days'} left`
         : 'Collecting';
     case 'leading':
-      return `${verdict.variant} leads · ${formatProbability(verdict.probability)}`;
+      return `No result yet · ${verdict.variant} leads`;
     case 'winner':
       return `${verdict.variant} is better`;
     case 'no_difference':

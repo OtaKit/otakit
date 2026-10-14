@@ -186,6 +186,9 @@ export function ExperimentResultsDialog({
   const variants = results?.stats?.variants ?? [];
   const goals = experiment?.secondaryEvents ?? [];
   const shipping = experiment?.variants.find((variant) => variant.key === shipVariant) ?? null;
+  // A test without config values ends with Stop; its winner lives in the app's code.
+  const changesConfig =
+    experiment?.variants.some((variant) => Object.keys(variant.overrides).length > 0) ?? false;
 
   useEffect(() => {
     if (confirm !== 'ship' || !experiment) return;
@@ -289,13 +292,6 @@ export function ExperimentResultsDialog({
             {!results.analyticsAvailable ? (
               <p className="text-xs text-amber-700 dark:text-amber-400">
                 Analytics are unavailable right now: these counts can be incomplete.
-              </p>
-            ) : null}
-            {results.analyticsPausedUntil ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Custom events are paused by the plan&apos;s monthly limit until{' '}
-                {formatDay(results.analyticsPausedUntil)}: new reports of this test are not
-                recorded.
               </p>
             ) : null}
 
@@ -509,7 +505,8 @@ export function ExperimentResultsDialog({
                   Stop
                 </Button>
               ) : null}
-              {experiment.status === 'running' || experiment.status === 'stopped' ? (
+              {changesConfig &&
+              (experiment.status === 'running' || experiment.status === 'stopped') ? (
                 <div className="flex gap-2">
                   <Select
                     value={shipVariant ?? ''}
@@ -564,8 +561,9 @@ export function ExperimentResultsDialog({
                 ) : null}
                 {confirm === 'stop' ? (
                   <p>
-                    Devices get the normal config values on their next fetch. The results stay here;
-                    to keep a variant instead, ship it.
+                    {changesConfig
+                      ? 'Devices get the normal config values on their next fetch. The results stay here; to keep a variant instead, ship it.'
+                      : 'From their next config fetch, getVariant() returns null on devices, so they take the default code path. The results stay here; to keep a variant, make its code path the default in your app.'}
                   </p>
                 ) : null}
                 {confirm === 'delete' ? (
@@ -574,8 +572,9 @@ export function ExperimentResultsDialog({
                 {confirm === 'ship' && shipping ? (
                   Object.keys(shipping.overrides).length === 0 ? (
                     <p>
-                      {shipping.key} changes no values: the config keeps its values and the test
-                      ends.
+                      {shipping.key === 'control'
+                        ? 'The config keeps its values and the test ends.'
+                        : `${shipping.key} changes no config values: devices get the normal values again and getVariant() returns null. To keep ${shipping.key}, make its code path the default in your app. The test ends.`}
                     </p>
                   ) : (
                     <>

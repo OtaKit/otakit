@@ -495,7 +495,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
 
         <Command
           name="otakit experiments list"
-          description="List the app's A/B tests with their status, config, variants and goal. experiments results <key> shows devices and conversion per variant, lift, errors and the verdict."
+          description="List the app's A/B tests with their ID, key, status, config, variants and goal. experiments results <key or ID> shows devices and conversion per variant, lift, errors and the verdict."
           options={[{ flag: '--json', desc: 'Print machine-readable JSON output.' }]}
           example="otakit experiments results paywall_title"
         />
@@ -519,7 +519,7 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Command
           name="otakit experiments stop"
           args="<experiment>"
-          description="Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test."
+          description="Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test; experiments delete <key> deletes a test that is not running."
           options={[
             { flag: '--yes', desc: 'Skip the confirmation prompt (required in CI).' },
             { flag: '--json', desc: 'Print machine-readable JSON output.' },

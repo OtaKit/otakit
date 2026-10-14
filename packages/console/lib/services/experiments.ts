@@ -5,7 +5,7 @@ import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { db } from '@/lib/db';
 import {
   analyzeExperiment,
-  plannedSamplePerVariant,
+  findDecision,
   type ExperimentStats,
   type ExperimentVerdict,
 } from '@/lib/experiment-stats';
@@ -50,7 +50,6 @@ import {
   syncRemoteConfigFile,
   writeConfigFileVersion,
 } from './remote-config';
-import { getTelemetryUsageStatus } from './telemetry-usage';
 
 /**
  * A/B tests. An experiment is a draft until it starts; then it rides in its
@@ -175,7 +174,11 @@ function notificationExperiment(row: Experiment): NotificationExperiment {
     status: row.status,
     channel: row.channel,
     goalEvent: row.goalEvent,
-    variants: variantsOf(row).map((variant) => ({ key: variant.key, weight: variant.weight })),
+    variants: variantsOf(row).map((variant) => ({
+      key: variant.key,
+      weight: variant.weight,
+      changesConfig: Object.keys(variant.overrides).length > 0,
+    })),
     startedAt: row.startedAt?.toISOString() ?? null,
     stoppedAt: row.stoppedAt?.toISOString() ?? null,
     shippedVariant: row.shippedVariant,
@@ -287,6 +290,36 @@ async function ensureKeyFree(
   }
 }
 
+/**
+ * A test on the base config reaches only channels without their own config:
+ * a channel with one never reads the base file.
+ */
+async function ensureAudienceReadsBase(
+  database: Database,
+  appId: string,
+  definition: Pick<ExperimentDefinition, 'channel' | 'audienceChannels'>,
+): Promise<void> {
+  if (definition.channel !== null || !definition.audienceChannels) return;
+  const named = definition.audienceChannels.filter(
+    (channel): channel is string => channel !== null,
+  );
+  if (named.length === 0) return;
+  const configs = await database.remoteConfig.findMany({
+    where: { appId, channelKey: { in: named.map((channel) => configChannelKey(channel)) } },
+    select: { channel: true, versions: { orderBy: { version: 'desc' }, take: 1 } },
+  });
+  const own = configs
+    .filter((config) => config.versions[0] && !config.versions[0].deleted)
+    .map((config) => config.channel as string);
+  if (own.length > 0) {
+    throw new OtaKitServiceError(
+      'EXPERIMENT_CONFLICT',
+      `${own.join(', ')} ${own.length === 1 ? 'has its own config, so its devices do' : 'have their own config, so their devices do'} not read the base config. Run the test on that config, or leave ${own.length === 1 ? 'it' : 'them'} out of the audience.`,
+      409,
+    );
+  }
+}
+
 function parseDefinition(input: Record<string, unknown>): ExperimentDefinition {
   const channel = parseConfigChannel(input.channel);
   const validation = validateExperimentDefinition(input, channel);
@@ -322,6 +355,7 @@ export async function createExperiment(
     await ensureApp(tx, context.organizationId, context.appId);
     await lockTransaction(tx, appLock(context.appId));
     await ensureKeyFree(tx, context.appId, definition.key);
+    await ensureAudienceReadsBase(tx, context.appId, definition);
     const active = await tx.experiment.count({
       where: { appId: context.appId, status: { in: ['draft', 'running'] } },
     });
@@ -399,6 +433,7 @@ export async function updateExperiment(
       return tx.experiment.update({ where: { id: row.id }, data: { name: next.name } });
     }
     if (next.key !== row.key) await ensureKeyFree(tx, context.appId, next.key, row.id);
+    await ensureAudienceReadsBase(tx, context.appId, next);
     return tx.experiment.update({ where: { id: row.id }, data: definitionData(next) });
   }, TRANSACTION_OPTIONS);
   await recordAuditLog({
@@ -527,6 +562,7 @@ export async function startExperiment(
           );
     }
     const file = await lockConfigFile(tx, context.appId, row.channel);
+    await ensureAudienceReadsBase(tx, context.appId, definitionOf(row));
     if (row.channel !== null && file.status !== 'live') {
       throw new OtaKitServiceError(
         'CONFIG_REQUIRED',
@@ -798,8 +834,6 @@ export type ExperimentResults = {
   /** Days (with fractions) from the start to the stop, or to now. */
   daysRunning: number;
   series: ExperimentSeriesPoint[];
-  /** Custom events were paused by the plan limit during the test: results are incomplete. */
-  analyticsPausedUntil: string | null;
   analyticsAvailable: boolean;
 };
 
@@ -846,7 +880,6 @@ async function computeResults(
       stats: null,
       daysRunning: 0,
       series: [],
-      analyticsPausedUntil: null,
       analyticsAvailable: true,
     };
   }
@@ -857,17 +890,11 @@ async function computeResults(
     fromDay: utcDay(experiment.startedAt),
     toDay: utcDay(end),
   };
-  const [totals, daily, usage] = await Promise.all([
+  const [totals, daily] = await Promise.all([
     getExperimentReports(range),
     getExperimentReports({ ...range, daily: true }),
-    getTelemetryUsageStatus(organizationId, 'event', now),
   ]);
   const daysRunning = Math.max(0, (end.getTime() - experiment.startedAt.getTime()) / DAY_MS);
-  const stats = analyzeExperiment({
-    variants: countsFrom(experiment, totals.data),
-    daysRunning,
-    seed: experiment.id,
-  });
 
   const keys = variantsOf(experiment).map((variant) => variant.key);
   const running = new Map(keys.map((key) => [key, { exposed: 0, converted: 0 }]));
@@ -896,12 +923,21 @@ async function computeResults(
       variants: keys.map((variant) => ({ key: variant, ...running.get(variant)! })),
     });
   }
+  // Decided on full days only; a stopped test's last day is complete.
+  const cutoff = experiment.stoppedAt
+    ? Date.parse(`${utcDay(experiment.stoppedAt)}T00:00:00.000Z`) + DAY_MS
+    : now.getTime();
+  const stats = analyzeExperiment({
+    variants: countsFrom(experiment, totals.data),
+    daysRunning,
+    seed: experiment.id,
+    decision: findDecision(series, experiment.startedAt.getTime(), cutoff),
+  });
   return {
     experiment: summary,
     stats,
     daysRunning: Math.round(daysRunning * 10) / 10,
     series,
-    analyticsPausedUntil: usage.pausedUntil,
     analyticsAvailable: totals.available && daily.available,
   };
 }
@@ -920,16 +956,17 @@ export async function getExperimentResults(
 export type ExperimentEstimate = {
   /** App launches per day in the last 14 days ($session_start), on the channel or all channels. */
   launchesPerDay: number | null;
-  /** Share of those launches with the goal event. */
+  /**
+   * Share of those launches with the goal event. A device converts if it ever
+   * reaches the goal, so the share of devices is usually higher.
+   */
   goalShare: number | null;
-  /** Devices per variant to detect a 20% change, from goalShare: a rough guide. */
-  plannedPerVariant: number | null;
   analyticsAvailable: boolean;
 };
 
 const HOUR_MS = 3_600_000;
 
-/** A rough sample size for the create dialog, from the last 14 days of events (to now). */
+/** App launches and the goal's share of them, for the create dialog: the last 14 days (to now). */
 export async function estimateExperiment(
   ctx: ReadContext,
   input: { channel?: unknown; goalEvent: unknown },
@@ -957,7 +994,6 @@ export async function estimateExperiment(
   return {
     launchesPerDay: launches.available && launchCount > 0 ? Math.round(launchCount / 14) : null,
     goalShare: goalShare === null ? null : Math.round(goalShare * 10_000) / 10_000,
-    plannedPerVariant: plannedSamplePerVariant(goalShare),
     analyticsAvailable: launches.available && goal.available,
   };
 }

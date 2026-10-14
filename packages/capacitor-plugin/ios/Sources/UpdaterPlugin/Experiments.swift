@@ -45,14 +45,16 @@ final class ExperimentReports {
   }
 
   private let defaults: UserDefaults
-  private let lock = NSLock()
+  /// Shared by every plugin instance in the process (more than one bridge),
+  /// so a report is never made twice.
+  private static let lock = NSLock()
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
   }
 
   func reported(experimentIds: [String]) -> [String: [String]] {
-    lock.lock(); defer { lock.unlock() }
+    ExperimentReports.lock.lock(); defer { ExperimentReports.lock.unlock() }
     let records = load()
     var result: [String: [String]] = [:]
     for id in experimentIds {
@@ -66,7 +68,7 @@ final class ExperimentReports {
   func record(
     experimentId: String, report: String, requires: String?, now: Double, store: () -> Bool
   ) -> Bool {
-    lock.lock(); defer { lock.unlock() }
+    ExperimentReports.lock.lock(); defer { ExperimentReports.lock.unlock() }
     var records = load()
     let existing = records[experimentId]
     if existing?.reports.contains(report) == true { return false }

@@ -344,6 +344,26 @@ describe('custom events', () => {
     expect(queued().map((message) => message.body.kind)).toEqual(['error']);
   });
 
+  it('lets A/B test reports through an events pause: devices send them once', async () => {
+    mockUpstash([1, 1, 0, 1]);
+    const { post, queued } = fixture(redisEnv);
+    const experiment = '0b1d2c3e-0000-4000-8000-00000000000a';
+    const response = await post({
+      context,
+      items: [
+        eventItem(),
+        eventItem({ name: '$exposure', properties: { experiment, variant: 'b' } }),
+        eventItem({
+          name: '$conversion',
+          properties: { experiment, variant: 'b', goal: 'purchase_completed' },
+        }),
+        eventItem({ name: '$session_start', properties: undefined }),
+      ],
+    });
+    expect(await response.json()).toEqual({ accepted: true, items: 2, dropped: 0, paused: 2 });
+    expect(queued().map((message) => message.body.row.name)).toEqual(['$exposure', '$conversion']);
+  });
+
   it('writes events to app_events_raw', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 202 }));
     vi.stubGlobal('fetch', fetchMock);

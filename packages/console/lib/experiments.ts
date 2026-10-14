@@ -22,6 +22,8 @@ export const EXPERIMENT_KEY_PATTERN = /^[a-z0-9_-]{1,40}$/;
 /** Goal events are custom event names; `$` names are OtaKit's own. */
 export const GOAL_EVENT_PATTERN = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
 export const CONTROL_KEY = 'control';
+const RESERVED_KEYS = new Set(['estimate']);
+const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const MIN_VARIANTS = 2;
 export const MAX_VARIANTS = 5;
 export const MAX_SECONDARY_GOALS = 3;
@@ -172,6 +174,10 @@ export function validateExperimentDefinition(
   const key = input.key;
   if (typeof key !== 'string' || !EXPERIMENT_KEY_PATTERN.test(key)) {
     return { ok: false, error: 'key must be 1-40 lowercase letters, digits, "_" or "-"' };
+  }
+  // URLs take a test ID or key: a key must never read as an ID or a route.
+  if (RESERVED_KEYS.has(key) || UUID_SHAPED.test(key)) {
+    return { ok: false, error: `"${key}" cannot be a key; choose another` };
   }
   const name = typeof input.name === 'string' ? input.name.trim().replace(/\s+/g, ' ') : '';
   if (!name || name.length > MAX_NAME_LENGTH) {

@@ -28,9 +28,9 @@ type VariantResultLike = {
 
 type VerdictLike =
   | { kind: 'collecting'; daysLeft: number; conversionsNeeded: number }
-  | { kind: 'leading'; variant: string; probability: number }
-  | { kind: 'winner'; variant: string; probability: number }
-  | { kind: 'no_difference' }
+  | { kind: 'leading'; variant: string; probability: number; devicesNeeded?: number | null }
+  | { kind: 'winner'; variant: string; probability: number; decidedOn?: string }
+  | { kind: 'no_difference'; decidedOn?: string }
   | { kind: 'guardrail'; variant: string; probability: number };
 
 type ResultsLike = {
@@ -43,7 +43,6 @@ type ResultsLike = {
     plannedPerVariant: number | null;
   } | null;
   daysRunning: number;
-  analyticsPausedUntil: string | null;
   analyticsAvailable: boolean;
 };
 
@@ -90,11 +89,11 @@ export function experimentVerdictSentence(verdict: VerdictLike): string {
         ? `Not enough data yet: a result needs ${verdict.daysLeft} more ${verdict.daysLeft === 1 ? 'day' : 'days'}${verdict.conversionsNeeded > 0 ? ` and ${verdict.conversionsNeeded} more conversions in the smallest variant` : ''}.`
         : `Not enough data yet: a result needs ${verdict.conversionsNeeded} more conversions in the smallest variant.`;
     case 'leading':
-      return `No winner yet: ${verdict.variant} leads with ${percent(verdict.probability)} probability to be best.`;
+      return `No result yet: ${verdict.variant} leads with ${percent(verdict.probability)} probability to be best; the result is decided once, at the planned sample${verdict.devicesNeeded ? ` (${verdict.devicesNeeded.toLocaleString('en-US')} more devices in the smallest variant)` : ''}.`;
     case 'winner':
-      return `${verdict.variant} is better: ${percent(verdict.probability)} probability to be best.`;
+      return `${verdict.variant} is better: ${percent(verdict.probability)} probability to be best at the planned sample${verdict.decidedOn ? ` (${verdict.decidedOn})` : ''}.`;
     case 'no_difference':
-      return 'No clear difference: the planned sample is reached and no variant is clearly better.';
+      return `No clear difference: no variant was clearly better at the planned sample${verdict.decidedOn ? ` (${verdict.decidedOn})` : ''}.`;
     case 'guardrail':
       return `${verdict.variant} has more devices with errors than control (${percent(verdict.probability)} probability).`;
   }
@@ -108,11 +107,6 @@ export function experimentResultsParts(result: ResultsLike): {
   const warnings: string[] = [];
   if (!result.analyticsAvailable) {
     warnings.push('Analytics are unavailable right now: the counts can be incomplete.');
-  }
-  if (result.analyticsPausedUntil) {
-    warnings.push(
-      `Custom events are paused by the plan limit until ${result.analyticsPausedUntil.slice(0, 10)}: new test reports are not recorded.`,
-    );
   }
   if (!stats) {
     return {

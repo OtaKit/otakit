@@ -267,6 +267,10 @@ export function ExperimentsSection({
           releaseChannels={releaseChannels}
           onUpgrade={onUpgrade}
           onClose={() => setEditor(null)}
+          onDeleted={() => {
+            setEditor(null);
+            load();
+          }}
           onSaved={(experiment, started) => {
             setEditor(null);
             if (started) {

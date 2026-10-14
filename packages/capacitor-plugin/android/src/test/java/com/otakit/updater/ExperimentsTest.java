@@ -104,8 +104,10 @@ public class ExperimentsTest {
 
   @Test
   public void reportsGoToTheirOwnLaneKeptOverEvents() throws Exception {
-    assertEquals(1, AppTelemetryClient.Lane.REPORT.priority());
-    assertEquals(0, AppTelemetryClient.Lane.EVENT.priority());
+    assertTrue(
+      AppTelemetryClient.Lane.REPORT.priority() > AppTelemetryClient.Lane.ERROR.priority()
+    );
+    assertTrue(AppTelemetryClient.Lane.ERROR.priority() > AppTelemetryClient.Lane.EVENT.priority());
     org.json.JSONObject context = new org.json.JSONObject().put("platform", "android");
     assertNotEquals(
       AppTelemetryClient.mergeKey(AppTelemetryClient.Lane.REPORT, context),

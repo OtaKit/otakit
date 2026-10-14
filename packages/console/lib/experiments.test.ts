@@ -42,6 +42,10 @@ describe('validateExperimentDefinition', () => {
 
   it('checks keys, names and traffic', () => {
     expect(error({ ...valid(), key: 'Paywall' })).toMatch(/lowercase/);
+    expect(error({ ...valid(), key: 'estimate' })).toMatch(/cannot be a key/);
+    expect(error({ ...valid(), key: '0b1d2c3e-0000-4000-8000-00000000000a' })).toMatch(
+      /cannot be a key/,
+    );
     expect(error({ ...valid(), name: ' ' })).toMatch(/name/);
     expect(error({ ...valid(), trafficPercent: 0 })).toMatch(/trafficPercent/);
     expect(error({ ...valid(), trafficPercent: 50.5 })).toMatch(/trafficPercent/);

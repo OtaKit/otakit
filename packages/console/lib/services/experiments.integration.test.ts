@@ -327,6 +327,98 @@ databaseDescribe('A/B tests (PostgreSQL integration)', () => {
     await experiments.deleteExperiment(context(), first.id);
   });
 
+  it('keeps base tests and channels with their own config apart', async () => {
+    await remoteConfig.publishRemoteConfig(context(), {
+      channel: 'beta',
+      values: { paywallTitle: 'Beta' },
+      expectedVersion: 0,
+    });
+    // beta reads its own config, so a base test cannot target it.
+    await expect(
+      experiments.createExperiment(context(), paywall({ audienceChannels: ['beta', null] })),
+    ).rejects.toMatchObject({ code: 'EXPERIMENT_CONFLICT', status: 409 });
+    const named = await experiments.createExperiment(
+      context(),
+      paywall({ audienceChannels: ['production'] }),
+    );
+    await experiments.startExperiment(context(), named.id);
+    // A config of its own for production would take its devices out: refused.
+    await expect(
+      remoteConfig.publishRemoteConfig(context(), {
+        channel: 'production',
+        values: { a: 1 },
+        expectedVersion: 0,
+      }),
+    ).rejects.toMatchObject({ code: 'CONFIG_HAS_EXPERIMENTS', status: 409 });
+    // A test of every base device only warns: their devices leave it.
+    const everyone = await experiments.createExperiment(
+      context(),
+      paywall({
+        key: 'button',
+        variants: [
+          { key: 'control', weight: 50, overrides: {} },
+          { key: 'b', weight: 50, overrides: { color: 'green' } },
+        ],
+      }),
+    );
+    await experiments.startExperiment(context(), everyone.id);
+    const staging = await remoteConfig.patchRemoteConfig(context(), {
+      channel: 'staging',
+      set: { debug: true },
+      expectedVersion: 0,
+    });
+    expect(staging.warnings).toEqual([
+      expect.objectContaining({ reason: 'experiment', message: expect.stringContaining('button') }),
+    ]);
+    // Editing a channel that already has its own config warns about nothing.
+    const again = await remoteConfig.patchRemoteConfig(context(), {
+      channel: 'staging',
+      set: { debug: false },
+      expectedVersion: 1,
+    });
+    expect(again.warnings).toEqual([]);
+  });
+
+  it('never writes a config file devices would ignore as too large', async () => {
+    const big = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [`k${index}`, '"'.repeat(390)]),
+    );
+    await remoteConfig.publishRemoteConfig(context(), {
+      channel: null,
+      values: big,
+      expectedVersion: 0,
+    });
+    const quotes = (name: string) =>
+      experiments.createExperiment(
+        context(),
+        paywall({
+          key: name,
+          variants: [
+            { key: 'control', weight: 50, overrides: {} },
+            {
+              key: 'b',
+              weight: 50,
+              overrides: Object.fromEntries(
+                Array.from({ length: 19 }, (_, index) => [`${name}${index}`, '"'.repeat(200)]),
+              ),
+            },
+          ],
+        }),
+      );
+    for (const name of ['one', 'two']) {
+      await experiments.startExperiment(context(), (await quotes(name)).id);
+    }
+    const second = await quotes('three');
+    // Values and tests are each within limits, but the escaped file is not.
+    await expect(experiments.startExperiment(context(), second.id)).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+      message: expect.stringMatching(/config file would be \d+ KB with its running A\/B tests/),
+    });
+    expect((await experiments.getExperiment({ organizationId, appId }, second.id)).status).toBe(
+      'draft',
+    );
+  });
+
   it('applies the plan limit on running tests', async () => {
     vi.stubEnv('POLAR_ACCESS_TOKEN', 'polar-test-token');
     const first = await experiments.createExperiment(context(), paywall());
@@ -377,7 +469,19 @@ databaseDescribe('A/B tests (PostgreSQL integration)', () => {
       row('b', '$exposure', 590, '', '2026-10-01'),
       row('control', '$exposure', 400, '', '2026-10-03'),
       row('b', '$conversion', 130, 'purchase_completed', '2026-10-03'),
+      // By the end of Oct 8 (7.6 days): 4,000 devices per variant, past the planned 3,841.
+      row('control', '$exposure', 3000, '', '2026-10-08'),
+      row('control', '$conversion', 400, 'purchase_completed', '2026-10-08'),
+      row('b', '$exposure', 3410, '', '2026-10-08'),
+      row('b', '$conversion', 400, 'purchase_completed', '2026-10-08'),
     ];
+    // While Oct 8 is not over, there is no result yet.
+    const during = await experiments.getExperimentResults(
+      { organizationId, appId },
+      draft.id,
+      new Date('2026-10-08T20:00:00.000Z'),
+    );
+    expect(during.stats!.verdict).toMatchObject({ kind: 'leading', variant: 'b' });
     const now = new Date('2026-10-11T10:00:00.000Z');
     const results = await experiments.getExperimentResults(
       { organizationId, appId },
@@ -393,7 +497,11 @@ databaseDescribe('A/B tests (PostgreSQL integration)', () => {
       ['b', 1000, 130],
     ]);
     expect(results.stats!.variants[1].secondary.signup).toMatchObject({ converted: 280 });
-    expect(results.stats!.verdict).toMatchObject({ kind: 'winner', variant: 'b' });
+    expect(results.stats!.verdict).toMatchObject({
+      kind: 'winner',
+      variant: 'b',
+      decidedOn: '2026-10-08',
+    });
     expect(results.series).toHaveLength(11);
     expect(results.series[2]).toEqual({
       day: '2026-10-03',
@@ -422,7 +530,12 @@ databaseDescribe('A/B tests (PostgreSQL integration)', () => {
     });
     expect(JSON.parse(delivery.payload)).toMatchObject({
       data: {
-        experiment: { key: 'paywall_copy', status: 'running' },
+        // The payload says which variants change config values.
+        experiment: {
+          key: 'paywall_copy',
+          status: 'running',
+          variants: [{ changesConfig: false }, { changesConfig: true }],
+        },
         verdict: { kind: 'winner', variant: 'b' },
         variants: [{ key: 'control', exposed: 1000, converted: 100, rate: 0.1 }, { key: 'b' }],
       },
@@ -460,13 +573,7 @@ databaseDescribe('A/B tests (PostgreSQL integration)', () => {
       { organizationId, appId },
       { goalEvent: 'purchase_completed' },
     );
-    expect(estimate).toEqual({
-      launchesPerDay: 1000,
-      goalShare: 0.05,
-      plannedPerVariant: expect.any(Number),
-      analyticsAvailable: true,
-    });
-    expect(estimate.plannedPerVariant).toBeGreaterThan(8000);
+    expect(estimate).toEqual({ launchesPerDay: 1000, goalShare: 0.05, analyticsAvailable: true });
     await expect(
       experiments.estimateExperiment({ organizationId, appId }, { goalEvent: '$session_start' }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });

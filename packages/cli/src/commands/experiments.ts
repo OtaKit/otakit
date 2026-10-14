@@ -175,6 +175,19 @@ const shipCommand = withCommon(
   });
 });
 
+const deleteCommand = withCommon(
+  new Command('delete')
+    .description('Delete a test that is not running, with its results')
+    .argument('<experiment>', 'A/B test key or ID')
+    .option('-y, --yes', 'Delete without confirming'),
+).action(async (experiment: string, options: WriteOptions) => {
+  await runCommand(async () => {
+    if (!(await confirmOrRequireYes(options, `Delete ${experiment} and its results?`))) return;
+    const result = await (await client(options)).deleteExperiment(experiment);
+    console.log(options.json ? JSON.stringify(result, null, 2) : `Deleted ${experiment}.`);
+  });
+});
+
 export const experimentsCommand = new Command('experiments')
   .description('A/B tests on remote config (plugin 3.4+)')
   .addCommand(listCommand)
@@ -182,4 +195,5 @@ export const experimentsCommand = new Command('experiments')
   .addCommand(createCommand)
   .addCommand(startCommand)
   .addCommand(stopCommand)
-  .addCommand(shipCommand);
+  .addCommand(shipCommand)
+  .addCommand(deleteCommand);

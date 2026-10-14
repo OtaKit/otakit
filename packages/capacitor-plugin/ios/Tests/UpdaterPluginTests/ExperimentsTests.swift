@@ -72,8 +72,8 @@ final class ExperimentsTests: XCTestCase {
   }
 
   func testReportsGoToTheirOwnLaneKeptOverEvents() {
-    XCTAssertEqual(AppTelemetryClient.Lane.report.priority, 1)
-    XCTAssertEqual(AppTelemetryClient.Lane.event.priority, 0)
+    XCTAssertGreaterThan(AppTelemetryClient.Lane.report.priority, AppTelemetryClient.Lane.error.priority)
+    XCTAssertGreaterThan(AppTelemetryClient.Lane.error.priority, AppTelemetryClient.Lane.event.priority)
     let context: [String: Any] = ["platform": "ios", "sessionId": "s"]
     XCTAssertNotEqual(
       AppTelemetryClient.mergeKey(lane: .report, context: context),
