@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   runAutoRevertSweep: vi.fn(),
   deliverDueNotifications: vi.fn(),
   reconcilePendingReleaseMutations: vi.fn(),
+  reconcileRemoteConfigFiles: vi.fn(),
 }));
 
 vi.mock('@/lib/auto-revert', () => ({ runAutoRevertSweep: mocks.runAutoRevertSweep }));
@@ -12,6 +13,9 @@ vi.mock('@/lib/notifications/deliver', () => ({
 }));
 vi.mock('@/lib/services/releases', () => ({
   reconcilePendingReleaseMutations: mocks.reconcilePendingReleaseMutations,
+}));
+vi.mock('@/lib/services/remote-config', () => ({
+  reconcileRemoteConfigFiles: mocks.reconcileRemoteConfigFiles,
 }));
 
 import { POST } from './route';
@@ -32,6 +36,7 @@ describe('auto-revert cron', () => {
       repaired: 2,
       pending: 0,
     });
+    mocks.reconcileRemoteConfigFiles.mockResolvedValue({ checked: 1, repaired: 1, pending: 0 });
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -41,6 +46,7 @@ describe('auto-revert cron', () => {
 
     expect(mocks.runAutoRevertSweep).toHaveBeenCalledOnce();
     expect(payload.manifestRepairs).toEqual({ checked: 2, repaired: 2, pending: 0 });
+    expect(payload.configRepairs).toEqual({ checked: 1, repaired: 1, pending: 0 });
     expect(payload.notifications).toEqual({ claimed: 1, delivered: 1, failed: 0 });
     expect(mocks.deliverDueNotifications.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.runAutoRevertSweep.mock.invocationCallOrder[0],
@@ -53,13 +59,14 @@ describe('auto-revert cron', () => {
     // must not take the sweep down with it.
     mocks.reconcilePendingReleaseMutations.mockRejectedValue(new Error('poisoned row'));
     mocks.deliverDueNotifications.mockRejectedValue(new Error('smtp down'));
+    mocks.reconcileRemoteConfigFiles.mockRejectedValue(new Error('r2 down'));
 
     const response = await POST(request() as never);
     const payload = await response.json();
 
     expect(response.status).toBe(200);
     expect(mocks.runAutoRevertSweep).toHaveBeenCalledOnce();
-    expect(payload.failures).toEqual(['manifestRepairs', 'notifications']);
+    expect(payload.failures).toEqual(['manifestRepairs', 'configRepairs', 'notifications']);
   });
 
   it('skips the repair but still delivers while the reliability flag is off', async () => {

@@ -2,7 +2,12 @@ import crypto from 'node:crypto';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildCanonicalPayload, buildNotesPayload, buildRolloutPayload } from './manifest-signing';
+import {
+  buildCanonicalPayload,
+  buildConfigPayload,
+  buildNotesPayload,
+  buildRolloutPayload,
+} from './manifest-signing';
 
 /**
  * Cross-implementation vector: the same fixture is verified by
@@ -323,6 +328,107 @@ describe('release notes payload', () => {
       );
       expect(verifyWith(NOTES_VECTOR_PUBLIC_KEY_DER, payload, notes.signature.sig)).toBe(false);
     }
+  });
+});
+
+/**
+ * Remote config vectors (plugin 3.4+), with their own throwaway key: the same
+ * files are verified by RemoteConfigTests.swift and RemoteConfigTest.java.
+ */
+const CONFIG_VECTOR_PUBLIC_KEY_DER =
+  'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEd0ZZZTk/0Z89FsFOcitUJETszNK7A3JeOHfMFCV9dHeuHeVNaEkEdy5kh+PZ/a26LBe8Y+hcPjJBFAC8+u80Ew==';
+const CONFIG_VECTOR_FILES = [
+  {
+    appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+    channel: 'production',
+    version: 12,
+    valuesJson:
+      '{"checkoutEnabled":false,"helpUrl":"https://example.com/help","banner":"Zurück um 14:00 ✓","limits":{"upload":25}}',
+    experimentsJson: null,
+    updatedAt: '2026-10-14T09:00:00.000Z',
+    signature: {
+      kid: 'config-test-key',
+      sig: 'MEYCIQC4BK17uUm7SDkkLMbx6MGEIjsyLKu6-ZEJcSyaRsV44gIhAKuu-KyeVy0WhIZ8BBuu1mRrcktXyCW23JZDTsCn2l2z',
+      iat: 1790000000,
+      exp: 2145916800,
+    },
+  },
+  {
+    appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+    channel: null,
+    version: 3,
+    valuesJson: '{"paywallTitle":"Go Pro","maxItems":5}',
+    experimentsJson:
+      '[{"key":"paywall_copy","traffic":100,"variants":[{"key":"control","weight":50,"overrides":{}},{"key":"b","weight":50,"overrides":{"paywallTitle":"Unlock everything"}}],"runtimeVersions":null,"goal":"purchase_completed"}]',
+    updatedAt: '2026-10-14T09:00:00.000Z',
+    signature: {
+      kid: 'config-test-key',
+      sig: 'MEUCIF3J9XOa6cNJnLyXUJYe-ULxGZGrpeEdUtK6-A6DnPvzAiEA5rjmp9Orhh5urwVBXCo4sUyIGbEvelphqLb_gsTYvhM',
+      iat: 1790000000,
+      exp: 2145916800,
+    },
+  },
+] as const;
+
+describe('remote config payload', () => {
+  it('signs the hashes of the exact JSON text the device receives', () => {
+    const [production, base] = CONFIG_VECTOR_FILES;
+    const payload = buildConfigPayload(
+      production,
+      production.signature.kid,
+      production.signature.iat,
+      production.signature.exp,
+    );
+    expect(payload).toBe(
+      [
+        'CONFIG',
+        'appId:7bb828f1-797c-4d07-8254-068cac664f69',
+        'channel:production',
+        'version:12',
+        'valuesSha256:93c3bf113784f5be594aa537996ed24994f8fc2a94af39a5af55a013f86a2f0d',
+        'experimentsSha256:null',
+        'kid:config-test-key',
+        'iat:1790000000',
+        'exp:2145916800',
+      ].join('\n'),
+    );
+    expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, payload, production.signature.sig)).toBe(true);
+
+    const basePayload = buildConfigPayload(
+      base,
+      base.signature.kid,
+      base.signature.iat,
+      base.signature.exp,
+    );
+    expect(basePayload).toContain('\nchannel:null\n');
+    expect(basePayload).toContain(
+      '\nexperimentsSha256:a82a2ff707af23aa4b266e1b815f88e582ea574468a8d8dc29166ef40789ffa2\n',
+    );
+    expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, basePayload, base.signature.sig)).toBe(true);
+  });
+
+  it('never lets a config verify after any signed field changes', () => {
+    const [production, base] = CONFIG_VECTOR_FILES;
+    for (const moved of [
+      { ...production, appId: '00000000-0000-4000-8000-000000000000' },
+      { ...production, channel: 'beta' },
+      { ...production, channel: null },
+      { ...production, version: 13 },
+      { ...production, valuesJson: production.valuesJson.replace('false', 'true') },
+      { ...production, experimentsJson: base.experimentsJson },
+    ]) {
+      const payload = buildConfigPayload(
+        moved,
+        production.signature.kid,
+        production.signature.iat,
+        production.signature.exp,
+      );
+      expect(verifyWith(CONFIG_VECTOR_PUBLIC_KEY_DER, payload, production.signature.sig)).toBe(
+        false,
+      );
+    }
+    // A manifest or notes signature can never pass as a config one: other header.
+    expect(buildConfigPayload(production, 'k', 1, 2).startsWith('CONFIG\n')).toBe(true);
   });
 });
 

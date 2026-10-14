@@ -140,6 +140,47 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
         url,
       };
     }
+    case 'config.updated': {
+      const { config } = payload.data;
+      const where = `${slug} (${config.channel ?? 'base'})`;
+      const said = config.message ? [`“${config.message}”`] : [];
+      if (config.deleted) {
+        return {
+          title: `Config deleted: ${where}`,
+          lines: [
+            config.channel
+              ? `Devices on ${config.channel} now use the base channel's config.`
+              : 'Apps now use their code defaults and the values they last received.',
+            ...said,
+            ...byLine(payload),
+          ],
+          notes: null,
+          severity: 'warning',
+          url,
+        };
+      }
+      const { added, changed, removed } = config.changedKeys;
+      const keyList = (keys: string[]) =>
+        keys.length > 10
+          ? `${keys.slice(0, 10).join(', ')} and ${keys.length - 10} more`
+          : keys.join(', ');
+      const changes = [
+        changed.length > 0 ? `Changed: ${keyList(changed)}.` : null,
+        added.length > 0 ? `Added: ${keyList(added)}.` : null,
+        removed.length > 0 ? `Removed: ${keyList(removed)}.` : null,
+      ].filter((line): line is string => line !== null);
+      return {
+        title: `Config v${config.version} published: ${where}`,
+        lines: [
+          ...(changes.length > 0 ? changes : ['Same values as before.']),
+          ...said,
+          ...byLine(payload),
+        ],
+        notes: null,
+        severity: 'info',
+        url,
+      };
+    }
     case 'bundle.uploaded': {
       const { bundle } = payload.data;
       return {

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 const MANIFEST_PAYLOAD_HEADER = 'MANIFEST';
 const ROLLOUT_PAYLOAD_HEADER = 'ROLLOUT';
 const NOTES_PAYLOAD_HEADER = 'NOTES';
+const CONFIG_PAYLOAD_HEADER = 'CONFIG';
 const DEFAULT_MANIFEST_TTL_SECONDS = 31_536_000; // 1 year
 
 export type ManifestStrategy = 'zip' | 'deltas';
@@ -48,6 +49,18 @@ export interface NotesSignatureInput {
   sha256: string;
   /** Exactly the text sent to devices. */
   text: string;
+}
+
+export interface ConfigSignatureInput {
+  appId: string;
+  /** Channel of the file; null for the base channel. */
+  channel: string | null;
+  /** Increases with every change; devices refuse a lower one (replay). */
+  version: number;
+  /** Exactly the text sent to devices (a JSON object). */
+  valuesJson: string;
+  /** Exactly the text sent to devices (a JSON array), or null without experiments. */
+  experimentsJson: string | null;
 }
 
 export interface ManifestSignature {
@@ -192,6 +205,36 @@ export function buildNotesPayload(
   ].join('\n');
 }
 
+function sha256Hex(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/**
+ * Canonical payload of a remote config file (plugin 3.4+). The JSON is signed
+ * by the SHA-256 of its exact UTF-8 bytes, so devices never re-serialize it.
+ * `experimentsSha256` is always present (`null` without experiments), so the
+ * format is final from the first plugin that reads config. Must match
+ * ManifestVerifier.swift / ManifestVerifier.java byte-for-byte.
+ */
+export function buildConfigPayload(
+  fields: ConfigSignatureInput,
+  kid: string,
+  iat: number,
+  exp: number,
+): string {
+  return [
+    CONFIG_PAYLOAD_HEADER,
+    `appId:${fields.appId}`,
+    `channel:${fields.channel ?? 'null'}`,
+    `version:${fields.version}`,
+    `valuesSha256:${sha256Hex(fields.valuesJson)}`,
+    `experimentsSha256:${fields.experimentsJson === null ? 'null' : sha256Hex(fields.experimentsJson)}`,
+    `kid:${kid}`,
+    `iat:${iat}`,
+    `exp:${exp}`,
+  ].join('\n');
+}
+
 function bundlePayloadLines(fields: ManifestSignatureInput): string[] {
   return [
     `appId:${fields.appId}`,
@@ -223,6 +266,11 @@ export function signRollout(fields: RolloutSignatureInput): ManifestSignature | 
 /** Sign a `notes` block with the manifest key; null when signing is disabled. */
 export function signNotes(fields: NotesSignatureInput): ManifestSignature | null {
   return signPayload((kid, iat, exp) => buildNotesPayload(fields, kid, iat, exp));
+}
+
+/** Sign a remote config file with the manifest key; null when signing is disabled. */
+export function signConfig(fields: ConfigSignatureInput): ManifestSignature | null {
+  return signPayload((kid, iat, exp) => buildConfigPayload(fields, kid, iat, exp));
 }
 
 function signPayload(
