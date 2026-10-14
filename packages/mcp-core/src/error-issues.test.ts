@@ -32,7 +32,7 @@ describe('errorIssueListEnvelopeParts', () => {
   it('counts issues without quoting device text', () => {
     expect(errorIssueListEnvelopeParts(list)).toEqual({
       summary:
-        '7 open error issues with events in the last 7 days; 1 of the shown first seen in this range. Showing 2. Use get_error_issue with a fingerprint for the stack trace.',
+        '7 open error issues with events in the last 7 days. Showing the top 2, 1 of them first seen in this range. Use get_error_issue with a fingerprint for the stack trace.',
       warnings: [ERROR_TEXT_WARNING],
     });
     expect(errorIssueListEnvelopeParts({ ...list, total: 0, issues: [] }, 'all').summary).toBe(

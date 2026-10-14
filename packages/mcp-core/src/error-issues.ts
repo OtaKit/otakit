@@ -71,9 +71,11 @@ export function errorIssueListEnvelopeParts(
     };
   }
   const fresh = list.issues.filter((issue) => issue.isNew).length;
-  const newNote = fresh > 0 ? `; ${fresh} of the shown first seen in this range` : '';
+  const shown =
+    list.issues.length < list.total ? ` Showing the top ${list.issues.length}` : ' Showing all';
+  const newNote = fresh === 0 ? '' : `, ${fresh} of them first seen in this range`;
   return {
-    summary: `${list.total} ${which}error ${list.total === 1 ? 'issue' : 'issues'} with events in the last ${rangeLabel(list.range)}${newNote}. Showing ${list.issues.length}. Use get_error_issue with a fingerprint for the stack trace.`,
+    summary: `${list.total} ${which}error ${list.total === 1 ? 'issue' : 'issues'} with events in the last ${rangeLabel(list.range)}.${shown}${newNote}. Use get_error_issue with a fingerprint for the stack trace.`,
     warnings,
   };
 }
