@@ -77,6 +77,26 @@ describe('normalizeFile', () => {
     );
     expect(normalizeFile('https://localhost/polyfills.js')).toBe('polyfills.js');
   });
+
+  it('strips Vite, Rollup, esbuild and webpack hashes without a digit', () => {
+    expect(normalizeFile('https://localhost/assets/index-BkMqTaYz.js')).toBe('assets/index.js');
+    expect(normalizeFile('https://localhost/assets/index-Bk-qT5Y2.js')).toBe('assets/index.js');
+    expect(normalizeFile('https://localhost/assets/use-feedback-Dq_xMbwA.js')).toBe(
+      'assets/use-feedback.js',
+    );
+    expect(normalizeFile('https://localhost/chunk-ABCDEFGH.js')).toBe('chunk.js');
+    expect(normalizeFile('https://localhost/main-QWERTYUI.js')).toBe('main.js');
+    expect(normalizeFile('https://localhost/static/js/787.e5f6a7b8.chunk.js')).toBe(
+      'static/js/787.chunk.js',
+    );
+    // Lowercase words stay.
+    expect(normalizeFile('https://localhost/assets/use-feedback.js')).toBe(
+      'assets/use-feedback.js',
+    );
+    expect(normalizeFile('https://localhost/assets/page-settings.js')).toBe(
+      'assets/page-settings.js',
+    );
+  });
 });
 
 describe('normalizeMessage', () => {
@@ -89,6 +109,20 @@ describe('normalizeMessage', () => {
       'User <id> not found',
     );
     expect(normalizeMessage('Request deadbeef0123 timed out')).toBe('Request <id> timed out');
+  });
+
+  it('keeps only the normalized path of URLs', () => {
+    expect(
+      normalizeMessage(
+        'Failed to fetch dynamically imported module: https://localhost/assets/Page-BkMqT5Y2.js',
+      ),
+    ).toBe('Failed to fetch dynamically imported module: assets/Page.js');
+    expect(normalizeMessage('Session expired, sign in again at https://evil.example')).toBe(
+      'Session expired, sign in again at <url>',
+    );
+    expect(normalizeMessage('GET https://api.example.com/v1/users/123?token=abc failed')).toBe(
+      'GET v<n>/users/<n> failed',
+    );
   });
 });
 

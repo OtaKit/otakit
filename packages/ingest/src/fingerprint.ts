@@ -20,8 +20,11 @@ export type StackFrame = {
 const V8_FRAME = /^\s*at (?:(.+?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
 // JavaScriptCore (WKWebView, Safari): "fn@url:line:col", "@url:line:col", "global code@url:line:col"
 const JSC_FRAME = /^\s*(?:([^@]*)@)?(.+?):(\d+):(\d+)\s*$/;
-// A content hash in a file name: index-4f3a9c2b.js, main.4f3a9c2b.js, chunk-ABCD1234.mjs
-const BUILD_HASH = /[-.]([A-Za-z0-9_]{6,})(?=\.m?[jt]sx?$)/;
+// Vite/Rollup (`[name]-[hash]`, 8 URL-safe base64 characters, so "-" and "_" can occur) and
+// esbuild/Angular (`chunk-[hash]`, 8 uppercase base32 characters): index-Bk-qT5Y2.js, chunk-ABCDEFGH.js
+const SHORT_HASH = /-([A-Za-z0-9_-]{8})(?=\.m?[jt]sx?$)/;
+// webpack, Angular CLI and others: main.4f3a9c2b.js, index-4f3a9c2b.js, 123.e5f6a7b8c9d0.chunk.js
+const BUILD_HASH = /[-.]([A-Za-z0-9_]{6,})(?=(?:\.chunk)?\.m?[jt]sx?$)/;
 const VENDOR = /(^|\/)(node_modules|vendor|vendors|polyfills?)([/.-]|$)|(^|\/)vendor[-.~]/i;
 const NATIVE_FILE = /^(native|\[native code\]|<anonymous>|eval)$/;
 
@@ -34,13 +37,25 @@ export function normalizeFile(raw: string): string {
   const slash = file.lastIndexOf('/');
   const directory = slash >= 0 ? file.slice(0, slash + 1) : '';
   let name = slash >= 0 ? file.slice(slash + 1) : file;
-  // Only strip a segment that looks like a hash: it has a digit, or is all
-  // upper/lowercase hex, so names like "vendor-helpers.js" keep their words.
-  const match = BUILD_HASH.exec(name);
-  if (match && (/\d/.test(match[1]) || /^[A-F0-9]+$/i.test(match[1]))) {
-    name = name.slice(0, match.index) + name.slice(match.index + match[0].length);
+  // Only strip a segment that looks like a hash, so names like
+  // "use-feedback.js" and "vendor-helpers.js" keep their words.
+  const short = SHORT_HASH.exec(name);
+  const long = BUILD_HASH.exec(name);
+  if (short && isShortHash(short[1])) {
+    name = name.slice(0, short.index) + name.slice(short.index + short[0].length);
+  } else if (long && (/\d/.test(long[1]) || /^[A-F0-9]+$/i.test(long[1]))) {
+    name = name.slice(0, long.index) + name.slice(long.index + long[0].length);
   }
   return directory + name;
+}
+
+/** An 8-character segment is a hash unless it is a lowercase word. */
+function isShortHash(segment: string): boolean {
+  return (
+    /[\d_-]/.test(segment) ||
+    (/[a-z]/.test(segment) && /[A-Z]/.test(segment)) ||
+    /^[A-Z]+$/.test(segment)
+  );
 }
 
 function frameFromMatch(
@@ -82,15 +97,21 @@ export function parseStack(stack: string | null | undefined): StackFrame[] {
   return frames;
 }
 
+// A URL in a message, e.g. "Failed to fetch dynamically imported module: https://localhost/assets/Page-BkMqT5Y2.js".
+const URL_IN_MESSAGE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>()]+/gi;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const HEX = /\b(?:0x)?[0-9a-f]{8,}\b/gi;
 const QUOTED = /(["'`])(?:\\.|(?!\1).)*\1/g;
 // Digits glued to units count too: "2.5s", "30000ms".
 const NUMBER = /\d+(?:\.\d+)?/g;
 
-/** The message with its variable parts replaced, so "id 123 not found" and "id 456 not found" group. */
+/**
+ * The message with its variable parts replaced, so "id 123 not found" and "id 456 not found" group.
+ * URLs keep only their normalized path: build hashes and hosts vary, and alerts quote this text.
+ */
 export function normalizeMessage(message: string): string {
   return message
+    .replace(URL_IN_MESSAGE, (url) => normalizeFile(url) || '<url>')
     .replace(UUID, '<id>')
     .replace(QUOTED, '<str>')
     .replace(HEX, (value) => (/\d/.test(value) ? '<id>' : value))
