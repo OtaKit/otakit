@@ -37,6 +37,8 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "stopPreview", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getUnseenReleaseNotes", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "markReleaseNotesSeen", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "getConfig", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "refreshConfig", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -66,6 +68,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
   private var lastRollout: RolloutState?
   private var previewLinks = false
   private var openURLObserver: NSObjectProtocol?
+  private let remoteConfig = RemoteConfigClient(
+    store: RemoteConfigStore(directory: RemoteConfigStore.defaultDirectory())
+  )
   private static let defaultIngestURL = "https://ingest.otakit.app/v1"
   private static let defaultCdnURL = "https://cdn.otakit.app"
   private static let ingestPathSuffix = "/v1"
@@ -163,6 +168,9 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     dispatchColdStart()
     observePreviewLinks()
+    // Remote config is independent of the update policies: it is read even
+    // when automatic updates are off.
+    refreshConfigInBackground(respectInterval: false)
 
     foregroundObserver = NotificationCenter.default.addObserver(
         forName: UIApplication.willEnterForegroundNotification,
@@ -170,6 +178,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         queue: .main
       ) { [weak self] _ in
         DeviceEventClient.resume()
+        self?.refreshConfigInBackground(respectInterval: true)
         if self?.resumePolicy != .off { self?.handleAppWillEnterForeground() }
       }
   }
@@ -531,6 +540,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       // The last check's rollout belongs to the previous channel.
       rememberRollout(nil)
       call.resolve()
+      refreshConfigInBackground(respectInterval: false)
       return
     }
     guard let name = raw as? String else {
@@ -546,6 +556,72 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     store.setOverrideChannel(name)
     rememberRollout(nil)
     call.resolve()
+    // The new channel may have its own config.
+    refreshConfigInBackground(respectInterval: false)
+  }
+
+  /// The app channel's remote config as saved on the device (plugin 3.4+).
+  /// No network access: the cold-start fetch updates it, and `configChanged`
+  /// tells the app.
+  @objc func getConfig(_ call: CAPPluginCall) {
+    guard let appId else {
+      call.reject("appId is not configured")
+      return
+    }
+    let channel = configChannel()
+    Task {
+      let snapshot = await remoteConfig.snapshot(appId: appId, channel: channel)
+      call.resolve(snapshot.toDictionary())
+    }
+  }
+
+  /// Fetch the remote config now and resolve with the result. Network errors
+  /// resolve with the saved config and an `error` code instead of rejecting.
+  @objc func refreshConfig(_ call: CAPPluginCall) {
+    guard appId != nil else {
+      call.reject("appId is not configured")
+      return
+    }
+    Task {
+      guard let result = await refreshConfigNow(respectInterval: false) else {
+        call.reject("appId is not configured")
+        return
+      }
+      var data = result.snapshot.toDictionary()
+      if let error = result.error { data["error"] = error }
+      call.resolve(data)
+    }
+  }
+
+  /// setChannel's override, else the configured channel. Preview links never
+  /// change which config the app reads.
+  private func configChannel() -> String? {
+    store.getOverrideChannel() ?? channel
+  }
+
+  private func refreshConfigInBackground(respectInterval: Bool) {
+    Task { _ = await refreshConfigNow(respectInterval: respectInterval) }
+  }
+
+  @discardableResult
+  private func refreshConfigNow(respectInterval: Bool) async -> RemoteConfigClient.RefreshResult? {
+    guard let appId else { return nil }
+    if respectInterval, await remoteConfig.shouldSkip(intervalMs: checkIntervalMs) {
+      return nil
+    }
+    let result = await remoteConfig.refresh(
+      RemoteConfigClient.Context(
+        cdnUrl: cdnUrl,
+        appId: appId,
+        channel: configChannel(),
+        trustedKeys: manifestKeys.map { ManifestKey(kid: $0.kid, derData: $0.key) },
+        allowInsecureUrls: allowInsecureUrls
+      )
+    )
+    if result.changed {
+      emitEvent("configChanged", result.snapshot.toDictionary())
+    }
+    return result
   }
 
   @objc func stopPreview(_ call: CAPPluginCall) {

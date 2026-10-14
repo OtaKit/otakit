@@ -94,6 +94,9 @@ public class UpdaterPlugin extends Plugin {
   }
 
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
+  /** Remote config fetches run apart from updates, so a long download never delays them. */
+  private final ExecutorService configExecutor = Executors.newSingleThreadExecutor();
+  private RemoteConfig.Client remoteConfig;
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private final ZipUtils zipUtils = new ZipUtils();
 
@@ -227,6 +230,14 @@ public class UpdaterPlugin extends Plugin {
     this.appReadyTimeoutMs = Math.max(1000, getConfig().getInt("appReadyTimeout", 10_000));
     this.checkIntervalMs = getConfig().getInt("checkInterval", 600_000);
 
+    // Remote config is independent of the update policies and of update storage: it is read even
+    // when automatic updates are off.
+    this.remoteConfig = new RemoteConfig.Client(
+      new RemoteConfig.Store(new File(getContext().getNoBackupFilesDir(), "otakit-config")),
+      new RemoteConfig.HttpTransport()
+    );
+    refreshConfigInBackground(false);
+
     try {
       pruneIncompatibleBundles();
       UpdaterCoordinator.StartupPreparation startup = coordinator.normalizeStartupState(
@@ -286,6 +297,8 @@ public class UpdaterPlugin extends Plugin {
     if (bridge != null) DeviceEventClient.resume(
       new File(getContext().getNoBackupFilesDir(), "otakit-events")
     );
+    // Skipped right after the cold-start fetch by the check interval.
+    refreshConfigInBackground(true);
     if (!storageReady) return;
     if (coldStartInProgress) {
       coldStartInProgress = false;
@@ -686,6 +699,7 @@ public class UpdaterPlugin extends Plugin {
       // The last check's rollout belongs to the previous channel.
       lastRollout = null;
       call.resolve();
+      refreshConfigInBackground(false);
       return;
     }
     if (!(raw instanceof String)) {
@@ -704,6 +718,72 @@ public class UpdaterPlugin extends Plugin {
     store.setOverrideChannel(name);
     lastRollout = null;
     call.resolve();
+    // The new channel may have its own config.
+    refreshConfigInBackground(false);
+  }
+
+  /**
+   * The app channel's remote config as saved on the device (plugin 3.4+). No network access: the
+   * cold-start fetch updates it, and configChanged tells the app.
+   */
+  @PluginMethod
+  public void getConfig(PluginCall call) {
+    if (appId == null || remoteConfig == null) {
+      call.reject("appId is not configured");
+      return;
+    }
+    call.resolve(toJSObject(remoteConfig.snapshot(appId, configChannel()).toMap()));
+  }
+
+  /**
+   * Fetch the remote config now and resolve with the result. Network errors resolve with the saved
+   * config and an error code instead of rejecting.
+   */
+  @PluginMethod
+  public void refreshConfig(PluginCall call) {
+    if (appId == null || remoteConfig == null) {
+      call.reject("appId is not configured");
+      return;
+    }
+    configExecutor.execute(() -> {
+      RemoteConfig.RefreshResult result = refreshConfigNow(false);
+      if (result == null) {
+        call.resolve(toJSObject(remoteConfig.snapshot(appId, configChannel()).toMap()));
+        return;
+      }
+      JSObject data = toJSObject(result.snapshot.toMap());
+      if (result.error != null) data.put("error", result.error);
+      call.resolve(data);
+    });
+  }
+
+  /** setChannel's override, else the configured channel. Preview links never change it. */
+  private String configChannel() {
+    String override = store != null ? store.getOverrideChannel() : null;
+    return override != null ? override : channel;
+  }
+
+  private void refreshConfigInBackground(boolean respectInterval) {
+    if (appId == null || remoteConfig == null) return;
+    configExecutor.execute(() -> refreshConfigNow(respectInterval));
+  }
+
+  private RemoteConfig.RefreshResult refreshConfigNow(boolean respectInterval) {
+    if (appId == null || remoteConfig == null) return null;
+    if (respectInterval && remoteConfig.shouldSkip(checkIntervalMs)) return null;
+    RemoteConfig.RefreshResult result = remoteConfig.refresh(
+      new RemoteConfig.Context(cdnUrl, appId, configChannel(), manifestKeys, allowInsecureUrls)
+    );
+    if (result.changed) emitEvent("configChanged", toJSObject(result.snapshot.toMap()));
+    return result;
+  }
+
+  private static JSObject toJSObject(java.util.Map<String, Object> values) {
+    JSObject object = new JSObject();
+    for (java.util.Map.Entry<String, Object> entry : values.entrySet()) {
+      object.put(entry.getKey(), entry.getValue());
+    }
+    return object;
   }
 
   /**

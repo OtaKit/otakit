@@ -35,6 +35,7 @@ const NAV = [
       { label: 'Percentage Rollouts', href: '/docs/rollouts' },
       { label: 'Preview Links', href: '/docs/previews' },
       { label: 'Release Notes', href: '/docs/release-notes' },
+      { label: 'Remote Config', href: '/docs/remote-config' },
       { label: 'Update Strategies', href: '/docs/update-strategies' },
       { label: 'Events & Listeners', href: '/docs/events' },
       { label: 'Webhooks & Alerts', href: '/docs/webhooks' },

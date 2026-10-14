@@ -5,6 +5,8 @@ import {
   PublicToolError,
   bundleDiffEnvelopeParts,
   releaseTimeseriesEnvelopeParts,
+  remoteConfigSummary,
+  remoteConfigWriteParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -307,6 +309,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.createPreview(input);
         case 'revoke_preview':
           return await this.revokePreview(input);
+        case 'get_remote_config':
+          return await this.getRemoteConfig(input);
+        case 'set_remote_config':
+          return await this.setRemoteConfig(input);
         case 'inspect_project':
           return await this.inspectProject();
         case 'check_compatibility':
@@ -749,6 +755,39 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     });
     const parts = previewEnvelopeParts(preview);
     return toolEnvelope(parts.summary, json({ preview }), parts);
+  }
+
+  private configChannel(input: JsonObject): string | null {
+    return input.channel === undefined ? null : nullableString(input, 'channel');
+  }
+
+  private async getRemoteConfig(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const state = await this.api(appId).getRemoteConfig(this.configChannel(input));
+    return toolEnvelope(remoteConfigSummary(state), json(state), {
+      links: [this.appLink(appId, 'View remote config')],
+    });
+  }
+
+  private async setRemoteConfig(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const set = input.set;
+    const unset = input.unset;
+    const result = await this.api(appId).patchRemoteConfig({
+      channel: this.configChannel(input),
+      set:
+        set && typeof set === 'object' && !Array.isArray(set)
+          ? (set as Record<string, unknown>)
+          : undefined,
+      unset: Array.isArray(unset) ? (unset as string[]) : undefined,
+      expectedVersion: numberInput(input, 'expectedVersion') ?? Number.NaN,
+      message: optionalString(input, 'message'),
+    });
+    const parts = remoteConfigWriteParts(result);
+    return toolEnvelope(parts.summary, json(result), {
+      warnings: parts.warnings,
+      links: [this.appLink(appId, 'View remote config')],
+    });
   }
 
   private async revokePreview(input: JsonObject): Promise<ToolEnvelope> {

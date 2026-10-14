@@ -27,10 +27,11 @@ final class ManifestClient {
 
     final String kid;
     final String sig;
-    final int iat;
-    final int exp;
+    // Seconds since 1970: 64-bit, so signatures that expire after January 2038 still parse.
+    final long iat;
+    final long exp;
 
-    ManifestSignature(String kid, String sig, int iat, int exp) {
+    ManifestSignature(String kid, String sig, long iat, long exp) {
       this.kid = kid;
       this.sig = sig;
       this.iat = iat;
@@ -501,7 +502,7 @@ final class ManifestClient {
     }
   }
 
-  private static ManifestSignature parseSignature(JSONObject sigObj) {
+  static ManifestSignature parseSignature(JSONObject sigObj) {
     if (sigObj == null) {
       return null;
     }
@@ -512,8 +513,8 @@ final class ManifestClient {
       return new ManifestSignature(
         sigObj.getString("kid"),
         sigObj.getString("sig"),
-        sigObj.getInt("iat"),
-        sigObj.getInt("exp")
+        sigObj.getLong("iat"),
+        sigObj.getLong("exp")
       );
     } catch (org.json.JSONException e) {
       return null;

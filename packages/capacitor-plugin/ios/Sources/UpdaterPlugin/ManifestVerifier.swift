@@ -116,6 +116,34 @@ enum ManifestVerifier {
     try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
   }
 
+  /// Verify a remote config file (plugin 3.4+). The JSON texts are bound by
+  /// the SHA-256 of their exact UTF-8 bytes, so nothing is re-serialized; must
+  /// match the server's `buildConfigPayload` byte-for-byte.
+  static func verifyConfig(
+    appId: String,
+    channel: String?,
+    version: Int,
+    deleted: Bool,
+    valuesJson: String,
+    experimentsJson: String?,
+    signature: ManifestSignature,
+    trustedKeys: [ManifestKey]
+  ) throws {
+    let payload = buildCanonicalPayload(
+      header: "CONFIG",
+      bundleLines: [
+        "appId:\(appId)",
+        "channel:\(channel ?? "null")",
+        "version:\(version)",
+        "deleted:\(deleted ? "true" : "false")",
+        "valuesSha256:\(sha256Hex(valuesJson))",
+        "experimentsSha256:\(experimentsJson.map(sha256Hex) ?? "null")"
+      ],
+      signature: signature
+    )
+    try verifyCanonicalPayload(payload, signature: signature, trustedKeys: trustedKeys)
+  }
+
   /// Lowercase hex SHA-256 of the UTF-8 bytes, as the server computes it.
   static func sha256Hex(_ text: String) -> String {
     SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()

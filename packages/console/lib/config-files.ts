@@ -62,4 +62,3 @@ export async function writeConfigFile(input: Omit<ConfigFile, 'signature'>): Pro
   // Also clears a cached 404 when a channel gets its first config.
   await purgeCdnUrls([buildPublicObjectUrl(storageKey)]);
 }
-

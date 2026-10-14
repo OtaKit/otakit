@@ -70,7 +70,13 @@ export type RemoteConfigWriteResult = {
   warnings: ConfigWarning[];
 };
 
-type Context = { organizationId: string; actor: AuditActor; appId: string };
+type Context = {
+  organizationId: string;
+  actor: AuditActor;
+  appId: string;
+  /** Extra audit fields, such as the MCP client that made the change. */
+  auditMetadata?: Record<string, unknown>;
+};
 
 function lockKey(appId: string, channel: string | null): string {
   return `remote-config:${appId}:${configChannelKey(channel)}`;
@@ -391,6 +397,7 @@ async function writeVersion(
         message: input.message,
         ...committed.changedKeys,
         ...input.auditExtra,
+        ...context.auditMetadata,
       },
     });
     await syncRemoteConfigFile(appId, input.channel);

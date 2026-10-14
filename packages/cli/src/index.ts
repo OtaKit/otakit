@@ -22,6 +22,7 @@ import { logoutCommand } from './commands/logout.js';
 import { mcpCommand } from './commands/mcp.js';
 import { organizationCommand } from './commands/organization.js';
 import { pushCommand } from './commands/push.js';
+import { remoteConfigCommand } from './commands/remote-config.js';
 import { CLI_VERSION } from './lib/version.js';
 
 const program = new Command();
@@ -44,6 +45,7 @@ program.addCommand(releasesCommand);
 program.addCommand(rolloutCommand);
 program.addCommand(previewCommand);
 program.addCommand(pushCommand);
+program.addCommand(remoteConfigCommand);
 program.addCommand(generateSigningKeyCommand);
 program.addCommand(generateEncryptionKeyCommand);
 program.addCommand(loginCommand);

@@ -51,6 +51,7 @@
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api UpdaterPlugin --output-readme README.md --output-json dist/docs.json",
     "build": "node ../../scripts/generate-native-sdk-version.mjs --write && npm run clean && tsc && rollup -c rollup.config.mjs",
+    "test": "vitest run",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build",
@@ -66,13 +67,14 @@
     "@ionic/prettier-config": "^4.0.0",
     "@ionic/swiftlint-config": "^2.0.0",
     "eslint": "^9.39.2",
-    "typescript-eslint": "^8.32.1",
     "prettier": "^3.8.1",
     "prettier-plugin-java": "^2.8.1",
     "rimraf": "^6.1.2",
     "rollup": "^4.57.1",
     "swiftlint": "^2.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.32.1",
+    "vitest": "4.1.11"
   },
   "peerDependencies": {
     "@capacitor/core": "^7.0.0 || ^8.0.0"

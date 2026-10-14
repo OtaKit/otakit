@@ -87,6 +87,16 @@ export default function WebhooksPage() {
           because the previous release on its lane was auto-reverted within 24 hours. Needs action.
         </li>
         <li>
+          <Code>config.updated</Code> — a channel&apos;s{' '}
+          <Link
+            href="/docs/remote-config"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            remote config
+          </Link>{' '}
+          is published, restored or deleted.
+        </li>
+        <li>
           <Code>bundle.uploaded</Code> — a new bundle is uploaded.
         </li>
         <li>
@@ -155,6 +165,12 @@ export default function WebhooksPage() {
           rollbacks), <Code>rollbackSharePercent</Code>, the release&apos;s{' '}
           <Code>thresholdPercent</Code> and <Code>thresholdMinSample</Code>, and{' '}
           <Code>windowHours</Code>. Counts are events reported by devices, not unique devices.
+        </li>
+        <li>
+          <Code>config.updated</Code>: <Code>config</Code> with <Code>channel</Code>,{' '}
+          <Code>version</Code>, <Code>previousVersion</Code>, <Code>deleted</Code>,{' '}
+          <Code>message</Code>, <Code>changedKeys</Code> (<Code>added</Code>, <Code>changed</Code>,{' '}
+          <Code>removed</Code>) and the new <Code>values</Code> (<Code>null</Code> when deleted).
         </li>
         <li>
           <Code>bundle.uploaded</Code>: <Code>bundle</Code> with <Code>id</Code>,{' '}

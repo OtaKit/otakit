@@ -44,6 +44,7 @@ import { appIdentifierError } from '@/lib/onboarding-profile';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
+import { RemoteConfigSection } from '@/app/components/RemoteConfigSection';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
 import type {
@@ -548,6 +549,19 @@ export function ProductDashboard({
 
   // Release health charts
   const [healthRelease, setHealthRelease] = useState<ReleaseHistoryItem | null>(null);
+
+  // Remote config: channels that have releases, offered when adding a channel's config.
+  const releaseChannels = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          releaseHistory
+            .map((release) => release.channel)
+            .filter((channel): channel is string => channel !== null && !isPreviewChannel(channel)),
+        ),
+      ).sort(),
+    [releaseHistory],
+  );
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -2149,6 +2163,16 @@ export function ProductDashboard({
               ) : null}
 
               {selectedApp ? <Separator className="" /> : null}
+
+              {/* Remote config */}
+              {selectedApp ? (
+                <RemoteConfigSection
+                  key={selectedApp.id}
+                  appId={selectedApp.id}
+                  releaseChannels={releaseChannels}
+                  docsUrl={docsUrl}
+                />
+              ) : null}
 
               {/* Events */}
               {selectedApp ? (

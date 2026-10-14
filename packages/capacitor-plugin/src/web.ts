@@ -7,6 +7,7 @@ import type {
   ChannelInfo,
   CheckResult,
   DownloadResult,
+  NativeRemoteConfig,
   OtaKitState,
   ReleaseNotes,
 } from './definitions';
@@ -68,6 +69,24 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
   async markReleaseNotesSeen(): Promise<void> {
     // Nothing to mark on web.
   }
+
+  async getConfig(): Promise<NativeRemoteConfig> {
+    // Remote config is read by the native plugin; on web the app uses its defaults.
+    return OtaKitWeb.NO_CONFIG;
+  }
+
+  async refreshConfig(): Promise<NativeRemoteConfig> {
+    return OtaKitWeb.NO_CONFIG;
+  }
+
+  private static readonly NO_CONFIG: NativeRemoteConfig = {
+    valuesJson: null,
+    experimentsJson: null,
+    version: null,
+    channel: null,
+    fetchedAt: null,
+    source: 'none',
+  };
 
   async getLastFailure(): Promise<BundleInfo | null> {
     return null;

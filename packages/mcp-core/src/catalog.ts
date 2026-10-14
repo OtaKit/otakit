@@ -457,6 +457,53 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     allowOrganizationKey: true,
   },
   {
+    name: 'get_remote_config',
+    title: 'Get OtaKit remote config',
+    description:
+      "Return a channel's remote config: the JSON values apps read with getConfig() (plugin 3.4+), its version, who changed it last and why, and whether devices on a named channel use the base channel's config because the channel has none of its own. Config values are public to anyone with the app.",
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      channel: channelSchema
+        .optional()
+        .describe('Named channel, or null or omitted for the base channel'),
+    }),
+    annotations: readOnly,
+    oauthScopes: ['otakit:read'],
+    allowOrganizationKey: true,
+  },
+  {
+    name: 'set_remote_config',
+    title: 'Change OtaKit remote config',
+    description:
+      "Set and remove top-level keys of a channel's remote config, publishing a new version. Apps on plugin 3.4+ pick it up on their next fetch (at launch, or on resume after checkInterval). Fails when expectedVersion is not the latest version. Values are public: secrets do not belong in config.",
+    modes: both,
+    inputSchema: z.object({
+      appId: resolvedAppIdSchema,
+      channel: channelSchema
+        .optional()
+        .describe('Named channel, or null or omitted for the base channel'),
+      expectedVersion: z
+        .number()
+        .int()
+        .min(0)
+        .describe('Version shown by get_remote_config when the change was reviewed (0 for none)'),
+      set: z
+        .record(z.string(), z.json())
+        .optional()
+        .describe('Keys to add or replace, with their new JSON values'),
+      unset: z.array(z.string()).optional().describe('Keys to remove'),
+      message: z
+        .string()
+        .max(200)
+        .optional()
+        .describe('Why the config changes; shown in history, the audit log and notifications'),
+    }),
+    annotations: { ...destructive, ...reachesEndUsers },
+    oauthScopes: ['otakit:release:write'],
+    allowOrganizationKey: true,
+  },
+  {
     name: 'inspect_project',
     title: 'Inspect a local Capacitor project',
     description:

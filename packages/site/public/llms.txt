@@ -494,6 +494,66 @@ Example
 npx -y @otakit/cli@latest connect
 ```
 
+### otakit remote-config get
+
+Show a channel's remote config: the values apps read with OtaKit.getConfig() (plugin 3.4+), its version, and who changed it last. Without --channel, the base channel.
+
+Options
+- `--channel <channel>`: Channel (default: the base channel).
+- `--values`: Print only the values as JSON, ready for remote-config push.
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit remote-config get --channel beta
+```
+
+### otakit remote-config set <key> <value>
+
+Set one key and publish a new version. The value is read as JSON when it parses (false, 5, {"limit":3}) and as text otherwise. remote-config unset <keys...> removes keys the same way.
+
+Options
+- `--channel <channel>`: Channel (default: the base channel).
+- `--string`: Store the value as text even if it looks like JSON.
+- `--message <text>`: Why it changes, shown in history, the audit log and notifications.
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit remote-config set checkoutEnabled false --message "Partner outage"
+```
+
+### otakit remote-config push <file>
+
+Replace a channel's config with a JSON object from a file. Shows the keys it adds, changes and removes, and asks before publishing.
+
+Options
+- `--channel <channel>`: Channel (default: the base channel).
+- `--message <text>`: Why it changes.
+- `--yes`: Replace without the confirmation prompt (required in CI).
+
+Example
+
+```txt
+otakit remote-config push config.json --channel beta --yes
+```
+
+### otakit remote-config history
+
+List a channel's config versions, newest first. remote-config restore <version> publishes an earlier version's values again as a new version; remote-config delete removes a channel's config, so its devices use the base config; remote-config list shows the channels that have config.
+
+Options
+- `--channel <channel>`: Channel (default: the base channel).
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit remote-config restore 12 --channel beta
+```
+
 ### otakit push send
 
 Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending.
@@ -1183,6 +1243,132 @@ Response
 
 ```txt
 { "status": "revoked" | "already_ended", "previewId": "uuid" }
+```
+
+### Remote config
+
+### GET /api/v1/apps/:appId/config
+
+A channel's remote config, the values apps read with OtaKit.getConfig() (plugin 3.4+). A channel without its own config uses the base channel's.
+- Auth: Bearer
+- Query: ?channel=beta (omit or leave empty for the base channel)
+
+Response
+
+```txt
+{
+  "appId": "uuid",
+  "channel": "beta",            // null for the base channel
+  "version": 12,                // pass as expectedVersion; 0 = never configured
+  "status": "live",             // "live" | "deleted" | "none"
+  "values": { "checkoutEnabled": false },
+  "message": "Partner outage",
+  "updatedBy": "dev@acme.com",
+  "updatedAt": "ISO timestamp",
+  "usesBaseConfig": false,      // true: devices on this channel read the base config
+  "publicationStatus": "published",   // "pending" while the CDN write is retried
+  "fileUrl": "https://cdn.otakit.app/config/<appId>/beta/config.json"
+}
+```
+
+### PUT /api/v1/apps/:appId/config
+
+Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets; config is public.
+- Auth: Bearer
+
+Request body
+
+```txt
+{
+  "channel": null,              // or a channel name
+  "values": { "checkoutEnabled": false, "helpUrl": "https://example.com/help" },
+  "expectedVersion": 12,
+  "message": "Partner outage"   // optional, up to 200 characters
+}
+```
+
+Response
+
+```txt
+{ "config": { ...as GET }, "changed": true, "warnings": [{ "key", "reason", "message" }] }
+```
+
+### PATCH /api/v1/apps/:appId/config
+
+Set and remove top-level keys of the latest version. Same rules as PUT.
+- Auth: Bearer
+
+Request body
+
+```txt
+{
+  "channel": null,
+  "set": { "maintenanceBanner": "Back at 14:00" },
+  "unset": ["helpUrl"],
+  "expectedVersion": 12,
+  "message": "Maintenance"
+}
+```
+
+Response
+
+```txt
+{ "config": { ... }, "changed": true, "warnings": [] }
+```
+
+### DELETE /api/v1/apps/:appId/config
+
+Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept.
+- Auth: Bearer
+- Query: ?channel=beta&expectedVersion=12&message=…
+
+Response
+
+```txt
+{ "config": { ..., "status": "deleted" }, "changed": true }
+```
+
+### GET /api/v1/apps/:appId/config/channels
+
+Every channel that has or had config, base channel first.
+- Auth: Bearer
+
+Response
+
+```txt
+{ "configs": [{ ...as GET }, ...] }
+```
+
+### GET /api/v1/apps/:appId/config/history
+
+The last 50 versions of a channel's config, newest first.
+- Auth: Bearer
+- Query: ?channel=beta
+
+Response
+
+```txt
+{
+  "versions": [{ "version": 12, "deleted": false, "values": { ... },
+                 "message": "…", "createdBy": "dev@acme.com", "createdAt": "ISO timestamp" }]
+}
+```
+
+### POST /api/v1/apps/:appId/config/restore
+
+Publish an earlier version's values again as a new version (message defaults to 'Restored version N').
+- Auth: Bearer
+
+Request body
+
+```txt
+{ "channel": null, "version": 11, "expectedVersion": 12, "message": "optional" }
+```
+
+Response
+
+```txt
+{ "config": { ... }, "changed": true, "warnings": [] }
 ```
 
 ## Next.js Guide
@@ -2012,6 +2198,7 @@ Choose the events, and optionally limit the destination to one app (usage warnin
 - `release.reverted` — someone reverts a release or cancels a rollout.
 - `release.auto_reverted` — too many update attempts rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
 - `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
+- `config.updated` — a channel's remote config is published, restored or deleted.
 - `bundle.uploaded` — a new bundle is uploaded.
 - `usage.warning` — monthly downloads reach 90% or 100% of the plan.
 
@@ -2058,6 +2245,7 @@ Depending on the type, `data` also has:
 - `release.rollout_updated`: `previousRolloutPercent`.
 - `release.reverted`: `currentRelease`, the release devices receive now, or `null`.
 - `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts` (applies plus rollbacks), `rollbackSharePercent`, the release's `thresholdPercent` and `thresholdMinSample`, and `windowHours`. Counts are events reported by devices, not unique devices.
+- `config.updated`: `config` with `channel`, `version`, `previousVersion`, `deleted`, `message`, `changedKeys` (`added`, `changed`, `removed`) and the new `values` (`null` when deleted).
 - `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion`, `size` in bytes, `strategy` (`zip` or `deltas`) and `createdAt` .
 - `usage.warning`: `usage` with `threshold` (90 or 100), `downloadsCount`, `downloadsLimit` and `periodStart`. `app` and `actor` are `null`.
 - `test.ping`, sent by Send test: `message`. `app` is `null`.
