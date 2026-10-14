@@ -35,9 +35,9 @@ export default function RolloutsPage() {
         </li>
         <li>
           The number stays the same for the whole rollout. Raising 10% to 25% adds devices; lowering
-          it moves the extra devices back to the previous release after their next check. A device
-          that already downloaded the rolling bundle may run it once more before switching back,
-          which also applies when a rollout is cancelled.
+          it moves the extra devices back to the previous release after their next check, as does
+          cancelling. A device that downloaded the rolling bundle but has not applied it yet drops
+          it at that check (plugin 3.4+; older plugins may run it once more before switching back).
         </li>
         <li>Each rollout draws new numbers, so the same devices are not always first.</li>
         <li>

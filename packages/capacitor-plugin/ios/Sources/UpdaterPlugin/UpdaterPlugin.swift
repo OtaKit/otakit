@@ -963,6 +963,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     return selection?.manifest
   }
 
+  /// Unstage what the server no longer targets (see the coordinator), and
+  /// delete its files off the calling thread.
+  private func unstageObsoleteBundle(latest: LatestManifest?, targetChannel: String?) {
+    do {
+      let ids = try coordinator.unstageObsoleteBundle(latest: latest, targetChannel: targetChannel)
+      guard !ids.isEmpty else { return }
+      print("[OtaKit] Unstaged a bundle the server no longer targets")
+      let coordinator = self.coordinator
+      DispatchQueue.global(qos: .utility).async { coordinator.cleanupBundles(ids) }
+    } catch {
+      print("[OtaKit] Could not unstage an obsolete bundle: \(error.localizedDescription)")
+    }
+  }
+
   private func rememberRollout(_ state: RolloutState?) {
     rolloutLock.lock()
     defer { rolloutLock.unlock() }
@@ -988,6 +1002,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let latest = try await fetchLatest(channel: targetChannel)
     guard let manifest = latest else {
+      unstageObsoleteBundle(latest: nil, targetChannel: targetChannel)
       if respectInterval {
         recordCheckTimestamp()
       }
@@ -995,6 +1010,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     let resolution = try classifyLatestManifest(manifest, targetChannel: targetChannel)
+    switch resolution {
+    case .noUpdate, .updateAvailable:
+      unstageObsoleteBundle(latest: manifest, targetChannel: targetChannel)
+    case .alreadyStaged:
+      break
+    }
 
     if case let .updateAvailable(available) = resolution {
       emitEvent("updateAvailable", manifestToDictionary(available))

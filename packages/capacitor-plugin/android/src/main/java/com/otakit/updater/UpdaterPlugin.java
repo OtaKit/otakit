@@ -1288,6 +1288,7 @@ public class UpdaterPlugin extends Plugin {
 
     ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
     if (latest == null) {
+      unstageObsoleteBundle(null, targetChannel);
       if (respectInterval) {
         recordCheckTimestamp();
       }
@@ -1295,6 +1296,7 @@ public class UpdaterPlugin extends Plugin {
     }
 
     CheckResolution resolution = classifyLatestManifest(latest, targetChannel);
+    if (!"already_staged".equals(resolution.kind)) unstageObsoleteBundle(latest, targetChannel);
 
     if ("update_available".equals(resolution.kind) && resolution.latest != null) {
       emitEvent("updateAvailable", manifestToJSObject(resolution.latest));
@@ -1304,6 +1306,18 @@ public class UpdaterPlugin extends Plugin {
       recordCheckTimestamp();
     }
     return resolution;
+  }
+
+  /** Unstage what the server no longer targets (see the coordinator) and delete its files later. */
+  private void unstageObsoleteBundle(ManifestClient.LatestManifest latest, String targetChannel) {
+    try {
+      java.util.List<String> ids = coordinator.unstageObsoleteBundle(latest, targetChannel);
+      if (ids.isEmpty()) return;
+      android.util.Log.i("OtaKit", "Unstaged a bundle the server no longer targets");
+      cleanupInBackground(ids);
+    } catch (Exception error) {
+      android.util.Log.w("OtaKit", "Could not unstage an obsolete bundle", error);
+    }
   }
 
   private DownloadResolution downloadLatest(boolean respectInterval, String channel)
