@@ -122,6 +122,8 @@ release made with `--rollout <percent>` reaches that share of devices on plugin
 - `otakit list`
 - `otakit diff <bundleId> [--against <bundleId> | --channel <channel> | --base] [--json]` — files added, changed and removed, sizes, what devices download, and warnings about content that should not ship
 - `otakit delete <bundleId> --force`
+- `otakit remote-config get|set|unset|push|history|restore|delete [--channel <channel>]` — remote config that apps read with `OtaKit.getConfig()` (plugin 3.4+); `list` shows the channels with their own config
+- `otakit experiments list|results|create|start|stop|ship|delete` — A/B tests on remote config (plugin 3.4+); `create --file <test.json> [--start]`, `ship <key> --variant <variant>`
 - `otakit push send --title <title> --body <body> [--url <path>] [--topic <t>] [--channel <c>] [--user <id>] [--yes]` — send a push notification (Push notifications add-on)
 - `otakit push campaigns` / `otakit push campaign <id>` — delivery status
 - `otakit config validate`

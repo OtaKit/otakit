@@ -1,6 +1,149 @@
 {
   "entries": [
     {
+      "slug": "ab-tests",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "A/B tests",
+      "areas": ["Plugin", "CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.4.0",
+        "cli": "1.11.0"
+      },
+      "summary": "Test config values and code paths on real users and see which variant reaches your goal more often. No store release, no extra SDK and no device identifiers.",
+      "highlights": [
+        "Create a test on a remote config with up to 5 variants and a goal event. Each device gets its variant from a random number that stays on the device, and keeps it.",
+        "`getConfig()` returns the values of the device's variant, and `getVariant(key)` lets your code branch on it.",
+        "Results show conversion, lift with a 95% interval and each variant's probability to be best. The verdict is decided once, at a fixed point, so a winner is rarely chance, and a variant with more errors is flagged early.",
+        "Ship the winning values to everyone from the results dialog, with `otakit experiments ship`, over the REST API, or through the `ship_experiment_variant` agent tool."
+      ],
+      "code": "otakit experiments results paywall_title",
+      "requires": "Plugin 3.4+. Running tests per app: Starter 1, Pro 10, Enterprise unlimited.",
+      "links": [
+        {
+          "label": "A/B tests guide",
+          "href": "/docs/experiments"
+        }
+      ]
+    },
+    {
+      "slug": "custom-events",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "Custom events and analytics",
+      "areas": ["Plugin", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.4.0"
+      },
+      "summary": "Send custom events with `track()` and see how often they happen, how they split by any property, and how they changed between releases. No user or device identifiers.",
+      "highlights": [
+        "`initAnalytics()` counts app launches, so releases compare per 1,000 launches, for example during a rollout.",
+        "The Analytics section shows counts, trends and property splits, with a live view to check the setup. Tables copy as CSV.",
+        "Events are delivered from a native outbox that survives reloads, crashes and offline periods.",
+        "Agents answer questions such as \"did checkout completions change after yesterday's release?\" with `list_app_events` and `query_app_event`."
+      ],
+      "code": "track('checkout_completed', { plan: 'pro' });",
+      "requires": "Plugin 3.4+. Custom events per month: Free 100,000, Starter 1 million, Pro 10 million.",
+      "links": [
+        {
+          "label": "Analytics guide",
+          "href": "/docs/analytics"
+        }
+      ]
+    },
+    {
+      "slug": "error-tracking",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "Error tracking",
+      "areas": ["Plugin", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.4.0"
+      },
+      "summary": "See which release broke what. JavaScript errors from your app are grouped into issues and shown per OTA release, channel, platform and OS version.",
+      "highlights": [
+        "Turn it on with one line, `initErrorTracking()`, and send errors you catch with `captureError()`.",
+        "Resolve an issue when the fix ships. If it happens again on a newer release, it reopens and you get an alert.",
+        "Alerts for new issues, regressions and releases with an error spike, by email, in Slack or Discord, or as webhooks.",
+        "A release's health dialog shows its errors per 1,000 applies next to the release it replaced. Agents read issues with `list_error_issues` and `get_error_issue`."
+      ],
+      "code": "initErrorTracking();",
+      "requires": "Plugin 3.4+. Error events per month: Free 10,000, Starter 100,000, Pro 1 million. Error tracking informs; it never reverts a release on its own.",
+      "links": [
+        {
+          "label": "Error tracking guide",
+          "href": "/docs/error-tracking"
+        }
+      ]
+    },
+    {
+      "slug": "remote-config",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "Remote config",
+      "areas": ["Plugin", "CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "plugin": "3.4.0",
+        "cli": "1.11.0"
+      },
+      "summary": "Change kill switches, URLs, limits and banners in a running app without a new bundle or store release.",
+      "highlights": [
+        "A small JSON object per channel that the app reads instantly with `getConfig()`. The `configChanged` event fires when a fetch changes it.",
+        "Config is signed like your updates, so the app only uses values your server signed. Offline, it keeps the last config it verified.",
+        "Every change is a new version with an optional note, and History restores an earlier one. A write never overwrites a change someone made in the meantime.",
+        "Change it in the dashboard, with `otakit remote-config`, over the REST API, or through the `get_remote_config` and `set_remote_config` agent tools."
+      ],
+      "code": "otakit remote-config set checkoutEnabled false --message \"Partner outage\"",
+      "requires": "Plugin 3.4+ to read config. Free covers the base channel; paid plans can give named channels their own config.",
+      "links": [
+        {
+          "label": "Remote config guide",
+          "href": "/docs/remote-config"
+        }
+      ]
+    },
+    {
+      "slug": "release-health-charts",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "Release health charts",
+      "areas": ["Dashboard", "API", "Agents"],
+      "summary": "Watch a release over time: applies, rollbacks and download errors per hour or day, with each rollout step marked.",
+      "highlights": [
+        "Open a release's channel badge and choose Health. The chart also shows the lane's releases replacing each other.",
+        "Agents read the same data with `get_release_timeseries`."
+      ],
+      "links": [
+        {
+          "label": "Rollouts guide",
+          "href": "/docs/rollouts"
+        }
+      ]
+    },
+    {
+      "slug": "bundle-changes",
+      "date": "2026-10-14",
+      "type": "feature",
+      "title": "Bundle changes",
+      "areas": ["CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "cli": "1.11.0"
+      },
+      "summary": "See what a bundle changes before it ships: files added, changed and removed, the size before and after, and what devices download.",
+      "highlights": [
+        "Open Changes on a bundle in the dashboard, or run `otakit diff`. Compare with the previous upload, another bundle, or what a channel runs.",
+        "Warnings point out content that should not ship, such as `.env` files, `.git` directories, `node_modules` and source maps.",
+        "`otakit upload` prints what changed against the bundle the channel runs, and agents compare bundles with `diff_bundles`."
+      ],
+      "code": "otakit diff <bundleId> --channel production",
+      "links": [
+        {
+          "label": "CLI reference",
+          "href": "/docs/cli"
+        }
+      ]
+    },
+    {
       "slug": "webhooks-and-alerts",
       "date": "2026-10-14",
       "type": "feature",
@@ -427,16 +570,16 @@
       "name": "@otakit/capacitor-updater",
       "label": "Capacitor plugin",
       "install": "npm install @otakit/capacitor-updater@latest",
-      "version": "3.3.0",
-      "date": "2026-10-12"
+      "version": "3.4.0",
+      "date": "2026-10-14"
     },
     {
       "key": "cli",
       "name": "@otakit/cli",
       "label": "CLI",
       "install": "npm install -g @otakit/cli@latest",
-      "version": "1.10.0",
-      "date": "2026-10-12"
+      "version": "1.11.0",
+      "date": "2026-10-14"
     },
     {
       "key": "push",
