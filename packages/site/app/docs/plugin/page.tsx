@@ -247,7 +247,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="check()"
           returns="CheckResult"
-          description="Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available."
+          description="Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available. On plugin 3.4+, a staged bundle the channel no longer targets (rollout lowered or cancelled, release reverted) is dropped."
         />
         <Method
           name="download()"
@@ -262,7 +262,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="apply()"
           returns="void"
-          description="Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context."
+          description="Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context. Rejects when nothing usable is staged, for example after a check dropped an update the channel no longer targets."
         />
         <Method
           name="notifyAppReady()"

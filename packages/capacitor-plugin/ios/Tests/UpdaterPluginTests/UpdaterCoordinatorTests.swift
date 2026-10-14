@@ -315,19 +315,41 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertEqual(fixture.store.getCurrentBundleId(), "A")
   }
 
-  func testKeepsTheStagedTargetAndBundlesOfOtherChannels() throws {
+  func testKeepsTheStagedTarget() throws {
     try fixture.installHealthy("A")
     try fixture.stage("C")
     XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
       latest: manifest(for: "C"), targetChannel: nil), [])
     XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
-    // No release on another channel says nothing about this one.
-    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
-      latest: nil, targetChannel: "beta"), [])
-    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
-    // No release on its own channel (the release was reverted): unstaged.
+    // No release on its channel (the release was reverted): unstaged.
     XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
       latest: nil, targetChannel: nil), ["C"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
+  func testUnstagesWhenTheNewChannelHasNoRelease() throws {
+    // setChannel("beta") with no release on beta: the base bundle is not its target.
+    try fixture.installHealthy("A")
+    try fixture.stage("C")
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: nil, targetChannel: "beta"), ["C"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
+  func testPreviewChecksKeepTheReleasesStagedBundle() throws {
+    let preview = PreviewLink.channel(for: "abcdefghijklmnopqrstuvwxyz")
+    try fixture.installHealthy("A")
+    try fixture.stage("C")
+    // Starting a preview whose download then fails, or a revoked one.
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "P"), targetChannel: preview), [])
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: nil, targetChannel: preview), [])
+    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
+    // A bundle of that preview is unstaged like any other.
+    try fixture.stage("P1", channel: preview)
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "P2"), targetChannel: preview), ["P1"])
     XCTAssertNil(fixture.store.getStagedBundleId())
   }
 

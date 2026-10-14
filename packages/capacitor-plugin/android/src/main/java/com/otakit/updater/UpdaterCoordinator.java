@@ -412,9 +412,10 @@ final class UpdaterCoordinator {
 
   /**
    * After a check, a staged bundle the server no longer targets is unstaged so it is never applied:
-   * its rollout was lowered or canceled, its release reverted, the channel changed, or another
-   * release is now the target. Without a release on the channel (latest null), a bundle staged for
-   * that channel is unstaged. Returns the bundle to clean up.
+   * its rollout was lowered or canceled, its release reverted, the app switched channels, or another
+   * release is now the target. Without a release on the channel (latest null), nothing is targeted.
+   * A check on a preview channel leaves the release's staged bundle alone: the release's target did
+   * not change. Returns the bundle to clean up.
    */
   List<String> unstageObsoleteBundle(ManifestClient.LatestManifest latest, String targetChannel)
     throws Exception {
@@ -426,11 +427,13 @@ final class UpdaterCoordinator {
         store.setStagedBundleId(null);
         return java.util.Collections.<String>emptyList();
       }
-      if (latest != null) {
-        if (doesBundleMatchLatest(staged, latest, targetChannel)) {
-          return java.util.Collections.<String>emptyList();
-        }
-      } else if (!java.util.Objects.equals(trimToNull(staged.channel), targetChannel)) {
+      if (
+        Preview.isPreviewChannel(targetChannel) &&
+        !java.util.Objects.equals(trimToNull(staged.channel), targetChannel)
+      ) {
+        return java.util.Collections.<String>emptyList();
+      }
+      if (latest != null && doesBundleMatchLatest(staged, latest, targetChannel)) {
         return java.util.Collections.<String>emptyList();
       }
       store.setStagedBundleId(null);

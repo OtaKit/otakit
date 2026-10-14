@@ -383,16 +383,40 @@ public class UpdaterCoordinatorTest {
   }
 
   @Test
-  public void keepsTheStagedTargetAndBundlesOfOtherChannels() throws Exception {
+  public void keepsTheStagedTarget() throws Exception {
     fixture.installHealthy("A");
     fixture.stage("C");
     assertTrue(fixture.coordinator.unstageObsoleteBundle(manifestFor("C"), null).isEmpty());
     assertEquals("C", fixture.store.getStagedBundleId());
-    // No release on another channel says nothing about this one.
-    assertTrue(fixture.coordinator.unstageObsoleteBundle(null, "beta").isEmpty());
-    assertEquals("C", fixture.store.getStagedBundleId());
-    // No release on its own channel (the release was reverted): unstaged.
+    // No release on its channel (the release was reverted): unstaged.
     assertEquals(java.util.List.of("C"), fixture.coordinator.unstageObsoleteBundle(null, null));
+    assertNull(fixture.store.getStagedBundleId());
+  }
+
+  @Test
+  public void unstagesWhenTheNewChannelHasNoRelease() throws Exception {
+    // setChannel("beta") with no release on beta: the base bundle is not its target.
+    fixture.installHealthy("A");
+    fixture.stage("C");
+    assertEquals(java.util.List.of("C"), fixture.coordinator.unstageObsoleteBundle(null, "beta"));
+    assertNull(fixture.store.getStagedBundleId());
+  }
+
+  @Test
+  public void previewChecksKeepTheReleasesStagedBundle() throws Exception {
+    String preview = Preview.channel("abcdefghijklmnopqrstuvwxyz");
+    fixture.installHealthy("A");
+    fixture.stage("C");
+    // Starting a preview whose download then fails, or a revoked one.
+    assertTrue(fixture.coordinator.unstageObsoleteBundle(manifestFor("P"), preview).isEmpty());
+    assertTrue(fixture.coordinator.unstageObsoleteBundle(null, preview).isEmpty());
+    assertEquals("C", fixture.store.getStagedBundleId());
+    // A bundle of that preview is unstaged like any other.
+    fixture.stage("P1", preview);
+    assertEquals(
+      java.util.List.of("P1"),
+      fixture.coordinator.unstageObsoleteBundle(manifestFor("P2"), preview)
+    );
     assertNull(fixture.store.getStagedBundleId());
   }
 
