@@ -23,7 +23,22 @@ export function formatCount(value: number): string {
   return value.toLocaleString('en-US');
 }
 
-/** Bars for every bucket of the range, zero where there were no events. */
+/** Every bucket of the range, zero where there were no events. */
+export function trendBuckets(
+  trend: Array<{ start: string; events: number }>,
+  range: ErrorIssueList['range'],
+): Array<{ start: number; events: number }> {
+  const bucketMs = range.bucket === 'hour' ? HOUR_MS : DAY_MS;
+  const to = Date.parse(range.to);
+  const from = Math.floor(Date.parse(range.from) / bucketMs) * bucketMs;
+  const counts = new Map(trend.map((bucket) => [Date.parse(bucket.start), bucket.events]));
+  const buckets: Array<{ start: number; events: number }> = [];
+  for (let start = from; start < to; start += bucketMs) {
+    buckets.push({ start, events: counts.get(start) ?? 0 });
+  }
+  return buckets;
+}
+
 export function Sparkline({
   trend,
   range,
@@ -33,12 +48,7 @@ export function Sparkline({
   range: ErrorIssueList['range'];
   className?: string;
 }) {
-  const bucketMs = range.bucket === 'hour' ? HOUR_MS : DAY_MS;
-  const to = Date.parse(range.to);
-  const from = Math.floor(Date.parse(range.from) / bucketMs) * bucketMs;
-  const counts = new Map(trend.map((bucket) => [Date.parse(bucket.start), bucket.events]));
-  const values: number[] = [];
-  for (let start = from; start < to; start += bucketMs) values.push(counts.get(start) ?? 0);
+  const values = trendBuckets(trend, range).map((bucket) => bucket.events);
   const max = Math.max(1, ...values);
   const width = 96;
   const height = 24;
