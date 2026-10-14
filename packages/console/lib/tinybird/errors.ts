@@ -25,6 +25,14 @@ const RELEASE_ERROR_COUNTS_PIPE = pipe(
   'release_error_counts',
 );
 const APP_ERROR_USAGE_PIPE = pipe('TINYBIRD_APP_ERROR_USAGE_PIPE', 'app_error_usage');
+const ERROR_ISSUE_RELEASES_PIPE = pipe(
+  'TINYBIRD_ERROR_ISSUE_RELEASES_PIPE',
+  'error_issue_releases',
+);
+const RELEASE_CAPABLE_APPLIES_PIPE = pipe(
+  'TINYBIRD_RELEASE_CAPABLE_APPLIES_PIPE',
+  'release_capable_applies',
+);
 
 /** Dashboard reads refresh at most this often per query, which bounds Tinybird requests. */
 const CACHE_SECONDS = 30;
@@ -191,6 +199,92 @@ export async function getReleaseErrorCounts(
     return counts;
   } catch (error) {
     console.error('[Tinybird] release_error_counts failed', { appId, error });
+    return null;
+  }
+}
+
+export type IssueReleaseActivity = {
+  lastSeenAt: Date;
+  /** Device time of the latest error on the release. */
+  lastOccurredAt: Date;
+  events: number;
+};
+
+/**
+ * The releases one issue happened on since `fromDate` (a UTC day), keyed by
+ * release ID ('' for the built-in bundle). Null when Tinybird is unavailable.
+ */
+export async function getErrorIssueReleases(
+  appId: string,
+  fingerprint: string,
+  fromDate: Date = new Date(0),
+): Promise<Map<string, IssueReleaseActivity> | null> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getErrorIssueReleases');
+    return null;
+  }
+  try {
+    const rows = await queryTinybirdPipe<{
+      release_id?: string | null;
+      last_seen_ms?: Count;
+      last_occurred_ms?: Count;
+      events?: Count;
+    }>(ERROR_ISSUE_RELEASES_PIPE, {
+      app_id: appId,
+      fingerprint,
+      from_date: fromDate.toISOString().slice(0, 10),
+    });
+    return new Map(
+      rows.map((row) => {
+        const lastSeen = count(row.last_seen_ms);
+        return [
+          (row.release_id ?? '').trim(),
+          {
+            lastSeenAt: new Date(lastSeen),
+            lastOccurredAt: new Date(count(row.last_occurred_ms) || lastSeen),
+            events: count(row.events),
+          },
+        ];
+      }),
+    );
+  } catch (error) {
+    console.error('[Tinybird] error_issue_releases failed', { appId, error });
+    return null;
+  }
+}
+
+/**
+ * Applies per release from devices whose native plugin can report errors (3.4+),
+ * the base of error rates. Null when Tinybird is unavailable.
+ */
+export async function getReleaseCapableApplies(
+  appId: string,
+  releaseIds: string[],
+): Promise<Map<string, number> | null> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getReleaseCapableApplies');
+    return null;
+  }
+  const applies = new Map<string, number>();
+  try {
+    for (const batch of chunk(Array.from(new Set(releaseIds.filter(Boolean))), ID_BATCH_SIZE)) {
+      const rows = await cachedJson(
+        `otakit:errors:capable-applies:${appId}:${batch.join(',')}`,
+        60,
+        () =>
+          queryTinybirdPipe<{ release_id?: string | null; applies?: Count }>(
+            RELEASE_CAPABLE_APPLIES_PIPE,
+            { app_id: appId, release_ids: batch.join(',') },
+          ),
+      );
+      for (const row of rows) {
+        const releaseId = text(row.release_id);
+        if (releaseId) applies.set(releaseId, count(row.applies));
+      }
+    }
+    return applies;
+  } catch (error) {
+    console.error('[Tinybird] release_capable_applies failed', { appId, error });
     return null;
   }
 }

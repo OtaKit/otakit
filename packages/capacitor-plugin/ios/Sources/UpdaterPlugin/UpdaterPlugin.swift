@@ -633,6 +633,19 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     if let channel = PreviewLink.reportedChannel(current.isBuiltin ? configChannel() : current.channel) {
       context["channel"] = channel
     }
+    // The bundle the JavaScript runs from: after an update or a rollback the
+    // current bundle changes before the reload, while the old JavaScript still
+    // sends its last errors.
+    if let bundle = call.getObject("bundle"),
+       let version = bundle["bundleVersion"] as? String, !version.isEmpty, version.count <= 64 {
+      context["bundleVersion"] = version
+      context["releaseId"] = (bundle["releaseId"] as? String).flatMap { $0.count <= 64 ? $0 : nil }
+      if let channel = bundle["channel"] as? String, !channel.isEmpty, channel.count <= 64 {
+        context["channel"] = channel
+      } else if version != "builtin" {
+        context["channel"] = nil
+      }
+    }
     if let runtimeVersion { context["runtimeVersion"] = runtimeVersion }
     let result = AppTelemetryClient.enqueue(
       ingestUrl: ingestUrl, appId: appId, context: context, items: items)

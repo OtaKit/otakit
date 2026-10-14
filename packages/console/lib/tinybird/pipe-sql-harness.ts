@@ -93,6 +93,15 @@ export function registerClickHouseAdapters(db: DatabaseSync): void {
   db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
   db.function('toUnixTimestamp64Milli', (value) => Date.parse(String(value)));
   db.function('toInt64', (value) => value);
+  db.function('toUInt32OrZero', (value) => {
+    const parsed = Number(value);
+    return /^\d+$/.test(String(value)) && Number.isSafeInteger(parsed) ? parsed : 0;
+  });
+  // ClickHouse extract(): the first capture group of the first match, or ''.
+  db.function(
+    'extract',
+    (value, pattern) => new RegExp(String(pattern)).exec(String(value))?.[1] ?? '',
+  );
   db.function('toString', (value) => (value === null ? null : String(value)));
   db.function('splitByChar', (separator, value) =>
     JSON.stringify(String(value).split(String(separator))),

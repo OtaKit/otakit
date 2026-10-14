@@ -775,6 +775,29 @@ public class UpdaterPlugin extends Plugin {
       );
       if (channel != null) context.put("channel", channel);
       if (runtimeVersion != null) context.put("runtimeVersion", runtimeVersion);
+      // The bundle the JavaScript runs from: after an update or a rollback the current bundle
+      // changes before the reload, while the old JavaScript still sends its last errors.
+      JSObject bundle = call.getObject("bundle");
+      String bundleVersion = bundle != null ? bundle.optString("bundleVersion", "") : "";
+      if (!bundleVersion.isEmpty() && bundleVersion.length() <= 64) {
+        context.put("bundleVersion", bundleVersion);
+        Object releaseId = bundle.opt("releaseId");
+        context.remove("releaseId");
+        if (releaseId instanceof String && ((String) releaseId).length() <= 64) context.put(
+          "releaseId",
+          releaseId
+        );
+        Object bundleChannel = bundle.opt("channel");
+        if (
+          bundleChannel instanceof String &&
+          !((String) bundleChannel).isEmpty() &&
+          ((String) bundleChannel).length() <= 64
+        ) {
+          context.put("channel", bundleChannel);
+        } else if (!"builtin".equals(bundleVersion)) {
+          context.remove("channel");
+        }
+      }
       int[] result = AppTelemetryClient.enqueue(ingestUrl, appId, context, items);
       JSObject data = new JSObject();
       data.put("accepted", result[0]);

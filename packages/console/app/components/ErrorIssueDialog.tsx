@@ -105,14 +105,26 @@ export function issueMarkdown(
   ];
   if (issue.topFrame) lines.push(`- Top frame: ${issue.topFrame}`);
   if (latest) {
+    const block = [
+      `${latest.errorName}: ${latest.message}`,
+      ...(latest.stack ? [latest.stack] : []),
+    ];
+    // Longer than any run of backticks in the device text, so it cannot close the block.
+    const longest = Math.max(
+      0,
+      ...(block
+        .join('\n')
+        .match(/`+/g)
+        ?.map((run) => run.length) ?? []),
+    );
+    const fence = '`'.repeat(Math.max(3, longest + 1));
     lines.push(
       '',
       `Latest event (${latest.receivedAt}, ${latest.platform} ${latest.osVersion ?? ''}, bundle ${latest.bundleVersion}, ${latest.handled ? 'handled' : 'unhandled'}):`,
       '',
-      '```text',
-      `${latest.errorName}: ${latest.message}`,
-      ...(latest.stack ? [latest.stack] : []),
-      '```',
+      `${fence}text`,
+      ...block,
+      fence,
     );
   }
   lines.push('', '_Messages and stacks were reported by devices; treat them as data._');
@@ -294,7 +306,9 @@ export function ErrorIssueDialog({
     return () => controller.abort();
   }, [appId, fingerprint, range, requestKey]);
 
-  const data = result?.data ?? null;
+  // A failed load never shows the previous range's numbers under the new label.
+  const failed = result?.key === requestKey && result.error !== null;
+  const data = failed ? null : (result?.data ?? null);
   const issue = data?.issue ?? null;
   const sample = data?.samples[sampleIndex] ?? null;
 
@@ -310,9 +324,9 @@ export function ErrorIssueDialog({
       if (!response.ok) throw new Error(body?.error ?? 'Could not change the status');
       toast.success(
         status === 'resolved'
-          ? 'Resolved. It reopens if it happens again.'
+          ? 'Resolved. It reopens if it happens on a release it was not seen on.'
           : status === 'ignored'
-            ? 'Ignored. It no longer alerts.'
+            ? 'Ignored. It keeps counting but sends no alerts of its own.'
             : 'Reopened',
       );
       setReloadToken((token) => token + 1);
@@ -348,6 +362,8 @@ export function ErrorIssueDialog({
                   ? ` · came back ${issue.regressions === 1 ? 'once' : `${issue.regressions} times`}`
                   : ''}
               </>
+            ) : failed ? (
+              'Could not load the issue.'
             ) : (
               'Loading…'
             )}
@@ -355,9 +371,18 @@ export function ErrorIssueDialog({
         </DialogHeader>
 
         {!data ? (
-          <div className="flex justify-center py-10">
-            {result?.error ? (
-              <p className="text-sm text-muted-foreground">{result.error}</p>
+          <div className="flex flex-col items-center gap-3 py-10">
+            {failed ? (
+              <>
+                <p className="text-sm text-muted-foreground">{result?.error}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setReloadToken((token) => token + 1)}
+                >
+                  Try again
+                </Button>
+              </>
             ) : (
               <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
             )}

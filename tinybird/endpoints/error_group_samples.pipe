@@ -1,7 +1,19 @@
 DESCRIPTION >
-    The latest errors of one issue, one row per event_id (its earliest receipt).
+    The latest errors of one issue, one row per event_id (its earliest receipt
+    among the issue's 200 latest receipts, read in sort-key order).
 
 TOKEN otakit_web READ
+
+NODE recent_receipts
+SQL >
+    %
+    SELECT *
+    FROM app_errors_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND fingerprint = {{ String(fingerprint, '__missing_fingerprint__') }}
+      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+    ORDER BY received_at DESC
+    LIMIT 200
 
 NODE issue_receipts
 SQL >
@@ -9,10 +21,7 @@ SQL >
     SELECT
         *,
         row_number() OVER (PARTITION BY event_id ORDER BY received_at) AS receipt_number
-    FROM app_errors_raw
-    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
-      AND fingerprint = {{ String(fingerprint, '__missing_fingerprint__') }}
-      AND received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+    FROM recent_receipts
 
 NODE latest_samples
 SQL >

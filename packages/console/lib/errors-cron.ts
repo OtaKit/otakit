@@ -22,10 +22,11 @@ import { pauseTelemetry, replaceTelemetryApps, resumeTelemetry } from '@/lib/tel
 import {
   getAppErrorUsage,
   getErrorActivity,
+  getErrorIssueReleases,
+  getReleaseCapableApplies,
   getReleaseErrorCounts,
   type ErrorActivity,
 } from '@/lib/tinybird/errors';
-import { getReleaseEventCountsWithStatus } from '@/lib/tinybird/events';
 
 /**
  * The errors cron (every 5 minutes): keeps the ingest app allowlist and
@@ -191,9 +192,12 @@ async function syncIssues(
       const issue = existing.get(row.fingerprint);
       if (!issue) continue;
       if (isRegression(issue, row)) {
-        await reopen(issue, row, now, organizationOf.get(appId)!, stats);
-        changedApps.add(appId);
-        continue;
+        const release = await regressionRelease(issue, stats);
+        if (release !== undefined) {
+          await reopen(issue, row, release, now, organizationOf.get(appId)!, stats);
+          changedApps.add(appId);
+          continue;
+        }
       }
       if (
         row.lastSeenAt.getTime() !== issue.lastSeenAt.getTime() ||
@@ -228,20 +232,54 @@ async function syncIssues(
   return changedApps;
 }
 
+/**
+ * The release a resolved issue came back on: one it had not happened on when it
+ * was resolved, with errors received and happened after that. Devices still on
+ * the releases it was resolved with (a rollout, or phones not updated yet) do
+ * not reopen it. Returns undefined when it did not come back, null for an
+ * unknown release (resolved without release data, or the built-in bundle).
+ */
+async function regressionRelease(
+  issue: ErrorIssue,
+  stats: ErrorsCronStats,
+): Promise<string | null | undefined> {
+  const resolvedAt = issue.resolvedAt!;
+  if (issue.resolvedReleaseIds.length === 0) return null;
+  const releases = await getErrorIssueReleases(issue.appId, issue.fingerprint, resolvedAt);
+  if (!releases) {
+    stats.skipped.push(`regression:${issue.id}`);
+    return undefined;
+  }
+  const known = new Set(issue.resolvedReleaseIds);
+  const back = [...releases]
+    .filter(
+      ([releaseId, activity]) =>
+        !known.has(releaseId) &&
+        activity.lastSeenAt > resolvedAt &&
+        activity.lastOccurredAt > resolvedAt,
+    )
+    .sort(([, a], [, b]) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime());
+  if (back.length === 0) return undefined;
+  return back[0][0] || null;
+}
+
 /** A resolved issue happened again: reopen it and send errors.regression once. */
 async function reopen(
   issue: ErrorIssue,
   row: ErrorActivity,
+  releaseId: string | null,
   now: Date,
   organizationId: string,
   stats: ErrorsCronStats,
 ) {
+  const release = releaseId ? await findReleaseSummary(releaseId) : null;
   const reopened = await db.$transaction(async (tx) => {
     const claimed = await tx.errorIssue.updateMany({
       where: { id: issue.id, status: 'resolved', resolvedAt: issue.resolvedAt },
       data: {
         status: 'open',
         resolvedAt: null,
+        resolvedReleaseIds: [],
         regressions: { increment: 1 },
         statusChangedAt: now,
         statusChangedBy: ERROR_TRACKING_ACTOR.actorLabel,
@@ -261,6 +299,7 @@ async function reopen(
       data: {
         issue: issuePayload(updated),
         previouslyResolvedAt: issue.resolvedAt!.toISOString(),
+        release,
       },
     });
     return updated;
@@ -276,8 +315,8 @@ async function reopen(
     metadata: {
       appId: issue.appId,
       fingerprint: issue.fingerprint,
-      title: errorIssueTitle(issue.errorName, issue.normalizedMessage),
       resolvedAt: issue.resolvedAt!.toISOString(),
+      releaseId,
     },
   });
 }
@@ -361,15 +400,16 @@ async function alertSpikes(
     const ids = pairs.flatMap(([current, previous]) => [current.id, previous.id]);
     const [errors, applies] = await Promise.all([
       getReleaseErrorCounts(appId, ids),
-      getReleaseEventCountsWithStatus(appId, ids),
+      getReleaseCapableApplies(appId, ids),
     ]);
-    if (!errors || !applies.available) {
+    if (!errors || !applies) {
       stats.skipped.push(`spikes:${appId}`);
       continue;
     }
+    // Applies from devices that can report errors, so both rates share a base.
     const rate = (id: string) => ({
       events: errors.get(id)?.events ?? 0,
-      applies: applies.data.get(id)?.applied ?? 0,
+      applies: applies.get(id) ?? 0,
       issues: errors.get(id)?.issues ?? 0,
     });
     for (const [current, previous] of pairs) {

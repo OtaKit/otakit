@@ -114,16 +114,21 @@ try {
       </P>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         <li>
-          <strong>Resolve</strong> an issue when you shipped the fix. If it happens again, it
-          reopens and you get an <Code>errors.regression</Code> alert. Errors that happened before
-          you resolved it, but reach OtaKit later from an offline phone, do not reopen it.
+          <strong>Resolve</strong> an issue when you shipped the fix. OtaKit remembers the releases
+          it happened on. If it happens on another release, such as the one with your fix or a later
+          one, it reopens and you get an <Code>errors.regression</Code> alert. Phones still on the
+          old releases (during a rollout, or before they update) do not reopen it, and neither do
+          errors from before the fix that reach OtaKit late from an offline phone.
         </li>
         <li>
-          <strong>Ignore</strong> an issue you will not fix. It keeps counting but never alerts.
+          <strong>Ignore</strong> an issue you will not fix. It keeps counting, also in release
+          error rates, but sends no alerts of its own.
         </li>
         <li>
           A release&apos;s health dialog shows its error events, issues (and how many are new in it)
-          and errors per 1,000 applies, next to the release it replaced.
+          and errors per 1,000 applies, next to the release it replaced. Applies count only phones
+          whose native plugin can report errors (3.4+), so the rate does not change as a new store
+          build spreads.
         </li>
       </ul>
       <P>
@@ -150,12 +155,15 @@ try {
           Once per issue.
         </li>
         <li>
-          <Code>errors.regression</Code>: a resolved issue happened again and reopened.
+          <Code>errors.regression</Code>: a resolved issue happened on a release it had not happened
+          on before, and reopened.
         </li>
         <li>
           <Code>errors.spike</Code>: in the 14 days after it is published, a release has at least 3
           times the errors per 1,000 applies of the release before it on its channel and runtime
-          version, with at least 50 applies and 20 errors. Once per release.
+          version, with at least 50 applies and 20 errors. The release before it needs 50 applies
+          and at least one error, so a release that did not track errors yet is not a baseline. Once
+          per release.
         </li>
         <li>
           <Code>errors.paused</Code>: the workspace reached its monthly error limit.

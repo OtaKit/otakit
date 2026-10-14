@@ -1,6 +1,7 @@
 import { WebPlugin } from '@capacitor/core';
 
 import type {
+  AppTelemetryBundle,
   AppTelemetryItem,
   OtaKitBridgePlugin,
   BundleInfo,
@@ -82,6 +83,7 @@ export class OtaKitWeb extends WebPlugin implements OtaKitBridgePlugin {
 
   async enqueueAppTelemetry(options: {
     items: AppTelemetryItem[];
+    bundle?: AppTelemetryBundle;
   }): Promise<{ accepted: number; dropped: number }> {
     // Error tracking runs in the iOS and Android apps.
     return { accepted: 0, dropped: options.items.length };

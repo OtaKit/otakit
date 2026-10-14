@@ -103,14 +103,16 @@ describe('isRegression', () => {
 });
 
 describe('error spikes', () => {
-  it('needs 3× the previous rate, 50 applies on both and 20 errors', () => {
+  it('needs 3× the previous rate, 50 applies on both, 20 errors and a baseline', () => {
     const previous = { events: 10, applies: 1000 }; // 10 per 1,000
     expect(isErrorSpike({ events: 30, applies: 1000 }, previous)).toBe(true);
     expect(isErrorSpike({ events: 29, applies: 1000 }, previous)).toBe(false);
     expect(isErrorSpike({ events: 19, applies: 50 }, previous)).toBe(false);
     expect(isErrorSpike({ events: 40, applies: 49 }, previous)).toBe(false);
     expect(isErrorSpike({ events: 40, applies: 100 }, { events: 0, applies: 49 })).toBe(false);
-    expect(isErrorSpike({ events: 20, applies: 100 }, { events: 0, applies: 5000 })).toBe(true);
+    // No errors on the previous release is no baseline: it may not have tracked them yet.
+    expect(isErrorSpike({ events: 20, applies: 100 }, { events: 0, applies: 5000 })).toBe(false);
+    expect(isErrorSpike({ events: 20, applies: 100 }, { events: 1, applies: 5000 })).toBe(true);
   });
 
   it('rounds the rate to one decimal', () => {

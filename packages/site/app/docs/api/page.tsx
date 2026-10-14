@@ -431,7 +431,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "statusChangedAt": "ISO timestamp",
   "statusChangedBy": "dev@acme.com"
 }`}
-          description="Resolve, ignore or reopen an issue. A resolved issue reopens when it happens again (errors.regression); an ignored one keeps counting but never alerts. Recorded in the audit log."
+          description="Resolve, ignore or reopen an issue. A resolved issue reopens when it happens on a release it had not happened on when it was resolved (errors.regression); an ignored one keeps counting but sends no alerts of its own. Recorded in the audit log."
         />
         <Endpoint
           method="GET"
@@ -443,7 +443,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "previous": { ...same, for the release it replaced } | null,
   "analyticsAvailable": true
 }`}
-          description="A release's error events, issues (and how many were first seen in it) and errors per 1,000 applies over 180 days, next to the release it replaced on its lane."
+          description="A release's error events, issues (and how many were first seen in it) and errors per 1,000 applies over 180 days, next to the release it replaced on its lane. Applies count only devices on plugin 3.4+, which can report errors."
         />
       </div>
     </>

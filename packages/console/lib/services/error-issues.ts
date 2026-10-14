@@ -24,6 +24,8 @@ import {
   getErrorGroupBreakdown,
   getErrorGroupBuckets,
   getErrorGroupSamples,
+  getErrorIssueReleases,
+  getReleaseCapableApplies,
   getReleaseErrorCounts,
   listErrorGroups,
   MAX_ERROR_GROUPS,
@@ -32,7 +34,6 @@ import {
   type ErrorGroup,
   type ErrorSample,
 } from '@/lib/tinybird/errors';
-import { getReleaseEventCountsWithStatus } from '@/lib/tinybird/events';
 
 import { OtaKitServiceError } from './errors';
 
@@ -103,6 +104,8 @@ export type ErrorIssueList = {
   range: { name: ErrorRange; from: string; to: string; bucket: 'hour' | 'day' };
   /** The workspace's monthly error events and limit; new errors are dropped while paused. */
   usage: ErrorTrackingStatus;
+  /** The app has sent errors before (any status, last 180 days): false shows the setup. */
+  hasErrors: boolean;
   analyticsAvailable: boolean;
   dataTrust: typeof DATA_TRUST;
 };
@@ -234,9 +237,10 @@ export async function listErrorIssues(
     releaseId: filters.releaseId ?? null,
     channel: filters.channel,
   };
-  const [groups, usage] = await Promise.all([
+  const [groups, usage, anyIssue] = await Promise.all([
     listErrorGroups({ ...groupFilters, sort: filters.sort ?? 'events', limit: MAX_ERROR_GROUPS }),
     getErrorTrackingStatus(ctx.organizationId, now),
+    db.errorIssue.findFirst({ where: { appId: ctx.appId }, select: { id: true } }),
   ]);
   const rows = await issueRows(
     ctx.appId,
@@ -269,6 +273,7 @@ export async function listErrorIssues(
       bucket: window.hourly ? 'hour' : 'day',
     },
     usage,
+    hasErrors: anyIssue !== null || groups.data.length > 0,
     analyticsAvailable: groups.available,
     dataTrust: DATA_TRUST,
   };
@@ -426,11 +431,16 @@ export async function setErrorIssueStatus(
 
   const previous = row.status;
   if (previous !== status) {
+    // The releases it happened on so far: devices still on them do not reopen it.
+    // Without release data, any later error reopens it.
+    const releases =
+      status === 'resolved' ? await getErrorIssueReleases(ctx.appId, fingerprint) : null;
     row = await db.errorIssue.update({
       where: { id: row.id },
       data: {
         status,
         resolvedAt: status === 'resolved' ? now : null,
+        resolvedReleaseIds: releases ? [...releases.keys()] : [],
         statusChangedAt: now,
         statusChangedBy: ctx.actor.actorLabel,
       },
@@ -446,13 +456,8 @@ export async function setErrorIssueStatus(
             : 'error_issue.reopened',
       targetType: 'error_issue',
       targetId: row.id,
-      metadata: {
-        appId: ctx.appId,
-        fingerprint,
-        title: errorIssueTitle(row.errorName, row.normalizedMessage),
-        previousStatus: previous,
-        ...ctx.auditMetadata,
-      },
+      // No error text: it is device-reported, and the audit log is read by agents too.
+      metadata: { appId: ctx.appId, fingerprint, previousStatus: previous, ...ctx.auditMetadata },
     });
   }
   return {
@@ -473,6 +478,7 @@ export type ReleaseErrorSummary = {
   issues: number;
   /** Issues whose first event came from this release. */
   newIssues: number;
+  /** Applies from devices whose native plugin can report errors (3.4+). */
   applies: number;
   /** Error events per 1,000 applies; null without applies. */
   perThousandApplies: number | null;
@@ -487,21 +493,21 @@ export async function getReleaseErrorSummaries(
   if (ids.length === 0) return new Map();
   const [errors, applies, newIssues] = await Promise.all([
     getReleaseErrorCounts(appId, ids),
-    getReleaseEventCountsWithStatus(appId, ids),
+    getReleaseCapableApplies(appId, ids),
     db.errorIssue.groupBy({
       by: ['firstReleaseId'],
       where: { appId, firstReleaseId: { in: ids } },
       _count: { _all: true },
     }),
   ]);
-  if (!errors || !applies.available) return null;
+  if (!errors || !applies) return null;
   const newByRelease = new Map(
     newIssues.map((row) => [row.firstReleaseId as string, row._count._all]),
   );
   return new Map(
     ids.map((id) => {
       const counts = errors.get(id) ?? { events: 0, issues: 0 };
-      const applied = applies.data.get(id)?.applied ?? 0;
+      const applied = applies.get(id) ?? 0;
       return [
         id,
         {

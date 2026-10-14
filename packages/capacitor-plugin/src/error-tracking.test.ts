@@ -5,6 +5,7 @@ import { createErrorTracking, scrub, scrubStack } from './error-tracking';
 
 type Native = {
   enqueueAppTelemetry: ReturnType<typeof vi.fn>;
+  getState: ReturnType<typeof vi.fn>;
 };
 
 function setup(options: { native?: boolean; random?: number } = {}) {
@@ -16,6 +17,9 @@ function setup(options: { native?: boolean; random?: number } = {}) {
     enqueueAppTelemetry: vi.fn(async ({ items }: { items: AppTelemetryItem[] }) => ({
       accepted: items.length,
       dropped: 0,
+    })),
+    getState: vi.fn(async () => ({
+      current: { id: 'bundle-1', version: '1.4.2', releaseId: 'release-9', channel: 'production' },
     })),
   };
   const tracking = createErrorTracking(native as never, {
@@ -142,7 +146,59 @@ describe('initErrorTracking', () => {
   });
 });
 
+describe('bundle context', () => {
+  it('sends the bundle this JavaScript runs from, read once at init', async () => {
+    const { tracking, native } = setup();
+    tracking.initErrorTracking();
+    await vi.advanceTimersByTimeAsync(0);
+    // The native current bundle may change (an update or rollback) before the reload.
+    tracking.captureError(new Error('a'));
+    await tracking.flush();
+    expect(native.getState).toHaveBeenCalledTimes(1);
+    expect(native.enqueueAppTelemetry.mock.calls[0][0].bundle).toEqual({
+      bundleVersion: '1.4.2',
+      releaseId: 'release-9',
+      channel: 'production',
+    });
+  });
+
+  it('reports the built-in bundle, and leaves it to native when unknown', async () => {
+    const builtin = setup();
+    builtin.native.getState.mockResolvedValue({ current: { id: 'builtin', version: '2.0' } });
+    builtin.tracking.initErrorTracking();
+    await vi.advanceTimersByTimeAsync(0);
+    builtin.tracking.captureError(new Error('a'));
+    await builtin.tracking.flush();
+    expect(builtin.native.enqueueAppTelemetry.mock.calls[0][0].bundle).toEqual({
+      bundleVersion: 'builtin',
+      releaseId: null,
+      channel: null,
+    });
+
+    const unknown = setup();
+    unknown.native.getState.mockRejectedValue(new Error('no state'));
+    unknown.tracking.initErrorTracking();
+    await vi.advanceTimersByTimeAsync(0);
+    unknown.tracking.captureError(new Error('a'));
+    await unknown.tracking.flush();
+    expect(unknown.native.enqueueAppTelemetry.mock.calls[0][0]).not.toHaveProperty('bundle');
+  });
+});
+
 describe('scrubbing', () => {
+  it('keeps URL paths and finishes long input quickly', () => {
+    const message =
+      'Failed to fetch dynamically imported module: https://localhost/assets/pages/settings/NotificationSettings-4f3a9c2b.js';
+    expect(scrub(message)).toBe(message);
+    const started = performance.now();
+    scrub('a'.repeat(30_000));
+    scrub(`${'b'.repeat(30_000)}@`);
+    scrub(`${'c'.repeat(15_000)}1${'d'.repeat(15_000)}`);
+    scrubStack(`Error\n    at ${'e'.repeat(8_000)}`);
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(scrub(`key ${'Ab1'.repeat(15)} end`)).toBe('key [redacted] end');
+  });
+
   it('removes emails, tokens, secrets and query strings', () => {
     expect(
       scrub(
@@ -266,6 +322,43 @@ describe('delivery to the native plugin', () => {
     target.dispatchEvent(new Event('pagehide'));
     await vi.advanceTimersByTimeAsync(0);
     expect(native.enqueueAppTelemetry).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps errors the native plugin could not take, for the next flush', async () => {
+    const { tracking, native, sent } = setup();
+    native.enqueueAppTelemetry.mockRejectedValueOnce(new Error('busy'));
+    tracking.initErrorTracking();
+    tracking.captureError(new Error('first'));
+    await tracking.flush();
+    tracking.captureError(new Error('second'));
+    await tracking.flush();
+    expect(sent().map((item) => item.message)).toEqual(['first', 'first', 'second']);
+    expect(
+      native.enqueueAppTelemetry.mock.calls[1][0].items.map((i: AppTelemetryItem) => i.message),
+    ).toEqual(['first', 'second']);
+  });
+
+  it('sends only the known fields after beforeSend', async () => {
+    const { tracking, sent } = setup();
+    tracking.initErrorTracking({
+      beforeSend: (error) =>
+        ({ ...error, user: { email: 'x' }, mechanism: 'bogus', handled: 'yes' }) as never,
+    });
+    tracking.captureError(new Error('a'));
+    await tracking.flush();
+    expect(Object.keys(sent()[0]).sort()).toEqual([
+      'eventId',
+      'handled',
+      'kind',
+      'mechanism',
+      'message',
+      'name',
+      'occurredAt',
+      'route',
+      'stack',
+      'tags',
+    ]);
+    expect(sent()[0]).toMatchObject({ mechanism: 'manual', handled: false });
   });
 
   it('stops quietly on a native build without error tracking', async () => {

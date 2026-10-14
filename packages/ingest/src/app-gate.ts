@@ -19,6 +19,8 @@ export type AppGate = { known: boolean; blocked: Set<string> };
 export const APPS_SET = 'otakit:apps';
 export const KINDS = ['error'] as const;
 const CACHE_MS = 60_000;
+/** Random app IDs must not grow the cache without bound. */
+const CACHE_ENTRIES = 5_000;
 const OPEN: AppGate = { known: true, blocked: new Set() };
 
 const cache = new Map<string, { gate: AppGate; expiresAt: number }>();
@@ -57,6 +59,7 @@ export async function appGate(env: GateEnv, appId: string, now = Date.now()): Pr
       known: value(0) === 0 || value(1) === 1,
       blocked: new Set(KINDS.filter((_, index) => value(2 + index) === 1)),
     };
+    if (cache.size >= CACHE_ENTRIES) cache.clear();
     cache.set(appId, { gate, expiresAt: now + CACHE_MS });
     return gate;
   } catch (error) {

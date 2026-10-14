@@ -18,11 +18,16 @@ export function telemetryPausedKey(kind: TelemetryKind, appId: string): string {
 
 const SADD_CHUNK = 1000;
 
-/** Best effort: the errors cron rebuilds the set every run, so a failure here heals. */
+/**
+ * Best effort: the errors cron rebuilds the set every run, so a failure here heals.
+ * Only adds to an existing set: a set holding just this app would turn every
+ * other app away until the next rebuild, while no set accepts every app.
+ */
 export async function addTelemetryApp(appId: string): Promise<void> {
   const redis = getRedisOrNull();
   if (!redis) return;
   try {
+    if ((await redis.exists(TELEMETRY_APPS_SET)) === 0) return;
     await redis.sadd(TELEMETRY_APPS_SET, appId);
   } catch (error) {
     console.warn('[Telemetry] could not add app to the allowlist', { appId, error });

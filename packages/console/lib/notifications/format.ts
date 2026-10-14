@@ -239,12 +239,13 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
       };
     }
     case 'errors.regression': {
-      const { issue, previouslyResolvedAt } = payload.data;
+      const { issue, previouslyResolvedAt, release } = payload.data;
+      const where = release ? ` in ${release.bundleVersion} (${lane(release)})` : '';
       return {
         title: `Error came back in ${slug}`,
         code: issueCode(issue),
         lines: [
-          `Resolved ${formatUtc(previouslyResolvedAt)}, seen again ${formatUtc(issue.lastSeenAt)}. The issue is open again.`,
+          `Resolved ${formatUtc(previouslyResolvedAt)}, seen again${where} ${formatUtc(issue.lastSeenAt)}. The issue is open again.`,
         ],
         notes: null,
         severity: 'warning',
@@ -253,14 +254,18 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
     }
     case 'errors.spike': {
       const { release, previousRelease, errors } = payload.data;
+      // From the counts: the rounded rates in the payload can be 0.0 for a few errors.
+      const rate = errors.applies > 0 ? (errors.events / errors.applies) * 1000 : 0;
+      const previousRate =
+        errors.previousApplies > 0 ? (errors.previousEvents / errors.previousApplies) * 1000 : 0;
       const comparison =
-        errors.previousPerThousandApplies > 0
-          ? `${(errors.perThousandApplies / errors.previousPerThousandApplies).toFixed(1)}× the rate of ${previousRelease.bundleVersion} (${formatRate(errors.previousPerThousandApplies)})`
+        previousRate > 0
+          ? `${(rate / previousRate).toFixed(1)}× the rate of ${previousRelease.bundleVersion} (${formatRate(previousRate)})`
           : `${previousRelease.bundleVersion} had no errors`;
       return {
         title: `Error spike: ${slug} ${release.bundleVersion} (${lane(release)})`,
         lines: [
-          `${formatRate(errors.perThousandApplies)} error events per 1,000 applies; ${comparison}.`,
+          `${formatRate(rate)} error events per 1,000 applies on plugin 3.4+; ${comparison}.`,
           `${errors.events.toLocaleString('en-US')} error events in ${errors.issues.toLocaleString('en-US')} ${errors.issues === 1 ? 'issue' : 'issues'}, ${errors.applies.toLocaleString('en-US')} applies.`,
         ],
         notes: null,

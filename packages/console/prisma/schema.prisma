@@ -719,28 +719,31 @@ model RemoteConfigVersion {
 // computes. Counts and samples live in Tinybird (app_errors_raw); the errors
 // cron keeps these rows in step, reopens regressions and sends alerts.
 model ErrorIssue {
-  id                String           @id @default(uuid())
-  app               App              @relation(fields: [appId], references: [id], onDelete: Cascade)
-  appId             String
-  fingerprint       String
-  status            ErrorIssueStatus @default(open)
-  errorName         String
-  normalizedMessage String
-  topFrame          String?
+  id                 String           @id @default(uuid())
+  app                App              @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId              String
+  fingerprint        String
+  status             ErrorIssueStatus @default(open)
+  errorName          String
+  normalizedMessage  String
+  topFrame           String?
   // The release of the issue's first event; null on the built-in bundle.
-  firstReleaseId    String?
-  firstSeenAt       DateTime
-  lastSeenAt        DateTime
+  firstReleaseId     String?
+  firstSeenAt        DateTime
+  lastSeenAt         DateTime
   // Error events in the last 180 days, as of the last sync.
-  eventCount        Int              @default(0)
-  resolvedAt        DateTime?
-  statusChangedAt   DateTime?
-  statusChangedBy   String?
+  eventCount         Int              @default(0)
+  resolvedAt         DateTime?
+  // The releases ('' = built-in bundle) the issue had happened on when it was
+  // resolved. It reopens only when it happens on another release.
+  resolvedReleaseIds String[]         @default([])
+  statusChangedAt    DateTime?
+  statusChangedBy    String?
   // How often the issue came back after it was resolved.
-  regressions       Int              @default(0)
-  newIssueAlertedAt DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  regressions        Int              @default(0)
+  newIssueAlertedAt  DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   @@unique([appId, fingerprint])
   @@index([appId, status, lastSeenAt(sort: Desc)])

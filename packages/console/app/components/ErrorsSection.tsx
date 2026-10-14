@@ -97,6 +97,17 @@ export function ErrorsSection({
   });
   const sectionRef = useRef<HTMLElement>(null);
 
+  // "View errors" on a release shows all of its issues from the last 30 days,
+  // matching the release's totals, instead of only open ones from 7 days.
+  const [shownRelease, setShownRelease] = useState(releaseFilter);
+  if (releaseFilter !== shownRelease) {
+    setShownRelease(releaseFilter);
+    if (releaseFilter) {
+      setStatus('all');
+      setRange('30d');
+    }
+  }
+
   const requestKey = `${appId}|${range}|${status}|${platform}|${releaseFilter ?? ''}|${reloadToken}`;
   const loading = result?.key !== requestKey;
 
@@ -135,14 +146,17 @@ export function ErrorsSection({
     if (releaseFilter) sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [releaseFilter]);
 
-  const closeIssue = useCallback(() => {
-    setOpenIssue(null);
+  // The open issue is in the address bar, so the link can be copied and shared.
+  const showIssue = useCallback((fingerprint: string | null) => {
+    setOpenIssue(fingerprint);
     const url = new URL(window.location.href);
-    if (url.searchParams.has('issue')) {
-      url.searchParams.delete('issue');
+    if (fingerprint) url.searchParams.set('issue', fingerprint);
+    else url.searchParams.delete('issue');
+    if (url.toString() !== window.location.href) {
       window.history.replaceState({}, '', `${url.pathname}${url.search}`);
     }
   }, []);
+  const closeIssue = useCallback(() => showIssue(null), [showIssue]);
 
   const releaseLabels = useMemo(
     () =>
@@ -156,7 +170,9 @@ export function ErrorsSection({
   );
   const releaseOptions = useMemo(() => releases.slice(0, 50), [releases]);
 
-  const data = result?.data ?? null;
+  // A failed load for the current filters never shows the previous filters' issues.
+  const failed = result?.key === requestKey && result.error !== null;
+  const data = failed ? null : (result?.data ?? null);
   const issues = data?.issues ?? [];
   const usage = data?.usage ?? null;
   const nearLimit =
@@ -164,14 +180,7 @@ export function ErrorsSection({
     usage.events !== null &&
     !usage.pausedUntil &&
     usage.events >= usage.limit * 0.8;
-  const neverCaptured =
-    data !== null &&
-    data.analyticsAvailable &&
-    data.total === 0 &&
-    status === 'open' &&
-    platform === 'all' &&
-    !releaseFilter &&
-    usage?.events === 0;
+  const neverCaptured = data !== null && data.analyticsAvailable && !data.hasErrors;
 
   return (
     <section ref={sectionRef} id="errors" className="scroll-mt-4">
@@ -337,8 +346,9 @@ export function ErrorsSection({
             </p>
           ) : null}
 
-          {result?.error && !data ? (
-            <div className="flex justify-center p-8">
+          {failed ? (
+            <div className="flex flex-col items-center gap-3 p-8">
+              <p className="text-sm text-muted-foreground">{result?.error}</p>
               <Button
                 variant="outline"
                 size="sm"
@@ -410,7 +420,7 @@ export function ErrorsSection({
                         issue={issue}
                         range={data.range}
                         showStatus={status === 'all'}
-                        onOpen={() => setOpenIssue(issue.fingerprint)}
+                        onOpen={() => showIssue(issue.fingerprint)}
                       />
                     ))}
                   </TableBody>
@@ -429,9 +439,13 @@ export function ErrorsSection({
                   </Button>
                 </div>
               ) : null}
-              {data.truncated ? (
+              {data.truncated || data.total > issues.length ? (
                 <p className="border-t border-border px-6 py-2 text-xs text-muted-foreground">
-                  More than 500 issues in this range; the list covers the 500 with the most events.
+                  {data.truncated
+                    ? 'More than 500 issues in this range.'
+                    : `${formatCount(data.total)} issues in this range.`}{' '}
+                  Showing the {formatCount(issues.length)} with the most events; narrow the filters
+                  to see others.
                 </p>
               ) : null}
             </div>

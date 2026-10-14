@@ -237,7 +237,12 @@ export type NotificationEventFields =
   | { type: 'errors.new_issue'; data: { issue: NotificationErrorIssue } }
   | {
       type: 'errors.regression';
-      data: { issue: NotificationErrorIssue; previouslyResolvedAt: string };
+      data: {
+        issue: NotificationErrorIssue;
+        previouslyResolvedAt: string;
+        /** The release it came back on; null for the built-in bundle or when unknown. */
+        release: ReleaseSummary | null;
+      };
     }
   | {
       type: 'errors.spike';

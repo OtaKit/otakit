@@ -339,13 +339,14 @@ describe('error alerts', () => {
       payload('errors.regression', {
         issue: { ...issue, topFrame: null },
         previouslyResolvedAt: '2026-10-10T08:00:00.000Z',
+        release: release({ bundleVersion: '1.4.3' }),
         actor: null,
       }),
     );
     expect(event.title).toBe('Error came back in com.acme.app');
     expect(event.code).toEqual([issue.title]);
     expect(event.lines).toEqual([
-      'Resolved Oct 10, 08:00 UTC, seen again Oct 14, 12:00 UTC. The issue is open again.',
+      'Resolved Oct 10, 08:00 UTC, seen again in 1.4.3 (production / runtime 2026.10) Oct 14, 12:00 UTC. The issue is open again.',
     ]);
   });
 
@@ -371,14 +372,18 @@ describe('error alerts', () => {
     expect(spike()).toMatchObject({
       title: 'Error spike: com.acme.app 1.4.2 (production / runtime 2026.10)',
       lines: [
-        '30 error events per 1,000 applies; 6.0× the rate of 1.4.1 (5.0).',
+        '30 error events per 1,000 applies on plugin 3.4+; 6.0× the rate of 1.4.1 (5.0).',
         '120 error events in 1 issue, 4,000 applies.',
       ],
       severity: 'critical',
     });
-    expect(spike({ previousPerThousandApplies: 0, perThousandApplies: 0.05 }).lines[0]).toBe(
-      '<0.1 error events per 1,000 applies; 1.4.1 had no errors.',
+    expect(spike({ previousEvents: 0, previousPerThousandApplies: 0 }).lines[0]).toBe(
+      '30 error events per 1,000 applies on plugin 3.4+; 1.4.1 had no errors.',
     );
+    // A tiny previous rate rounds to 0.0 in the payload; the text uses the counts.
+    expect(
+      spike({ previousEvents: 1, previousApplies: 30_000, previousPerThousandApplies: 0 }).lines[0],
+    ).toBe('30 error events per 1,000 applies on plugin 3.4+; 900.0× the rate of 1.4.1 (<0.1).');
   });
 
   it('describes a paused workspace', () => {

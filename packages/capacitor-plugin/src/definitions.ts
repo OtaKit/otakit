@@ -515,6 +515,17 @@ export interface CaptureErrorOptions {
 /** One app telemetry item, as JavaScript hands it to the native plugin. */
 export type AppTelemetryItem = CapturedError & { kind: 'error' };
 
+/**
+ * The bundle the JavaScript runs from, read once at init. Native uses it over
+ * its current bundle, which changes before the reload after an update or a
+ * rollback while the old JavaScript still flushes its last errors.
+ */
+export type AppTelemetryBundle = {
+  bundleVersion: string;
+  releaseId: string | null;
+  channel: string | null;
+};
+
 export interface OtaKitBridgePlugin {
   getState(): Promise<OtaKitState>;
   check(): Promise<CheckResult>;
@@ -532,6 +543,7 @@ export interface OtaKitBridgePlugin {
   refreshConfig(): Promise<NativeRemoteConfig>;
   enqueueAppTelemetry(options: {
     items: AppTelemetryItem[];
+    bundle?: AppTelemetryBundle;
   }): Promise<{ accepted: number; dropped: number }>;
   addListener(
     eventName: OtaKitEventName,

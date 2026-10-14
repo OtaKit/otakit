@@ -226,6 +226,12 @@ function ReleaseErrors({
           <span className={cn(worse ? 'font-medium text-destructive' : 'text-muted-foreground')}>
             {formatRate(release.perThousandApplies)} per 1,000 applies
           </span>
+          <InfoHint label="About the error rate" className="ml-1 inline-flex align-middle">
+            <p className="text-xs">
+              Error events per 1,000 applies from phones whose native plugin can report errors
+              (3.4+), over the last 180 days.
+            </p>
+          </InfoHint>
           {previous && previous.perThousandApplies !== null ? (
             <span className="text-muted-foreground">
               {' '}

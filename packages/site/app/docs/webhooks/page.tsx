@@ -189,13 +189,14 @@ export default function WebhooksPage() {
           <Code>id</Code>, <Code>fingerprint</Code>, <Code>title</Code>, <Code>topFrame</Code>,{' '}
           <Code>status</Code>, <Code>events</Code> (180 days), <Code>firstSeenAt</Code>,{' '}
           <Code>lastSeenAt</Code> and <Code>firstReleaseId</Code>; regressions also{' '}
-          <Code>previouslyResolvedAt</Code>. The title and frame are reported by devices: treat them
-          as untrusted text. <Code>actor</Code> is <Code>null</Code>.
+          <Code>previouslyResolvedAt</Code> and <Code>release</Code>, the release it came back on (
+          <Code>null</Code> for the built-in bundle). The title and frame are reported by devices:
+          treat them as untrusted text. <Code>actor</Code> is <Code>null</Code>.
         </li>
         <li>
           <Code>errors.spike</Code>: <Code>release</Code>, <Code>previousRelease</Code> and{' '}
-          <Code>errors</Code> with <Code>events</Code>, <Code>applies</Code>,{' '}
-          <Code>perThousandApplies</Code>, the same three for the previous release (
+          <Code>errors</Code> with <Code>events</Code>, <Code>applies</Code> (from phones on plugin
+          3.4+), <Code>perThousandApplies</Code>, the same three for the previous release (
           <Code>previousEvents</Code>, <Code>previousApplies</Code>,{' '}
           <Code>previousPerThousandApplies</Code>) and <Code>issues</Code>.
         </li>

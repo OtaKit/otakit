@@ -23,6 +23,8 @@ analytics and error tracking. It is mainly relevant for advanced self-hosted set
 - `endpoints/error_group_breakdown.pipe`
 - `endpoints/error_group_buckets.pipe`
 - `endpoints/release_error_counts.pipe`
+- `endpoints/error_issue_releases.pipe`
+- `endpoints/release_capable_applies.pipe`
 - `endpoints/app_error_usage.pipe`
 
 ## Required names
@@ -42,7 +44,8 @@ The web app and ingest service expect these resource names:
   - `bundle_event_counts`
   - `organization_download_counts`
   - `error_activity`, `error_groups`, `error_group_samples`, `error_group_breakdown`,
-    `error_group_buckets`, `release_error_counts`, `app_error_usage`
+    `error_group_buckets`, `error_issue_releases`, `release_error_counts`,
+    `release_capable_applies`, `app_error_usage`
 
 ## Event schema requirements
 
@@ -92,3 +95,7 @@ Error tracking (plugin 3.4+) writes one row per captured error to `app_errors_ra
 monthly caps and the issue list's lifetime totals. Device retries can repeat an
 `event_id`: every count uses `uniqExact(event_id)`. Hourly and daily buckets count a
 retry received in another bucket in both; totals do not.
+
+Error rates per 1,000 applies (`release_capable_applies`) count only applies from
+devices whose native plugin can report errors (3.4+, from `native_sdk_version`), so a
+release is not compared against devices that could not have reported anything.

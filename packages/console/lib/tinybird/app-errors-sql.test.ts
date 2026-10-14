@@ -92,6 +92,9 @@ beforeEach(() => {
   db.exec(`
     CREATE TABLE app_errors_raw (${rawSchema});
     CREATE TABLE app_errors_block (${rawSchema});
+    CREATE TABLE device_events_raw (
+      event_id, app_id, action, release_id, native_sdk_version, received_at
+    );
     CREATE TABLE app_error_daily (
       bucket_date, app_id, fingerprint, release_id, channel, platform, error_name,
       normalized_message, top_frame, first_seen, last_seen, last_occurred,
@@ -348,5 +351,58 @@ describe('app_error_usage', () => {
       { app_id: 'app-b', events: 1 },
     ]);
     expect(usage({ app_ids: 'app-b,app-c' })).toEqual([{ app_id: 'app-b', events: 1 }]);
+  });
+});
+
+describe('error_issue_releases', () => {
+  it('returns the releases an issue happened on since a day, with the latest times', () => {
+    addError('a1', '2026-10-10T10:00:00.000Z', { release_id: 'release-a' });
+    addError('a2', '2026-10-12T10:00:00.000Z', {
+      release_id: 'release-a',
+      occurred_at: '2026-10-12T09:00:00.000Z',
+    });
+    addError('b1', '2026-10-13T10:00:00.000Z', { release_id: null });
+    addError('other', '2026-10-13T10:00:00.000Z', { fingerprint: 'fp-b', release_id: 'release-c' });
+    const releases = (from_date: string) =>
+      query('error_issue_releases', { app_id: 'app-a', fingerprint: 'fp-a', from_date });
+    expect(releases('1970-01-01')).toEqual([
+      {
+        release_id: '',
+        last_seen_ms: ms('2026-10-13T10:00:00.000Z'),
+        last_occurred_ms: ms('2026-10-13T10:00:00.000Z'),
+        events: 1,
+      },
+      {
+        release_id: 'release-a',
+        last_seen_ms: ms('2026-10-12T10:00:00.000Z'),
+        last_occurred_ms: ms('2026-10-12T09:00:00.000Z'),
+        events: 2,
+      },
+    ]);
+    expect(releases('2026-10-13').map((row) => row.release_id)).toEqual(['']);
+  });
+});
+
+describe('release_capable_applies', () => {
+  it('counts applies only from devices that can report errors', () => {
+    const add = (id: string, release: string | null, sdk: string | null, action = 'applied') =>
+      db
+        .prepare('INSERT INTO device_events_raw VALUES (?, ?, ?, ?, ?, ?)')
+        .run(id, 'app-a', action, release, sdk, '2026-10-14T10:00:00.000Z');
+    add('e1', 'release-a', '3.4.0');
+    add('e1', 'release-a', '3.4.0'); // a retry
+    add('e2', 'release-a', '3.10.2');
+    add('e3', 'release-a', '4.0.0-beta.1');
+    add('e4', 'release-a', '3.3.9');
+    add('e5', 'release-a', null);
+    add('e6', 'release-a', '3.4.0', 'downloaded');
+    add('e7', 'release-b', '3.5.0');
+    add('e8', null, '3.5.0');
+    expect(
+      query('release_capable_applies', { app_id: 'app-a', release_ids: 'release-a,release-b' }),
+    ).toEqual([
+      { release_id: 'release-a', applies: 3 },
+      { release_id: 'release-b', applies: 1 },
+    ]);
   });
 });

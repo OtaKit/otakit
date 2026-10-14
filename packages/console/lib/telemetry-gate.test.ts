@@ -20,6 +20,7 @@ const redis = vi.hoisted(() => {
     calls,
     sadd: vi.fn(),
     srem: vi.fn(),
+    exists: vi.fn(async () => 1),
     del: vi.fn(async (...keys: string[]) => {
       calls.push(['del', ...keys]);
       return keys.length;
@@ -31,6 +32,7 @@ vi.mock('@upstash/redis', () => ({
   Redis: class {
     sadd = redis.sadd;
     srem = redis.srem;
+    exists = redis.exists;
     del = redis.del;
     pipeline = redis.pipeline;
   },
@@ -102,6 +104,15 @@ describe('telemetry gate', () => {
     expect(redis.calls).toEqual([
       ['del', 'otakit:telemetry:blocked:error:a', 'otakit:telemetry:blocked:error:b'],
     ]);
+  });
+
+  it('adds a new app only to an existing allowlist', async () => {
+    redis.sadd.mockClear();
+    redis.exists.mockResolvedValueOnce(0);
+    await addTelemetryApp('app-1');
+    expect(redis.sadd).not.toHaveBeenCalled();
+    await addTelemetryApp('app-2');
+    expect(redis.sadd).toHaveBeenCalledWith('otakit:apps', 'app-2');
   });
 
   it('never fails app creation when Redis is down', async () => {

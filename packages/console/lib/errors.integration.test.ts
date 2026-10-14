@@ -10,6 +10,7 @@ const tinybird = vi.hoisted(() => ({
   releaseErrors: new Map<string, { events: number; issues: number }>(),
   applies: new Map<string, number>(),
   usage: new Map<string, number>() as Map<string, number> | null,
+  issueReleases: new Map<string, { lastSeenAt: Date; lastOccurredAt: Date; events: number }>(),
 }));
 const gate = vi.hoisted(() => ({
   replaceTelemetryApps: vi.fn(async () => true),
@@ -30,6 +31,11 @@ vi.mock('@/lib/tinybird/errors', async (importOriginal) => ({
       ),
   ),
   getAppErrorUsage: vi.fn(async () => tinybird.usage),
+  getErrorIssueReleases: vi.fn(async () => new Map(tinybird.issueReleases)),
+  getReleaseCapableApplies: vi.fn(
+    async (_appId: string, ids: string[]) =>
+      new Map(ids.map((id) => [id, tinybird.applies.get(id) ?? 0])),
+  ),
   listErrorGroups: vi.fn(async (filters: { fingerprints?: string[] }) => ({
     data: tinybird.groups.filter(
       (group) => !filters.fingerprints || filters.fingerprints.includes(group.fingerprint),
@@ -101,6 +107,7 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
     tinybird.releaseErrors = new Map();
     tinybird.applies = new Map();
     tinybird.usage = new Map();
+    tinybird.issueReleases = new Map();
     organizationId = randomUUID();
     appId = randomUUID();
     await db.organization.create({
@@ -240,6 +247,60 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
     ]);
   });
 
+  it('reopens only when the issue happens on a release it was not resolved with', async () => {
+    tinybird.activity = [activity('aaaaaaaaaaaaaaaa', { events: 3 })];
+    await runErrorsCron(NOW);
+    const seen = { lastSeenAt: minutesAgo(40), lastOccurredAt: minutesAgo(40), events: 3 };
+    tinybird.issueReleases = new Map([
+      ['release-old', seen],
+      ['', seen],
+    ]);
+    const actor = { actorType: 'user' as const, actorId: 'u1', actorLabel: 'dev@acme.test' };
+    const resolvedAt = minutesAgo(30);
+    await issues.setErrorIssueStatus(
+      { organizationId, appId, actor },
+      'aaaaaaaaaaaaaaaa',
+      'resolved',
+      resolvedAt,
+    );
+    expect(
+      (
+        await db.errorIssue.findUniqueOrThrow({
+          where: { appId_fingerprint: { appId, fingerprint: 'aaaaaaaaaaaaaaaa' } },
+        })
+      ).resolvedReleaseIds.sort(),
+    ).toEqual(['', 'release-old']);
+
+    // Phones still on the old release and the built-in bundle keep reporting it.
+    const later = { lastSeenAt: minutesAgo(2), lastOccurredAt: minutesAgo(2), events: 9 };
+    tinybird.issueReleases = new Map([
+      ['release-old', later],
+      ['', later],
+    ]);
+    tinybird.activity = [activity('aaaaaaaaaaaaaaaa', { events: 9, lastSeenAt: minutesAgo(2) })];
+    expect(await runErrorsCron(NOW)).toMatchObject({ regressions: 0, updated: 1 });
+
+    // It shows up on the release with the fix.
+    tinybird.issueReleases.set('release-fix', { ...later, events: 1 });
+    tinybird.activity = [activity('aaaaaaaaaaaaaaaa', { events: 10, lastSeenAt: minutesAgo(1) })];
+    expect(await runErrorsCron(NOW)).toMatchObject({ regressions: 1 });
+    const issue = await db.errorIssue.findUniqueOrThrow({
+      where: { appId_fingerprint: { appId, fingerprint: 'aaaaaaaaaaaaaaaa' } },
+    });
+    expect(issue).toMatchObject({ status: 'open', resolvedReleaseIds: [], regressions: 1 });
+    const [delivery] = await deliveries('errors.regression');
+    expect(JSON.parse(delivery.payload).data.release).toBeNull(); // not a release of this app
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { targetId: issue.id, action: 'error_issue.regressed' },
+    });
+    expect(audit.metadata).toEqual({
+      appId,
+      fingerprint: 'aaaaaaaaaaaaaaaa',
+      resolvedAt: resolvedAt.toISOString(),
+      releaseId: 'release-fix',
+    });
+  });
+
   it('keeps ignored issues quiet', async () => {
     tinybird.activity = [activity('aaaaaaaaaaaaaaaa', { events: 1 })];
     await runErrorsCron(NOW);
@@ -289,6 +350,17 @@ databaseDescribe('error tracking (PostgreSQL integration)', () => {
       },
     });
     tinybird.activity = [activity('aaaaaaaaaaaaaaaa', { events: 1 })];
+    // A previous release without errors is no baseline: it may not have tracked them yet.
+    tinybird.releaseErrors = new Map([
+      [current.id, { events: 500, issues: 2 }],
+      [previous.id, { events: 0, issues: 0 }],
+    ]);
+    tinybird.applies = new Map([
+      [current.id, 1000],
+      [previous.id, 1000],
+    ]);
+    expect(await runErrorsCron(NOW)).toMatchObject({ spikeAlerts: 0 });
+
     tinybird.releaseErrors = new Map([
       [current.id, { events: 29, issues: 2 }],
       [previous.id, { events: 10, issues: 1 }],

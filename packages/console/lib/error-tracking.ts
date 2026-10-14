@@ -102,11 +102,13 @@ export function perThousandApplies(rate: ReleaseErrorRate): number {
 
 /**
  * True when the release has enough data, and its rate is at least 3× the
- * previous release's (which needs enough applies to be a baseline).
+ * previous release's. The previous release is a baseline only with enough
+ * applies and at least one error: zero errors usually means it did not call
+ * initErrorTracking() yet, not that it had none.
  */
 export function isErrorSpike(current: ReleaseErrorRate, previous: ReleaseErrorRate): boolean {
   if (current.applies < SPIKE_MIN_APPLIES || current.events < SPIKE_MIN_EVENTS) return false;
-  if (previous.applies < SPIKE_MIN_APPLIES) return false;
+  if (previous.applies < SPIKE_MIN_APPLIES || previous.events < 1) return false;
   return current.events * previous.applies >= SPIKE_FACTOR * previous.events * current.applies;
 }
 

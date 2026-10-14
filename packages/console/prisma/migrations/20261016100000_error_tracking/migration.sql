@@ -21,6 +21,7 @@ CREATE TABLE "ErrorIssue" (
     "lastSeenAt" TIMESTAMP(3) NOT NULL,
     "eventCount" INTEGER NOT NULL DEFAULT 0,
     "resolvedAt" TIMESTAMP(3),
+    "resolvedReleaseIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "statusChangedAt" TIMESTAMP(3),
     "statusChangedBy" TEXT,
     "regressions" INTEGER NOT NULL DEFAULT 0,

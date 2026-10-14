@@ -1,4 +1,5 @@
 import type {
+  AppTelemetryBundle,
   AppTelemetryItem,
   CaptureErrorOptions,
   CapturedError,
@@ -28,37 +29,42 @@ const MAX_TAGS = 10;
 const TAG_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
 
 const REDACTED = '[redacted]';
-// Applied to every line: the most common secrets in error text.
+// Applied to every line: the most common secrets in error text. Every pattern
+// is bounded or starts at a fixed word, so long input stays linear time.
 const SCRUB: Array<[RegExp, string]> = [
   // URL query strings: tokens and IDs travel there. A stack frame's ":line:column" stays.
   [
-    /(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#'"`<>()]*)\?[^\s#'"`<>()]*?(?=(?::\d+:\d+)?(?:[\s#'"`<>)]|$))/gi,
+    /(\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s?#'"`<>()]*)\?[^\s#'"`<>()]*?(?=(?::\d+:\d+)?(?:[\s#'"`<>)]|$))/gi,
     `$1?${REDACTED}`,
   ],
   [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, `Bearer ${REDACTED}`],
   [/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, REDACTED],
-  [/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, REDACTED],
+  [/[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,24}/gi, REDACTED],
   [
     /\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization)(\s*[=:]\s*["']?)[^\s&,;'"]+/gi,
     `$1$2${REDACTED}`,
   ],
 ];
-// Long random-looking runs (keys, session IDs). Not applied to stack frames,
-// whose long paths are code locations, not secrets.
-const SCRUB_TOKENS: Array<[RegExp, string]> = [
-  [/\b[A-Fa-f0-9]{32,}\b/g, REDACTED],
-  [/(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[A-Za-z])[A-Za-z0-9+/_-]{40,}={0,2}/g, REDACTED],
-];
+// A run of key-like characters ('/' excluded, so URL paths are not one run).
+const TOKEN_RUN = /[A-Za-z0-9+_=-]{32,}/g;
+
+/** A long hex run, or a long run of letters and digits: a key or session ID. */
+function isSecretLike(run: string): boolean {
+  return (
+    /^[A-Fa-f0-9]{32,}$/.test(run) || (run.length >= 40 && /\d/.test(run) && /[A-Za-z]/.test(run))
+  );
+}
+
 const STACK_FRAME = /^\s*at\s|@\S*:\d+:\d+\s*$|^\S*@\S+$/;
 
+/**
+ * Replace secrets with [redacted]. `tokens: false` keeps long key-like runs,
+ * for stack frames, whose long names are code locations, not secrets.
+ */
 export function scrub(text: string, tokens = true): string {
   let result = text;
   for (const [pattern, replacement] of SCRUB) result = result.replace(pattern, replacement);
-  if (tokens) {
-    for (const [pattern, replacement] of SCRUB_TOKENS) {
-      result = result.replace(pattern, replacement);
-    }
-  }
+  if (tokens) result = result.replace(TOKEN_RUN, (run) => (isSecretLike(run) ? REDACTED : run));
   return result;
 }
 
@@ -143,13 +149,15 @@ function describe(
   return { name: fallbackName, message: text(value, MAX_MESSAGE), stack: null };
 }
 
+const MECHANISMS = new Set<unknown>(['onerror', 'unhandledrejection', 'manual']);
+
 function tags(raw: CaptureErrorOptions['tags']): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw ?? {})) {
     if (Object.keys(result).length >= MAX_TAGS) break;
     if (!TAG_KEY.test(key)) continue;
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      result[key] = scrub(String(value)).slice(0, 100);
+      result[key] = scrub(String(value).slice(0, 100));
     }
   }
   return result;
@@ -170,7 +178,7 @@ export type ErrorTracking = {
 };
 
 export function createErrorTracking(
-  native: Pick<OtaKitBridgePlugin, 'enqueueAppTelemetry'>,
+  native: Pick<OtaKitBridgePlugin, 'enqueueAppTelemetry' | 'getState'>,
   environment: Partial<Environment> & Pick<Environment, 'isNative'>,
 ): ErrorTracking {
   const env: Environment = { ...defaultEnvironment(environment.isNative), ...environment };
@@ -182,6 +190,8 @@ export function createErrorTracking(
   let buffer: AppTelemetryItem[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> | null = null;
+  /** The bundle this JavaScript runs from; null until getState() answers. */
+  let bundle: AppTelemetryBundle | null = null;
   const warned = new Set<string>();
 
   function warnOnce(key: string, message: string) {
@@ -209,7 +219,7 @@ export function createErrorTracking(
         const items = buffer.slice(0, MAX_PER_CALL);
         buffer = buffer.slice(items.length);
         try {
-          await native.enqueueAppTelemetry({ items });
+          await native.enqueueAppTelemetry(bundle ? { items, bundle } : { items });
         } catch (error) {
           if (isUnimplemented(error)) {
             disabled = true;
@@ -219,7 +229,9 @@ export function createErrorTracking(
               'Error tracking needs @otakit/capacitor-updater 3.4 or later in the native build; errors are not sent.',
             );
           } else {
-            warnOnce('enqueue', 'Could not hand errors to the native plugin.');
+            // Kept for the next flush (the oldest go first past the limit).
+            buffer = [...items, ...buffer].slice(-MAX_BUFFER);
+            warnOnce('enqueue', 'Could not hand errors to the native plugin; will retry.');
           }
           return;
         }
@@ -273,9 +285,11 @@ export function createErrorTracking(
       if (env.random() >= (options.sampleRate ?? 1)) return null;
     }
 
+    const eventId = env.uuid();
+    const occurredAt = env.now().toISOString();
     let event: CapturedError | null = {
-      eventId: env.uuid(),
-      occurredAt: env.now().toISOString(),
+      eventId,
+      occurredAt,
       name: scrub(name),
       message: scrub(message),
       stack: stack ? scrubStack(stack.slice(0, MAX_STACK)) : null,
@@ -304,19 +318,22 @@ export function createErrorTracking(
       sent += 1;
     }
 
-    // beforeSend may return anything: keep the shape ingest expects.
+    // beforeSend may return anything: keep only the fields ingest reads, in shape.
     buffer.push({
-      ...event,
       kind: 'error',
+      eventId,
+      occurredAt,
       name: String(event.name || 'Error').slice(0, MAX_NAME),
       message: String(event.message ?? '').slice(0, MAX_MESSAGE),
       stack: event.stack ? String(event.stack).slice(0, MAX_STACK) : null,
       route: event.route ? String(event.route).slice(0, MAX_ROUTE) : null,
+      handled: event.handled === true,
+      mechanism: MECHANISMS.has(event.mechanism) ? event.mechanism : details.mechanism,
       tags: tags(event.tags),
     });
     if (buffer.length > MAX_BUFFER) buffer = buffer.slice(buffer.length - MAX_BUFFER);
     schedule();
-    return event.eventId;
+    return eventId;
   }
 
   function onError(event: Event) {
@@ -364,6 +381,18 @@ export function createErrorTracking(
       options = { ...next };
       if (listening || !env.target) return;
       listening = true;
+      native
+        .getState()
+        .then(({ current }) => {
+          bundle = {
+            bundleVersion: current.id === 'builtin' ? 'builtin' : current.version,
+            releaseId: current.releaseId ?? null,
+            channel: current.channel ?? null,
+          };
+        })
+        .catch(() => {
+          // Native then uses its current bundle.
+        });
       env.target.addEventListener('error', onError);
       env.target.addEventListener('unhandledrejection', onRejection);
       env.target.addEventListener('pagehide', () => void flush());
@@ -409,7 +438,9 @@ export function createErrorTracking(
       // Sent on its own, so the result says whether this error reached the native outbox.
       buffer = buffer.filter((entry) => entry !== item);
       try {
-        const result = await native.enqueueAppTelemetry({ items: [item] });
+        const result = await native.enqueueAppTelemetry(
+          bundle ? { items: [item], bundle } : { items: [item] },
+        );
         return result.accepted === 1;
       } catch (error) {
         if (isUnimplemented(error)) {
