@@ -224,6 +224,31 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
     });
   });
 
+  it('labels a manual revert, and a reverted partial rollout as cancelled', async () => {
+    const reverted = await release(0, {
+      promotedAt: at('2026-09-10T01:00:00.000Z'),
+      revertedAt: at('2026-09-10T02:00:00.000Z'),
+      revertedBy: 'dev@example.com',
+    });
+    const cancelled = await release(1, {
+      promotedAt: at('2026-09-10T03:00:00.000Z'),
+      rolloutPercent: 10,
+      revertedAt: at('2026-09-10T04:00:00.000Z'),
+      revertedBy: 'dev@example.com',
+    });
+
+    expect((await timeseries(reverted.id, { range: '24h' })).markers).toContainEqual({
+      at: '2026-09-10T02:00:00.000Z',
+      type: 'reverted',
+      label: 'Reverted',
+    });
+    expect((await timeseries(cancelled.id, { range: '24h' })).markers).toContainEqual({
+      at: '2026-09-10T04:00:00.000Z',
+      type: 'reverted',
+      label: 'Rollout cancelled',
+    });
+  });
+
   it('adds the lane: recent releases of the same channel and runtime, oldest first', async () => {
     const lane: Array<{ id: string }> = [];
     for (let index = 0; index < 7; index += 1) {

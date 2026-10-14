@@ -236,7 +236,13 @@ export async function getReleaseTimeseries(
 async function releaseMarkers(
   database: PrismaClient,
   organizationId: string,
-  release: { id: string; promotedAt: Date; revertedAt: Date | null; revertedBy: string | null },
+  release: {
+    id: string;
+    promotedAt: Date;
+    revertedAt: Date | null;
+    revertedBy: string | null;
+    rolloutPercent: number;
+  },
   from: number,
   to: number,
 ): Promise<ReleaseTimeseriesMarker[]> {
@@ -276,7 +282,12 @@ async function releaseMarkers(
     markers.push({
       at: release.revertedAt.toISOString(),
       type: automatic ? 'auto_reverted' : 'reverted',
-      label: automatic ? 'Auto-reverted' : 'Reverted',
+      // Reverting a release that never reached 100% is how a rollout is cancelled.
+      label: automatic
+        ? 'Auto-reverted'
+        : release.rolloutPercent < 100
+          ? 'Rollout cancelled'
+          : 'Reverted',
     });
   }
   return markers.sort((left, right) => left.at.localeCompare(right.at));
