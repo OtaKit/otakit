@@ -46,6 +46,7 @@ import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
 import { AnalyticsSection } from '@/app/components/AnalyticsSection';
 import { ErrorsSection } from '@/app/components/ErrorsSection';
+import { ExperimentsSection } from '@/app/components/ExperimentsSection';
 import { RemoteConfigSection } from '@/app/components/RemoteConfigSection';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
@@ -558,6 +559,8 @@ export function ProductDashboard({
   );
 
   // Remote config: channels that have releases, offered when adding a channel's config.
+  // Bumped when an A/B test writes a config version, so the config section reloads.
+  const [configRevision, setConfigRevision] = useState(0);
   const releaseChannels = useMemo(
     () =>
       Array.from(
@@ -2178,6 +2181,19 @@ export function ProductDashboard({
                   appId={selectedApp.id}
                   releaseChannels={releaseChannels}
                   docsUrl={docsUrl}
+                  reloadToken={configRevision}
+                />
+              ) : null}
+
+              {/* A/B tests */}
+              {selectedApp ? (
+                <ExperimentsSection
+                  key={`experiments-${selectedApp.id}`}
+                  appId={selectedApp.id}
+                  releaseChannels={releaseChannels}
+                  docsUrl={docsUrl}
+                  onUpgrade={() => setPricingDialogOpen(true)}
+                  onConfigChanged={() => setConfigRevision((value) => value + 1)}
                 />
               ) : null}
 

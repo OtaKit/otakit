@@ -22,6 +22,7 @@ import {
   validateConfigValues,
   type ConfigValues,
 } from '@/lib/remote-config';
+import type { ExperimentSummary } from '@/lib/services/experiments';
 import type { RemoteConfigHistoryEntry, RemoteConfigState } from '@/lib/services/remote-config';
 import {
   AlertDialog,
@@ -69,6 +70,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw error;
   }
   return body;
+}
+
+/** Running A/B tests that ride in this channel's config file. */
+function runningHere(running: ExperimentSummary[], channel: string | null): ExperimentSummary[] {
+  return running.filter((experiment) => experiment.channel === channel);
 }
 
 function keyOf(channel: string | null): string {
@@ -130,13 +136,17 @@ export function RemoteConfigSection({
   appId,
   releaseChannels,
   docsUrl,
+  reloadToken = 0,
 }: {
   appId: string;
   /** Channels that have releases, offered when adding a channel's config. */
   releaseChannels: string[];
   docsUrl: string;
+  /** Changes when something else (an A/B test) wrote a config version. */
+  reloadToken?: number;
 }) {
   const [configs, setConfigs] = useState<RemoteConfigState[] | null>(null);
+  const [running, setRunning] = useState<ExperimentSummary[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<string>(BASE);
   const [editing, setEditing] = useState<{ channel: string | null } | null>(null);
@@ -155,11 +165,17 @@ export function RemoteConfigSection({
       setLoadFailed(true);
       toast.error(error instanceof Error ? error.message : 'Could not load remote config');
     }
-  }, [base]);
+    // Running A/B tests, shown on their config; optional.
+    await request<{ experiments: ExperimentSummary[] }>(`/api/v1/apps/${appId}/experiments`)
+      .then((result) =>
+        setRunning(result.experiments.filter((experiment) => experiment.status === 'running')),
+      )
+      .catch(() => setRunning([]));
+  }, [appId, base]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, reloadToken]);
 
   const byKey = useMemo(
     () => new Map((configs ?? []).map((config) => [keyOf(config.channel), config])),
@@ -368,6 +384,23 @@ export function RemoteConfigSection({
                 ) : null}
               </div>
             </div>
+
+            {current && runningHere(running, current.channel).length > 0 ? (
+              <p className="rounded-md bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">
+                Running A/B {runningHere(running, current.channel).length === 1 ? 'test' : 'tests'}:{' '}
+                {runningHere(running, current.channel)
+                  .map(
+                    (experiment) =>
+                      `${experiment.key}${
+                        experiment.overriddenKeys.length > 0
+                          ? ` (${experiment.overriddenKeys.join(', ')})`
+                          : ''
+                      }`,
+                  )
+                  .join('; ')}
+                . Devices in a test get their variant&apos;s values for these keys.
+              </p>
+            ) : null}
 
             {values ? (
               Object.keys(values).length === 0 ? (
