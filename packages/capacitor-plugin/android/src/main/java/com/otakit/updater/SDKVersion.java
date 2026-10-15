@@ -3,7 +3,7 @@ package com.otakit.updater;
 // Generated from package.json by scripts/generate-native-sdk-version.mjs.
 final class SDKVersion {
 
-  static final String VALUE = "3.3.0";
+  static final String VALUE = "3.4.0";
 
   private SDKVersion() {}
 }

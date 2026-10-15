@@ -3822,7 +3822,98 @@ Route: /changelog
 
 New features, improvements and fixes, newest first. Plugin features need the plugin version shown.
 
-Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.10.0 (2026-10-12), @otakit/push 0.1.1 (2026-09-27).
+Latest versions: @otakit/capacitor-updater 3.4.0 (2026-10-14), @otakit/cli 1.11.0 (2026-10-14), @otakit/push 0.1.1 (2026-09-27).
+
+### A/B tests (2026-10-14, Plugin 3.4.0, CLI 1.11.0)
+
+Test config values and code paths on real users and see which variant reaches your goal more often. No store release, no extra SDK and no device identifiers.
+
+- Create a test on a remote config with up to 5 variants and a goal event. Each device gets its variant from a random number that stays on the device, and keeps it.
+- `getConfig()` returns the values of the device's variant, and `getVariant(key)` lets your code branch on it.
+- Results show conversion, lift with a 95% interval and each variant's probability to be best. The verdict is decided once, at a fixed point, so a winner is rarely chance, and a variant with more errors is flagged early.
+- Ship the winning values to everyone from the results dialog, with `otakit experiments ship`, over the REST API, or through the `ship_experiment_variant` agent tool.
+
+```
+otakit experiments results paywall_title
+```
+
+Requires: Plugin 3.4+. Running tests per app: Starter 1, Pro 10, Enterprise unlimited.
+
+Docs: A/B tests guide (/docs/experiments)
+
+### Custom events and analytics (2026-10-14, Plugin 3.4.0)
+
+Send custom events with `track()` and see how often they happen, how they split by any property, and how they changed between releases. No user or device identifiers.
+
+- `initAnalytics()` counts app launches, so releases compare per 1,000 launches, for example during a rollout.
+- The Analytics section shows counts, trends and property splits, with a live view to check the setup. Tables copy as CSV.
+- Events are delivered from a native outbox that survives reloads, crashes and offline periods.
+- Agents answer questions such as "did checkout completions change after yesterday's release?" with `list_app_events` and `query_app_event`.
+
+```
+track('checkout_completed', { plan: 'pro' });
+```
+
+Requires: Plugin 3.4+. Custom events per month: Free 100,000, Starter 1 million, Pro 10 million.
+
+Docs: Analytics guide (/docs/analytics)
+
+### Error tracking (2026-10-14, Plugin 3.4.0)
+
+See which release broke what. JavaScript errors from your app are grouped into issues and shown per OTA release, channel, platform and OS version.
+
+- Turn it on with one line, `initErrorTracking()`, and send errors you catch with `captureError()`.
+- Resolve an issue when the fix ships. If it happens again on a newer release, it reopens and you get an alert.
+- Alerts for new issues, regressions and releases with an error spike, by email, in Slack or Discord, or as webhooks.
+- A release's health dialog shows its errors per 1,000 applies next to the release it replaced. Agents read issues with `list_error_issues` and `get_error_issue`.
+
+```
+initErrorTracking();
+```
+
+Requires: Plugin 3.4+. Error events per month: Free 10,000, Starter 100,000, Pro 1 million. Error tracking informs; it never reverts a release on its own.
+
+Docs: Error tracking guide (/docs/error-tracking)
+
+### Remote config (2026-10-14, Plugin 3.4.0, CLI 1.11.0)
+
+Change kill switches, URLs, limits and banners in a running app without a new bundle or store release.
+
+- A small JSON object per channel that the app reads instantly with `getConfig()`. The `configChanged` event fires when a fetch changes it.
+- Config is signed like your updates, so the app only uses values your server signed. Offline, it keeps the last config it verified.
+- Every change is a new version with an optional note, and History restores an earlier one. A write never overwrites a change someone made in the meantime.
+- Change it in the dashboard, with `otakit remote-config`, over the REST API, or through the `get_remote_config` and `set_remote_config` agent tools.
+
+```
+otakit remote-config set checkoutEnabled false --message "Partner outage"
+```
+
+Requires: Plugin 3.4+ to read config. Free covers the base channel; paid plans can give named channels their own config.
+
+Docs: Remote config guide (/docs/remote-config)
+
+### Release health charts (2026-10-14)
+
+Watch a release over time: applies, rollbacks and download errors per hour or day, with each rollout step marked.
+
+- Open a release's channel badge and choose Health. The chart also shows the lane's releases replacing each other.
+- Agents read the same data with `get_release_timeseries`.
+
+Docs: Rollouts guide (/docs/rollouts)
+
+### Bundle changes (2026-10-14, CLI 1.11.0)
+
+See what a bundle changes before it ships: files added, changed and removed, the size before and after, and what devices download.
+
+- Open Changes on a bundle in the dashboard, or run `otakit diff`. Compare with the previous upload, another bundle, or what a channel runs.
+- Warnings point out content that should not ship, such as `.env` files, `.git` directories, `node_modules` and source maps.
+- `otakit upload` prints what changed against the bundle the channel runs, and agents compare bundles with `diff_bundles`.
+
+```
+otakit diff <bundleId> --channel production
+```
+
+Docs: CLI reference (/docs/cli)
 
 ### Webhooks and alerts (2026-10-14)
 
