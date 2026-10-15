@@ -12,6 +12,7 @@ import {
   ChevronsUpDown,
   CircleAlert,
   Clock,
+  FileDiff,
   Copy,
   Cpu,
   Download,
@@ -40,6 +41,7 @@ import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
+import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
 import type {
@@ -165,7 +167,7 @@ const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
   applied: 64,
   errors: 64,
   rollbacks: 64,
-  action: 152,
+  action: 192,
 };
 
 /* ─── Platform Icons ──────────────────────────────────────────────── */
@@ -528,6 +530,13 @@ export function ProductDashboard({
     rolloutCustom: string;
   } | null>(null);
   const [rolloutChangeBusy, setRolloutChangeBusy] = useState(false);
+
+  // Bundle changes: what a bundle changes against another one
+  const [changesFor, setChangesFor] = useState<{
+    bundle: { id: string; version: string };
+    against?: string | null;
+    againstLabel?: string;
+  } | null>(null);
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -1882,6 +1891,27 @@ export function ProductDashboard({
                                                             </>
                                                           ) : null}
                                                         </div>
+                                                        {rel ? (
+                                                          <>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                              onClick={() =>
+                                                                setChangesFor({
+                                                                  bundle: {
+                                                                    id: rel.bundleId,
+                                                                    version: rel.bundleVersion,
+                                                                  },
+                                                                  against: rel.previousBundleId,
+                                                                  againstLabel:
+                                                                    'the release it replaced',
+                                                                })
+                                                              }
+                                                            >
+                                                              <FileDiff className="size-3.5" />
+                                                              Changes
+                                                            </DropdownMenuItem>
+                                                          </>
+                                                        ) : null}
                                                         {rolling ? (
                                                           <>
                                                             <DropdownMenuSeparator />
@@ -2029,6 +2059,20 @@ export function ProductDashboard({
                                             variant="outline"
                                             size="sm"
                                             className="mr-1.5 h-7 px-2"
+                                            title="Changes: compare with the previous upload"
+                                            aria-label={`Changes in ${b.version}`}
+                                            onClick={() =>
+                                              setChangesFor({
+                                                bundle: { id: b.id, version: b.version },
+                                              })
+                                            }
+                                          >
+                                            <FileDiff className="size-3.5" />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="mr-1.5 h-7 px-2"
                                             title="Preview link: open this bundle on a phone without releasing it"
                                             aria-label={`Preview link for ${b.version}`}
                                             disabled={previewDialog !== null}
@@ -2066,7 +2110,7 @@ export function ProductDashboard({
                           {bundles.length > visibleBundleCount ? (
                             <button
                               type="button"
-                              className="absolute -right-8 bottom-2 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+                              className="absolute bottom-2 right-2 flex h-6 w-6 2xl:-right-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
                               title="Load more"
                               onClick={() =>
                                 setVisibleBundleCount((current) =>
@@ -2357,7 +2401,7 @@ export function ProductDashboard({
                         {appEvents.length > visibleEventCount ? (
                           <button
                             type="button"
-                            className="absolute -right-8 bottom-2 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground sm:flex"
+                            className="absolute bottom-2 right-2 z-10 hidden 2xl:-right-8 h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground sm:flex"
                             title="Load more"
                             onClick={() =>
                               setVisibleEventCount((current) =>
@@ -2383,6 +2427,18 @@ export function ProductDashboard({
           )}
         </div>
       </main>
+
+      {changesFor && selectedAppId ? (
+        <BundleChangesDialog
+          key={`${changesFor.bundle.id}:${changesFor.against ?? ''}`}
+          appId={selectedAppId}
+          bundle={changesFor.bundle}
+          bundles={bundles}
+          against={changesFor.against}
+          againstLabel={changesFor.againstLabel}
+          onClose={() => setChangesFor(null)}
+        />
+      ) : null}
 
       <PricingDialog
         open={pricingDialogOpen}
