@@ -391,7 +391,7 @@ enum ManifestClient {
     )
   }
 
-  private static func parseSignature(_ rawValue: Any?) -> ManifestSignature? {
+  static func parseSignature(_ rawValue: Any?) -> ManifestSignature? {
     guard let sigObj = rawValue as? [String: Any],
           let kid = sigObj["kid"] as? String,
           let sig = sigObj["sig"] as? String,

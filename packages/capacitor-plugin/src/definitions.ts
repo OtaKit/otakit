@@ -87,6 +87,60 @@ export interface RolloutState {
   included: boolean;
 }
 
+/** Values of a remote config: plain JSON, keyed by name. */
+export type RemoteConfigValues = Record<string, unknown>;
+
+/** The app's remote config (plugin 3.4+), merged over your code defaults. */
+export interface RemoteConfig<T extends RemoteConfigValues = RemoteConfigValues> {
+  /**
+   * Remote values over your defaults: a top-level key from the remote config
+   * replaces the default of the same name. Plain JSON; validate values you
+   * depend on, since a key can be missing or have another type.
+   */
+  values: T;
+  /** Version of the remote config, or null when only your defaults apply. */
+  version: number | null;
+  /**
+   * Channel the remote config was published to: the app's channel, or null
+   * for the base channel (which channels without their own config also use).
+   */
+  channel: string | null;
+  /**
+   * `remote`: fetched in this app session. `cache`: saved by an earlier
+   * session. `defaults`: no remote config yet (or none was published).
+   */
+  source: 'remote' | 'cache' | 'defaults';
+  /** When the device last fetched or confirmed this config (ISO 8601), or null. */
+  fetchedAt: string | null;
+}
+
+/** `refreshConfig()`: the config after the fetch, and why the fetch failed, if it did. */
+export interface RemoteConfigRefreshResult<
+  T extends RemoteConfigValues = RemoteConfigValues,
+> extends RemoteConfig<T> {
+  /**
+   * Set when the fetch failed (for example `network_error`, `http_503`,
+   * `signature_invalid`); `values` are then the saved config or your defaults.
+   */
+  error?: string;
+}
+
+export interface GetConfigOptions<T extends RemoteConfigValues = RemoteConfigValues> {
+  /** Values to use for keys the remote config does not set. */
+  defaults?: T;
+}
+
+/** Remote config as the native layer reports it; the JS wrapper turns it into `RemoteConfig`. */
+export interface NativeRemoteConfig {
+  valuesJson: string | null;
+  experimentsJson: string | null;
+  version: number | null;
+  channel: string | null;
+  fetchedAt: string | null;
+  source: 'remote' | 'cache' | 'none';
+  error?: string;
+}
+
 /** An active preview link (see `previewLinks`). */
 export interface PreviewInfo {
   /** ISO timestamp when the preview was opened */
@@ -208,7 +262,8 @@ export type OtaKitEventName =
   | 'updateApplied'
   | 'downloadFailed'
   | 'rollback'
-  | 'previewFailed';
+  | 'previewFailed'
+  | 'configChanged';
 
 /**
  * Plugin configuration for capacitor.config.ts.
@@ -229,7 +284,8 @@ export interface OtaKitConfig {
   /**
    * Minimum milliseconds between automatic background resume checks.
    * Applies only to `resumePolicy: "shadow"` and `resumePolicy: "apply-staged"`
-   * when no staged bundle is already waiting. Defaults to 600000 (10 min).
+   * when no staged bundle is already waiting, and to remote config fetches on
+   * resume (plugin 3.4+). Defaults to 600000 (10 min).
    * Set to 0 or a negative value to disable resume throttling.
    */
   checkInterval?: number;
@@ -239,7 +295,7 @@ export interface OtaKitConfig {
   ingestUrl?: string;
   /** Optional control-plane API base URL used by self-host tooling such as the CLI. The native runtime does not use it. */
   serverUrl?: string;
-  /** Custom CDN base URL for manifest and bundle delivery. */
+  /** Custom CDN base URL for manifest, bundle and remote config delivery. */
   cdnUrl?: string;
   /** Custom manifest verification keys for self-hosted or custom trust. */
   manifestKeys?: OtaKitManifestKey[];
@@ -356,6 +412,39 @@ export interface OtaKitPlugin {
     eventName: 'previewFailed',
     listenerFunc: (event: PreviewFailedEvent) => void,
   ): Promise<PluginListenerHandle>;
+  /**
+   * The app's remote config changed after a fetch (plugin 3.4+). `values` are
+   * the remote values only: merge them over your defaults, or call
+   * `getConfig({ defaults })` again.
+   */
+  addListener(
+    eventName: 'configChanged',
+    listenerFunc: (config: RemoteConfig) => void,
+  ): Promise<PluginListenerHandle>;
+
+  /**
+   * The app's remote config over your defaults (plugin 3.4+). Answers
+   * instantly from the device: the plugin fetches config at launch and when
+   * the app returns to the foreground (at most every `checkInterval`), and
+   * emits `configChanged` when it changes. With an older native plugin it
+   * returns your defaults.
+   *
+   * ```ts
+   * const { values } = await OtaKit.getConfig({ defaults: { checkoutEnabled: true } });
+   * ```
+   */
+  getConfig<T extends RemoteConfigValues = RemoteConfigValues>(
+    options?: GetConfigOptions<T>,
+  ): Promise<RemoteConfig<T>>;
+
+  /**
+   * Fetch the remote config now, then resolve like `getConfig()` (plugin
+   * 3.4+). Never rejects for network errors: the result carries `error` and
+   * the saved config or your defaults.
+   */
+  refreshConfig<T extends RemoteConfigValues = RemoteConfigValues>(
+    options?: GetConfigOptions<T>,
+  ): Promise<RemoteConfigRefreshResult<T>>;
 
   /**
    * End the active preview link and return to the normal release.
@@ -395,6 +484,8 @@ export interface OtaKitBridgePlugin {
   stopPreview(): Promise<void>;
   getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
   markReleaseNotesSeen(): Promise<void>;
+  getConfig(): Promise<NativeRemoteConfig>;
+  refreshConfig(): Promise<NativeRemoteConfig>;
   addListener(
     eventName: OtaKitEventName,
     listenerFunc: (event: unknown) => void,

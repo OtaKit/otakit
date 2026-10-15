@@ -24,6 +24,37 @@ export type BundleDiffBundle = {
   encrypted: boolean;
 };
 
+/** A channel's remote config, as GET /apps/:appId/config returns it. */
+export type RemoteConfigState = {
+  appId: string;
+  channel: string | null;
+  /** Pass as expectedVersion to change it; 0 when the channel never had config. */
+  version: number;
+  status: 'live' | 'deleted' | 'none';
+  values: Record<string, unknown> | null;
+  message: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  usesBaseConfig: boolean;
+  publicationStatus: 'published' | 'pending';
+  fileUrl: string | null;
+};
+
+export type RemoteConfigWriteResult = {
+  config: RemoteConfigState;
+  changed: boolean;
+  warnings: Array<{ key: string; reason: string; message: string }>;
+};
+
+export type RemoteConfigHistoryEntry = {
+  version: number;
+  deleted: boolean;
+  values: Record<string, unknown> | null;
+  message: string | null;
+  createdBy: string;
+  createdAt: string;
+};
+
 export type BundleDiff = {
   target: BundleDiffBundle;
   base: BundleDiffBundle | null;
@@ -361,6 +392,77 @@ export class ApiClient {
     return this.request(
       this.appPath(`/bundles/${encodeURIComponent(bundleId)}/diff${query ? `?${query}` : ''}`),
     );
+  }
+
+  private configQuery(channel: string | null, extra: Record<string, string> = {}): string {
+    const params = new URLSearchParams({ channel: channel ?? '', ...extra });
+    return `?${params.toString()}`;
+  }
+
+  /** A channel's remote config (null: the base channel). */
+  async getRemoteConfig(channel: string | null): Promise<RemoteConfigState> {
+    return this.request(this.appPath(`/config${this.configQuery(channel)}`));
+  }
+
+  async listRemoteConfigs(): Promise<{ configs: RemoteConfigState[] }> {
+    return this.request(this.appPath('/config/channels'));
+  }
+
+  async getRemoteConfigHistory(
+    channel: string | null,
+  ): Promise<{ versions: RemoteConfigHistoryEntry[] }> {
+    return this.request(this.appPath(`/config/history${this.configQuery(channel)}`));
+  }
+
+  /** Replace a channel's config. */
+  async putRemoteConfig(options: {
+    channel: string | null;
+    values: Record<string, unknown>;
+    expectedVersion: number;
+    message?: string;
+  }): Promise<RemoteConfigWriteResult> {
+    return this.request(this.appPath('/config'), {
+      method: 'PUT',
+      body: JSON.stringify(options),
+    });
+  }
+
+  /** Set and remove keys of a channel's config. */
+  async patchRemoteConfig(options: {
+    channel: string | null;
+    set?: Record<string, unknown>;
+    unset?: string[];
+    expectedVersion: number;
+    message?: string;
+  }): Promise<RemoteConfigWriteResult> {
+    return this.request(this.appPath('/config'), {
+      method: 'PATCH',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async restoreRemoteConfig(options: {
+    channel: string | null;
+    version: number;
+    expectedVersion: number;
+    message?: string;
+  }): Promise<RemoteConfigWriteResult> {
+    return this.request(this.appPath('/config/restore'), {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  async deleteRemoteConfig(options: {
+    channel: string | null;
+    expectedVersion: number;
+    message?: string;
+  }): Promise<{ config: RemoteConfigState; changed: boolean }> {
+    const extra: Record<string, string> = { expectedVersion: String(options.expectedVersion) };
+    if (options.message) extra.message = options.message;
+    return this.request(this.appPath(`/config${this.configQuery(options.channel, extra)}`), {
+      method: 'DELETE',
+    });
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {

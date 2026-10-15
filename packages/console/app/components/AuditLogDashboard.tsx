@@ -40,6 +40,8 @@ const ACTION_LABELS: Record<string, string> = {
   'release.reverted': 'Release rolled back',
   'release.rollout_updated': 'Rollout changed',
   'release.notes_updated': 'Release notes edited',
+  'config.published': 'Remote config published',
+  'config.deleted': 'Remote config deleted',
   'preview.created': 'Preview link created',
   'preview.revoked': 'Preview link revoked',
   'api_key.created': 'API key created',

@@ -36,6 +36,12 @@ export const NOTIFICATION_EVENTS = [
     group: 'Release health',
   },
   {
+    type: 'config.updated',
+    label: 'Config changed',
+    description: 'Remote config is published, restored or deleted on a channel',
+    group: 'Remote config',
+  },
+  {
     type: 'bundle.uploaded',
     label: 'Bundle uploaded',
     description: 'A new bundle is uploaded',
@@ -110,6 +116,21 @@ export type NotificationBundle = {
   createdAt: string;
 };
 
+export type NotificationConfig = {
+  /** Null for the base channel. */
+  channel: string | null;
+  version: number;
+  /** 0 when the channel had no config before. */
+  previousVersion: number;
+  /** The channel's config was deleted: its devices now use the base channel's config. */
+  deleted: boolean;
+  message: string | null;
+  /** Top-level keys compared with the previous live config. */
+  changedKeys: { added: string[]; changed: string[]; removed: string[] };
+  /** The new values; null when deleted. */
+  values: Record<string, unknown> | null;
+};
+
 export type NotificationUsage = {
   threshold: 90 | 100;
   downloadsCount: number;
@@ -147,6 +168,7 @@ export type NotificationEventFields =
       type: 'release.auto_revert_suppressed';
       data: { release: ReleaseSummary; health: AutoRevertHealth };
     }
+  | { type: 'config.updated'; data: { config: NotificationConfig } }
   | { type: 'bundle.uploaded'; data: { bundle: NotificationBundle } }
   | { type: 'usage.warning'; data: { usage: NotificationUsage } }
   | { type: typeof TEST_EVENT_TYPE; data: { message: string } };

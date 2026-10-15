@@ -154,6 +154,7 @@ checks:
 
 - `resumePolicy: "shadow"`
 - `resumePolicy: "apply-staged"` when there is no staged bundle to apply
+- remote config fetches on resume (plugin 3.4+), whatever the resume policy
 
 Set `checkInterval` to `0` or a negative value to disable resume throttling.
 
@@ -338,6 +339,37 @@ try {
 The running bundle's notes are also in `getState().current.notes` and the
 `updateApplied` event.
 
+## Remote config
+
+A small JSON object per channel that you change in the dashboard, with
+`otakit remote-config`, the REST API or an agent, without a new bundle or
+store build: kill switches, URLs, limits, banners. Plugin 3.4+ reads it.
+
+```ts
+const defaults = { checkoutEnabled: true, helpUrl: 'https://example.com/help' };
+
+// Add the listener first: a change fetched at launch is delivered to it.
+OtaKit.addListener('configChanged', (next) => applyConfig({ ...defaults, ...next.values }));
+
+const { values } = await OtaKit.getConfig({ defaults });
+applyConfig(values);
+```
+
+- `getConfig()` answers from the device instantly: the config saved by the
+  last fetch, merged over your `defaults` (`source` is `remote`, `cache` or
+  `defaults`). It never waits for the network.
+- The plugin fetches config at launch, when the app returns to the foreground
+  (at most every `checkInterval`), and after `setChannel()`, whatever the
+  update policies are. `configChanged` fires when a fetch changes it.
+- `refreshConfig()` fetches now and resolves with the result; network errors
+  resolve with an `error` code and the saved config instead of rejecting.
+- A channel without its own config uses the base channel's config. Files are
+  signed with the manifest key; a tampered or older file is ignored, and the
+  last good config is kept offline.
+- Config is public: anyone with your app can read it. Never put secrets in it.
+- With a native shell older than 3.4 (new JavaScript sent over the air), the
+  methods return your defaults instead of throwing.
+
 ## Events
 
 The plugin emits lifecycle events alongside the pull APIs:
@@ -348,6 +380,7 @@ OtaKit.addListener('updateStaged', ({ bundle }) => {}); // downloaded + verified
 OtaKit.addListener('updateApplied', ({ bundle }) => {}); // new bundle confirmed healthy
 OtaKit.addListener('downloadFailed', (failure) => {}); // non-terminal download/verify error
 OtaKit.addListener('rollback', (failure) => {}); // applied bundle reverted (notify timeout)
+OtaKit.addListener('configChanged', (config) => {}); // remote config changed (plugin 3.4+)
 OtaKit.removeAllListeners();
 ```
 

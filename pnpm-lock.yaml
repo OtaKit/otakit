@@ -129,6 +129,9 @@ importers:
       typescript-eslint:
         specifier: ^8.32.1
         version: 8.54.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@25.2.2)(vite@8.2.2(@types/node@25.2.2)(esbuild@0.28.2)(jiti@2.6.1))
 
   packages/cli:
     dependencies:

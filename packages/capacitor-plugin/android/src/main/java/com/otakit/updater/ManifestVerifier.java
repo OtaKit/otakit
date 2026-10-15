@@ -131,6 +131,37 @@ final class ManifestVerifier {
     );
   }
 
+  /**
+   * Verify a remote config file (plugin 3.4+). The JSON texts are bound by the SHA-256 of their
+   * exact UTF-8 bytes, so nothing is re-serialized; must match the server's buildConfigPayload
+   * byte-for-byte.
+   */
+  static void verifyConfig(
+    String appId,
+    String channel,
+    long version,
+    boolean deleted,
+    String valuesJson,
+    String experimentsJson,
+    ManifestClient.ManifestSignature signature,
+    List<KeyEntry> trustedKeys
+  ) throws Exception {
+    List<String> lines = new ArrayList<>();
+    lines.add("appId:" + appId);
+    lines.add("channel:" + (channel != null ? channel : "null"));
+    lines.add("version:" + version);
+    lines.add("deleted:" + (deleted ? "true" : "false"));
+    lines.add("valuesSha256:" + sha256Hex(valuesJson));
+    lines.add(
+      "experimentsSha256:" + (experimentsJson != null ? sha256Hex(experimentsJson) : "null")
+    );
+    verifyCanonicalPayload(
+      buildCanonicalPayload("CONFIG", lines, signature),
+      signature,
+      trustedKeys
+    );
+  }
+
   /** Lowercase hex SHA-256 of the UTF-8 bytes, as the server computes it. */
   static String sha256Hex(String text) {
     try {

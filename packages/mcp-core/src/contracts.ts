@@ -22,6 +22,8 @@ export const OTAKIT_TOOL_NAMES = [
   'set_rollout_percent',
   'create_preview',
   'revoke_preview',
+  'get_remote_config',
+  'set_remote_config',
   'inspect_project',
   'check_compatibility',
   'upload_bundle',

@@ -54,6 +54,13 @@ otakit upload --preview                 # upload, then print a preview link and 
 otakit preview <bundleId> --scheme myapp --expires 24h
 otakit preview --list
 otakit preview --revoke <previewId>
+
+otakit remote-config get [--channel beta]          # values apps read (plugin 3.4+)
+otakit remote-config set <key> <value> --message "why"   # JSON when it parses, else text
+otakit remote-config unset <key...>
+otakit remote-config push config.json --yes        # replace the whole object
+otakit remote-config history
+otakit remote-config restore <version>
 ```
 
 Flags that change device behavior, so show them before running:

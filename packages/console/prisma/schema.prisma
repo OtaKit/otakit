@@ -434,6 +434,7 @@ model App {
   uploadSessions           UploadSession[]
   previews                 BundlePreview[]
   notificationDestinations NotificationDestination[]
+  remoteConfigs            RemoteConfig[]
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
@@ -652,4 +653,52 @@ model NotificationDelivery {
   @@index([status, nextAttemptAt])
   @@index([destinationId, createdAt(sort: Desc)])
   @@index([createdAt])
+}
+
+/// Remote config of one channel of an app: a JSON object apps read with
+/// OtaKit.getConfig() (plugin 3.4+). Every change is a new version; the signed
+/// CDN file config/{appId}/{channelKey}/config.json is derived from the latest.
+model RemoteConfig {
+  id             String                @id @default(uuid())
+  app            App                   @relation(fields: [appId], references: [id], onDelete: Cascade)
+  appId          String
+  /// Null for the base channel.
+  channel        String?
+  /// `channel ?? '__base__'`: unique per app, the base channel included.
+  channelKey     String
+  /// Latest version. Versions start at 1 and never repeat, deletes included,
+  /// so devices can refuse an older file (replay).
+  currentVersion Int
+  /// Version the CDN file was last written for; lower than currentVersion
+  /// while a write is pending repair.
+  syncedVersion  Int                   @default(0)
+  /// When the file was last written. Signatures expire after a year, so old
+  /// files are signed again.
+  syncedAt       DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  versions       RemoteConfigVersion[]
+
+  @@unique([appId, channelKey])
+}
+
+/// One published state of a channel's config, or its deletion.
+model RemoteConfigVersion {
+  id              String       @id @default(uuid())
+  config          RemoteConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  configId        String
+  version         Int
+  /// Exactly the text devices receive and the signature covers; "{}" for a deletion.
+  valuesJson      String
+  /// Running experiments (A/B tests), exactly as signed; null when there are none.
+  experimentsJson String?
+  /// The channel's config was deleted in this version (a signed deletion file):
+  /// devices on a named channel use the base config, base apps their defaults.
+  deleted         Boolean      @default(false)
+  /// Why it changed, shown in history and notifications.
+  message         String?
+  createdBy       String
+  createdAt       DateTime     @default(now())
+
+  @@unique([configId, version])
 }

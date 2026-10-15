@@ -2,6 +2,8 @@ import {
   PublicToolError,
   bundleDiffEnvelopeParts,
   releaseTimeseriesEnvelopeParts,
+  remoteConfigSummary,
+  remoteConfigWriteParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -26,6 +28,11 @@ import { isOtaKitServiceError } from '@/lib/services/errors';
 import { getBundleDiff } from '@/lib/services/bundle-diff';
 import { listEvents } from '@/lib/services/events';
 import { getReleaseTimeseries, isReleaseTimeseriesRange } from '@/lib/services/release-timeseries';
+import {
+  getRemoteConfig,
+  parseConfigChannel,
+  patchRemoteConfig,
+} from '@/lib/services/remote-config';
 import { createPreview, revokePreview } from '@/lib/services/previews';
 import type { PreviewExpiry } from '@/lib/preview-links';
 import {
@@ -271,6 +278,10 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.createPreview(input);
         case 'revoke_preview':
           return await this.revokePreview(input);
+        case 'get_remote_config':
+          return await this.getRemoteConfig(input);
+        case 'set_remote_config':
+          return await this.setRemoteConfig(input);
         // Unreachable in practice: toolDefinitionsForMode('remote') never
         // registers these, so a caller gets a protocol-level unknown-tool
         // error first. Kept so the switch stays exhaustive over the shared
@@ -692,6 +703,39 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
         ? ['Retry with the exact same arguments and idempotency key; do not change it again.']
         : [],
     });
+  }
+
+  private async getRemoteConfig(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const state = await getRemoteConfig({
+      organizationId: this.connection.access.organizationId,
+      appId,
+      channel: parseConfigChannel(input.channel),
+    });
+    return toolEnvelope(remoteConfigSummary(state), json(state));
+  }
+
+  private async setRemoteConfig(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const result = await patchRemoteConfig(
+      {
+        organizationId: this.connection.access.organizationId,
+        actor: await accessActor(this.connection.access),
+        appId,
+        auditMetadata: invocationMetadata(this.connection),
+      },
+      {
+        channel: input.channel,
+        set: input.set,
+        unset: input.unset,
+        expectedVersion: input.expectedVersion,
+        message: input.message,
+      },
+    );
+    const parts = remoteConfigWriteParts(result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
   }
 
   private async createPreview(input: JsonObject): Promise<ToolEnvelope> {

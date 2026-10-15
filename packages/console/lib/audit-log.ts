@@ -18,6 +18,8 @@ export type AuditAction =
   | 'release.reverted'
   | 'release.rollout_updated'
   | 'release.notes_updated'
+  | 'config.published'
+  | 'config.deleted'
   | 'preview.created'
   | 'preview.revoked'
   | 'release.auto_reverted'

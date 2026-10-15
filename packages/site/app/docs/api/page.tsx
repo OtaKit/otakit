@@ -264,6 +264,93 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           description="Revoke a preview link. Phones on it return to their release on their next update check."
         />
       </div>
+
+      <Separator className="my-10" />
+
+      <H2>Remote config</H2>
+      <div className="space-y-8">
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/config"
+          auth="Bearer"
+          queryParams="?channel=beta (omit or leave empty for the base channel)"
+          response={`{
+  "appId": "uuid",
+  "channel": "beta",            // null for the base channel
+  "version": 12,                // pass as expectedVersion; 0 = never configured
+  "status": "live",             // "live" | "deleted" | "none"
+  "values": { "checkoutEnabled": false },
+  "message": "Partner outage",
+  "updatedBy": "dev@acme.com",
+  "updatedAt": "ISO timestamp",
+  "usesBaseConfig": false,      // true: devices on this channel read the base config
+  "publicationStatus": "published",   // "pending" while the CDN write is retried
+  "fileUrl": "https://cdn.otakit.app/config/<appId>/beta/config.json"
+}`}
+          description="A channel's remote config, the values apps read with OtaKit.getConfig() (plugin 3.4+). A channel without its own config uses the base channel's."
+        />
+        <Endpoint
+          method="PUT"
+          path="/api/v1/apps/:appId/config"
+          auth="Bearer"
+          body={`{
+  "channel": null,              // or a channel name
+  "values": { "checkoutEnabled": false, "helpUrl": "https://example.com/help" },
+  "expectedVersion": 12,
+  "message": "Partner outage"   // optional, up to 200 characters
+}`}
+          response={`{ "config": { ...as GET }, "changed": true, "warnings": [{ "key", "reason", "message" }] }`}
+          description="Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets; config is public."
+        />
+        <Endpoint
+          method="PATCH"
+          path="/api/v1/apps/:appId/config"
+          auth="Bearer"
+          body={`{
+  "channel": null,
+  "set": { "maintenanceBanner": "Back at 14:00" },
+  "unset": ["helpUrl"],
+  "expectedVersion": 12,
+  "message": "Maintenance"
+}`}
+          response={`{ "config": { ... }, "changed": true, "warnings": [] }`}
+          description="Set and remove top-level keys of the latest version. Same rules as PUT."
+        />
+        <Endpoint
+          method="DELETE"
+          path="/api/v1/apps/:appId/config"
+          auth="Bearer"
+          queryParams="?channel=beta&expectedVersion=12&message=…"
+          response={`{ "config": { ..., "status": "deleted" }, "changed": true }`}
+          description="Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/config/channels"
+          auth="Bearer"
+          response={`{ "configs": [{ ...as GET }, ...] }`}
+          description="Every channel that has or had config, base channel first."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/config/history"
+          auth="Bearer"
+          queryParams="?channel=beta"
+          response={`{
+  "versions": [{ "version": 12, "deleted": false, "values": { ... },
+                 "message": "…", "createdBy": "dev@acme.com", "createdAt": "ISO timestamp" }]
+}`}
+          description="The last 50 versions of a channel's config, newest first."
+        />
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/config/restore"
+          auth="Bearer"
+          body={`{ "channel": null, "version": 11, "expectedVersion": 12, "message": "optional" }`}
+          response={`{ "config": { ... }, "changed": true, "warnings": [] }`}
+          description="Publish an earlier version's values again as a new version (message defaults to 'Restored version N')."
+        />
+      </div>
     </>
   );
 }

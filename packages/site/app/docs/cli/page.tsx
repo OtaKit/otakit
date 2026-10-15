@@ -432,6 +432,68 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Separator />
 
         <Command
+          name="otakit remote-config get"
+          description="Show a channel's remote config: the values apps read with OtaKit.getConfig() (plugin 3.4+), its version, and who changed it last. Without --channel, the base channel."
+          options={[
+            { flag: '--channel <channel>', desc: 'Channel (default: the base channel).' },
+            {
+              flag: '--values',
+              desc: 'Print only the values as JSON, ready for remote-config push.',
+            },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example="otakit remote-config get --channel beta"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit remote-config set"
+          args="<key> <value>"
+          description={
+            'Set one key and publish a new version. The value is read as JSON when it parses (false, 5, {"limit":3}) and as text otherwise. remote-config unset <keys...> removes keys the same way.'
+          }
+          options={[
+            { flag: '--channel <channel>', desc: 'Channel (default: the base channel).' },
+            { flag: '--string', desc: 'Store the value as text even if it looks like JSON.' },
+            {
+              flag: '--message <text>',
+              desc: 'Why it changes, shown in history, the audit log and notifications.',
+            },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example='otakit remote-config set checkoutEnabled false --message "Partner outage"'
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit remote-config push"
+          args="<file>"
+          description="Replace a channel's config with a JSON object from a file. Shows the keys it adds, changes and removes, and asks before publishing."
+          options={[
+            { flag: '--channel <channel>', desc: 'Channel (default: the base channel).' },
+            { flag: '--message <text>', desc: 'Why it changes.' },
+            { flag: '--yes', desc: 'Replace without the confirmation prompt (required in CI).' },
+          ]}
+          example="otakit remote-config push config.json --channel beta --yes"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit remote-config history"
+          description="List a channel's config versions, newest first. remote-config restore <version> publishes an earlier version's values again as a new version; remote-config delete removes a channel's config, so its devices use the base config; remote-config list shows the channels that have config."
+          options={[
+            { flag: '--channel <channel>', desc: 'Channel (default: the base channel).' },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example="otakit remote-config restore 12 --channel beta"
+        />
+
+        <Separator />
+
+        <Command
           name="otakit push send"
           description="Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending."
           options={[

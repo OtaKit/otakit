@@ -28,6 +28,9 @@ export type OtaKitErrorCode =
   | 'ROLLOUTS_UNAVAILABLE'
   | 'MANIFEST_SYNC_PENDING'
   | 'ANALYTICS_UNAVAILABLE'
+  | 'CONFIG_NOT_FOUND'
+  | 'STALE_CONFIG_VERSION'
+  | 'PLAN_REQUIRED'
   | 'RATE_LIMITED';
 
 export class OtaKitServiceError extends Error {

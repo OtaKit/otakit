@@ -5,5 +5,6 @@ export * from './previews';
 export * from './prompts';
 export * from './registry';
 export * from './release-timeseries';
+export * from './remote-config';
 export * from './rollouts';
 export * from './version';

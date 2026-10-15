@@ -5,6 +5,7 @@ import { runAutoRevertSweep } from '@/lib/auto-revert';
 import { deliverDueNotifications } from '@/lib/notifications/deliver';
 import { isReleaseReliabilityEnabled } from '@/lib/release-features';
 import { reconcilePendingReleaseMutations } from '@/lib/services/releases';
+import { reconcileRemoteConfigFiles } from '@/lib/services/remote-config';
 
 export const runtime = 'nodejs';
 
@@ -78,6 +79,13 @@ export async function POST(request: NextRequest) {
         failures,
       )
     : { checked: 0, repaired: 0, pending: 0 };
+  // Remote config files whose CDN write failed after the database committed.
+  const configRepairs = await repair(
+    'configRepairs',
+    () => reconcileRemoteConfigFiles(),
+    { checked: 0, repaired: 0, pending: 0 },
+    failures,
+  );
   const stats = await runAutoRevertSweep();
   // Send this sweep's auto-revert alerts now rather than at the next
   // notifications cron run.
@@ -91,6 +99,7 @@ export async function POST(request: NextRequest) {
     success: true,
     stats,
     manifestRepairs,
+    configRepairs,
     notifications,
     ...(failures.length ? { failures } : {}),
   });
