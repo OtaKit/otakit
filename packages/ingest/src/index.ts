@@ -64,6 +64,7 @@ type WorkerEnv = GateEnv & {
   TINYBIRD_EVENTS_DATASOURCE: string;
   TINYBIRD_EVENTS_TOKEN: string;
   TINYBIRD_APP_ERRORS_DATASOURCE?: string;
+  TINYBIRD_APP_EVENTS_DATASOURCE?: string;
 };
 
 const EVENTS_PATHS = new Set(['/v1/events']);
@@ -284,7 +285,7 @@ async function handleEventsRequest(request: Request, env: WorkerEnv): Promise<Re
 }
 
 /**
- * App telemetry: errors (plugin 3.4+) in batches from the app's own outbox.
+ * App telemetry: errors and custom events (plugin 3.4+) in batches from the app's own outbox.
  * Invalid items are dropped one by one; an unknown app gets 404, which the
  * device treats as permanent; a paused kind (monthly cap) is accepted and
  * discarded, so devices stop retrying it without errors.
@@ -367,6 +368,7 @@ async function handleAppTelemetryBatch(
   const token = requireNonEmpty(env.TINYBIRD_EVENTS_TOKEN, 'TINYBIRD_EVENTS_TOKEN');
   const datasources: Record<TelemetryMessage['kind'], string> = {
     error: env.TINYBIRD_APP_ERRORS_DATASOURCE?.trim() || 'app_errors_raw',
+    event: env.TINYBIRD_APP_EVENTS_DATASOURCE?.trim() || 'app_events_raw',
   };
   const byKind = new Map<TelemetryMessage['kind'], Array<QueueMessage<TelemetryMessage>>>();
   for (const message of batch.messages) {

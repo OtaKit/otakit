@@ -13,6 +13,7 @@
     "TINYBIRD_API_HOST": "https://api.us-east.aws.tinybird.co",
     "TINYBIRD_EVENTS_DATASOURCE": "device_events_raw",
     "TINYBIRD_APP_ERRORS_DATASOURCE": "app_errors_raw",
+    "TINYBIRD_APP_EVENTS_DATASOURCE": "app_events_raw",
   },
   "queues": {
     "producers": [

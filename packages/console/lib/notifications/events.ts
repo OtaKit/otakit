@@ -66,6 +66,12 @@ export const NOTIFICATION_EVENTS = [
     group: 'Errors',
   },
   {
+    type: 'analytics.paused',
+    label: 'Analytics paused',
+    description: "Custom events reach the plan's monthly limit; new events are dropped",
+    group: 'Analytics',
+  },
+  {
     type: 'bundle.uploaded',
     label: 'Bundle uploaded',
     description: 'A new bundle is uploaded',
@@ -94,6 +100,7 @@ export const DEFAULT_EMAIL_EVENTS: NotificationEventType[] = [
   'errors.regression',
   'errors.spike',
   'errors.paused',
+  'analytics.paused',
 ];
 
 export const DEFAULT_EMAIL_DESTINATION_NAME = 'Owners and admins';
@@ -188,8 +195,9 @@ export type NotificationErrorRates = {
   issues: number;
 };
 
+/** A workspace's monthly error events, or custom events for analytics.paused. */
 export type NotificationErrorUsage = {
-  /** Error events this UTC month. */
+  /** Events this UTC month. */
   events: number;
   limit: number;
   /** New errors are dropped until then: the start of the next UTC month. */
@@ -253,6 +261,7 @@ export type NotificationEventFields =
       };
     }
   | { type: 'errors.paused'; data: { errorUsage: NotificationErrorUsage } }
+  | { type: 'analytics.paused'; data: { eventUsage: NotificationErrorUsage } }
   | { type: 'bundle.uploaded'; data: { bundle: NotificationBundle } }
   | { type: 'usage.warning'; data: { usage: NotificationUsage } }
   | { type: typeof TEST_EVENT_TYPE; data: { message: string } };

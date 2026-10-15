@@ -1,5 +1,10 @@
 import {
   PublicToolError,
+  appEventBreakdownSummary,
+  appEventListEnvelopeParts,
+  appEventQueryWarnings,
+  appEventReleasesSummary,
+  appEventTimeseriesSummary,
   bundleDiffEnvelopeParts,
   errorIssueAgentPayload,
   errorIssueEnvelopeParts,
@@ -29,6 +34,13 @@ import { deleteBundle, getBundle, listBundles } from '@/lib/services/bundles';
 import { getConnectionContext } from '@/lib/services/context';
 import { isOtaKitServiceError } from '@/lib/services/errors';
 import { getBundleDiff } from '@/lib/services/bundle-diff';
+import {
+  compareAppEventReleases,
+  getAppEvent,
+  getAppEventPropertyBreakdown,
+  listAppEvents,
+  parseAppEventFilters,
+} from '@/lib/services/app-events';
 import {
   getErrorIssue,
   listErrorIssues,
@@ -278,6 +290,10 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.listErrorIssues(input);
         case 'get_error_issue':
           return await this.getErrorIssue(input);
+        case 'list_app_events':
+          return await this.listAppEvents(input);
+        case 'query_app_event':
+          return await this.queryAppEvent(input);
         case 'list_audit_log':
           return await this.listAuditLog(input);
         case 'prepare_revert':
@@ -674,6 +690,65 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
     const parts = errorIssueEnvelopeParts(detail);
     return toolEnvelope(parts.summary, json(errorIssueAgentPayload(detail)), {
       warnings: parts.warnings,
+    });
+  }
+
+  private appEventFilters(input: JsonObject) {
+    return parseAppEventFilters({
+      range: optionalString(input, 'range'),
+      platform: optionalString(input, 'platform'),
+      releaseId: optionalString(input, 'releaseId'),
+      channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+    });
+  }
+
+  private async listAppEvents(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const list = await listAppEvents(
+      { organizationId: this.connection.access.organizationId, appId },
+      this.appEventFilters(input),
+    );
+    const parts = appEventListEnvelopeParts(list);
+    return toolEnvelope(parts.summary, json(list), { warnings: parts.warnings });
+  }
+
+  private async queryAppEvent(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const ctx = { organizationId: this.connection.access.organizationId, appId };
+    const name = stringInput(input, 'name');
+    const view = optionalString(input, 'view') ?? 'timeseries';
+    if (view === 'breakdown') {
+      const property = optionalString(input, 'property');
+      if (!property) {
+        throw new PublicToolError('INVALID_INPUT', 'property is required for view breakdown');
+      }
+      const result = await getAppEventPropertyBreakdown(
+        ctx,
+        name,
+        property,
+        this.appEventFilters(input),
+      );
+      return toolEnvelope(appEventBreakdownSummary(result), json(result), {
+        warnings: appEventQueryWarnings(result.analyticsAvailable),
+      });
+    }
+    if (view === 'releases') {
+      const releaseIds = Array.isArray(input.releaseIds)
+        ? input.releaseIds.filter((id): id is string => typeof id === 'string')
+        : undefined;
+      const result = await compareAppEventReleases(ctx, name, {
+        releaseIds,
+        channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+      });
+      return toolEnvelope(appEventReleasesSummary(result), json(result), {
+        warnings: appEventQueryWarnings(result.analyticsAvailable),
+      });
+    }
+    const result = await getAppEvent(ctx, name, this.appEventFilters(input));
+    return toolEnvelope(appEventTimeseriesSummary(result), json(result), {
+      warnings: appEventQueryWarnings(result.analyticsAvailable),
     });
   }
 

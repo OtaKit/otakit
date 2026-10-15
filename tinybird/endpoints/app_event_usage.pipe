@@ -1,0 +1,20 @@
+DESCRIPTION >
+    Custom events per app in [start_date, end_date_exclusive), for monthly plan caps.
+    Without app_ids, every app with events.
+
+TOKEN otakit_web READ
+
+NODE count_app_events
+SQL >
+    %
+    SELECT
+        app_id,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events
+    FROM app_event_hourly
+    WHERE toDate(bucket) >= toDate({{ String(start_date, '1970-01-01') }})
+      AND toDate(bucket) < toDate({{ String(end_date_exclusive, '2100-01-01') }})
+      AND ({{ String(app_ids, '') }} = '' OR has(splitByChar(',', {{ String(app_ids, '') }}), app_id))
+    GROUP BY app_id
+    ORDER BY app_id
+
+TYPE ENDPOINT

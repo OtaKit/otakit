@@ -1,0 +1,25 @@
+DESCRIPTION >
+    Materialized hourly rollup of raw custom events.
+
+NODE rollup_hourly_events
+SQL >
+    SELECT
+        toStartOfHour(toDateTime(received_at, 'UTC')) AS bucket,
+        app_id,
+        name,
+        ifNull(release_id, '') AS release_id,
+        ifNull(channel, '') AS channel,
+        platform,
+        uniqExactState(event_id) AS event_ids_uniq_exact_state,
+        uniqExactState(session_id) AS session_ids_uniq_exact_state
+    FROM app_events_raw
+    GROUP BY
+        bucket,
+        app_id,
+        name,
+        release_id,
+        channel,
+        platform
+
+TYPE MATERIALIZED
+DATASOURCE app_event_hourly

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppTelemetryItem } from './definitions';
 import { createErrorTracking, scrub, scrubStack } from './error-tracking';
+import { createTelemetry } from './telemetry';
 
 type Native = {
   enqueueAppTelemetry: ReturnType<typeof vi.fn>;
@@ -22,7 +23,7 @@ function setup(options: { native?: boolean; random?: number } = {}) {
       current: { id: 'bundle-1', version: '1.4.2', releaseId: 'release-9', channel: 'production' },
     })),
   };
-  const tracking = createErrorTracking(native as never, {
+  const telemetry = createTelemetry(native as never, {
     isNative: () => options.native ?? true,
     target,
     document,
@@ -31,6 +32,7 @@ function setup(options: { native?: boolean; random?: number } = {}) {
     uuid: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
     now: () => new Date('2026-10-14T12:00:00.000Z'),
   });
+  const tracking = { ...createErrorTracking(telemetry), flush: telemetry.flush };
   const sent = () =>
     native.enqueueAppTelemetry.mock.calls.flatMap(
       ([argument]) => (argument as { items: AppTelemetryItem[] }).items,
@@ -45,7 +47,7 @@ function setup(options: { native?: boolean; random?: number } = {}) {
     );
   const reject = (reason: unknown) =>
     target.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason }));
-  return { tracking, native, sent, target, document, throwError, reject };
+  return { tracking, telemetry, native, sent, target, document, throwError, reject };
 }
 
 function typeError(message = "Cannot read properties of undefined (reading 'total')") {
@@ -130,7 +132,7 @@ describe('initErrorTracking', () => {
     web.throwError(typeError());
     expect(web.tracking.captureError(new Error('x'))).toBeNull();
     expect(console.warn).toHaveBeenCalledWith(
-      '[OtaKit] Error tracking runs in the iOS and Android apps; nothing is sent on web.',
+      '[OtaKit] Error tracking and analytics run in the iOS and Android apps; nothing is sent on web.',
     );
     expect(() => setup().tracking.initErrorTracking({ sampleRate: 2 })).toThrow(/sampleRate/);
   });
@@ -371,7 +373,7 @@ describe('delivery to the native plugin', () => {
     await tracking.flush();
     expect(tracking.captureError(new Error('b'))).toBeNull();
     expect(console.warn).toHaveBeenCalledWith(
-      '[OtaKit] Error tracking needs @otakit/capacitor-updater 3.4 or later in the native build; errors are not sent.',
+      '[OtaKit] Error tracking and analytics need @otakit/capacitor-updater 3.4 or later in the native build; nothing is sent.',
     );
   });
 

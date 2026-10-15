@@ -16,11 +16,14 @@ final class EventOutbox {
     static let deviceEvents = Limits(
       count: 256, ttl: 7 * 24 * 60 * 60, maxBody: 8192, maxFile: 4 * 1024 * 1024,
       idKey: "eventId", fileName: "events.json")
-    /// Batches of up to 64 KiB, kept 3 days.
+    /// Batches of up to 64 KiB, kept 3 days: an hour of items each while offline.
     static let appTelemetry = Limits(
-      count: 60, ttl: 3 * 24 * 60 * 60, maxBody: 64 * 1024, maxFile: 8 * 1024 * 1024,
+      count: 72, ttl: 3 * 24 * 60 * 60, maxBody: 64 * 1024, maxFile: 8 * 1024 * 1024,
       idKey: "batchId", fileName: "batches.json")
   }
+
+  /// New items join a pending entry with the same merge key for this long after it was created.
+  static let mergeWindow: TimeInterval = 60 * 60
 
   static let limit = Limits.deviceEvents.count
   static let ttl = Limits.deviceEvents.ttl
@@ -32,11 +35,17 @@ final class EventOutbox {
     let createdAt: TimeInterval
     var attempts: Int
     var nextAt: TimeInterval
+    /// When the outbox is full, lower priorities are evicted first (nil = 0).
+    var priority: Int?
+    /// Entries with the same key can take in new items (see `enqueue`).
+    var mergeKey: String?
   }
   let limits: Limits
   private let file: URL
   private let lock = NSLock()
   private var entries: [Entry] = []
+  /// The entry being delivered; it never takes in new items.
+  private var sendingId: String?
 
   init(directory: URL, limits: Limits = .deviceEvents) throws {
     self.limits = limits
@@ -60,15 +69,43 @@ final class EventOutbox {
     }
   }
 
-  func enqueue(url: URL, appId: String, body: Data, now: TimeInterval) throws {
+  /// Stores the body. With a merge key, the body joins the newest entry when that
+  /// entry has the same key, is not being delivered, is under an hour old, and
+  /// `merge` can combine both within the size limit. When the outbox is full,
+  /// the oldest entry of the lowest priority up to `priority` is evicted; when
+  /// every entry has a higher priority, the body is refused.
+  func enqueue(
+    url: URL, appId: String, body: Data, now: TimeInterval, priority: Int = 0,
+    mergeKey: String? = nil, merge: ((Data, Data) -> Data?)? = nil
+  ) throws {
     lock.lock(); defer { lock.unlock() }
     guard body.count <= limits.maxBody,
           let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any],
           let id = payload[limits.idKey] as? String else { throw CocoaError(.fileWriteInvalidFileName) }
     var next = live(now)
     guard !next.contains(where: { $0.id == id }) else { return }
-    while next.count >= limits.count { next.removeFirst() }
-    next.append(Entry(id: id, url: url, appId: appId, body: body, createdAt: now, attempts: 0, nextAt: now))
+    if let mergeKey, let merge, let last = next.indices.last {
+      let tail = next[last]
+      if tail.mergeKey == mergeKey, tail.id != sendingId, tail.url == url, tail.appId == appId,
+         now - tail.createdAt < EventOutbox.mergeWindow,
+         let merged = merge(tail.body, body), merged.count <= limits.maxBody {
+        next[last] = Entry(
+          id: tail.id, url: tail.url, appId: tail.appId, body: merged, createdAt: tail.createdAt,
+          attempts: tail.attempts, nextAt: tail.nextAt, priority: tail.priority, mergeKey: tail.mergeKey)
+        try save(next)
+        return
+      }
+    }
+    while next.count >= limits.count {
+      let lowest = next.map { $0.priority ?? 0 }.min() ?? 0
+      guard lowest <= priority, let index = next.firstIndex(where: { ($0.priority ?? 0) == lowest }) else {
+        throw CocoaError(.fileWriteOutOfSpace)
+      }
+      next.remove(at: index)
+    }
+    next.append(Entry(
+      id: id, url: url, appId: appId, body: body, createdAt: now, attempts: 0, nextAt: now,
+      priority: priority == 0 ? nil : priority, mergeKey: mergeKey))
     try save(next)
   }
 
@@ -76,7 +113,9 @@ final class EventOutbox {
     lock.lock(); defer { lock.unlock() }
     let next = live(now)
     if next.count != entries.count { try save(next) }
-    return entries.first { $0.nextAt <= now }
+    let entry = entries.first { $0.nextAt <= now }
+    sendingId = entry?.id
+    return entry
   }
 
   func wait(now: TimeInterval) -> TimeInterval? {
@@ -86,6 +125,7 @@ final class EventOutbox {
 
   func complete(id: String, status: Int, retryAfter: String?, now: TimeInterval, random: Double) throws {
     lock.lock(); defer { lock.unlock() }
+    if sendingId == id { sendingId = nil }
     var next = live(now)
     if let index = next.firstIndex(where: { $0.id == id }) {
       if (200..<300).contains(status) || ((300..<500).contains(status) && ![408, 425, 429].contains(status)) {
@@ -154,13 +194,18 @@ final class EventDelivery: NSObject, URLSessionTaskDelegate {
 
   /// Persists the body for delivery; false when it could not be stored.
   @discardableResult
-  func enqueue(url: URL, appId: String, body: Data) -> Bool {
+  func enqueue(
+    url: URL, appId: String, body: Data, priority: Int = 0, mergeKey: String? = nil,
+    merge: ((Data, Data) -> Data?)? = nil
+  ) -> Bool {
     stateLock.lock()
     let outbox = self.outbox
     stateLock.unlock()
     do {
       guard let outbox else { throw CocoaError(.fileWriteUnknown) }
-      try outbox.enqueue(url: url, appId: appId, body: body, now: Date().timeIntervalSince1970)
+      try outbox.enqueue(
+        url: url, appId: appId, body: body, now: Date().timeIntervalSince1970, priority: priority,
+        mergeKey: mergeKey, merge: merge)
       worker.async { self.schedule() }
       return true
     } catch {

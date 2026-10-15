@@ -13,9 +13,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * App telemetry (error tracking, plugin 3.4+): items from JavaScript, wrapped in batches with the
- * device context and delivered from their own outbox, so app errors never delay or evict OTA
- * update events.
+ * App telemetry (error tracking and custom events, plugin 3.4+): items from JavaScript, wrapped in
+ * batches with the device context and delivered from their own outbox, so they never delay or
+ * evict OTA update events. Errors and events go in separate batches; while a batch waits
+ * (offline), new items of the same kind and context join it, and a full outbox evicts events
+ * first.
  */
 final class AppTelemetryClient {
 
@@ -45,10 +47,21 @@ final class AppTelemetryClient {
     return delivery.hasPending();
   }
 
+  /** Errors are kept over events when the outbox is full. */
+  enum Lane {
+    ERROR,
+    EVENT;
+
+    int priority() {
+      return this == ERROR ? 1 : 0;
+    }
+  }
+
   static final class Batches {
 
     final List<String> bodies = new ArrayList<>();
     final List<Integer> itemCounts = new ArrayList<>();
+    final List<Lane> lanes = new ArrayList<>();
     int dropped;
   }
 
@@ -57,13 +70,15 @@ final class AppTelemetryClient {
   }
 
   /**
-   * Wraps valid items (JSON objects with a string kind, at most 16 KiB) in batches of at most 50
-   * items that fit the outbox.
+   * Wraps valid items (JSON objects with a string kind, at most 16 KiB) in batches of one lane and
+   * at most 50 items that fit the outbox.
    */
   static Batches batches(JSONArray items, JSONObject context, long now, IdSource ids) {
     Batches result = new Batches();
     List<List<JSONObject>> groups = new ArrayList<>();
+    List<Lane> groupLanes = new ArrayList<>();
     List<JSONObject> current = new ArrayList<>();
+    Lane currentLane = Lane.EVENT;
     int currentBytes = 0;
     for (int i = 0; i < items.length(); i++) {
       JSONObject item = items.optJSONObject(i);
@@ -72,21 +87,30 @@ final class AppTelemetryClient {
         result.dropped++;
         continue;
       }
+      Lane lane = "error".equals(item.optString("kind")) ? Lane.ERROR : Lane.EVENT;
       if (
         !current.isEmpty() &&
-        (current.size() >= MAX_BATCH_ITEMS || currentBytes + size > MAX_BATCH_ITEM_BYTES)
+        (lane != currentLane ||
+          current.size() >= MAX_BATCH_ITEMS ||
+          currentBytes + size > MAX_BATCH_ITEM_BYTES)
       ) {
         groups.add(current);
+        groupLanes.add(currentLane);
         current = new ArrayList<>();
         currentBytes = 0;
       }
+      currentLane = lane;
       current.add(item);
       currentBytes += size + 1;
     }
-    if (!current.isEmpty()) groups.add(current);
+    if (!current.isEmpty()) {
+      groups.add(current);
+      groupLanes.add(currentLane);
+    }
 
     String sentAt = iso8601(now);
-    for (List<JSONObject> group : groups) {
+    for (int index = 0; index < groups.size(); index++) {
+      List<JSONObject> group = groups.get(index);
       try {
         JSONArray list = new JSONArray();
         for (JSONObject item : group) list.put(item);
@@ -104,11 +128,30 @@ final class AppTelemetryClient {
         }
         result.bodies.add(body);
         result.itemCounts.add(group.size());
+        result.lanes.add(groupLanes.get(index));
       } catch (Exception error) {
         result.dropped += group.size();
       }
     }
     return result;
+  }
+
+  /**
+   * Items of both batches in the first one (its ID, time and context), or null when they would be
+   * over 50 items.
+   */
+  static String mergeBatches(String existing, String incoming) throws Exception {
+    JSONObject batch = new JSONObject(existing);
+    JSONArray current = batch.getJSONArray("items");
+    JSONArray added = new JSONObject(incoming).getJSONArray("items");
+    if (current.length() + added.length() > MAX_BATCH_ITEMS) return null;
+    for (int i = 0; i < added.length(); i++) current.put(added.get(i));
+    return batch.toString();
+  }
+
+  /** Batches only take in items of the same lane and device context. */
+  static String mergeKey(Lane lane, JSONObject context) {
+    return lane.name().toLowerCase(Locale.US) + "|" + context.toString();
   }
 
   /** Persists the items for delivery to {ingestUrl}/app-telemetry; returns [accepted, dropped]. */
@@ -123,9 +166,16 @@ final class AppTelemetryClient {
     int accepted = 0;
     int dropped = batches.dropped;
     for (int i = 0; i < batches.bodies.size(); i++) {
-      if (delivery.enqueue(url, appId, batches.bodies.get(i))) accepted += batches.itemCounts.get(
-        i
+      Lane lane = batches.lanes.get(i);
+      boolean stored = delivery.enqueue(
+        url,
+        appId,
+        batches.bodies.get(i),
+        lane.priority(),
+        mergeKey(lane, context),
+        AppTelemetryClient::mergeBatches
       );
+      if (stored) accepted += batches.itemCounts.get(i);
       else dropped += batches.itemCounts.get(i);
     }
     return new int[] { accepted, dropped };

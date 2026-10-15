@@ -18,6 +18,8 @@ export const OTAKIT_TOOL_NAMES = [
   'list_events',
   'list_error_issues',
   'get_error_issue',
+  'list_app_events',
+  'query_app_event',
   'list_audit_log',
   'prepare_revert',
   'revert_release',
@@ -91,6 +93,10 @@ export const resolvedAppIdSchema = appIdSchema
 export const bundleIdSchema = z.string().uuid().describe('OtaKit bundle ID');
 export const releaseIdSchema = z.string().uuid().describe('OtaKit release ID');
 export const previewIdSchema = z.string().uuid().describe('OtaKit preview link ID');
+export const appEventNameSchema = z
+  .string()
+  .regex(/^(?:(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}|\$session_start)$/)
+  .describe('Custom event name, from list_app_events');
 export const errorFingerprintSchema = z
   .string()
   .regex(/^[0-9a-f]{16}$/)

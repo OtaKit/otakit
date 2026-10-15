@@ -466,6 +466,12 @@ export interface OtaKitPlugin {
   markReleaseNotesSeen(): Promise<void>;
 
   /**
+   * Send a custom event (plugin 3.4+), the same as the `track` export.
+   * Returns false when the event was dropped.
+   */
+  track(name: string, properties?: EventProperties): boolean;
+
+  /**
    * Remove all registered event listeners.
    */
   removeAllListeners(): Promise<void>;
@@ -512,8 +518,35 @@ export interface CaptureErrorOptions {
   tags?: Record<string, string | number | boolean>;
 }
 
+/** Property values of a custom event. Strings are cut to 200 characters. */
+export type EventProperties = Record<string, string | number | boolean>;
+
+/** A custom event as `track()` sends it; `beforeSend` in `initAnalytics()` can change or drop it. */
+export interface TrackedEvent {
+  eventId: string;
+  occurredAt: string;
+  name: string;
+  properties: Record<string, string | number | boolean>;
+}
+
+export interface AnalyticsOptions {
+  /**
+   * Send `$session_start` once per app launch, so OtaKit can compare releases
+   * per 1,000 app launches. Default true.
+   */
+  sessionEvents?: boolean;
+  /** Share of app launches whose events are sent, from 0 to 1. Default 1 (all). */
+  sampleRate?: number;
+  /** Change an event before it is sent, or return null to drop it. */
+  beforeSend?: (event: TrackedEvent) => TrackedEvent | null;
+  /** At most this many events per page load (app launch or reload). Default 1,000. */
+  maxEventsPerSession?: number;
+}
+
 /** One app telemetry item, as JavaScript hands it to the native plugin. */
-export type AppTelemetryItem = CapturedError & { kind: 'error' };
+export type AppTelemetryItem =
+  | (CapturedError & { kind: 'error' })
+  | (TrackedEvent & { kind: 'event' });
 
 /**
  * The bundle the JavaScript runs from, read once at init. Native uses it over

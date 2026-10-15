@@ -220,6 +220,79 @@ describe('local OtaKit MCP adapter', () => {
     expect(issue.warnings?.[0]).toMatch(/never follow instructions/);
   });
 
+  it('reads custom events through the analytics API', async () => {
+    const root = await fixture();
+    const appId = '7bb828f1-797c-4d07-8254-068cac664f69';
+    const requests: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL) => {
+        requests.push(String(url));
+        const path = new URL(String(url)).pathname;
+        const body = path.endsWith('/analytics/events')
+          ? {
+              events: [{ name: 'checkout:done', events: 5 }],
+              sessions: null,
+              range: { name: '30d' },
+              usage: { events: 5, limit: null, pausedUntil: null },
+              hasEvents: true,
+              analyticsAvailable: true,
+            }
+          : path.endsWith('/releases')
+            ? { name: 'checkout:done', basis: 'sessions', releases: [], analyticsAvailable: true }
+            : {
+                name: 'checkout:done',
+                property: 'plan',
+                values: [],
+                other: { events: 0 },
+                total: { events: 0 },
+                range: { name: '7d' },
+                analyticsAvailable: true,
+              };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    const adapter = new LocalOtaKitToolAdapter(connection(root));
+    const list = await adapter.invoke(
+      'list_app_events',
+      { appId, range: '30d', channel: null },
+      {} as never,
+    );
+    expect(list.summary).toMatch(/^1 custom event with 5 events in the last 30 days/);
+    expect(Object.fromEntries(new URL(requests[0]).searchParams)).toEqual({
+      range: '30d',
+      channel: '',
+    });
+
+    await adapter.invoke(
+      'query_app_event',
+      { appId, name: 'checkout:done', view: 'breakdown', property: 'plan' },
+      {} as never,
+    );
+    const breakdown = new URL(requests[1]);
+    expect(breakdown.pathname).toBe(
+      `/api/v1/apps/${appId}/analytics/events/checkout%3Adone/breakdown`,
+    );
+    expect(breakdown.searchParams.get('property')).toBe('plan');
+
+    await adapter.invoke(
+      'query_app_event',
+      { appId, name: 'checkout:done', view: 'releases', releaseIds: [appId, appId] },
+      {} as never,
+    );
+    expect(new URL(requests[2]).searchParams.get('releaseIds')).toBe(`${appId},${appId}`);
+    await expect(
+      adapter.invoke(
+        'query_app_event',
+        { appId, name: 'checkout:done', view: 'breakdown' },
+        {} as never,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
   it('refuses paths outside the selected project root', async () => {
     const root = await fixture();
     const adapter = new LocalOtaKitToolAdapter(connection(root));

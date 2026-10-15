@@ -93,6 +93,15 @@ export function registerClickHouseAdapters(db: DatabaseSync): void {
   db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
   db.function('toUnixTimestamp64Milli', (value) => Date.parse(String(value)));
   db.function('toInt64', (value) => value);
+  db.function('toDateTime', { varargs: true }, (value) => String(value));
+  db.function('JSONExtractString', (json, key) => {
+    try {
+      const value = (JSON.parse(String(json)) as Record<string, unknown>)[String(key)];
+      return typeof value === 'string' ? value : '';
+    } catch {
+      return '';
+    }
+  });
   db.function('toUInt32OrZero', (value) => {
     const parsed = Number(value);
     return /^\d+$/.test(String(value)) && Number.isSafeInteger(parsed) ? parsed : 0;

@@ -1,7 +1,7 @@
 import type { ErrorIssue } from '@prisma/client';
 
 import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
-import { getPlanLimits } from '@/lib/billing/config';
+import { getPlanLimits, type PlanLimits } from '@/lib/billing/config';
 import { db } from '@/lib/db';
 import {
   errorIssueTitle,
@@ -14,11 +14,12 @@ import {
   NEW_ISSUE_MIN_EVENTS,
   SPIKE_WINDOW_MS,
 } from '@/lib/error-tracking';
-import { emitNotification } from '@/lib/notifications/emit';
+import { emitNotification, type NotificationEvent } from '@/lib/notifications/emit';
 import type { NotificationErrorIssue } from '@/lib/notifications/events';
 import { isPolarConfigured } from '@/lib/polar';
 import { findReleaseSummary } from '@/lib/services/releases';
 import { pauseTelemetry, replaceTelemetryApps, resumeTelemetry } from '@/lib/telemetry-gate';
+import { getAppEventUsage } from '@/lib/tinybird/app-events';
 import {
   getAppErrorUsage,
   getErrorActivity,
@@ -29,10 +30,11 @@ import {
 } from '@/lib/tinybird/errors';
 
 /**
- * The errors cron (every 5 minutes): keeps the ingest app allowlist and
+ * The app telemetry cron (every 5 minutes): keeps the ingest app allowlist and
  * ErrorIssue rows in step with Tinybird, reopens resolved issues that come
- * back, sends the error alerts and enforces the monthly caps. Every step is
- * idempotent and guarded by conditional writes, so overlapping runs are safe.
+ * back, sends the error alerts and enforces the monthly caps of errors and
+ * custom events. Every step is idempotent and guarded by conditional writes,
+ * so overlapping runs are safe.
  */
 
 export const ERROR_TRACKING_ACTOR: AuditActor = {
@@ -40,7 +42,7 @@ export const ERROR_TRACKING_ACTOR: AuditActor = {
   actorLabel: 'error-tracking',
 };
 
-export type ErrorsCronStats = {
+export type TelemetryCronStats = {
   /** Apps in the ingest allowlist; null without Redis. */
   allowlistApps: number | null;
   activeIssues: number;
@@ -74,7 +76,7 @@ export function issuePayload(issue: ErrorIssue): NotificationErrorIssue {
   };
 }
 
-async function step(name: string, stats: ErrorsCronStats, run: () => Promise<void>) {
+async function step(name: string, stats: TelemetryCronStats, run: () => Promise<void>) {
   try {
     await run();
   } catch (error) {
@@ -96,8 +98,8 @@ function chunk<T>(values: T[], size: number): T[][] {
   return result;
 }
 
-export async function runErrorsCron(now: Date = new Date()): Promise<ErrorsCronStats> {
-  const stats: ErrorsCronStats = {
+export async function runTelemetryCron(now: Date = new Date()): Promise<TelemetryCronStats> {
+  const stats: TelemetryCronStats = {
     allowlistApps: null,
     activeIssues: 0,
     created: 0,
@@ -145,7 +147,7 @@ async function syncIssues(
   activity: ErrorActivity[],
   now: Date,
   organizationOf: Map<string, string>,
-  stats: ErrorsCronStats,
+  stats: TelemetryCronStats,
 ): Promise<Set<string>> {
   const changedApps = new Set<string>();
   const byApp = new Map<string, ErrorActivity[]>();
@@ -241,7 +243,7 @@ async function syncIssues(
  */
 async function regressionRelease(
   issue: ErrorIssue,
-  stats: ErrorsCronStats,
+  stats: TelemetryCronStats,
 ): Promise<string | null | undefined> {
   const resolvedAt = issue.resolvedAt!;
   if (issue.resolvedReleaseIds.length === 0) return null;
@@ -270,7 +272,7 @@ async function reopen(
   releaseId: string | null,
   now: Date,
   organizationId: string,
-  stats: ErrorsCronStats,
+  stats: TelemetryCronStats,
 ) {
   const release = releaseId ? await findReleaseSummary(releaseId) : null;
   const reopened = await db.$transaction(async (tx) => {
@@ -325,7 +327,7 @@ async function reopen(
 async function alertNewIssues(
   now: Date,
   organizationOf: Map<string, string>,
-  stats: ErrorsCronStats,
+  stats: TelemetryCronStats,
 ) {
   const candidates = await db.errorIssue.findMany({
     where: {
@@ -367,7 +369,7 @@ async function alertSpikes(
   appIds: string[],
   now: Date,
   organizationOf: Map<string, string>,
-  stats: ErrorsCronStats,
+  stats: TelemetryCronStats,
 ) {
   for (const appId of appIds) {
     const releases = await db.release.findMany({
@@ -453,85 +455,117 @@ async function alertSpikes(
   }
 }
 
+/** How each telemetry kind is capped: its usage, plan limit, paused field and alert. */
+const CAP_KINDS = [
+  {
+    kind: 'error',
+    usage: getAppErrorUsage,
+    limit: (limits: PlanLimits) => limits.errorEvents,
+    field: 'errorsPausedUntil',
+    notification: (events: number, limit: number, pausedUntil: string) =>
+      ({
+        type: 'errors.paused',
+        data: { errorUsage: { events, limit, pausedUntil } },
+      }) as const,
+  },
+  {
+    kind: 'event',
+    usage: getAppEventUsage,
+    limit: (limits: PlanLimits) => limits.appEvents,
+    field: 'eventsPausedUntil',
+    notification: (events: number, limit: number, pausedUntil: string) =>
+      ({
+        type: 'analytics.paused',
+        data: { eventUsage: { events, limit, pausedUntil } },
+      }) as const,
+  },
+] as const;
+
 /**
- * Monthly caps: a workspace at its plan's error limit is paused at ingest until
- * the next UTC month, and owners hear about it once. Upgrading (or a new month)
- * resumes it on the next run. Servers without billing have no caps.
+ * Monthly caps: a workspace at its plan's limit of error events or custom
+ * events is paused at ingest for that kind until the next UTC month, and
+ * owners hear about it once. Upgrading (or a new month) resumes it on the next
+ * run. Servers without billing have no caps.
  */
-async function enforceCaps(now: Date, organizationOf: Map<string, string>, stats: ErrorsCronStats) {
+async function enforceCaps(
+  now: Date,
+  organizationOf: Map<string, string>,
+  stats: TelemetryCronStats,
+) {
   const appsOf = new Map<string, string[]>();
   for (const [appId, organizationId] of organizationOf) {
     const list = appsOf.get(organizationId) ?? [];
     list.push(appId);
     appsOf.set(organizationId, list);
   }
-  const resume = async (organizationId: string) => {
-    await resumeTelemetry('error', appsOf.get(organizationId) ?? []);
-    await db.organization.update({
-      where: { id: organizationId },
-      data: { errorsPausedUntil: null },
-    });
-    stats.resumed += 1;
-  };
-
-  if (!isPolarConfigured()) {
-    const paused = await db.organization.findMany({
-      where: { errorsPausedUntil: { not: null } },
-      select: { id: true },
-    });
-    for (const organization of paused) await resume(organization.id);
-    return;
-  }
-
   const month = utcMonth(now);
-  const usage = await getAppErrorUsage(month);
-  if (!usage) {
-    stats.skipped.push('caps');
-    return;
-  }
-  const organizationUsage = new Map<string, number>();
-  for (const [appId, events] of usage) {
-    const organizationId = organizationOf.get(appId);
-    if (organizationId) {
-      organizationUsage.set(organizationId, (organizationUsage.get(organizationId) ?? 0) + events);
-    }
-  }
-  const organizations = await db.organization.findMany({
-    where: {
-      OR: [{ id: { in: [...organizationUsage.keys()] } }, { errorsPausedUntil: { not: null } }],
-    },
-    select: { id: true, planKey: true, errorsPausedUntil: true },
-  });
-  for (const organization of organizations) {
-    const events = organizationUsage.get(organization.id) ?? 0;
-    const limit = getPlanLimits(organization.planKey).errorEvents;
-    if (events < limit) {
-      if (organization.errorsPausedUntil) await resume(organization.id);
+
+  for (const cap of CAP_KINDS) {
+    const field = cap.field;
+    const resume = async (organizationId: string) => {
+      await resumeTelemetry(cap.kind, appsOf.get(organizationId) ?? []);
+      await db.organization.update({ where: { id: organizationId }, data: { [field]: null } });
+      stats.resumed += 1;
+    };
+
+    if (!isPolarConfigured()) {
+      const paused = await db.organization.findMany({
+        where: { [field]: { not: null } },
+        select: { id: true },
+      });
+      for (const organization of paused) await resume(organization.id);
       continue;
     }
-    // Every run, so apps created since are paused too; the keys expire with the month.
-    await pauseTelemetry('error', appsOf.get(organization.id) ?? [], month.endExclusive);
-    if (organization.errorsPausedUntil?.getTime() === month.endExclusive.getTime()) continue;
-    await db.$transaction(async (tx) => {
-      const claimed = await tx.organization.updateMany({
-        where: {
-          id: organization.id,
-          OR: [{ errorsPausedUntil: null }, { errorsPausedUntil: { not: month.endExclusive } }],
-        },
-        data: { errorsPausedUntil: month.endExclusive },
-      });
-      if (claimed.count === 0) return;
-      stats.paused += 1;
-      stats.queued += await emitNotification(tx, {
-        type: 'errors.paused',
-        key: `errors.paused:${organization.id}:${month.start.toISOString().slice(0, 7)}`,
-        organizationId: organization.id,
-        appId: null,
-        actor: null,
-        data: {
-          errorUsage: { events, limit, pausedUntil: month.endExclusive.toISOString() },
-        },
-      });
+
+    const usage = await cap.usage(month);
+    if (!usage) {
+      stats.skipped.push(`caps:${cap.kind}`);
+      continue;
+    }
+    const organizationUsage = new Map<string, number>();
+    for (const [appId, events] of usage) {
+      const organizationId = organizationOf.get(appId);
+      if (organizationId) {
+        organizationUsage.set(
+          organizationId,
+          (organizationUsage.get(organizationId) ?? 0) + events,
+        );
+      }
+    }
+    const organizations = await db.organization.findMany({
+      where: { OR: [{ id: { in: [...organizationUsage.keys()] } }, { [field]: { not: null } }] },
+      select: { id: true, planKey: true, errorsPausedUntil: true, eventsPausedUntil: true },
     });
+    for (const organization of organizations) {
+      const events = organizationUsage.get(organization.id) ?? 0;
+      const limit = cap.limit(getPlanLimits(organization.planKey));
+      const pausedUntil = organization[field];
+      if (events < limit) {
+        if (pausedUntil) await resume(organization.id);
+        continue;
+      }
+      // Every run, so apps created since are paused too; the keys expire with the month.
+      await pauseTelemetry(cap.kind, appsOf.get(organization.id) ?? [], month.endExclusive);
+      if (pausedUntil?.getTime() === month.endExclusive.getTime()) continue;
+      await db.$transaction(async (tx) => {
+        const claimed = await tx.organization.updateMany({
+          where: {
+            id: organization.id,
+            OR: [{ [field]: null }, { [field]: { not: month.endExclusive } }],
+          },
+          data: { [field]: month.endExclusive },
+        });
+        if (claimed.count === 0) return;
+        stats.paused += 1;
+        const notification = cap.notification(events, limit, month.endExclusive.toISOString());
+        stats.queued += await emitNotification(tx, {
+          ...notification,
+          key: `${notification.type}:${organization.id}:${month.start.toISOString().slice(0, 7)}`,
+          organizationId: organization.id,
+          appId: null,
+          actor: null,
+        } as NotificationEvent);
+      });
+    }
   }
 }

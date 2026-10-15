@@ -10,7 +10,9 @@ import type {
   RemoteConfigRefreshResult,
   RemoteConfigValues,
 } from './definitions';
+import { createAnalytics } from './analytics';
 import { createErrorTracking } from './error-tracking';
+import { createTelemetry } from './telemetry';
 
 const NativeOtaKit = registerPlugin<OtaKitBridgePlugin>('OtaKit', {
   web: () => import('./web').then((m) => new m.OtaKitWeb()),
@@ -136,11 +138,15 @@ const OtaKit: OtaKitPlugin = {
         : listenerFunc,
     )) as OtaKitPlugin['addListener'],
   removeAllListeners: () => NativeOtaKit.removeAllListeners(),
+  track: (name, properties) => analytics.track(name, properties),
 };
 
-const errorTracking = createErrorTracking(NativeOtaKit, {
+// One buffer for errors and events, flushed to the native outbox.
+const telemetry = createTelemetry(NativeOtaKit, {
   isNative: () => Capacitor.isNativePlatform(),
 });
+const errorTracking = createErrorTracking(telemetry);
+const analytics = createAnalytics(telemetry);
 
 /**
  * Send uncaught errors and unhandled promise rejections to OtaKit (plugin
@@ -169,6 +175,25 @@ export const captureError = errorTracking.captureError;
  * it for delivery.
  */
 export const testErrorTracking = errorTracking.testErrorTracking;
+
+/**
+ * Send a custom event (plugin 3.4+): a name of 1-64 letters, numbers, ".",
+ * "_", ":" or "-" (with a letter or number), and up to 20 properties with
+ * string, number or boolean values. OtaKit adds the release, channel, platform and OS version. Returns
+ * false when the event was dropped. Also available as `OtaKit.track()`.
+ *
+ * ```ts
+ * track('checkout_completed', { plan: 'pro', value: 49 });
+ * ```
+ */
+export const track = analytics.track;
+
+/**
+ * Optional setup for custom events: sends `$session_start` once per app
+ * launch (so OtaKit can compare releases per 1,000 app launches), with
+ * sampling and `beforeSend`. Call it once at startup.
+ */
+export const initAnalytics = analytics.initAnalytics;
 
 export * from './definitions';
 export { OtaKit };

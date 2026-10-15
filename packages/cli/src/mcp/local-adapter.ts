@@ -3,6 +3,11 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import {
   PublicToolError,
+  appEventBreakdownSummary,
+  appEventListEnvelopeParts,
+  appEventQueryWarnings,
+  appEventReleasesSummary,
+  appEventTimeseriesSummary,
   bundleDiffEnvelopeParts,
   errorIssueAgentPayload,
   errorIssueEnvelopeParts,
@@ -304,6 +309,10 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.listErrorIssues(input);
         case 'get_error_issue':
           return await this.getErrorIssue(input);
+        case 'list_app_events':
+          return await this.listAppEvents(input);
+        case 'query_app_event':
+          return await this.queryAppEvent(input);
         case 'list_audit_log':
           return await this.listAuditLog(input);
         case 'prepare_revert':
@@ -727,6 +736,82 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     return toolEnvelope(parts.summary, json(errorIssueAgentPayload(detail)), {
       warnings: parts.warnings,
       links: [this.appLink(appId, 'View errors')],
+    });
+  }
+
+  private appEventQuery(input: JsonObject) {
+    return {
+      range: optionalString(input, 'range'),
+      platform: optionalString(input, 'platform'),
+      releaseId: optionalString(input, 'releaseId'),
+      // null asks for the base channel (an empty value); omitted means every channel.
+      channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+    };
+  }
+
+  private async listAppEvents(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const list = await this.api(appId).request<JsonObject>(
+      `/api/v1/apps/${encodeURIComponent(appId)}/analytics/events${queryString(this.appEventQuery(input))}`,
+    );
+    const parts = appEventListEnvelopeParts(
+      list as unknown as Parameters<typeof appEventListEnvelopeParts>[0],
+    );
+    return toolEnvelope(parts.summary, json(list), {
+      warnings: parts.warnings,
+      links: [this.appLink(appId, 'View analytics')],
+    });
+  }
+
+  private async queryAppEvent(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const name = encodeURIComponent(stringInput(input, 'name'));
+    const base = `/api/v1/apps/${encodeURIComponent(appId)}/analytics/events/${name}`;
+    const view = optionalString(input, 'view') ?? 'timeseries';
+    const links = [this.appLink(appId, 'View analytics')];
+    if (view === 'breakdown') {
+      const property = optionalString(input, 'property');
+      if (!property) {
+        throw new PublicToolError('INVALID_INPUT', 'property is required for view breakdown');
+      }
+      const result = await this.api(appId).request<JsonObject>(
+        `${base}/breakdown${queryString({ ...this.appEventQuery(input), property })}`,
+      );
+      const typed = result as unknown as Parameters<typeof appEventBreakdownSummary>[0] & {
+        analyticsAvailable: boolean;
+      };
+      return toolEnvelope(appEventBreakdownSummary(typed), json(result), {
+        warnings: appEventQueryWarnings(typed.analyticsAvailable),
+        links,
+      });
+    }
+    if (view === 'releases') {
+      const releaseIds = Array.isArray(input.releaseIds)
+        ? input.releaseIds.filter((id): id is string => typeof id === 'string').join(',')
+        : undefined;
+      const result = await this.api(appId).request<JsonObject>(
+        `${base}/releases${queryString({
+          releaseIds: releaseIds || undefined,
+          channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+        })}`,
+      );
+      const typed = result as unknown as Parameters<typeof appEventReleasesSummary>[0] & {
+        analyticsAvailable: boolean;
+      };
+      return toolEnvelope(appEventReleasesSummary(typed), json(result), {
+        warnings: appEventQueryWarnings(typed.analyticsAvailable),
+        links,
+      });
+    }
+    const result = await this.api(appId).request<JsonObject>(
+      `${base}${queryString(this.appEventQuery(input))}`,
+    );
+    const typed = result as unknown as Parameters<typeof appEventTimeseriesSummary>[0] & {
+      analyticsAvailable: boolean;
+    };
+    return toolEnvelope(appEventTimeseriesSummary(typed), json(result), {
+      warnings: appEventQueryWarnings(typed.analyticsAvailable),
+      links,
     });
   }
 

@@ -44,9 +44,9 @@ final class EventOutbox {
       "eventId",
       "events.json"
     );
-    /** Batches of up to 64 KiB, kept 3 days. */
+    /** Batches of up to 64 KiB, kept 3 days: an hour of items each while offline. */
     static final Limits APP_TELEMETRY = new Limits(
-      60,
+      72,
       3L * 24 * 60 * 60 * 1000,
       64 * 1024,
       8 * 1024 * 1024,
@@ -57,12 +57,23 @@ final class EventOutbox {
 
   static final int LIMIT = Limits.DEVICE_EVENTS.count;
   static final long TTL = Limits.DEVICE_EVENTS.ttl;
+  /** New items join a pending entry with the same merge key for this long after it was created. */
+  static final long MERGE_WINDOW = 60L * 60 * 1000;
+
+  /** Combines two bodies into one, or returns null when they do not fit together. */
+  interface Merge {
+    String merge(String existing, String incoming) throws Exception;
+  }
 
   static final class Entry {
 
     final String id, url, appId, body;
     final long createdAt, nextAt;
     final int attempts;
+    /** When the outbox is full, lower priorities are evicted first. */
+    final int priority;
+    /** Entries with the same key can take in new items (see enqueue); null for none. */
+    final String mergeKey;
 
     Entry(
       String idKey,
@@ -73,6 +84,20 @@ final class EventOutbox {
       int attempts,
       long nextAt
     ) throws Exception {
+      this(idKey, url, appId, body, createdAt, attempts, nextAt, 0, null);
+    }
+
+    Entry(
+      String idKey,
+      String url,
+      String appId,
+      String body,
+      long createdAt,
+      int attempts,
+      long nextAt,
+      int priority,
+      String mergeKey
+    ) throws Exception {
       this.id = new JSONObject(body).getString(idKey);
       this.url = url;
       this.appId = appId;
@@ -80,22 +105,29 @@ final class EventOutbox {
       this.createdAt = createdAt;
       this.attempts = attempts;
       this.nextAt = nextAt;
+      this.priority = priority;
+      this.mergeKey = mergeKey;
     }
 
     JSONObject json() throws Exception {
-      return new JSONObject()
+      JSONObject json = new JSONObject()
         .put("url", url)
         .put("appId", appId)
         .put("body", body)
         .put("createdAt", createdAt)
         .put("attempts", attempts)
         .put("nextAt", nextAt);
+      if (priority != 0) json.put("priority", priority);
+      if (mergeKey != null) json.put("mergeKey", mergeKey);
+      return json;
     }
   }
 
   final Limits limits;
   private final AtomicFile file;
   private List<Entry> entries = new ArrayList<>();
+  /** The entry being delivered; it never takes in new items. */
+  private String sendingId;
 
   EventOutbox(File directory) throws Exception {
     this(directory, Limits.DEVICE_EVENTS);
@@ -134,7 +166,9 @@ final class EventOutbox {
             item.getString("body"),
             item.getLong("createdAt"),
             item.getInt("attempts"),
-            item.getLong("nextAt")
+            item.getLong("nextAt"),
+            item.optInt("priority", 0),
+            item.has("mergeKey") ? item.getString("mergeKey") : null
           )
         );
       }
@@ -146,13 +180,72 @@ final class EventOutbox {
   }
 
   synchronized void enqueue(String url, String appId, String body, long now) throws Exception {
+    enqueue(url, appId, body, now, 0, null, null);
+  }
+
+  /**
+   * Stores the body. With a merge key, the body joins the newest entry when that entry has the
+   * same key, is not being delivered, is under an hour old, and merge can combine both within the
+   * size limit. When the outbox is full, the oldest entry of the lowest priority up to priority is
+   * evicted; when every entry has a higher priority, the body is refused.
+   */
+  synchronized void enqueue(
+    String url,
+    String appId,
+    String body,
+    long now,
+    int priority,
+    String mergeKey,
+    Merge merge
+  ) throws Exception {
     if (body.getBytes(StandardCharsets.UTF_8).length > limits.maxBody) throw new IOException(
       "Outbox entry too large"
     );
     List<Entry> next = live(now);
-    Entry entry = new Entry(limits.idKey, url, appId, body, now, 0, now);
+    Entry entry = new Entry(limits.idKey, url, appId, body, now, 0, now, priority, mergeKey);
     for (Entry existing : next) if (existing.id.equals(entry.id)) return;
-    while (next.size() >= limits.count) next.remove(0);
+    if (mergeKey != null && merge != null && !next.isEmpty()) {
+      int last = next.size() - 1;
+      Entry tail = next.get(last);
+      if (
+        mergeKey.equals(tail.mergeKey) &&
+        !tail.id.equals(sendingId) &&
+        tail.url.equals(url) &&
+        tail.appId.equals(appId) &&
+        now - tail.createdAt < MERGE_WINDOW
+      ) {
+        String merged = merge.merge(tail.body, body);
+        if (merged != null && merged.getBytes(StandardCharsets.UTF_8).length <= limits.maxBody) {
+          next.set(
+            last,
+            new Entry(
+              limits.idKey,
+              tail.url,
+              tail.appId,
+              merged,
+              tail.createdAt,
+              tail.attempts,
+              tail.nextAt,
+              tail.priority,
+              tail.mergeKey
+            )
+          );
+          save(next);
+          return;
+        }
+      }
+    }
+    while (next.size() >= limits.count) {
+      int lowest = Integer.MAX_VALUE;
+      for (Entry existing : next) lowest = Math.min(lowest, existing.priority);
+      if (lowest > priority) throw new IOException("Outbox full of higher-priority entries");
+      for (int i = 0; i < next.size(); i++) {
+        if (next.get(i).priority == lowest) {
+          next.remove(i);
+          break;
+        }
+      }
+    }
     next.add(entry);
     save(next);
   }
@@ -160,7 +253,13 @@ final class EventOutbox {
   synchronized Entry ready(long now) throws Exception {
     List<Entry> next = live(now);
     if (next.size() != entries.size()) save(next);
-    for (Entry entry : entries) if (entry.nextAt <= now) return entry;
+    sendingId = null;
+    for (Entry entry : entries) {
+      if (entry.nextAt <= now) {
+        sendingId = entry.id;
+        return entry;
+      }
+    }
     return null;
   }
 
@@ -176,6 +275,7 @@ final class EventOutbox {
 
   synchronized void complete(String id, int status, String retryAfter, long now, double random)
     throws Exception {
+    if (id.equals(sendingId)) sendingId = null;
     List<Entry> next = live(now);
     for (int i = 0; i < next.size(); i++) {
       Entry entry = next.get(i);
@@ -201,7 +301,9 @@ final class EventOutbox {
             entry.body,
             entry.createdAt,
             attempts,
-            due
+            due,
+            entry.priority,
+            entry.mergeKey
           )
         );
       }

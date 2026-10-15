@@ -4,6 +4,16 @@ import { cachedJson } from '@/lib/redis';
 
 import { isTinybirdConfigured, queryTinybirdPipe, warnTinybirdNotConfigured } from './client';
 import type { AnalyticsResult } from './events';
+import {
+  channelParams,
+  chunk,
+  count,
+  failed,
+  isoFromMs,
+  text,
+  unavailable,
+  type Count,
+} from './read-helpers';
 
 /**
  * Reads of the error tracking pipes (tinybird/endpoints/error_*.pipe). Raw
@@ -41,22 +51,6 @@ const ID_BATCH_SIZE = 50;
 export const MAX_ERROR_GROUPS = 500;
 export const MAX_BUCKET_FINGERPRINTS = 100;
 
-type Count = number | string | null | undefined;
-
-function count(value: Count): number {
-  const parsed = typeof value === 'number' ? value : Number(value ?? 0);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
-}
-
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value : null;
-}
-
-function isoFromMs(value: Count): string | null {
-  const ms = count(value);
-  return ms > 0 ? new Date(ms).toISOString() : null;
-}
-
 function parsePlatforms(value: unknown): Platform[] {
   const list = Array.isArray(value)
     ? value
@@ -73,30 +67,6 @@ function parsePlatforms(value: unknown): Platform[] {
   return list
     .filter((platform): platform is Platform => platform === 'ios' || platform === 'android')
     .sort();
-}
-
-function chunk<T>(values: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    result.push(values.slice(index, index + size));
-  }
-  return result;
-}
-
-function unavailable<T>(context: string, data: T): AnalyticsResult<T> {
-  warnTinybirdNotConfigured(context);
-  return { data, available: false };
-}
-
-function failed<T>(context: string, metadata: Record<string, unknown>, error: unknown, data: T) {
-  console.error(`[Tinybird] ${context} failed`, { ...metadata, error });
-  return { data, available: false };
-}
-
-/** Channel filter: undefined = every channel, null = the base channel (no channel). */
-function channelParams(channel: string | null | undefined): Record<string, string | boolean> {
-  if (channel === undefined) return {};
-  return channel === null ? { channel_is_null: true } : { channel, channel_is_null: false };
 }
 
 // ── Cron reads ───────────────────────────────────────────────────────

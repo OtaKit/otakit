@@ -44,6 +44,7 @@ import { appIdentifierError } from '@/lib/onboarding-profile';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
+import { AnalyticsSection } from '@/app/components/AnalyticsSection';
 import { ErrorsSection } from '@/app/components/ErrorsSection';
 import { RemoteConfigSection } from '@/app/components/RemoteConfigSection';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
@@ -2193,6 +2194,17 @@ export function ProductDashboard({
                   onReleaseFilterChange={(releaseId) =>
                     setErrorsRelease(releaseId ? { appId: selectedApp.id, releaseId } : null)
                   }
+                  onUpgrade={() => setPricingDialogOpen(true)}
+                />
+              ) : null}
+
+              {/* Analytics */}
+              {selectedApp ? (
+                <AnalyticsSection
+                  key={`analytics-${selectedApp.id}`}
+                  appId={selectedApp.id}
+                  releases={releaseHistory}
+                  docsUrl={docsUrl}
                   onUpgrade={() => setPricingDialogOpen(true)}
                 />
               ) : null}

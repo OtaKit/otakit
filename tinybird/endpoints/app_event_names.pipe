@@ -1,0 +1,41 @@
+DESCRIPTION >
+    Custom event names of one app with events and sessions in [from_ts, to_ts). For the
+    change against the previous period: events in [from_ts, compare_to_ts) and in
+    [previous_from_ts, previous_to_ts), periods of the same elapsed length. Optional `name`.
+    Hour-aligned times.
+
+TOKEN otakit_web READ
+
+NODE event_names
+SQL >
+    %
+    SELECT
+        name,
+        uniqExactMergeIf(event_ids_uniq_exact_state, bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)) AS events,
+        uniqExactMergeIf(session_ids_uniq_exact_state, bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)) AS sessions,
+        uniqExactMergeIf(
+            event_ids_uniq_exact_state,
+            bucket >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+            AND bucket < parseDateTime64BestEffort({{ String(compare_to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+        ) AS compared_events,
+        uniqExactMergeIf(
+            event_ids_uniq_exact_state,
+            bucket < parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+            AND bucket < parseDateTime64BestEffort({{ String(previous_to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+        ) AS previous_events
+    FROM app_event_hourly
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND bucket >= parseDateTime64BestEffort({{ String(previous_from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+      AND bucket < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+      AND ({{ String(name, '') }} = '' OR name = {{ String(name, '') }})
+      AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+      AND ({{ String(release_id, '') }} = '' OR release_id = {{ String(release_id, '') }})
+      {% if defined(channel_is_null) %}
+        AND (({{ UInt8(channel_is_null) }} = 1 AND channel = '')
+             OR ({{ UInt8(channel_is_null) }} = 0 AND channel = {{ String(channel, '') }}))
+      {% end %}
+    GROUP BY name
+    ORDER BY events DESC, name
+    LIMIT {{ UInt32(limit, 200) }}
+
+TYPE ENDPOINT

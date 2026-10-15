@@ -6,6 +6,8 @@ export type PlanLimits = {
   overage: boolean;
   /** Error tracking events per UTC month; ingest drops errors above it. */
   errorEvents: number;
+  /** Custom events (OtaKit.track()) per UTC month; ingest drops events above it. */
+  appEvents: number;
 };
 
 // Enterprise has no metered cap — it's a custom, operator-provisioned contract.
@@ -15,15 +17,29 @@ export const ENTERPRISE_DOWNLOADS = Number.MAX_SAFE_INTEGER;
 export const NEW_FREE_DOWNLOADS = 5_000;
 export const LEGACY_FREE_DOWNLOADS = 100_000;
 export const FREE_ERROR_EVENTS = 10_000;
+export const FREE_APP_EVENTS = 100_000;
 
 const PLAN_LIMITS: Record<Exclude<PlanKey, 'free'>, PlanLimits> = {
-  starter: { downloads: 100_000, teamMembers: false, overage: false, errorEvents: 100_000 },
-  pro: { downloads: 1_000_000, teamMembers: true, overage: true, errorEvents: 1_000_000 },
+  starter: {
+    downloads: 100_000,
+    teamMembers: false,
+    overage: false,
+    errorEvents: 100_000,
+    appEvents: 1_000_000,
+  },
+  pro: {
+    downloads: 1_000_000,
+    teamMembers: true,
+    overage: true,
+    errorEvents: 1_000_000,
+    appEvents: 10_000_000,
+  },
   enterprise: {
     downloads: ENTERPRISE_DOWNLOADS,
     teamMembers: true,
     overage: false,
     errorEvents: Number.MAX_SAFE_INTEGER,
+    appEvents: Number.MAX_SAFE_INTEGER,
   },
 };
 
@@ -89,6 +105,7 @@ export function getPlanLimits(
       teamMembers: false,
       overage: false,
       errorEvents: FREE_ERROR_EVENTS,
+      appEvents: FREE_APP_EVENTS,
     };
   }
   return PLAN_LIMITS[planKey];

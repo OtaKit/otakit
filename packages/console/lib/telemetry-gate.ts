@@ -10,7 +10,7 @@ import { getRedisOrNull } from '@/lib/redis';
  */
 
 export const TELEMETRY_APPS_SET = 'otakit:apps';
-export type TelemetryKind = 'error';
+export type TelemetryKind = 'error' | 'event';
 
 export function telemetryPausedKey(kind: TelemetryKind, appId: string): string {
   return `otakit:telemetry:blocked:${kind}:${appId}`;

@@ -2,14 +2,15 @@ import { groupError } from './fingerprint';
 
 /**
  * App telemetry (plugin 3.4+): errors the app captures with
- * initErrorTracking(), sent in batches from their own native outbox, so a
- * flood of app errors can never delay or evict OTA update events.
+ * initErrorTracking() and events it sends with track(), in batches from their
+ * own native outbox, so a flood of them can never delay or evict OTA update
+ * events.
  *
  * POST /v1/app-telemetry, header X-App-Id:
  * { batchId, sentAt, context: { platform, bundleVersion, … , sessionId }, items: [...] }
  */
 
-export type TelemetryKind = 'error';
+export type TelemetryKind = 'error' | 'event';
 
 export type ErrorRow = {
   event_id: string;
@@ -37,7 +38,26 @@ export type ErrorRow = {
   tags: string;
 };
 
-export type TelemetryMessage = { kind: 'error'; row: ErrorRow };
+export type EventRow = {
+  event_id: string;
+  received_at: string;
+  occurred_at: string;
+  app_id: string;
+  platform: 'ios' | 'android';
+  release_id: string | null;
+  bundle_version: string;
+  channel: string | null;
+  runtime_version: string | null;
+  native_build: string;
+  os_version: string | null;
+  sdk_version: string | null;
+  session_id: string;
+  name: string;
+  /** JSON object of string values (numbers and booleans as text). */
+  properties: string;
+};
+
+export type TelemetryMessage = { kind: 'error'; row: ErrorRow } | { kind: 'event'; row: EventRow };
 
 export const MAX_ITEMS = 50;
 export const MAX_BODY_BYTES = 128 * 1024;
@@ -164,6 +184,49 @@ export async function parseErrorItem(
   };
 }
 
+const EVENT_NAME = /^(?=.*[A-Za-z0-9])[A-Za-z0-9_.:-]{1,64}$/;
+/** Names OtaKit sends itself; apps cannot use the `$` prefix. */
+export const RESERVED_EVENT_NAMES = new Set(['$session_start']);
+const PROPERTY_KEY = /^[A-Za-z0-9_.:-]{1,40}$/;
+const MAX_PROPERTIES = 20;
+const MAX_PROPERTY_VALUE = 200;
+
+/** Valid properties as text; invalid keys and values (objects, NaN) are left out. */
+function properties(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '{}';
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(result).length >= MAX_PROPERTIES) break;
+    if (!PROPERTY_KEY.test(key)) continue;
+    if (typeof raw === 'string') result[key] = raw.slice(0, MAX_PROPERTY_VALUE);
+    else if (typeof raw === 'number' && Number.isFinite(raw)) result[key] = String(raw);
+    else if (typeof raw === 'boolean') result[key] = String(raw);
+  }
+  return JSON.stringify(result);
+}
+
+/** One custom event, or null when it is not valid (it is dropped, the rest are kept). */
+export function parseEventItem(
+  raw: Record<string, unknown>,
+  context: Context,
+  appId: string,
+  receivedAt: Date,
+): EventRow | null {
+  const eventId = text(raw.eventId, 64);
+  if (!eventId || !UUID.test(eventId)) return null;
+  const name = typeof raw.name === 'string' ? raw.name : '';
+  if (!EVENT_NAME.test(name) && !RESERVED_EVENT_NAMES.has(name)) return null;
+  return {
+    event_id: eventId.toLowerCase(),
+    received_at: receivedAt.toISOString(),
+    occurred_at: occurredAt(raw.occurredAt, receivedAt),
+    app_id: appId,
+    ...context,
+    name,
+    properties: properties(raw.properties),
+  };
+}
+
 export type ParsedBatch = { messages: TelemetryMessage[]; dropped: number };
 
 /** Validate a batch body. Throws for a malformed batch; drops invalid items one by one. */
@@ -189,6 +252,10 @@ export async function parseBatch(
     if (raw.kind === 'error') {
       const row = await parseErrorItem(raw, context, appId, receivedAt);
       if (row) messages.push({ kind: 'error', row });
+      else dropped += 1;
+    } else if (raw.kind === 'event') {
+      const row = parseEventItem(raw, context, appId, receivedAt);
+      if (row) messages.push({ kind: 'event', row });
       else dropped += 1;
     } else {
       // Kinds this Worker does not know yet (from a newer plugin) are skipped, not errors.

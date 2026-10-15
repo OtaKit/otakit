@@ -427,3 +427,24 @@ describe('error alerts', () => {
     expect(email.text).toContain("TypeError: Visit <https://evil.example|here> 'now' *bold*");
   });
 });
+
+describe('analytics alerts', () => {
+  it('describes paused analytics', () => {
+    expect(
+      describeEvent(
+        payload('analytics.paused', {
+          app: null,
+          actor: null,
+          eventUsage: { events: 100_000, limit: 100_000, pausedUntil: '2026-11-01T00:00:00.000Z' },
+        }),
+      ),
+    ).toMatchObject({
+      title: 'Analytics paused for Acme',
+      lines: [
+        '100,000 of 100,000 custom events this month. New events are not recorded until November 1.',
+        'Upgrade the plan to resume now.',
+      ],
+      severity: 'warning',
+    });
+  });
+});

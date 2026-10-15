@@ -2,7 +2,6 @@ import type { ErrorIssue } from '@prisma/client';
 
 import type { Platform } from '@/app/components/dashboard-types';
 import { recordAuditLog, type AuditActor } from '@/lib/audit-log';
-import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { db } from '@/lib/db';
 import {
   errorIssueTitle,
@@ -11,16 +10,12 @@ import {
   isErrorRange,
   isFingerprint,
   perThousandApplies,
-  utcMonth,
   DEFAULT_ERROR_RANGE,
   type ErrorIssueStatusValue,
   type ErrorRange,
 } from '@/lib/error-tracking';
-import { isPolarConfigured } from '@/lib/polar';
-import { cachedJson } from '@/lib/redis';
 import {
   emptyBreakdown,
-  getAppErrorUsage,
   getErrorGroupBreakdown,
   getErrorGroupBuckets,
   getErrorGroupSamples,
@@ -36,6 +31,7 @@ import {
 } from '@/lib/tinybird/errors';
 
 import { OtaKitServiceError } from './errors';
+import { getTelemetryUsageStatus } from './telemetry-usage';
 
 /**
  * Error tracking issues: counts come from Tinybird, the state (open,
@@ -535,44 +531,11 @@ export type ErrorTrackingStatus = {
 };
 
 /** The workspace's monthly error usage, for the dashboard banner. */
-export async function getErrorTrackingStatus(
+export function getErrorTrackingStatus(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<ErrorTrackingStatus> {
-  const organization = await db.organization.findUnique({
-    where: { id: organizationId },
-    select: { errorsPausedUntil: true, apps: { select: { id: true } } },
-  });
-  if (!organization) {
-    throw new OtaKitServiceError('ORGANIZATION_NOT_FOUND', 'Workspace not found', 404);
-  }
-  const pausedUntil =
-    organization.errorsPausedUntil && organization.errorsPausedUntil > now
-      ? organization.errorsPausedUntil.toISOString()
-      : null;
-  let limit: number | null = null;
-  if (isPolarConfigured()) {
-    const entitlements = await getOrganizationEntitlements(organizationId);
-    limit =
-      entitlements.limits.errorEvents >= Number.MAX_SAFE_INTEGER
-        ? null
-        : entitlements.limits.errorEvents;
-  }
-  const month = utcMonth(now);
-  const appIds = organization.apps.map((app) => app.id);
-  const events =
-    appIds.length === 0
-      ? 0
-      : await cachedJson(
-          `otakit:errors:usage:${organizationId}:${month.start.toISOString().slice(0, 7)}`,
-          60,
-          async () => {
-            const usage = await getAppErrorUsage({ ...month, appIds });
-            if (!usage) throw new Error('Error usage unavailable');
-            return Array.from(usage.values()).reduce((sum, value) => sum + value, 0);
-          },
-        ).catch(() => null);
-  return { events, limit, pausedUntil };
+  return getTelemetryUsageStatus(organizationId, 'error', now);
 }
 
 export type ReleaseErrorComparison = {

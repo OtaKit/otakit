@@ -123,7 +123,7 @@ describe('POST /v1/app-telemetry', () => {
         errorItem(),
         errorItem({ eventId: 'not-a-uuid' }),
         errorItem({ message: '', stack: '' }),
-        { kind: 'event', name: 'from a newer plugin' },
+        { kind: 'metric', name: 'from a newer plugin' },
         'not an object',
         errorItem({ mechanism: 'something', handled: 'yes' }),
       ],
@@ -237,7 +237,108 @@ describe('app gate', () => {
       ['EXISTS', 'otakit:apps'],
       ['SISMEMBER', 'otakit:apps', APP_ID],
       ['EXISTS', `otakit:telemetry:blocked:error:${APP_ID}`],
+      ['EXISTS', `otakit:telemetry:blocked:event:${APP_ID}`],
     ]);
+  });
+});
+
+function eventItem(overrides: Record<string, unknown> = {}) {
+  nextId += 1;
+  return {
+    kind: 'event',
+    eventId: `ab7b94bb-074a-4a4c-830c-${String(nextId).padStart(12, '0')}`,
+    occurredAt: new Date().toISOString(),
+    name: 'checkout_completed',
+    properties: { plan: 'pro', value: 49, trial: false },
+    ...overrides,
+  };
+}
+
+describe('custom events', () => {
+  it('queues valid events with stringified properties next to errors', async () => {
+    const { post, queued } = fixture();
+    const response = await post({
+      context,
+      items: [
+        eventItem(),
+        errorItem(),
+        eventItem({ name: '$session_start', properties: undefined }),
+      ],
+    });
+    expect(await response.json()).toEqual({ accepted: true, items: 3, dropped: 0 });
+    expect(queued().map((message) => message.body.kind)).toEqual(['event', 'error', 'event']);
+    expect(queued()[0].body.row).toMatchObject({
+      app_id: APP_ID,
+      platform: 'ios',
+      release_id: 'rel_1',
+      session_id: context.sessionId,
+      name: 'checkout_completed',
+      properties: '{"plan":"pro","value":"49","trial":"false"}',
+    });
+    expect(queued()[2].body.row).toMatchObject({ name: '$session_start', properties: '{}' });
+  });
+
+  it('drops events with invalid names and invalid properties one by one', async () => {
+    const { post, queued } = fixture();
+    const properties: Record<string, unknown> = {
+      nested: { a: 1 },
+      list: [1],
+      nan: Number.NaN,
+      'bad key': 'x',
+      long: 'l'.repeat(300),
+    };
+    for (let index = 0; index < 25; index += 1) properties[`k${index}`] = index;
+    const response = await post({
+      context,
+      items: [
+        eventItem({ name: 'has space' }),
+        eventItem({ name: '$custom' }),
+        eventItem({ name: 'n'.repeat(65) }),
+        // Dot segments would change the URL of the event's dashboard page.
+        eventItem({ name: '.' }),
+        eventItem({ name: '..' }),
+        eventItem({ eventId: 'x' }),
+        eventItem({ properties }),
+      ],
+    });
+    expect(await response.json()).toEqual({ accepted: true, items: 1, dropped: 6 });
+    const kept = JSON.parse(queued()[0].body.row.properties) as Record<string, string>;
+    expect(Object.keys(kept)).toHaveLength(20);
+    expect(kept.long).toHaveLength(200);
+    expect(kept).not.toHaveProperty('nested');
+    expect(kept).not.toHaveProperty('nan');
+  });
+
+  it('pauses events and errors separately', async () => {
+    mockUpstash([1, 1, 0, 1]);
+    const { post, queued } = fixture(redisEnv);
+    const response = await post({ context, items: [errorItem(), eventItem(), eventItem()] });
+    expect(await response.json()).toEqual({ accepted: true, items: 1, dropped: 0, paused: 2 });
+    expect(queued().map((message) => message.body.kind)).toEqual(['error']);
+  });
+
+  it('writes events to app_events_raw', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 202 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { env } = fixture();
+    const message = (kind: string, row: Record<string, unknown>) => ({
+      id: 'm',
+      body: { kind, row },
+      attempts: 1,
+      ack: vi.fn(),
+      retry: vi.fn(),
+    });
+    const messages = [message('event', { event_id: 'e' }), message('error', { event_id: 'x' })];
+    await worker.queue(
+      { queue: 'otakit-app-telemetry', messages, ackAll: vi.fn(), retryAll: vi.fn() } as never,
+      env,
+    );
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(urls).toEqual([
+      'https://api.tinybird.co/v0/events?name=app_events_raw&wait=true',
+      'https://api.tinybird.co/v0/events?name=app_errors_raw&wait=true',
+    ]);
+    for (const item of messages) expect(item.ack).toHaveBeenCalled();
   });
 });
 
