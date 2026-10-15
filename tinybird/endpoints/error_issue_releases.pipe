@@ -1,0 +1,22 @@
+DESCRIPTION >
+    The releases one issue happened on since from_date, with the latest receipt and
+    device time per release. Empty release_id is the built-in bundle.
+
+TOKEN otakit_web READ
+
+NODE issue_releases
+SQL >
+    %
+    SELECT
+        release_id,
+        toUnixTimestamp64Milli(max(last_seen)) AS last_seen_ms,
+        toUnixTimestamp64Milli(max(last_occurred)) AS last_occurred_ms,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events
+    FROM app_error_daily
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND fingerprint = {{ String(fingerprint, '__missing_fingerprint__') }}
+      AND bucket_date >= toDate({{ String(from_date, '1970-01-01') }})
+    GROUP BY release_id
+    ORDER BY release_id
+
+TYPE ENDPOINT

@@ -25,6 +25,16 @@ const DOCS = [
     file: 'packages/site/app/docs/release-notes/page.tsx',
   },
   {
+    label: 'Remote Config',
+    route: '/docs/remote-config',
+    file: 'packages/site/app/docs/remote-config/page.tsx',
+  },
+  {
+    label: 'Error Tracking',
+    route: '/docs/error-tracking',
+    file: 'packages/site/app/docs/error-tracking/page.tsx',
+  },
+  {
     label: 'Update Strategies',
     route: '/docs/update-strategies',
     file: 'packages/site/app/docs/update-strategies/page.tsx',

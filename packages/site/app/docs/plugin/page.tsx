@@ -350,6 +350,54 @@ await OtaKit.apply();`}</Pre>
 
       <Separator className="my-10" />
 
+      <H2>Remote config and error tracking</H2>
+      <P>
+        Plugin 3.4+. See{' '}
+        <Link
+          href="/docs/remote-config"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Remote Config
+        </Link>{' '}
+        and{' '}
+        <Link
+          href="/docs/error-tracking"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Error Tracking
+        </Link>{' '}
+        for the guides.
+      </P>
+      <div className="mt-4 space-y-4">
+        <Method
+          name="getConfig({ defaults })"
+          returns="RemoteConfig"
+          description="The channel's remote config over your defaults, answered instantly from the device. The configChanged event fires when a fetch changes it."
+        />
+        <Method
+          name="refreshConfig({ defaults })"
+          returns="RemoteConfig & { error? }"
+          description="Fetch the remote config now. Network errors resolve with an error code and the saved config instead of throwing."
+        />
+        <Method
+          name="initErrorTracking(options?)"
+          returns="void"
+          description="Import it from @otakit/capacitor-updater and call it once at startup. Sends uncaught errors and unhandled promise rejections, scrubbed of emails, tokens and query strings. Options: sampleRate, ignoreErrors, beforeSend, maxEventsPerSession."
+        />
+        <Method
+          name="captureError(error, { tags }?)"
+          returns="string | null"
+          description="Send an error you caught yourself, marked handled. Returns its event ID, or null when it was dropped."
+        />
+        <Method
+          name="testErrorTracking()"
+          returns="Promise<boolean>"
+          description="Send one test error to check the setup; it appears in the dashboard within a minute."
+        />
+      </div>
+
+      <Separator className="my-10" />
+
       <H2>Advanced Overrides</H2>
       <P>Use these only when you run a custom server or need custom verification behavior.</P>
       <Pre>{`plugins: {

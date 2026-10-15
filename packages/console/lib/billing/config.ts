@@ -4,6 +4,8 @@ export type PlanLimits = {
   downloads: number;
   teamMembers: boolean;
   overage: boolean;
+  /** Error tracking events per UTC month; ingest drops errors above it. */
+  errorEvents: number;
 };
 
 // Enterprise has no metered cap — it's a custom, operator-provisioned contract.
@@ -12,11 +14,17 @@ export type PlanLimits = {
 export const ENTERPRISE_DOWNLOADS = Number.MAX_SAFE_INTEGER;
 export const NEW_FREE_DOWNLOADS = 5_000;
 export const LEGACY_FREE_DOWNLOADS = 100_000;
+export const FREE_ERROR_EVENTS = 10_000;
 
 const PLAN_LIMITS: Record<Exclude<PlanKey, 'free'>, PlanLimits> = {
-  starter: { downloads: 100_000, teamMembers: false, overage: false },
-  pro: { downloads: 1_000_000, teamMembers: true, overage: true },
-  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true, overage: false },
+  starter: { downloads: 100_000, teamMembers: false, overage: false, errorEvents: 100_000 },
+  pro: { downloads: 1_000_000, teamMembers: true, overage: true, errorEvents: 1_000_000 },
+  enterprise: {
+    downloads: ENTERPRISE_DOWNLOADS,
+    teamMembers: true,
+    overage: false,
+    errorEvents: Number.MAX_SAFE_INTEGER,
+  },
 };
 
 /**
@@ -76,7 +84,12 @@ export function getPlanLimits(
   freeDownloadsLimit: number = NEW_FREE_DOWNLOADS,
 ): PlanLimits {
   if (planKey === 'free') {
-    return { downloads: freeDownloadsLimit, teamMembers: false, overage: false };
+    return {
+      downloads: freeDownloadsLimit,
+      teamMembers: false,
+      overage: false,
+      errorEvents: FREE_ERROR_EVENTS,
+    };
   }
   return PLAN_LIMITS[planKey];
 }

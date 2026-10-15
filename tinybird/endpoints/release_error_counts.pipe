@@ -1,0 +1,20 @@
+DESCRIPTION >
+    Error events and issues per release of one app, from the daily rollup (180 days).
+
+TOKEN otakit_web READ
+
+NODE count_release_errors
+SQL >
+    %
+    SELECT
+        release_id,
+        uniqExactMerge(event_ids_uniq_exact_state) AS events,
+        uniqExact(fingerprint) AS issues
+    FROM app_error_daily
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND release_id != ''
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), release_id)
+    GROUP BY release_id
+    ORDER BY release_id
+
+TYPE ENDPOINT

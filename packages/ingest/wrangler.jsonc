@@ -12,12 +12,17 @@
   "vars": {
     "TINYBIRD_API_HOST": "https://api.us-east.aws.tinybird.co",
     "TINYBIRD_EVENTS_DATASOURCE": "device_events_raw",
+    "TINYBIRD_APP_ERRORS_DATASOURCE": "app_errors_raw",
   },
   "queues": {
     "producers": [
       {
         "binding": "EVENTS_QUEUE",
         "queue": "otakit-events",
+      },
+      {
+        "binding": "APP_TELEMETRY_QUEUE",
+        "queue": "otakit-app-telemetry",
       },
     ],
     "consumers": [
@@ -28,6 +33,13 @@
         "max_retries": 5,
         "dead_letter_queue": "otakit-events-dlq",
       },
+      {
+        "queue": "otakit-app-telemetry",
+        "max_batch_size": 100,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "dead_letter_queue": "otakit-app-telemetry-dlq",
+      },
     ],
   },
   "ratelimits": [
@@ -36,6 +48,14 @@
       "namespace_id": "2026041201",
       "simple": {
         "limit": 5000,
+        "period": 60,
+      },
+    },
+    {
+      "name": "APP_TELEMETRY_RATE_LIMITER",
+      "namespace_id": "2026101401",
+      "simple": {
+        "limit": 2000,
         "period": 60,
       },
     },

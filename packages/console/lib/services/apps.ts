@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import type { OrganizationAccess } from '@/lib/organization-access';
+import { addTelemetryApp } from '@/lib/telemetry-gate';
 import { isValidAppSlug } from '@/lib/validation';
 
 import { OtaKitServiceError } from './errors';
@@ -82,6 +83,8 @@ export async function createApp(input: {
       targetId: app.id,
       metadata: { slug: app.slug, ...input.auditMetadata },
     });
+    // The ingest Worker accepts app telemetry from known apps only.
+    await addTelemetryApp(app.id);
 
     return { id: app.id, slug: app.slug, createdAt: app.createdAt.toISOString() };
   } catch (error) {

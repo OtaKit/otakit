@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/notifications",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/errors",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

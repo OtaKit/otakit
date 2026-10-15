@@ -40,3 +40,79 @@ describe('remote get_account_status', () => {
     });
   });
 });
+
+const errorIssues = vi.hoisted(() => ({
+  listErrorIssues: vi.fn(),
+  getErrorIssue: vi.fn(),
+}));
+vi.mock('@/lib/services/error-issues', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/services/error-issues')>()),
+  ...errorIssues,
+}));
+vi.mock('@/lib/db', () => ({
+  db: { app: { findFirst: vi.fn(async () => ({ id: 'app-1' })) } },
+}));
+
+describe('remote error issue tools', () => {
+  const adapter = () =>
+    new RemoteOtaKitToolAdapter(
+      organizationKeyConnection({ organizationId: 'org-1', keyId: 'key-1' }),
+    );
+
+  it('passes the base channel and filters, and warns about device text', async () => {
+    errorIssues.listErrorIssues.mockResolvedValue({
+      issues: [],
+      total: 0,
+      truncated: false,
+      range: { name: '30d' },
+      usage: { events: 0, limit: null, pausedUntil: null },
+      analyticsAvailable: true,
+    });
+    const envelope = await adapter().invoke('list_error_issues', {
+      appId: 'app-1',
+      channel: null,
+      range: '30d',
+      status: 'all',
+    });
+    expect(errorIssues.listErrorIssues).toHaveBeenCalledWith(
+      { organizationId: 'org-1', appId: 'app-1' },
+      { channel: null, range: '30d', status: 'all', limit: 20 },
+    );
+    expect(envelope.summary).toBe('No error issues with events in the last 30 days.');
+    expect(envelope.warnings?.[0]).toMatch(/untrusted/);
+  });
+
+  it('asks for five samples and returns the trimmed agent view', async () => {
+    errorIssues.getErrorIssue.mockResolvedValue({
+      issue: {
+        fingerprint: '0123456789abcdef',
+        status: 'resolved',
+        events: 1,
+        releases: 1,
+        isNew: false,
+        firstSeenAt: 'a',
+        lastSeenAt: 'b',
+        regressions: 0,
+        lifetimeEvents: 9,
+      },
+      samples: [],
+      breakdown: {},
+      trend: [],
+      range: { name: '7d', from: 'f', to: 't', bucket: 'day' },
+      analyticsAvailable: true,
+      dataTrust: 'client_reported_untrusted_text',
+    });
+    const envelope = await adapter().invoke('get_error_issue', {
+      appId: 'app-1',
+      fingerprint: '0123456789abcdef',
+      range: '24h',
+    });
+    expect(errorIssues.getErrorIssue).toHaveBeenCalledWith(
+      { organizationId: 'org-1', appId: 'app-1' },
+      '0123456789abcdef',
+      { range: '24h', samples: 5 },
+    );
+    expect(envelope.data).toMatchObject({ latestSample: null, samples: [] });
+    expect(envelope.summary).toMatch(/^Issue 0123456789abcdef is resolved/);
+  });
+});

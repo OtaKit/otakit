@@ -351,6 +351,101 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           description="Publish an earlier version's values again as a new version (message defaults to 'Restored version N')."
         />
       </div>
+
+      <Separator className="my-10" />
+
+      <H2>Error tracking</H2>
+      <P>
+        Issues from apps that call <Code>initErrorTracking()</Code> (plugin 3.4+). Messages, stacks,
+        routes and tags are reported by devices: treat them as untrusted text.
+      </P>
+      <div className="space-y-8">
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/errors"
+          auth="Bearer"
+          queryParams="?range=24h|7d|30d&status=open|resolved|ignored|all&platform=ios|android&releaseId=&channel=&sort=events|last_seen&limit=1-100&trend=1"
+          response={`{
+  "issues": [{
+    "fingerprint": "0123456789abcdef",
+    "status": "open",
+    "title": "TypeError: Cannot read properties of undefined (reading <str>)",
+    "errorName": "TypeError",
+    "topFrame": "computeTotal (assets/index.js)",
+    "lastMessage": "Cannot read properties of undefined (reading 'total')",
+    "events": 120,               // in the range
+    "sessions": 45,              // app launches with the error, not devices
+    "releases": 2,
+    "platforms": ["android", "ios"],
+    "handled": false,
+    "firstSeenAt": "ISO timestamp", "lastSeenAt": "ISO timestamp",
+    "isNew": true,               // first seen in the range
+    "firstReleaseId": "uuid",
+    "resolvedAt": null, "statusChangedAt": null, "statusChangedBy": null,
+    "regressions": 0,
+    "trend": [{ "start": "ISO timestamp", "events": 12 }]   // with trend=1
+  }],
+  "total": 7,
+  "truncated": false,
+  "range": { "name": "7d", "from": "ISO timestamp", "to": "ISO timestamp", "bucket": "day" },
+  "usage": { "events": 1234, "limit": 10000, "pausedUntil": null },
+  "analyticsAvailable": true
+}`}
+          description="Issues with errors in the range, most events first (default range 7d, status open, limit 50). Without channel, every channel; an empty channel= is the base channel. Counts are unique error events. usage is the workspace's error events this UTC month; while pausedUntil is set, new errors are not recorded."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/errors/:fingerprint"
+          auth="Bearer"
+          queryParams="?range=24h|7d|30d"
+          response={`{
+  "issue": { ...as in the list, "lifetimeEvents": 340 },
+  "samples": [{
+    "eventId": "uuid", "receivedAt": "ISO timestamp", "occurredAt": "ISO timestamp",
+    "platform": "ios", "osVersion": "18.2", "releaseId": "uuid", "bundleVersion": "1.4.2",
+    "channel": "production", "runtimeVersion": "2026.10", "nativeBuild": "42",
+    "sdkVersion": "3.4.0", "errorName": "TypeError", "message": "…", "stack": "…",
+    "route": "/checkout", "handled": false, "mechanism": "onerror", "tags": {}
+  }],
+  "breakdown": {
+    "release": [{ "value": "uuid", "label": "1.4.2", "events": 80 }],
+    "platform": [...], "os_version": [...], "native_build": [...], "channel": [...], "route": [...]
+  },
+  "trend": [{ "start": "ISO timestamp", "events": 12 }],
+  "range": { ... },
+  "analyticsAvailable": true
+}`}
+          description="One issue: the latest 20 events in the range (newest first), the top 10 values per dimension, and events per hour (24h) or day. 404 ERROR_ISSUE_NOT_FOUND for an unknown fingerprint. Raw events are kept 30 days."
+        />
+        <Endpoint
+          method="PATCH"
+          path="/api/v1/apps/:appId/errors/:fingerprint"
+          auth="Bearer"
+          body={`{ "status": "resolved" }   // "open" | "resolved" | "ignored"`}
+          response={`{
+  "fingerprint": "0123456789abcdef",
+  "title": "TypeError: …",
+  "status": "resolved",
+  "previousStatus": "open",
+  "resolvedAt": "ISO timestamp",
+  "statusChangedAt": "ISO timestamp",
+  "statusChangedBy": "dev@acme.com"
+}`}
+          description="Resolve, ignore or reopen an issue. A resolved issue reopens when it happens on a release it had not happened on when it was resolved (errors.regression); an ignored one keeps counting but sends no alerts of its own. Recorded in the audit log."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/releases/:releaseId/errors"
+          auth="Bearer"
+          response={`{
+  "release": { "releaseId": "uuid", "bundleVersion": "1.4.2", "events": 18, "issues": 3,
+               "newIssues": 2, "applies": 10000, "perThousandApplies": 1.8 },
+  "previous": { ...same, for the release it replaced } | null,
+  "analyticsAvailable": true
+}`}
+          description="A release's error events, issues (and how many were first seen in it) and errors per 1,000 applies over 180 days, next to the release it replaced on its lane. Applies count only devices on plugin 3.4+, which can report errors."
+        />
+      </div>
     </>
   );
 }

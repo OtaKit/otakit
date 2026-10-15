@@ -2,8 +2,28 @@ import Foundation
 
 /// Atomic, bounded persistence; retries preserve the exact original event body.
 final class EventOutbox {
-  static let limit = 256
-  static let ttl: TimeInterval = 7 * 24 * 60 * 60
+  /// Bounds of one outbox. OTA events and app telemetry have their own, in
+  /// their own directories, so a flood of app errors never evicts OTA events.
+  struct Limits {
+    let count: Int
+    let ttl: TimeInterval
+    let maxBody: Int
+    let maxFile: Int
+    /// The body field that identifies an entry; a retry never changes it.
+    let idKey: String
+    let fileName: String
+
+    static let deviceEvents = Limits(
+      count: 256, ttl: 7 * 24 * 60 * 60, maxBody: 8192, maxFile: 4 * 1024 * 1024,
+      idKey: "eventId", fileName: "events.json")
+    /// Batches of up to 64 KiB, kept 3 days.
+    static let appTelemetry = Limits(
+      count: 60, ttl: 3 * 24 * 60 * 60, maxBody: 64 * 1024, maxFile: 8 * 1024 * 1024,
+      idKey: "batchId", fileName: "batches.json")
+  }
+
+  static let limit = Limits.deviceEvents.count
+  static let ttl = Limits.deviceEvents.ttl
   struct Entry: Codable {
     let id: String
     let url: URL
@@ -13,24 +33,26 @@ final class EventOutbox {
     var attempts: Int
     var nextAt: TimeInterval
   }
+  let limits: Limits
   private let file: URL
   private let lock = NSLock()
   private var entries: [Entry] = []
 
-  init(directory: URL) throws {
+  init(directory: URL, limits: Limits = .deviceEvents) throws {
+    self.limits = limits
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     var directory = directory
     var values = URLResourceValues()
     values.isExcludedFromBackup = true
     try directory.setResourceValues(values)
-    file = directory.appendingPathComponent("events.json")
+    file = directory.appendingPathComponent(limits.fileName)
     if FileManager.default.fileExists(atPath: file.path) {
       let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-      guard size <= 4 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
+      guard size <= limits.maxFile else { throw CocoaError(.fileReadTooLarge) }
       let data = try Data(contentsOf: file)
       do {
         entries = try JSONDecoder().decode([Entry].self, from: data)
-        guard entries.count <= Self.limit else { throw CocoaError(.fileReadCorruptFile) }
+        guard entries.count <= limits.count else { throw CocoaError(.fileReadCorruptFile) }
       } catch {
         print("[OtaKit] Discarding unreadable event outbox")
         try save([])
@@ -40,12 +62,12 @@ final class EventOutbox {
 
   func enqueue(url: URL, appId: String, body: Data, now: TimeInterval) throws {
     lock.lock(); defer { lock.unlock() }
-    guard body.count <= 8192,
+    guard body.count <= limits.maxBody,
           let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any],
-          let id = payload["eventId"] as? String else { throw CocoaError(.fileWriteInvalidFileName) }
+          let id = payload[limits.idKey] as? String else { throw CocoaError(.fileWriteInvalidFileName) }
     var next = live(now)
     guard !next.contains(where: { $0.id == id }) else { return }
-    while next.count >= Self.limit { next.removeFirst() }
+    while next.count >= limits.count { next.removeFirst() }
     next.append(Entry(id: id, url: url, appId: appId, body: body, createdAt: now, attempts: 0, nextAt: now))
     try save(next)
   }
@@ -59,7 +81,7 @@ final class EventOutbox {
 
   func wait(now: TimeInterval) -> TimeInterval? {
     lock.lock(); defer { lock.unlock() }
-    return entries.map { max(0, min($0.nextAt, $0.createdAt + Self.ttl) - now) }.min()
+    return entries.map { max(0, min($0.nextAt, $0.createdAt + limits.ttl) - now) }.min()
   }
 
   func complete(id: String, status: Int, retryAfter: String?, now: TimeInterval, random: Double) throws {
@@ -73,14 +95,14 @@ final class EventOutbox {
         let backoff = min(3600, 5 * pow(2, Double(min(next[index].attempts - 1, 10)))) * (0.5 + random)
         let serverDelay = DownloadRetry.retryAfter(retryAfter, now: Date(timeIntervalSince1970: now)) ?? 0
         // Expiration is the upper bound; never retry before a longer server delay.
-        next[index].nextAt = min(now + max(backoff, serverDelay), next[index].createdAt + Self.ttl)
+        next[index].nextAt = min(now + max(backoff, serverDelay), next[index].createdAt + limits.ttl)
       }
     }
     try save(next)
   }
 
   private func live(_ now: TimeInterval) -> [Entry] {
-    entries.filter { now < $0.createdAt + Self.ttl }
+    entries.filter { now < $0.createdAt + limits.ttl }
   }
 
   private func save(_ next: [Entry]) throws {
@@ -91,17 +113,28 @@ final class EventOutbox {
 
 /// Owns one serial delivery loop independently of any Capacitor bridge lifetime.
 final class EventDelivery: NSObject, URLSessionTaskDelegate {
-  private let worker = DispatchQueue(label: "OtaKit.events")
+  private let worker: DispatchQueue
   private let stateLock = NSLock()
   private var outbox: EventOutbox?
   private var scheduled: DispatchWorkItem?
   private var sending = false
   private let configuration: URLSessionConfiguration
+  private let directoryName: String
+  private let limits: EventOutbox.Limits
   private lazy var session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
 
-  init(outbox: EventOutbox? = nil, configuration: URLSessionConfiguration = .ephemeral) {
+  init(
+    outbox: EventOutbox? = nil,
+    configuration: URLSessionConfiguration = .ephemeral,
+    directoryName: String = "OtaKitEvents",
+    limits: EventOutbox.Limits = .deviceEvents,
+    label: String = "OtaKit.events"
+  ) {
     self.outbox = outbox
     self.configuration = configuration
+    self.directoryName = directoryName
+    self.limits = limits
+    self.worker = DispatchQueue(label: label)
     super.init()
   }
 
@@ -111,14 +144,17 @@ final class EventDelivery: NSObject, URLSessionTaskDelegate {
       do {
         let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
           appropriateFor: nil, create: true)
-        outbox = try EventOutbox(directory: support.appendingPathComponent("OtaKitEvents", isDirectory: true))
-      } catch { print("[OtaKit] Cannot open device event outbox") }
+        outbox = try EventOutbox(
+          directory: support.appendingPathComponent(directoryName, isDirectory: true), limits: limits)
+      } catch { print("[OtaKit] Cannot open the \(directoryName) outbox") }
     }
     stateLock.unlock()
     worker.async { self.schedule() }
   }
 
-  func enqueue(url: URL, appId: String, body: Data) {
+  /// Persists the body for delivery; false when it could not be stored.
+  @discardableResult
+  func enqueue(url: URL, appId: String, body: Data) -> Bool {
     stateLock.lock()
     let outbox = self.outbox
     stateLock.unlock()
@@ -126,7 +162,11 @@ final class EventDelivery: NSObject, URLSessionTaskDelegate {
       guard let outbox else { throw CocoaError(.fileWriteUnknown) }
       try outbox.enqueue(url: url, appId: appId, body: body, now: Date().timeIntervalSince1970)
       worker.async { self.schedule() }
-    } catch { print("[OtaKit] Cannot persist device event") }
+      return true
+    } catch {
+      print("[OtaKit] Cannot persist to the \(directoryName) outbox")
+      return false
+    }
   }
 
   private func schedule(minimumDelay: TimeInterval = 0) {

@@ -97,6 +97,18 @@ export default function WebhooksPage() {
           is published, restored or deleted.
         </li>
         <li>
+          <Code>errors.new_issue</Code>, <Code>errors.regression</Code>, <Code>errors.spike</Code>{' '}
+          and <Code>errors.paused</Code> — from{' '}
+          <Link
+            href="/docs/error-tracking"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            error tracking
+          </Link>
+          : a new error issue, a resolved one that came back, a release with an error spike, and the
+          monthly error limit.
+        </li>
+        <li>
           <Code>bundle.uploaded</Code> — a new bundle is uploaded.
         </li>
         <li>
@@ -171,6 +183,27 @@ export default function WebhooksPage() {
           <Code>version</Code>, <Code>previousVersion</Code>, <Code>deleted</Code>,{' '}
           <Code>message</Code>, <Code>changedKeys</Code> (<Code>added</Code>, <Code>changed</Code>,{' '}
           <Code>removed</Code>) and the new <Code>values</Code> (<Code>null</Code> when deleted).
+        </li>
+        <li>
+          <Code>errors.new_issue</Code> and <Code>errors.regression</Code>: <Code>issue</Code> with{' '}
+          <Code>id</Code>, <Code>fingerprint</Code>, <Code>title</Code>, <Code>topFrame</Code>,{' '}
+          <Code>status</Code>, <Code>events</Code> (180 days), <Code>firstSeenAt</Code>,{' '}
+          <Code>lastSeenAt</Code> and <Code>firstReleaseId</Code>; regressions also{' '}
+          <Code>previouslyResolvedAt</Code> and <Code>release</Code>, the release it came back on (
+          <Code>null</Code> for the built-in bundle). The title and frame are reported by devices:
+          treat them as untrusted text. <Code>actor</Code> is <Code>null</Code>.
+        </li>
+        <li>
+          <Code>errors.spike</Code>: <Code>release</Code>, <Code>previousRelease</Code> and{' '}
+          <Code>errors</Code> with <Code>events</Code>, <Code>applies</Code> (from phones on plugin
+          3.4+), <Code>perThousandApplies</Code>, the same three for the previous release (
+          <Code>previousEvents</Code>, <Code>previousApplies</Code>,{' '}
+          <Code>previousPerThousandApplies</Code>) and <Code>issues</Code>.
+        </li>
+        <li>
+          <Code>errors.paused</Code>: <Code>errorUsage</Code> with <Code>events</Code>,{' '}
+          <Code>limit</Code> and <Code>pausedUntil</Code>. <Code>app</Code> and <Code>actor</Code>{' '}
+          are <Code>null</Code>.
         </li>
         <li>
           <Code>bundle.uploaded</Code>: <Code>bundle</Code> with <Code>id</Code>,{' '}

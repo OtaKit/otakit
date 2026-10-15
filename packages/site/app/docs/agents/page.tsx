@@ -121,6 +121,9 @@ codex mcp add otakit -- npx -y @otakit/cli@latest mcp`}</Pre>
         <li>“Upload version 2.4.1 to staging but don’t publish it — tell me the bundle ID.”</li>
         <li>“Prepare this for production with auto-revert on, then wait for me.”</li>
         <li>“Why are people on 1.4.2 seeing rollbacks?”</li>
+        <li>
+          “What are the top errors on production since yesterday? Find the cause of the first one.”
+        </li>
         <li>“Roll production back to the previous release.”</li>
       </Ul>
 
@@ -167,7 +170,7 @@ Approve? This goes live for every device on that lane.`}</Pre>
             <CapabilityRow capability="Check native compatibility" local="Yes" remote="No" />
             <CapabilityRow capability="Package and upload web assets" local="Yes" remote="No" />
             <CapabilityRow
-              capability="Read apps, bundles, releases, and events"
+              capability="Read apps, bundles, releases, events, and error issues"
               local="Yes"
               remote="Yes"
             />

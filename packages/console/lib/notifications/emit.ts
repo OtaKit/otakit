@@ -26,6 +26,8 @@ export type NotificationEvent = NotificationEventFields & {
    */
   key: string;
   actor: AuditActor | null;
+  /** Extra query parameters for the app's dashboard link, e.g. `{ issue }` to open an error issue. */
+  dashboardParams?: Record<string, string>;
 };
 
 export function appUrl(): string {
@@ -60,8 +62,15 @@ export function notificationEventId(organizationId: string, key: string): string
 }
 
 /** Dashboard link for an app, switching to its workspace when another one is active. */
-export function appDashboardUrl(organizationId: string, appId: string): string {
-  return `${appUrl()}/dashboard?org=${encodeURIComponent(organizationId)}&app=${encodeURIComponent(appId)}`;
+export function appDashboardUrl(
+  organizationId: string,
+  appId: string,
+  params: Record<string, string> = {},
+): string {
+  const extra = Object.entries(params)
+    .map(([key, value]) => `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('');
+  return `${appUrl()}/dashboard?org=${encodeURIComponent(organizationId)}&app=${encodeURIComponent(appId)}${extra}`;
 }
 
 /** The health numbers of the audit record, under their public names. */
@@ -100,7 +109,7 @@ export async function buildNotificationPayload(
       app,
       actor: notificationActor(event.actor),
       dashboardUrl: app
-        ? appDashboardUrl(organization.id, app.id)
+        ? appDashboardUrl(organization.id, app.id, event.dashboardParams)
         : `${appUrl()}/dashboard/settings?org=${encodeURIComponent(organization.id)}`,
       ...event.data,
     },

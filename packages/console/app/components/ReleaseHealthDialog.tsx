@@ -15,6 +15,7 @@ import {
 
 import type { ReleaseHistoryItem } from '@/app/components/dashboard-types';
 import { InfoHint } from '@/app/components/InfoHint';
+import type { ReleaseErrorComparison } from '@/lib/services/error-issues';
 import type {
   ReleaseTimeseries,
   ReleaseTimeseriesMarker,
@@ -171,14 +172,96 @@ function Stat({
  * How a release spreads and how healthy it is over time, plus the lane's
  * releases replacing each other. Loaded on demand from the release menu.
  */
+function formatRate(rate: number | null): string {
+  if (rate === null) return '–';
+  if (rate > 0 && rate < 0.1) return '<0.1';
+  return rate >= 10 ? rate.toFixed(0) : rate.toFixed(1);
+}
+
+/** The release's error tracking numbers (180 days), next to the release it replaced. */
+function ReleaseErrors({
+  appId,
+  releaseId,
+  onViewErrors,
+}: {
+  appId: string;
+  releaseId: string;
+  onViewErrors: () => void;
+}) {
+  const [data, setData] = useState<ReleaseErrorComparison | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/v1/apps/${appId}/releases/${releaseId}/errors`, { signal: controller.signal })
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as ReleaseErrorComparison) : null,
+      )
+      .then((body) => setData(body))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [appId, releaseId]);
+
+  if (!data?.analyticsAvailable) return null;
+  const { release, previous } = data;
+  const worse =
+    release.perThousandApplies !== null &&
+    previous?.perThousandApplies != null &&
+    release.events >= 20 &&
+    release.perThousandApplies >= 3 * Math.max(previous.perThousandApplies, 0.0001);
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-xs">
+      {release.events === 0 ? (
+        <span className="text-muted-foreground">
+          No errors reported for this release. Error tracking needs plugin 3.4+ and{' '}
+          <code>initErrorTracking()</code>.
+        </span>
+      ) : (
+        <span>
+          <span className="font-medium">Errors</span>
+          <span className="text-muted-foreground">
+            {' '}
+            · {formatNumber(release.events)} events · {formatNumber(release.issues)}{' '}
+            {release.issues === 1 ? 'issue' : 'issues'}
+            {release.newIssues > 0 ? ` (${formatNumber(release.newIssues)} new)` : ''} ·{' '}
+          </span>
+          <span className={cn(worse ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+            {formatRate(release.perThousandApplies)} per 1,000 applies
+          </span>
+          <InfoHint label="About the error rate" className="ml-1 inline-flex align-middle">
+            <p className="text-xs">
+              Error events per 1,000 applies from phones whose native plugin can report errors
+              (3.4+), over the last 180 days.
+            </p>
+          </InfoHint>
+          {previous && previous.perThousandApplies !== null ? (
+            <span className="text-muted-foreground">
+              {' '}
+              (was {formatRate(previous.perThousandApplies)} on {previous.bundleVersion})
+            </span>
+          ) : null}
+        </span>
+      )}
+      <button
+        type="button"
+        className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        onClick={onViewErrors}
+      >
+        View errors
+      </button>
+    </section>
+  );
+}
+
 export function ReleaseHealthDialog({
   appId,
   release,
   onClose,
+  onViewErrors,
 }: {
   appId: string;
   release: ReleaseHistoryItem;
   onClose: () => void;
+  /** Show this release's errors in the Errors section. */
+  onViewErrors: () => void;
 }) {
   // Same default as the API: young releases open on 24 hours.
   const [range, setRange] = useState<ReleaseTimeseriesRange>(() =>
@@ -418,6 +501,8 @@ export function ReleaseHealthDialog({
               <Stat label="Download errors" value={formatNumber(data.totals.downloadErrors)} />
               <Stat label="Downloads" value={formatNumber(data.totals.downloads)} />
             </div>
+
+            <ReleaseErrors appId={appId} releaseId={release.id} onViewErrors={onViewErrors} />
 
             {empty ? (
               <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">

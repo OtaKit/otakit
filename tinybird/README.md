@@ -1,7 +1,7 @@
 # Tinybird resources
 
 This folder contains the Tinybird resources used by OtaKit device-event
-analytics. It is mainly relevant for advanced self-hosted setups.
+analytics and error tracking. It is mainly relevant for advanced self-hosted setups.
 
 ## Resources
 
@@ -14,6 +14,18 @@ analytics. It is mainly relevant for advanced self-hosted setups.
 - `endpoints/release_event_timeseries.pipe`
 - `endpoints/bundle_event_counts.pipe`
 - `endpoints/organization_download_counts.pipe`
+- `datasources/app_errors_raw.datasource`
+- `datasources/app_error_daily.datasource`
+- `materializations/app_error_daily_mv.pipe`
+- `endpoints/error_activity.pipe`
+- `endpoints/error_groups.pipe`
+- `endpoints/error_group_samples.pipe`
+- `endpoints/error_group_breakdown.pipe`
+- `endpoints/error_group_buckets.pipe`
+- `endpoints/release_error_counts.pipe`
+- `endpoints/error_issue_releases.pipe`
+- `endpoints/release_capable_applies.pipe`
+- `endpoints/app_error_usage.pipe`
 
 ## Required names
 
@@ -22,6 +34,8 @@ The web app and ingest service expect these resource names:
 - datasources:
   - `device_events_raw`
   - `device_event_daily_counts`
+  - `app_errors_raw`
+  - `app_error_daily`
 - endpoints:
   - `app_events_recent`
   - `release_event_counts`
@@ -29,6 +43,9 @@ The web app and ingest service expect these resource names:
   - `release_event_timeseries`
   - `bundle_event_counts`
   - `organization_download_counts`
+  - `error_activity`, `error_groups`, `error_group_samples`, `error_group_breakdown`,
+    `error_group_buckets`, `error_issue_releases`, `release_error_counts`,
+    `release_capable_applies`, `app_error_usage`
 
 ## Event schema requirements
 
@@ -69,3 +86,16 @@ keeps one earliest row per ID before applying its date, optional filters, order,
 and limit. Both raw queries are bounded by the raw datasource's 90-day retention:
 a retry whose original receipt has expired can appear new. They do not infer
 an event's original receipt from its client clock.
+
+## App errors
+
+Error tracking (plugin 3.4+) writes one row per captured error to `app_errors_raw`
+(30 days). The ingest Worker computes `fingerprint`, the issue an error belongs to.
+`app_error_daily` keeps per-issue daily counts for 180 days, for release error rates,
+monthly caps and the issue list's lifetime totals. Device retries can repeat an
+`event_id`: every count uses `uniqExact(event_id)`. Hourly and daily buckets count a
+retry received in another bucket in both; totals do not.
+
+Error rates per 1,000 applies (`release_capable_applies`) count only applies from
+devices whose native plugin can report errors (3.4+, from `native_sdk_version`), so a
+release is not compared against devices that could not have reported anything.

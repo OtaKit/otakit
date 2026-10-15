@@ -39,6 +39,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     CAPPluginMethod(name: "markReleaseNotesSeen", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "getConfig", returnType: CAPPluginReturnPromise),
     CAPPluginMethod(name: "refreshConfig", returnType: CAPPluginReturnPromise),
+    CAPPluginMethod(name: "enqueueAppTelemetry", returnType: CAPPluginReturnPromise),
   ]
 
   private let store = BundleStore()
@@ -79,6 +80,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
   public override func load() {
     DeviceEventClient.resume()
+    AppTelemetryClient.resume()
     trialDeadline.observe(
       center: .default,
       active: UIApplication.didBecomeActiveNotification,
@@ -178,6 +180,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
         queue: .main
       ) { [weak self] _ in
         DeviceEventClient.resume()
+        AppTelemetryClient.resume()
         self?.refreshConfigInBackground(respectInterval: true)
         if self?.resumePolicy != .off { self?.handleAppWillEnterForeground() }
       }
@@ -591,6 +594,62 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       if let error = result.error { data["error"] = error }
       call.resolve(data)
     }
+  }
+
+  /// "18.2" or "18.2.1"; ProcessInfo is safe off the main thread, unlike UIDevice.
+  private static let osVersion: String = {
+    let version = ProcessInfo.processInfo.operatingSystemVersion
+    return version.patchVersion == 0
+      ? "\(version.majorVersion).\(version.minorVersion)"
+      : "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+  }()
+
+  /// App telemetry from initErrorTracking() (plugin 3.4+): stores the items
+  /// with the device context in their own outbox, and delivers them in the
+  /// background. Resolves with how many items were stored.
+  @objc func enqueueAppTelemetry(_ call: CAPPluginCall) {
+    guard let appId else {
+      call.reject("appId is not configured")
+      return
+    }
+    guard let items = call.options["items"] as? [Any] else {
+      call.reject("items must be a list")
+      return
+    }
+    guard items.count <= AppTelemetryClient.maxBatchItems else {
+      call.reject("At most \(AppTelemetryClient.maxBatchItems) items per call")
+      return
+    }
+    let current = coordinator.snapshotState(isStagedBundleUsable: isBundleUsable).current
+    var context: [String: Any] = [
+      "platform": "ios",
+      "sessionId": AppTelemetryClient.sessionId,
+      "bundleVersion": current.isBuiltin ? "builtin" : current.version,
+      "nativeBuild": coordinator.nativeBuild,
+      "osVersion": Self.osVersion,
+      "sdkVersion": SDKVersion.value
+    ]
+    if let releaseId = current.releaseId { context["releaseId"] = releaseId }
+    if let channel = PreviewLink.reportedChannel(current.isBuiltin ? configChannel() : current.channel) {
+      context["channel"] = channel
+    }
+    // The bundle the JavaScript runs from: after an update or a rollback the
+    // current bundle changes before the reload, while the old JavaScript still
+    // sends its last errors.
+    if let bundle = call.getObject("bundle"),
+       let version = bundle["bundleVersion"] as? String, !version.isEmpty, version.count <= 64 {
+      context["bundleVersion"] = version
+      context["releaseId"] = (bundle["releaseId"] as? String).flatMap { $0.count <= 64 ? $0 : nil }
+      if let channel = bundle["channel"] as? String, !channel.isEmpty, channel.count <= 64 {
+        context["channel"] = channel
+      } else if version != "builtin" {
+        context["channel"] = nil
+      }
+    }
+    if let runtimeVersion { context["runtimeVersion"] = runtimeVersion }
+    let result = AppTelemetryClient.enqueue(
+      ingestUrl: ingestUrl, appId: appId, context: context, items: items)
+    call.resolve(["accepted": result.accepted, "dropped": result.dropped])
   }
 
   /// setChannel's override, else the configured channel. Preview links never

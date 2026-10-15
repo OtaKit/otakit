@@ -1,0 +1,28 @@
+DESCRIPTION >
+    Applies per release from devices whose native plugin can report errors
+    (min_major.min_minor or later, 3.4 by default), for error rates. Reads raw
+    device events (90 days); retries count once.
+
+TOKEN otakit_web READ
+
+NODE capable_applies
+SQL >
+    %
+    SELECT
+        coalesce(release_id, '') AS release_id,
+        uniqExact(event_id) AS applies
+    FROM device_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      AND action = 'applied'
+      AND has(splitByChar(',', {{ String(release_ids, '') }}), coalesce(release_id, ''))
+      AND (
+          toUInt32OrZero(extract(coalesce(native_sdk_version, ''), '^([0-9]+)')) > {{ UInt32(min_major, 3) }}
+          OR (
+              toUInt32OrZero(extract(coalesce(native_sdk_version, ''), '^([0-9]+)')) = {{ UInt32(min_major, 3) }}
+              AND toUInt32OrZero(extract(coalesce(native_sdk_version, ''), '^[0-9]+[.]([0-9]+)')) >= {{ UInt32(min_minor, 4) }}
+          )
+      )
+    GROUP BY release_id
+    ORDER BY release_id
+
+TYPE ENDPOINT

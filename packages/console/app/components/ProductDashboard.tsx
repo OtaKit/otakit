@@ -44,6 +44,7 @@ import { appIdentifierError } from '@/lib/onboarding-profile';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
+import { ErrorsSection } from '@/app/components/ErrorsSection';
 import { RemoteConfigSection } from '@/app/components/RemoteConfigSection';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
@@ -549,6 +550,11 @@ export function ProductDashboard({
 
   // Release health charts
   const [healthRelease, setHealthRelease] = useState<ReleaseHistoryItem | null>(null);
+
+  // Errors: the release filter can be set from a release's health dialog.
+  const [errorsRelease, setErrorsRelease] = useState<{ appId: string; releaseId: string } | null>(
+    null,
+  );
 
   // Remote config: channels that have releases, offered when adding a channel's config.
   const releaseChannels = useMemo(
@@ -2174,6 +2180,23 @@ export function ProductDashboard({
                 />
               ) : null}
 
+              {/* Errors */}
+              {selectedApp ? (
+                <ErrorsSection
+                  key={`errors-${selectedApp.id}`}
+                  appId={selectedApp.id}
+                  releases={releaseHistory}
+                  docsUrl={docsUrl}
+                  releaseFilter={
+                    errorsRelease?.appId === selectedApp.id ? errorsRelease.releaseId : null
+                  }
+                  onReleaseFilterChange={(releaseId) =>
+                    setErrorsRelease(releaseId ? { appId: selectedApp.id, releaseId } : null)
+                  }
+                  onUpgrade={() => setPricingDialogOpen(true)}
+                />
+              ) : null}
+
               {/* Events */}
               {selectedApp ? (
                 <section className={cn(showEmptyEvents && 'flex flex-1')}>
@@ -2490,6 +2513,10 @@ export function ProductDashboard({
           appId={selectedAppId}
           release={healthRelease}
           onClose={() => setHealthRelease(null)}
+          onViewErrors={() => {
+            setErrorsRelease({ appId: selectedAppId, releaseId: healthRelease.id });
+            setHealthRelease(null);
+          }}
         />
       ) : null}
 

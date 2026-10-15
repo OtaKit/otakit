@@ -176,6 +176,7 @@ public class UpdaterPlugin extends Plugin {
     this.cdnUrl = resolveCdnUrl(getConfig().getString("cdnUrl"), System.getenv("OTAKIT_CDN_URL"));
     this.appId = getConfig().getString("appId");
     DeviceEventClient.resume(new File(getContext().getNoBackupFilesDir(), "otakit-events"));
+    AppTelemetryClient.resume(new File(getContext().getNoBackupFilesDir(), "otakit-app-telemetry"));
     this.channel = trimToNull(getConfig().getString("channel"));
     this.runtimeVersion = trimToNull(getConfig().getString("runtimeVersion"));
     this.store = new BundleStore(getContext(), builtinVersion, nativeBuild, this.runtimeVersion);
@@ -294,9 +295,12 @@ public class UpdaterPlugin extends Plugin {
     super.handleOnResume();
     lifecycleState = "foreground";
     trialDeadline.setForeground(true);
-    if (bridge != null) DeviceEventClient.resume(
-      new File(getContext().getNoBackupFilesDir(), "otakit-events")
-    );
+    if (bridge != null) {
+      DeviceEventClient.resume(new File(getContext().getNoBackupFilesDir(), "otakit-events"));
+      AppTelemetryClient.resume(
+        new File(getContext().getNoBackupFilesDir(), "otakit-app-telemetry")
+      );
+    }
     // Skipped right after the cold-start fetch by the check interval.
     refreshConfigInBackground(true);
     if (!storageReady) return;
@@ -733,6 +737,75 @@ public class UpdaterPlugin extends Plugin {
       return;
     }
     call.resolve(toJSObject(remoteConfig.snapshot(appId, configChannel()).toMap()));
+  }
+
+  /**
+   * App telemetry from initErrorTracking() (plugin 3.4+): stores the items with the device context
+   * in their own outbox and delivers them in the background. Resolves with how many were stored.
+   */
+  @PluginMethod
+  public void enqueueAppTelemetry(PluginCall call) {
+    if (appId == null) {
+      call.reject("appId is not configured");
+      return;
+    }
+    org.json.JSONArray items;
+    try {
+      items = call.getData().getJSONArray("items");
+    } catch (Exception error) {
+      call.reject("items must be a list");
+      return;
+    }
+    if (items.length() > AppTelemetryClient.MAX_BATCH_ITEMS) {
+      call.reject("At most " + AppTelemetryClient.MAX_BATCH_ITEMS + " items per call");
+      return;
+    }
+    try {
+      BundleInfo current = coordinator.snapshotState(this::isBundleUsable).current;
+      org.json.JSONObject context = new org.json.JSONObject()
+        .put("platform", "android")
+        .put("sessionId", AppTelemetryClient.SESSION_ID)
+        .put("bundleVersion", current.isBuiltin() ? "builtin" : current.version)
+        .put("nativeBuild", coordinator.getNativeBuild())
+        .put("osVersion", Build.VERSION.RELEASE)
+        .put("sdkVersion", SDKVersion.VALUE);
+      if (current.releaseId != null) context.put("releaseId", current.releaseId);
+      String channel = Preview.reportedChannel(
+        current.isBuiltin() ? configChannel() : current.channel
+      );
+      if (channel != null) context.put("channel", channel);
+      if (runtimeVersion != null) context.put("runtimeVersion", runtimeVersion);
+      // The bundle the JavaScript runs from: after an update or a rollback the current bundle
+      // changes before the reload, while the old JavaScript still sends its last errors.
+      JSObject bundle = call.getObject("bundle");
+      String bundleVersion = bundle != null ? bundle.optString("bundleVersion", "") : "";
+      if (!bundleVersion.isEmpty() && bundleVersion.length() <= 64) {
+        context.put("bundleVersion", bundleVersion);
+        Object releaseId = bundle.opt("releaseId");
+        context.remove("releaseId");
+        if (releaseId instanceof String && ((String) releaseId).length() <= 64) context.put(
+          "releaseId",
+          releaseId
+        );
+        Object bundleChannel = bundle.opt("channel");
+        if (
+          bundleChannel instanceof String &&
+          !((String) bundleChannel).isEmpty() &&
+          ((String) bundleChannel).length() <= 64
+        ) {
+          context.put("channel", bundleChannel);
+        } else if (!"builtin".equals(bundleVersion)) {
+          context.remove("channel");
+        }
+      }
+      int[] result = AppTelemetryClient.enqueue(ingestUrl, appId, context, items);
+      JSObject data = new JSObject();
+      data.put("accepted", result[0]);
+      data.put("dropped", result[1]);
+      call.resolve(data);
+    } catch (Exception error) {
+      call.reject("Could not store app telemetry");
+    }
   }
 
   /**

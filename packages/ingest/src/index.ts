@@ -1,3 +1,6 @@
+import { appGate, type GateEnv } from './app-gate';
+import { MAX_BODY_BYTES, parseBatch, queueChunks, type TelemetryMessage } from './app-telemetry';
+
 type Platform = 'ios' | 'android';
 type EventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback' | 'check_error';
 
@@ -41,6 +44,7 @@ type MessageBatch<T> = {
 
 type QueueBinding<T> = {
   send(message: T): Promise<void>;
+  sendBatch(messages: Array<{ body: T }>): Promise<void>;
 };
 
 type RateLimitResult = {
@@ -51,15 +55,20 @@ type RateLimitBinding = {
   limit(options: { key: string }): Promise<RateLimitResult>;
 };
 
-type WorkerEnv = {
+type WorkerEnv = GateEnv & {
   EVENTS_QUEUE: QueueBinding<EnqueuedEvent>;
   EVENTS_RATE_LIMITER?: RateLimitBinding;
+  APP_TELEMETRY_QUEUE?: QueueBinding<TelemetryMessage>;
+  APP_TELEMETRY_RATE_LIMITER?: RateLimitBinding;
   TINYBIRD_API_HOST: string;
   TINYBIRD_EVENTS_DATASOURCE: string;
   TINYBIRD_EVENTS_TOKEN: string;
+  TINYBIRD_APP_ERRORS_DATASOURCE?: string;
 };
 
 const EVENTS_PATHS = new Set(['/v1/events']);
+const APP_TELEMETRY_PATHS = new Set(['/v1/app-telemetry']);
+const APP_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEALTH_PATHS = new Set(['/healthz', '/v1/healthz']);
 const VALID_ACTIONS = new Set<EventAction>([
   'downloaded',
@@ -72,6 +81,8 @@ const VALID_PLATFORMS = new Set<Platform>(['ios', 'android']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETRYABLE_TINYBIRD_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const APP_ID_HEADER = 'X-App-Id';
+/** Must match the consumer queue in wrangler.jsonc. */
+const APP_TELEMETRY_QUEUE_NAME = 'otakit-app-telemetry';
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -137,7 +148,7 @@ function normalizeTinybirdHost(raw: string): string {
   return parsed.toString().replace(/\/+$/, '');
 }
 
-function retryDelayForBatch(batch: MessageBatch<EnqueuedEvent>): number {
+function retryDelayForBatch(batch: { messages: Array<{ attempts: number }> }): number {
   const highestAttempt = batch.messages.reduce((max, message) => {
     return Math.max(max, Math.max(message.attempts, 1));
   }, 1);
@@ -272,6 +283,131 @@ async function handleEventsRequest(request: Request, env: WorkerEnv): Promise<Re
   return jsonResponse({ accepted: true }, 202);
 }
 
+/**
+ * App telemetry: errors (plugin 3.4+) in batches from the app's own outbox.
+ * Invalid items are dropped one by one; an unknown app gets 404, which the
+ * device treats as permanent; a paused kind (monthly cap) is accepted and
+ * discarded, so devices stop retrying it without errors.
+ */
+async function handleAppTelemetryRequest(request: Request, env: WorkerEnv): Promise<Response> {
+  const appId = request.headers.get(APP_ID_HEADER)?.trim();
+  if (!appId) {
+    return jsonResponse({ error: `Missing ${APP_ID_HEADER} header` }, 401);
+  }
+  if (!APP_ID_PATTERN.test(appId)) {
+    return jsonResponse({ error: 'Unknown app' }, 404);
+  }
+  if (!env.APP_TELEMETRY_QUEUE) {
+    return jsonResponse({ error: 'App telemetry is not enabled' }, 404);
+  }
+  if (env.APP_TELEMETRY_RATE_LIMITER) {
+    const { success } = await env.APP_TELEMETRY_RATE_LIMITER.limit({
+      key: `app-telemetry:${appId}`,
+    });
+    if (!success) return new Response(null, { status: 429 });
+  }
+
+  const declaredLength = Number(request.headers.get('Content-Length') ?? 0);
+  if (declaredLength > MAX_BODY_BYTES) {
+    return jsonResponse({ error: 'Batch too large' }, 413);
+  }
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
+    return jsonResponse({ error: 'Batch too large' }, 413);
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const gate = await appGate(env, appId);
+  if (!gate.known) {
+    return jsonResponse({ error: 'Unknown app' }, 404);
+  }
+
+  let parsed;
+  try {
+    parsed = await parseBatch(payload, appId);
+  } catch (error) {
+    return jsonResponse({ error: error instanceof Error ? error.message : 'Invalid batch' }, 400);
+  }
+  const accepted = parsed.messages.filter((message) => !gate.blocked.has(message.kind));
+  const paused = parsed.messages.length - accepted.length;
+  if (accepted.length > 0) {
+    try {
+      // A retry after a partial failure sends earlier chunks again; reads count
+      // unique event IDs, so duplicates never inflate the numbers.
+      for (const chunk of queueChunks(accepted)) {
+        await env.APP_TELEMETRY_QUEUE.sendBatch(chunk.map((body) => ({ body })));
+      }
+    } catch (error) {
+      console.error('[Ingest] Failed to enqueue app telemetry', { appId, error });
+      return jsonResponse({ error: 'Queue unavailable' }, 503);
+    }
+  }
+  return jsonResponse(
+    {
+      accepted: accepted.length > 0 || parsed.messages.length === 0,
+      items: accepted.length,
+      dropped: parsed.dropped,
+      ...(paused > 0 ? { paused } : {}),
+    },
+    202,
+  );
+}
+
+/** Write telemetry rows to their datasource per kind; each kind acks or retries on its own. */
+async function handleAppTelemetryBatch(
+  batch: MessageBatch<TelemetryMessage>,
+  env: WorkerEnv,
+): Promise<void> {
+  const host = normalizeTinybirdHost(requireNonEmpty(env.TINYBIRD_API_HOST, 'TINYBIRD_API_HOST'));
+  const token = requireNonEmpty(env.TINYBIRD_EVENTS_TOKEN, 'TINYBIRD_EVENTS_TOKEN');
+  const datasources: Record<TelemetryMessage['kind'], string> = {
+    error: env.TINYBIRD_APP_ERRORS_DATASOURCE?.trim() || 'app_errors_raw',
+  };
+  const byKind = new Map<TelemetryMessage['kind'], Array<QueueMessage<TelemetryMessage>>>();
+  for (const message of batch.messages) {
+    const list = byKind.get(message.body.kind) ?? [];
+    list.push(message);
+    byKind.set(message.body.kind, list);
+  }
+  for (const [kind, messages] of byKind) {
+    const body = `${messages.map((message) => JSON.stringify(message.body.row)).join('\n')}\n`;
+    const delaySeconds = retryDelayForBatch({ messages });
+    try {
+      const response = await fetch(
+        `${host}/v0/events?name=${encodeURIComponent(datasources[kind])}&wait=true`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/x-ndjson; charset=utf-8',
+          },
+          body,
+        },
+      );
+      if (response.ok) {
+        for (const message of messages) message.ack();
+        continue;
+      }
+      console.error('[Ingest] Tinybird rejected app telemetry, retrying', {
+        kind,
+        status: response.status,
+        responseText: await response.text().catch(() => ''),
+      });
+    } catch (error) {
+      console.error('[Ingest] Tinybird request for app telemetry failed, retrying', {
+        kind,
+        error,
+      });
+    }
+    for (const message of messages) message.retry({ delaySeconds });
+  }
+}
+
 async function handleQueueBatch(batch: MessageBatch<EnqueuedEvent>, env: WorkerEnv): Promise<void> {
   const host = normalizeTinybirdHost(requireNonEmpty(env.TINYBIRD_API_HOST, 'TINYBIRD_API_HOST'));
   const datasource = requireNonEmpty(env.TINYBIRD_EVENTS_DATASOURCE, 'TINYBIRD_EVENTS_DATASOURCE');
@@ -346,6 +482,10 @@ export default {
       return jsonResponse({ error: 'Not found' }, 404);
     }
 
+    if (APP_TELEMETRY_PATHS.has(url.pathname)) {
+      return handleAppTelemetryRequest(request, env);
+    }
+
     if (!EVENTS_PATHS.has(url.pathname)) {
       return jsonResponse({ error: 'Not found' }, 404);
     }
@@ -353,7 +493,14 @@ export default {
     return handleEventsRequest(request, env);
   },
 
-  async queue(batch: MessageBatch<EnqueuedEvent>, env: WorkerEnv): Promise<void> {
-    await handleQueueBatch(batch, env);
+  async queue(
+    batch: MessageBatch<EnqueuedEvent> | MessageBatch<TelemetryMessage>,
+    env: WorkerEnv,
+  ): Promise<void> {
+    if (batch.queue === APP_TELEMETRY_QUEUE_NAME) {
+      await handleAppTelemetryBatch(batch as MessageBatch<TelemetryMessage>, env);
+      return;
+    }
+    await handleQueueBatch(batch as MessageBatch<EnqueuedEvent>, env);
   },
 };
