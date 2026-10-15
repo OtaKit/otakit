@@ -101,7 +101,8 @@ public class ManifestKeyConfigTest {
       "{\"version\":\"1.0\",\"sha256\":\"hash\",\"size\":1," +
       "\"releaseId\":\"release-a\",\"url\":\"https://example.test/a.zip\"}"
     ).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
+    java.util.concurrent.atomic.AtomicInteger lookups =
+      new java.util.concurrent.atomic.AtomicInteger();
     java.net.ResponseCache previous = java.net.ResponseCache.getDefault();
     java.net.ResponseCache.setDefault(
       new java.net.ResponseCache() {
