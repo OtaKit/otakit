@@ -47,13 +47,24 @@ final class AppTelemetryClient {
     return delivery.hasPending();
   }
 
-  /** Errors are kept over events when the outbox is full. */
+  /**
+   * When the outbox is full, events go first, then errors. A/B test reports go last: each is sent
+   * once per device and test, so a lost one is never sent again.
+   */
   enum Lane {
     ERROR,
-    EVENT;
+    EVENT,
+    REPORT;
 
     int priority() {
-      return this == ERROR ? 1 : 0;
+      switch (this) {
+        case EVENT:
+          return 0;
+        case ERROR:
+          return 1;
+        default:
+          return 2;
+      }
     }
   }
 
@@ -156,6 +167,17 @@ final class AppTelemetryClient {
 
   /** Persists the items for delivery to {ingestUrl}/app-telemetry; returns [accepted, dropped]. */
   static int[] enqueue(String ingestUrl, String appId, JSONObject context, JSONArray items) {
+    return enqueue(ingestUrl, appId, context, items, null);
+  }
+
+  /** As enqueue; a lane overrides the one from the items' kind (A/B test reports). */
+  static int[] enqueue(
+    String ingestUrl,
+    String appId,
+    JSONObject context,
+    JSONArray items,
+    Lane override
+  ) {
     String url = ingestUrl.replaceAll("/+$", "") + "/app-telemetry";
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       return new int[] { 0, items.length() };
@@ -166,7 +188,7 @@ final class AppTelemetryClient {
     int accepted = 0;
     int dropped = batches.dropped;
     for (int i = 0; i < batches.bodies.size(); i++) {
-      Lane lane = batches.lanes.get(i);
+      Lane lane = override != null ? override : batches.lanes.get(i);
       boolean stored = delivery.enqueue(
         url,
         appId,

@@ -494,6 +494,42 @@ export OTAKIT_APP_ID=app_xxxxxxxx`}</Pre>
         <Separator />
 
         <Command
+          name="otakit experiments list"
+          description="List the app's A/B tests with their ID, key, status, config, variants and goal. experiments results <key or ID> shows devices and conversion per variant, lift, errors and the verdict."
+          options={[{ flag: '--json', desc: 'Print machine-readable JSON output.' }]}
+          example="otakit experiments results paywall_title"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit experiments create"
+          description="Create a draft A/B test from a JSON file with key, name, variants (control first, weights adding up to 100, config overrides) and goalEvent; optionally channel, audienceChannels, runtimeVersions, trafficPercent and secondaryEvents."
+          options={[
+            { flag: '--file <path>', desc: 'JSON file with the definition (required).' },
+            { flag: '--start', desc: 'Start it right away.' },
+            { flag: '--yes', desc: 'Start without the confirmation prompt (required in CI).' },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example="otakit experiments create --file paywall-test.json --start --yes"
+        />
+
+        <Separator />
+
+        <Command
+          name="otakit experiments stop"
+          args="<experiment>"
+          description="Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test; experiments delete <key> deletes a test that is not running."
+          options={[
+            { flag: '--yes', desc: 'Skip the confirmation prompt (required in CI).' },
+            { flag: '--json', desc: 'Print machine-readable JSON output.' },
+          ]}
+          example="otakit experiments ship paywall_title --variant b --yes"
+        />
+
+        <Separator />
+
+        <Command
           name="otakit push send"
           description="Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending."
           options={[

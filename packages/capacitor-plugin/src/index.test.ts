@@ -4,13 +4,18 @@ const native = vi.hoisted(() => ({
   getConfig: vi.fn(),
   refreshConfig: vi.fn(),
   addListener: vi.fn(),
+  getExperimentContext: vi.fn(),
+  reportExperiment: vi.fn(),
+  getState: vi.fn(async () => ({ current: { id: 'builtin', version: '1.0' } })),
+  enqueueAppTelemetry: vi.fn(async () => ({ accepted: 1, dropped: 0 })),
 }));
 
 vi.mock('@capacitor/core', () => ({
   registerPlugin: () => native,
+  Capacitor: { isNativePlatform: () => true },
 }));
 
-const { OtaKit } = await import('./index');
+const { OtaKit, track } = await import('./index');
 
 const remote = {
   valuesJson: '{"checkoutEnabled":false,"helpUrl":"https://example.com/help"}',
@@ -109,6 +114,7 @@ describe('remote config', () => {
     const [eventName, forward] = native.addListener.mock.calls[0];
     expect(eventName).toBe('configChanged');
     forward(remote);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled());
     expect(listener).toHaveBeenCalledWith({
       values: { checkoutEnabled: false, helpUrl: 'https://example.com/help' },
       version: 12,
@@ -121,5 +127,51 @@ describe('remote config', () => {
     const updates = vi.fn();
     await OtaKit.addListener('updateApplied', updates);
     expect(native.addListener.mock.calls[1][1]).toBe(updates);
+  });
+});
+
+describe('A/B tests', () => {
+  const experimentId = '0b1d2c3e-0000-4000-8000-0000000000aa';
+  const experiments = JSON.stringify([
+    {
+      id: experimentId,
+      key: 'paywall_copy',
+      traffic: 100,
+      variants: [
+        { key: 'control', weight: 50, overrides: {} },
+        { key: 'b', weight: 50, overrides: { paywallTitle: 'Unlock everything' } },
+      ],
+      goals: ['purchase_completed'],
+      channels: null,
+      runtimeVersions: null,
+    },
+  ]);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    native.getConfig.mockResolvedValue({ ...remote, experimentsJson: experiments });
+    native.getExperimentContext.mockResolvedValue({
+      deviceChannel: 'production',
+      runtimeVersion: null,
+      buckets: { [experimentId]: { traffic: 1, variant: 75 } },
+      reported: {},
+    });
+    native.reportExperiment.mockResolvedValue({ reported: true });
+  });
+
+  it('applies the variant to getConfig, answers getVariant and counts goals', async () => {
+    await expect(
+      OtaKit.getConfig({ defaults: { paywallTitle: 'Go Pro', checkoutEnabled: true } }),
+    ).resolves.toMatchObject({
+      values: { paywallTitle: 'Unlock everything', checkoutEnabled: false },
+      source: 'remote',
+    });
+    await expect(OtaKit.getVariant('paywall_copy')).resolves.toBe('b');
+    expect(track('purchase_completed')).toBe(true);
+    await vi.waitFor(() => expect(native.reportExperiment).toHaveBeenCalledTimes(2));
+    expect(native.reportExperiment.mock.calls.map(([call]) => call.report)).toEqual([
+      'exposure',
+      'conversion:purchase_completed',
+    ]);
   });
 });

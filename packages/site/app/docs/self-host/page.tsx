@@ -288,15 +288,16 @@ npx wrangler deploy`}</Pre>
           network.
         </li>
         <li>
-          <strong>Error tracking and analytics</strong> — see{' '}
-          <A href="/docs/error-tracking">Error Tracking</A> and{' '}
-          <A href="/docs/analytics">Analytics</A>. Requires analytics (above), the{' '}
+          <strong>Error tracking, analytics and A/B tests</strong> — see{' '}
+          <A href="/docs/error-tracking">Error Tracking</A>, <A href="/docs/analytics">Analytics</A>{' '}
+          and <A href="/docs/experiments">A/B Tests</A>. Requires analytics (above), the{' '}
           <Code>otakit-app-telemetry</Code> queue and its dead-letter queue (
           <Code>npx wrangler queues create otakit-app-telemetry</Code> and{' '}
           <Code>otakit-app-telemetry-dlq</Code>) before the Worker deploy, and{' '}
           <Code>/api/cron/telemetry</Code> every 5 minutes with <Code>CRON_SECRET</Code> as for
-          notifications: it groups errors into issues, sends the alerts and applies the monthly
-          limits. With Upstash set on both the console and the Worker (
+          notifications: it groups errors into issues, sends the alerts, applies the monthly limits
+          and sends A/B test results. Self-hosted servers without billing have no limit on running
+          A/B tests. With Upstash set on both the console and the Worker (
           <Code>UPSTASH_REDIS_REST_URL</Code>, <Code>UPSTASH_REDIS_REST_TOKEN</Code>), the Worker
           only accepts telemetry from apps that exist on your server.
         </li>

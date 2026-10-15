@@ -112,7 +112,27 @@ otakit remote-config restore 12`}</Pre>
       </P>
       <P>
         Deleting a channel&apos;s config sends its devices back to the base config. Deleting the
-        base config leaves apps on their code defaults. History is kept either way.
+        base config leaves apps on their code defaults. History is kept either way. A config with
+        running A/B tests cannot be deleted until they stop.
+      </P>
+
+      <Separator className="my-10" />
+
+      <H2>A/B tests</H2>
+      <P>
+        An{' '}
+        <Link
+          href="/docs/experiments"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          A/B test
+        </Link>{' '}
+        runs on a config: devices in a variant get its values for the keys it overrides, through the
+        same <Code>getConfig()</Code>. Starting, stopping and shipping a test publish new config
+        versions, and shipping a variant writes its values into the config for everyone. Values you
+        publish meanwhile keep the running tests. Giving a channel its own config takes its devices
+        out of tests on the base config: OtaKit warns, and refuses when a running test targets that
+        channel by name.
       </P>
 
       <Separator className="my-10" />

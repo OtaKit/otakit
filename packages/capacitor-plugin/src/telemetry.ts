@@ -64,6 +64,8 @@ export type Telemetry = {
   start(): void;
   /** The bundle this JavaScript runs from, once read (null when it cannot be read). */
   ready(): Promise<AppTelemetryBundle | null>;
+  /** The bundle read so far, or null. */
+  bundle(): AppTelemetryBundle | null;
   /** Queue an item for the next flush. False when telemetry is off (an older native plugin). */
   push(item: AppTelemetryItem): boolean;
   /** Hand one item to the native plugin right away; true when it was stored. */
@@ -173,6 +175,7 @@ export function createTelemetry(
       });
     },
     ready: () => bundleRead,
+    bundle: () => bundle,
     push(item) {
       if (off) return false;
       buffer.push(item);

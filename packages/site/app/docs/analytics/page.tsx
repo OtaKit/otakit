@@ -143,8 +143,15 @@ track('checkout_completed', { plan: 'pro', value: 49 });`}</Pre>
         </table>
       </div>
       <P>
-        <Code>$session_start</Code> counts as an event. Months are calendar months in UTC. Above the
-        limit, new events are not recorded until the next month, and the{' '}
+        <Code>$session_start</Code> counts as an event, as do the once-per-device reports of{' '}
+        <Link
+          href="/docs/experiments"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          A/B tests
+        </Link>
+        . Months are calendar months in UTC. Above the limit, new events (except A/B test reports,
+        which devices send only once) are not recorded until the next month, and the{' '}
         <Code>analytics.paused</Code> notification goes to the default email destination. Upgrading
         resumes recording within minutes. Self-hosted servers without billing have no limit.
       </P>

@@ -20,6 +20,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Remote Config: /docs/remote-config
 - Error Tracking: /docs/error-tracking
 - Analytics: /docs/analytics
+- A/B Tests: /docs/experiments
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
 - Webhooks & Alerts: /docs/webhooks
@@ -557,6 +558,49 @@ Example
 otakit remote-config restore 12 --channel beta
 ```
 
+### otakit experiments list
+
+List the app's A/B tests with their ID, key, status, config, variants and goal. experiments results <key or ID> shows devices and conversion per variant, lift, errors and the verdict.
+
+Options
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit experiments results paywall_title
+```
+
+### otakit experiments create
+
+Create a draft A/B test from a JSON file with key, name, variants (control first, weights adding up to 100, config overrides) and goalEvent; optionally channel, audienceChannels, runtimeVersions, trafficPercent and secondaryEvents.
+
+Options
+- `--file <path>`: JSON file with the definition (required).
+- `--start`: Start it right away.
+- `--yes`: Start without the confirmation prompt (required in CI).
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit experiments create --file paywall-test.json --start --yes
+```
+
+### otakit experiments stop <experiment>
+
+Stop a running A/B test; its devices get the normal config values on their next fetch. experiments start <key> starts a draft; experiments ship <key> --variant <variant> writes a variant's values into the config for every device and ends the test; experiments delete <key> deletes a test that is not running.
+
+Options
+- `--yes`: Skip the confirmation prompt (required in CI).
+- `--json`: Print machine-readable JSON output.
+
+Example
+
+```txt
+otakit experiments ship paywall_title --variant b --yes
+```
+
 ### otakit push send
 
 Send a push notification to your app users. Needs the Push notifications add-on (Settings → Add-ons) and an APNs key and/or Firebase service account for the app. Shows the audience size and asks before sending.
@@ -833,8 +877,9 @@ await OtaKit.apply();
 ### Remote config, error tracking and analytics
 
 Plugin 3.4+. See Remote Config , Error Tracking and Analytics for the guides.
-- `getConfig({ defaults })` -> `RemoteConfig`: The channel's remote config over your defaults, answered instantly from the device. The configChanged event fires when a fetch changes it.
+- `getConfig({ defaults })` -> `RemoteConfig`: The channel's remote config over your defaults, answered instantly from the device, with the values of the A/B test variants the device is in. The configChanged event fires when a fetch changes it.
 - `refreshConfig({ defaults })` -> `RemoteConfig & { error? }`: Fetch the remote config now. Network errors resolve with an error code and the saved config instead of throwing.
+- `getVariant(key)` -> `string | null`: This device's variant in a running A/B test: 'control', another variant key, or null when the device is not in the test (or on web, or with a native plugin older than 3.4). The first call counts the device as in the test.
 - `initErrorTracking(options?)` -> `void`: Import it from @otakit/capacitor-updater and call it once at startup. Sends uncaught errors and unhandled promise rejections, scrubbed of emails, tokens and query strings. Options: sampleRate, ignoreErrors, beforeSend, maxEventsPerSession.
 - `captureError(error, { tags }?)` -> `string | null`: Send an error you caught yourself, marked handled. Returns its event ID, or null when it was dropped.
 - `testErrorTracking()` -> `Promise<boolean>`: Send one test error to check the setup; it appears in the dashboard within a minute.
@@ -1287,7 +1332,7 @@ Response
 
 ### PUT /api/v1/apps/:appId/config
 
-Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets; config is public.
+Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets (config is public), and devices of a channel that gets its own config leaving A/B tests on the base config; 409 CONFIG_HAS_EXPERIMENTS when a running base-config test targets that channel by name.
 - Auth: Bearer
 
 Request body
@@ -1332,7 +1377,7 @@ Response
 
 ### DELETE /api/v1/apps/:appId/config
 
-Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept.
+Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept. 409 CONFIG_HAS_EXPERIMENTS while A/B tests run on it.
 - Auth: Bearer
 - Query: ?channel=beta&expectedVersion=12&message=…
 
@@ -1575,6 +1620,169 @@ Response
 { "events": [{ "eventId": "uuid", "receivedAt": "ISO timestamp", "name": "checkout_completed",
   "properties": { "plan": "pro" }, "platform": "ios", "releaseId": "uuid", "bundleVersion": "1.4.2",
   "channel": "production", "osVersion": "18.2" }], "analyticsAvailable": true }
+```
+
+### A/B tests
+
+Tests ride in a config file and need plugin 3.4+ on devices. URLs take a test ID or its key (the draft or running test with that key, else the latest that ended).
+
+### GET /api/v1/apps/:appId/experiments
+
+The app's tests: running first, then drafts, then the ones that ended.
+- Auth: Bearer
+
+Response
+
+```txt
+{
+  "experiments": [{
+    "id": "uuid", "key": "paywall_title", "name": "Paywall title",
+    "status": "running",          // "draft" | "running" | "stopped" | "shipped"
+    "channel": null,              // the config it runs on; null = base config
+    "audienceChannels": null,     // base config only: device channels (null = base channel)
+    "runtimeVersions": [], "trafficPercent": 100,
+    "variants": [{ "key": "control", "weight": 50, "overrides": {} },
+                 { "key": "b", "weight": 50, "overrides": { "paywallTitle": "Unlock everything" } }],
+    "goalEvent": "purchase_completed", "secondaryEvents": ["signup"],
+    "overriddenKeys": ["paywallTitle"],
+    "startedAt": "ISO timestamp", "stoppedAt": null, "shippedVariant": null,
+    "createdBy": "dev@acme.com", "createdAt": "ISO timestamp", "updatedAt": "ISO timestamp"
+  }]
+}
+```
+
+### POST /api/v1/apps/:appId/experiments
+
+Create a draft. 2-5 variants, control first and without overrides, whole-percent weights that add up to 100, overrides of up to 8 KB per variant. Keys cannot look like an ID or be 'estimate'. 409 EXPERIMENT_KEY_TAKEN when a draft or running test has the key; 409 EXPERIMENT_CONFLICT when a base-config audience names a channel with its own config.
+- Auth: Bearer
+
+Request body
+
+```txt
+{
+  "key": "paywall_title",       // 1-40 lowercase letters, digits, _ and -
+  "name": "Paywall title",
+  "channel": null,              // optional: a channel with its own config
+  "audienceChannels": ["production", null],   // optional, base config only
+  "runtimeVersions": [],        // optional
+  "trafficPercent": 100,        // optional, 1-100
+  "variants": [{ "key": "control", "weight": 50, "overrides": {} },
+               { "key": "b", "weight": 50, "overrides": { "paywallTitle": "Unlock everything" } }],
+  "goalEvent": "purchase_completed",
+  "secondaryEvents": ["signup"] // optional, up to 3
+}
+```
+
+Response
+
+```txt
+{ "experiment": { ...as listed, "status": "draft" } }
+```
+
+### PATCH /api/v1/apps/:appId/experiments/:experiment
+
+Change any field of a draft. A test that started can only be renamed: 409 EXPERIMENT_STATE otherwise.
+- Auth: Bearer
+
+Request body
+
+```txt
+{ "name": "Paywall title v2", "trafficPercent": 50 }
+```
+
+Response
+
+```txt
+{ "experiment": { ... } }
+```
+
+### POST /api/v1/apps/:appId/experiments/:experiment/start
+
+Start a draft: writes a config version that carries it, so devices get their variant on their next config fetch. 403 PLAN_REQUIRED or EXPERIMENT_LIMIT_REACHED over the plan's running tests per app; 409 CONFIG_REQUIRED for a channel without its own config; 409 EXPERIMENT_CONFLICT when a running test on the config overrides the same key; 400 when the config file would be over the 63 KB devices read.
+- Auth: Bearer
+
+Response
+
+```txt
+{ "experiment": { ..., "status": "running" }, "configVersion": 6, "publicationStatus": "published" }
+```
+
+### POST /api/v1/apps/:appId/experiments/:experiment/stop
+
+Stop a running test: devices get the normal values on their next config fetch. Results stay readable.
+- Auth: Bearer
+
+Response
+
+```txt
+{ "experiment": { ..., "status": "stopped" }, "configVersion": 7, "publicationStatus": "published" }
+```
+
+### POST /api/v1/apps/:appId/experiments/:experiment/ship
+
+Ship a variant of a running or stopped test: its overrides become part of the config's values for every device, and the test ends. Shipping control, or a variant without overrides, keeps the values: getVariant() then returns null, so a code test's winner belongs in the app's code.
+- Auth: Bearer
+
+Request body
+
+```txt
+{ "variant": "b" }
+```
+
+Response
+
+```txt
+{ "experiment": { ..., "status": "shipped", "shippedVariant": "b" }, "configVersion": 8,
+  "publicationStatus": "published", "changedKeys": ["paywallTitle"] }
+```
+
+### DELETE /api/v1/apps/:appId/experiments/:experiment
+
+Delete a test that is not running, with its results.
+- Auth: Bearer
+
+Response
+
+```txt
+{ "deleted": true, "id": "uuid" }
+```
+
+### GET /api/v1/apps/:appId/experiments/:experiment/results
+
+Devices per variant (each reports once), conversion, lift against control with a 95% interval, probability to be best, devices with errors, and the verdict: collecting, leading (with devicesNeeded), winner or no_difference (decided once, on decidedOn: the first full day with 7 days, 100 conversions per variant and the planned sample), or guardrail. stats is null before the test starts.
+- Auth: Bearer
+
+Response
+
+```txt
+{
+  "experiment": { ... },
+  "stats": {
+    "comparable": true,         // every variant has devices; else ignore probabilities and lifts
+    "variants": [{ "key": "b", "exposed": 1200, "converted": 168, "rate": 0.14,
+                   "probabilityBest": 0.998, "probabilityBetterThanControl": 0.998,
+                   "lift": { "low": 0.11, "median": 0.38, "high": 0.72 },
+                   "errors": 12, "errorRate": 0.01, "probabilityMoreErrors": 0.3, "guardrail": "ok",
+                   "secondary": { "signup": { "converted": 300, "rate": 0.25, ... } } }],
+    "verdict": { "kind": "winner", "variant": "b", "probability": 0.998, "decidedOn": "2026-10-09" },
+    "plannedPerVariant": 3771
+  },
+  "daysRunning": 8.1,
+  "series": [{ "day": "2026-10-14", "variants": [{ "key": "b", "exposed": 1200, "converted": 168 }] }],
+  "analyticsAvailable": true
+}
+```
+
+### GET /api/v1/apps/:appId/experiments/estimate
+
+For a new test, from the last 14 days: app launches a day ($session_start) and the share of launches with the goal. Devices convert if they reach the goal at any launch, so the share of devices is usually higher.
+- Auth: Bearer
+- Query: ?goal=purchase_completed&channel=production
+
+Response
+
+```txt
+{ "launchesPerDay": 1000, "goalShare": 0.05, "analyticsAvailable": true }
 ```
 
 ## Next.js Guide
@@ -2266,7 +2474,11 @@ Every write names the version it is based on (`expectedVersion`). If someone cha
 
 Each channel can have its own config. A channel without one uses the base channel's config, so a kill switch on the base channel also reaches beta testers. Give a channel its own config to change values only there; it then replaces the base config as a whole, with no merging of keys.
 
-Deleting a channel's config sends its devices back to the base config. Deleting the base config leaves apps on their code defaults. History is kept either way.
+Deleting a channel's config sends its devices back to the base config. Deleting the base config leaves apps on their code defaults. History is kept either way. A config with running A/B tests cannot be deleted until they stop.
+
+### A/B tests
+
+An A/B test runs on a config: devices in a variant get its values for the keys it overrides, through the same `getConfig()`. Starting, stopping and shipping a test publish new config versions, and shipping a variant writes its values into the config for everyone. Values you publish meanwhile keep the running tests. Giving a channel its own config takes its devices out of tests on the base config: OtaKit warns, and refuses when a running test targets that channel by name.
 
 ### Limits and rules
 - A JSON object of up to 16 KB with at most 200 top-level keys.
@@ -2447,13 +2659,101 @@ Pro
 Enterprise
 Custom
 
-`$session_start` counts as an event. Months are calendar months in UTC. Above the limit, new events are not recorded until the next month, and the `analytics.paused` notification goes to the default email destination. Upgrading resumes recording within minutes. Self-hosted servers without billing have no limit.
+`$session_start` counts as an event, as do the once-per-device reports of A/B tests . Months are calendar months in UTC. Above the limit, new events (except A/B test reports, which devices send only once) are not recorded until the next month, and the `analytics.paused` notification goes to the default email destination. Upgrading resumes recording within minutes. Self-hosted servers without billing have no limit.
 
 ### Privacy
 
 Nothing is sent until your code calls `track()` or `initAnalytics()`. Events carry no user or device identifier: app launches are counted with a random ID that is made at each launch, kept in memory, and saved only with events waiting to be sent. You choose the properties, so keep personal data out of them, or remove it in `beforeSend`.
 
 For the App Store privacy label, declare Product Interaction, not linked to the user's identity and not used for tracking. In Google Play's Data safety form, declare App interactions under App activity, collected for analytics, not shared.
+
+## A/B Tests
+
+Route: /docs/experiments
+
+Test config values and code paths on real users of your Capacitor app, without a store release, and see which variant reaches your goal more often. No device identifiers.
+
+An A/B test gives part of your users another paywall title, onboarding or limit, and shows which variant reaches your goal event more often. Variants change remote config values, and your code can also branch on the variant. No new store release and no other SDK: tests ride in the signed config file and count custom events .
+
+A/B tests need `@otakit/capacitor-updater` 3.4 or later in the native build. Running tests at once per app: Starter 1, Pro 10, Enterprise and self-hosted servers without billing unlimited. Drafts work on every plan.
+
+### Use it in your app
+
+```txt
+import { OtaKit, track } from '@otakit/capacitor-updater';
+
+// Config tests: nothing extra. Devices in a variant get its values.
+const { values } = await OtaKit.getConfig({ defaults: { paywallTitle: 'Go Pro' } });
+
+// Code tests: branch on the variant.
+const variant = await OtaKit.getVariant('new_onboarding'); // 'control', 'b', … or null
+if (variant === 'b') showNewOnboarding();
+else showOnboarding();
+
+// The goal, where it happens:
+track('purchase_completed');
+```
+- `getConfig()`, `refreshConfig()` and `configChanged` return the values of the device's variant for the keys a test overrides.
+- `getVariant(key)` returns the device's variant, or `null` when the device is not in the test (outside its traffic or audience, no such running test, an older native plugin, or web). Treat `null` as control.
+- A device counts as in the test from its first `getVariant()` call, or its first `getConfig()` for a test that overrides config. Read the value where it is used: devices that never get there are not counted, which keeps results sharp.
+- The goal is a custom event name. A device converts the first time it tracks the goal after it joined the test. This follows your `track()` call even when analytics sampling or `beforeSend` drops the event.
+- With error tracking on, devices also report their first error after joining, so a variant that breaks something shows up as a guardrail.
+
+### Create and start a test
+
+In the dashboard, the app's A/B tests section creates tests:
+- Key, used in `getVariant()`. It is unique among the app's draft and running tests; once a test ends, the key can be used again (the earlier test stays reachable by its ID).
+- Config: the base config, which reaches every channel without its own config, or a channel's own config. On the base config, a test can be limited to some channels, except channels with their own config, which never read the base config. Optionally, limit it to runtime versions.
+- Devices in the test: the share of devices that join (default 100%). The rest keep the normal values and are not counted.
+- Variants: `control`, which keeps the normal values, and up to 4 more, with weights that add up to 100 and the config values each one overrides (leave them empty for a code test).
+- Goal and up to 3 other goals. The dialog estimates how many devices a clear result needs, from the last 14 days of events.
+
+Starting writes a new version of the config file, so devices pick the test up on their next config fetch (at launch, or on resume after `checkInterval`). While a test runs, only its name can change: changing weights or values would move devices between variants. To change it, stop it and run it again with the new settings. Two running tests on one config cannot override the same key.
+
+### How devices are assigned
+
+On first use, the plugin stores a random secret on the device. It never leaves the device. For each test, the device hashes the secret with the test's ID into two numbers from 1 to 100: one decides whether it joins (traffic), the other its variant (weights). The same device always gets the same variant in a test, tests are independent of each other and of rollouts , and running a test again reshuffles devices.
+
+### Results
+
+Each device reports at most once per test: when it joins, the first time it tracks each goal after that, and its first error after that. OtaKit counts these reports per variant, so the numbers are devices, without any device identifier. For each variant the results show:
+- Devices in the test, devices that converted, and the conversion rate.
+- Lift against control, with a 95% interval, and the probability that the variant is the best one (Bayesian, with a uniform prior).
+- The share of devices with an error after joining (the guardrail).
+- The other goals, and conversion by day.
+
+The result is decided once, at a fixed point: the first full day (UTC) on which the test ran 7 days, every variant has 100 conversions, and every variant reached the planned sample, the devices needed to detect a 20% change at control's rate. Until then the results show who leads, but no winner: deciding whenever someone looks would pick a winner in about a third of tests where nothing differs. With a fixed point it is about 5%.
+- Not enough data yet, then No result yet: B leads, until that day. The results say how many devices are still needed.
+- B is better when, on that day's data, B has at least 95% probability to be the best (more with several variants: 97.5% with two besides control, 98.3% with three). When it is control, keep the current values.
+- No clear difference when no variant got there. The verdict stays; data after that day still shows in the table.
+- B has more errors, at any time from the third day, when B has more devices with errors than control with at least 99.5% probability (more with several variants) and at least 10 such devices.
+
+Each verdict is sent once as the `experiment.verdict_reached` notification , by email to owners and admins by default. Results stay readable after a test ends, for 13 months.
+
+### Ship the winner
+
+Ship on a running or stopped test writes the variant's values into the config for every device, as a new config version, and ends the test. The dialog shows each value before and after. Shipping control keeps the values. Stop ends a test without changing values: devices get the normal config on their next fetch.
+
+A code test has no values to ship. After it ends, `getVariant()` returns `null`, so to keep the winning variant, make its code path the default in your app, then stop the test.
+
+### CLI, API and agents
+
+```txt
+otakit experiments list
+otakit experiments results paywall_title
+otakit experiments create --file test.json --start
+otakit experiments stop paywall_title
+otakit experiments ship paywall_title --variant b
+otakit experiments delete old_test
+```
+
+The REST API has the same operations. Agents use the MCP tools `list_experiments`, `get_experiment_results`, `stop_experiment` and `ship_experiment_variant`; stopping and shipping ask for approval in clients that support it.
+
+### Privacy and limits
+- No user or device identifiers are sent. The device keeps its secret and a list of the reports it made for its 50 newest tests.
+- Reports are custom events (`$exposure`, `$conversion`, `$experiment_error`) and count toward the monthly custom events limit, once per device and test each. They are recorded even while the limit pauses other events, since a device never sends them again.
+- Up to 10 running tests per config, 5 variants per test, 8 KiB of overrides per variant, and a config file devices can read (63 KB with its values and tests). Config values are public to anyone with the app, test values included.
+- Devices with JavaScript or a native plugin older than 3.4 are not in tests: they keep the normal values and are not counted.
 
 ## Update Strategies
 
@@ -2648,6 +2948,7 @@ Choose the events, and optionally limit the destination to one app (usage warnin
 - `release.auto_reverted` — too many update attempts rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
 - `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
 - `config.updated` — a channel's remote config is published, restored or deleted.
+- `experiment.started`, `experiment.stopped` and `experiment.verdict_reached` — an A/B test starts, stops or ships a variant, and has a result: a winner, no clear difference, or a variant with more errors. Results go to the default email destination.
 - `errors.new_issue`, `errors.regression`, `errors.spike` and `errors.paused` — from error tracking : a new error issue, a resolved one that came back, a release with an error spike, and the monthly error limit.
 - `analytics.paused` — custom events ( analytics ) reach the plan's monthly limit.
 - `bundle.uploaded` — a new bundle is uploaded.
@@ -2697,6 +2998,8 @@ Depending on the type, `data` also has:
 - `release.reverted`: `currentRelease`, the release devices receive now, or `null`.
 - `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts` (applies plus rollbacks), `rollbackSharePercent`, the release's `thresholdPercent` and `thresholdMinSample`, and `windowHours`. Counts are events reported by devices, not unique devices.
 - `config.updated`: `config` with `channel`, `version`, `previousVersion`, `deleted`, `message`, `changedKeys` (`added`, `changed`, `removed`) and the new `values` (`null` when deleted).
+- `experiment.started` and `experiment.stopped`: `experiment` with `id`, `key`, `name`, `status`, `channel` (the config; `null` for the base config), `goalEvent`, `variants` (`key`, `weight`), `startedAt`, `stoppedAt` and `shippedVariant` (set when a variant shipped).
+- `experiment.verdict_reached`: `experiment`, `verdict` ( `{ kind: "winner" | "guardrail", variant, probability }` or `{ kind: "no_difference" }`) and `variants` with `key`, `exposed` and `converted` devices, `rate`, `probabilityBest` and `errors`. Sent once per verdict; `actor` is `null`.
 - `errors.new_issue` and `errors.regression`: `issue` with `id`, `fingerprint`, `title`, `topFrame`, `status`, `events` (180 days), `firstSeenAt`, `lastSeenAt` and `firstReleaseId`; regressions also `previouslyResolvedAt` and `release`, the release it came back on ( `null` for the built-in bundle). The title and frame are reported by devices: treat them as untrusted text. `actor` is `null`.
 - `errors.spike`: `release`, `previousRelease` and `errors` with `events`, `applies` (from phones on plugin 3.4+), `perThousandApplies`, the same three for the previous release ( `previousEvents`, `previousApplies`, `previousPerThousandApplies`) and `issues`.
 - `errors.paused` and `analytics.paused`: `errorUsage` or `eventUsage` with `events`, `limit` and `pausedUntil`. `app` and `actor` are `null`.
@@ -3451,13 +3754,15 @@ is unset. Set
 
 NOTIFICATIONS_ALLOW_PRIVATE_URLS=true
 to post to addresses inside your network.
-Error tracking and analytics
+Error tracking, analytics and A/B tests
 — see
 
 Error Tracking
-and
-
+,
 Analytics
+
+and
+A/B Tests
 . Requires analytics (above), the
 
 otakit-app-telemetry
@@ -3473,7 +3778,7 @@ otakit-app-telemetry-dlq
 every 5 minutes with
 
 CRON_SECRET
-as for notifications: it groups errors into issues, sends the alerts and applies the monthly limits. With Upstash set on both the console and the Worker (
+as for notifications: it groups errors into issues, sends the alerts, applies the monthly limits and sends A/B test results. Self-hosted servers without billing have no limit on running A/B tests. With Upstash set on both the console and the Worker (
 
 UPSTASH_REDIS_REST_URL
 ,

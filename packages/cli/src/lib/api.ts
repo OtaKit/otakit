@@ -24,6 +24,73 @@ export type BundleDiffBundle = {
   encrypted: boolean;
 };
 
+/** An A/B test, as GET /apps/:appId/experiments returns it. */
+export type ExperimentSummary = {
+  id: string;
+  key: string;
+  name: string;
+  status: 'draft' | 'running' | 'stopped' | 'shipped';
+  channel: string | null;
+  audienceChannels: Array<string | null> | null;
+  runtimeVersions: string[];
+  trafficPercent: number;
+  variants: Array<{ key: string; weight: number; overrides: Record<string, unknown> }>;
+  goalEvent: string;
+  secondaryEvents: string[];
+  overriddenKeys: string[];
+  startedAt: string | null;
+  stoppedAt: string | null;
+  shippedVariant: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExperimentVerdict =
+  | { kind: 'collecting'; daysLeft: number; conversionsNeeded: number }
+  | { kind: 'leading'; variant: string; probability: number; devicesNeeded: number | null }
+  | { kind: 'winner'; variant: string; probability: number; decidedOn: string }
+  | { kind: 'no_difference'; decidedOn: string }
+  | { kind: 'guardrail'; variant: string; probability: number };
+
+export type ExperimentVariantResult = {
+  key: string;
+  exposed: number;
+  converted: number;
+  rate: number | null;
+  probabilityBest: number;
+  probabilityBetterThanControl: number | null;
+  lift: { low: number; median: number; high: number } | null;
+  errors: number;
+  errorRate: number | null;
+  probabilityMoreErrors: number | null;
+  guardrail: 'ok' | 'worse';
+  secondary: Record<string, { converted: number; rate: number | null }>;
+};
+
+export type ExperimentResults = {
+  experiment: ExperimentSummary;
+  stats: {
+    comparable: boolean;
+    variants: ExperimentVariantResult[];
+    verdict: ExperimentVerdict;
+    plannedPerVariant: number | null;
+  } | null;
+  daysRunning: number;
+  series: Array<{
+    day: string;
+    variants: Array<{ key: string; exposed: number; converted: number }>;
+  }>;
+  analyticsAvailable: boolean;
+};
+
+export type ExperimentChangeResult = {
+  experiment: ExperimentSummary;
+  configVersion: number | null;
+  publicationStatus: 'published' | 'pending';
+  changedKeys?: string[];
+};
+
 /** A channel's remote config, as GET /apps/:appId/config returns it. */
 export type RemoteConfigState = {
   appId: string;
@@ -463,6 +530,50 @@ export class ApiClient {
     return this.request(this.appPath(`/config${this.configQuery(options.channel, extra)}`), {
       method: 'DELETE',
     });
+  }
+
+  private experimentPath(experiment: string, suffix = ''): string {
+    return this.appPath(`/experiments/${encodeURIComponent(experiment)}${suffix}`);
+  }
+
+  async listExperiments(): Promise<{ experiments: ExperimentSummary[] }> {
+    return this.request(this.appPath('/experiments'));
+  }
+
+  /** Create a draft A/B test from its definition. */
+  async createExperiment(
+    definition: Record<string, unknown>,
+  ): Promise<{ experiment: ExperimentSummary }> {
+    return this.request(this.appPath('/experiments'), {
+      method: 'POST',
+      body: JSON.stringify(definition),
+    });
+  }
+
+  async getExperimentResults(experiment: string): Promise<ExperimentResults> {
+    return this.request(this.experimentPath(experiment, '/results'));
+  }
+
+  async startExperiment(experiment: string): Promise<ExperimentChangeResult> {
+    return this.request(this.experimentPath(experiment, '/start'), { method: 'POST' });
+  }
+
+  async stopExperiment(experiment: string): Promise<ExperimentChangeResult> {
+    return this.request(this.experimentPath(experiment, '/stop'), { method: 'POST' });
+  }
+
+  async shipExperimentVariant(
+    experiment: string,
+    variant: string,
+  ): Promise<ExperimentChangeResult> {
+    return this.request(this.experimentPath(experiment, '/ship'), {
+      method: 'POST',
+      body: JSON.stringify({ variant }),
+    });
+  }
+
+  async deleteExperiment(experiment: string): Promise<{ deleted: true; id: string }> {
+    return this.request(this.experimentPath(experiment), { method: 'DELETE' });
   }
 
   async finalizeUpload(options: { uploadId: string }): Promise<Bundle> {

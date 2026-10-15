@@ -300,7 +300,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "message": "Partner outage"   // optional, up to 200 characters
 }`}
           response={`{ "config": { ...as GET }, "changed": true, "warnings": [{ "key", "reason", "message" }] }`}
-          description="Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets; config is public."
+          description="Replace a channel's config with a JSON object (up to 16 KB and 200 top-level keys; keys use letters, digits, '.', '_' and '-'). Publishes a new version unless the values are unchanged (changed: false). 409 STALE_CONFIG_VERSION when expectedVersion is not the latest version; 403 PLAN_REQUIRED for a named channel on Free. warnings flag keys and values that look like secrets (config is public), and devices of a channel that gets its own config leaving A/B tests on the base config; 409 CONFIG_HAS_EXPERIMENTS when a running base-config test targets that channel by name."
         />
         <Endpoint
           method="PATCH"
@@ -322,7 +322,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           auth="Bearer"
           queryParams="?channel=beta&expectedVersion=12&message=…"
           response={`{ "config": { ..., "status": "deleted" }, "changed": true }`}
-          description="Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept."
+          description="Delete a channel's config as a new, signed version. Devices on a named channel then use the base config; deleting the base config leaves apps on their code defaults. History is kept. 409 CONFIG_HAS_EXPERIMENTS while A/B tests run on it."
         />
         <Endpoint
           method="GET"
@@ -513,6 +513,124 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "properties": { "plan": "pro" }, "platform": "ios", "releaseId": "uuid", "bundleVersion": "1.4.2",
   "channel": "production", "osVersion": "18.2" }], "analyticsAvailable": true }`}
           description="The latest events of the last 24 hours, newest first: the setup check."
+        />
+      </div>
+
+      <Separator className="my-10" />
+
+      <H2>A/B tests</H2>
+      <P>
+        Tests ride in a config file and need plugin 3.4+ on devices. URLs take a test ID or its key
+        (the draft or running test with that key, else the latest that ended).
+      </P>
+      <div className="space-y-8">
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/experiments"
+          auth="Bearer"
+          response={`{
+  "experiments": [{
+    "id": "uuid", "key": "paywall_title", "name": "Paywall title",
+    "status": "running",          // "draft" | "running" | "stopped" | "shipped"
+    "channel": null,              // the config it runs on; null = base config
+    "audienceChannels": null,     // base config only: device channels (null = base channel)
+    "runtimeVersions": [], "trafficPercent": 100,
+    "variants": [{ "key": "control", "weight": 50, "overrides": {} },
+                 { "key": "b", "weight": 50, "overrides": { "paywallTitle": "Unlock everything" } }],
+    "goalEvent": "purchase_completed", "secondaryEvents": ["signup"],
+    "overriddenKeys": ["paywallTitle"],
+    "startedAt": "ISO timestamp", "stoppedAt": null, "shippedVariant": null,
+    "createdBy": "dev@acme.com", "createdAt": "ISO timestamp", "updatedAt": "ISO timestamp"
+  }]
+}`}
+          description="The app's tests: running first, then drafts, then the ones that ended."
+        />
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/experiments"
+          auth="Bearer"
+          body={`{
+  "key": "paywall_title",       // 1-40 lowercase letters, digits, _ and -
+  "name": "Paywall title",
+  "channel": null,              // optional: a channel with its own config
+  "audienceChannels": ["production", null],   // optional, base config only
+  "runtimeVersions": [],        // optional
+  "trafficPercent": 100,        // optional, 1-100
+  "variants": [{ "key": "control", "weight": 50, "overrides": {} },
+               { "key": "b", "weight": 50, "overrides": { "paywallTitle": "Unlock everything" } }],
+  "goalEvent": "purchase_completed",
+  "secondaryEvents": ["signup"] // optional, up to 3
+}`}
+          response={`{ "experiment": { ...as listed, "status": "draft" } }`}
+          description="Create a draft. 2-5 variants, control first and without overrides, whole-percent weights that add up to 100, overrides of up to 8 KB per variant. Keys cannot look like an ID or be 'estimate'. 409 EXPERIMENT_KEY_TAKEN when a draft or running test has the key; 409 EXPERIMENT_CONFLICT when a base-config audience names a channel with its own config."
+        />
+        <Endpoint
+          method="PATCH"
+          path="/api/v1/apps/:appId/experiments/:experiment"
+          auth="Bearer"
+          body={`{ "name": "Paywall title v2", "trafficPercent": 50 }`}
+          response={`{ "experiment": { ... } }`}
+          description="Change any field of a draft. A test that started can only be renamed: 409 EXPERIMENT_STATE otherwise."
+        />
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/experiments/:experiment/start"
+          auth="Bearer"
+          response={`{ "experiment": { ..., "status": "running" }, "configVersion": 6, "publicationStatus": "published" }`}
+          description="Start a draft: writes a config version that carries it, so devices get their variant on their next config fetch. 403 PLAN_REQUIRED or EXPERIMENT_LIMIT_REACHED over the plan's running tests per app; 409 CONFIG_REQUIRED for a channel without its own config; 409 EXPERIMENT_CONFLICT when a running test on the config overrides the same key; 400 when the config file would be over the 63 KB devices read."
+        />
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/experiments/:experiment/stop"
+          auth="Bearer"
+          response={`{ "experiment": { ..., "status": "stopped" }, "configVersion": 7, "publicationStatus": "published" }`}
+          description="Stop a running test: devices get the normal values on their next config fetch. Results stay readable."
+        />
+        <Endpoint
+          method="POST"
+          path="/api/v1/apps/:appId/experiments/:experiment/ship"
+          auth="Bearer"
+          body={`{ "variant": "b" }`}
+          response={`{ "experiment": { ..., "status": "shipped", "shippedVariant": "b" }, "configVersion": 8,
+  "publicationStatus": "published", "changedKeys": ["paywallTitle"] }`}
+          description="Ship a variant of a running or stopped test: its overrides become part of the config's values for every device, and the test ends. Shipping control, or a variant without overrides, keeps the values: getVariant() then returns null, so a code test's winner belongs in the app's code."
+        />
+        <Endpoint
+          method="DELETE"
+          path="/api/v1/apps/:appId/experiments/:experiment"
+          auth="Bearer"
+          response={`{ "deleted": true, "id": "uuid" }`}
+          description="Delete a test that is not running, with its results."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/experiments/:experiment/results"
+          auth="Bearer"
+          response={`{
+  "experiment": { ... },
+  "stats": {
+    "comparable": true,         // every variant has devices; else ignore probabilities and lifts
+    "variants": [{ "key": "b", "exposed": 1200, "converted": 168, "rate": 0.14,
+                   "probabilityBest": 0.998, "probabilityBetterThanControl": 0.998,
+                   "lift": { "low": 0.11, "median": 0.38, "high": 0.72 },
+                   "errors": 12, "errorRate": 0.01, "probabilityMoreErrors": 0.3, "guardrail": "ok",
+                   "secondary": { "signup": { "converted": 300, "rate": 0.25, ... } } }],
+    "verdict": { "kind": "winner", "variant": "b", "probability": 0.998, "decidedOn": "2026-10-09" },
+    "plannedPerVariant": 3771
+  },
+  "daysRunning": 8.1,
+  "series": [{ "day": "2026-10-14", "variants": [{ "key": "b", "exposed": 1200, "converted": 168 }] }],
+  "analyticsAvailable": true
+}`}
+          description="Devices per variant (each reports once), conversion, lift against control with a 95% interval, probability to be best, devices with errors, and the verdict: collecting, leading (with devicesNeeded), winner or no_difference (decided once, on decidedOn: the first full day with 7 days, 100 conversions per variant and the planned sample), or guardrail. stats is null before the test starts."
+        />
+        <Endpoint
+          method="GET"
+          path="/api/v1/apps/:appId/experiments/estimate"
+          auth="Bearer"
+          queryParams="?goal=purchase_completed&channel=production"
+          response={`{ "launchesPerDay": 1000, "goalShare": 0.05, "analyticsAvailable": true }`}
+          description="For a new test, from the last 14 days: app launches a day ($session_start) and the share of launches with the goal. Devices convert if they reach the goal at any launch, so the share of devices is usually higher."
         />
       </div>
     </>

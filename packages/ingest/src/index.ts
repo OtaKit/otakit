@@ -1,5 +1,11 @@
 import { appGate, type GateEnv } from './app-gate';
-import { MAX_BODY_BYTES, parseBatch, queueChunks, type TelemetryMessage } from './app-telemetry';
+import {
+  isExperimentReport,
+  MAX_BODY_BYTES,
+  parseBatch,
+  queueChunks,
+  type TelemetryMessage,
+} from './app-telemetry';
 
 type Platform = 'ios' | 'android';
 type EventAction = 'downloaded' | 'applied' | 'download_error' | 'rollback' | 'check_error';
@@ -334,7 +340,11 @@ async function handleAppTelemetryRequest(request: Request, env: WorkerEnv): Prom
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : 'Invalid batch' }, 400);
   }
-  const accepted = parsed.messages.filter((message) => !gate.blocked.has(message.kind));
+  // A/B test reports go through a pause: each device sends them once, so a
+  // dropped one would be missing from the test for good.
+  const accepted = parsed.messages.filter(
+    (message) => !gate.blocked.has(message.kind) || isExperimentReport(message),
+  );
   const paused = parsed.messages.length - accepted.length;
   if (accepted.length > 0) {
     try {

@@ -38,6 +38,7 @@ const NAV = [
       { label: 'Remote Config', href: '/docs/remote-config' },
       { label: 'Error Tracking', href: '/docs/error-tracking' },
       { label: 'Analytics', href: '/docs/analytics' },
+      { label: 'A/B Tests', href: '/docs/experiments' },
       { label: 'Update Strategies', href: '/docs/update-strategies' },
       { label: 'Events & Listeners', href: '/docs/events' },
       { label: 'Webhooks & Alerts', href: '/docs/webhooks' },

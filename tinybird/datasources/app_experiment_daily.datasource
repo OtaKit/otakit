@@ -1,0 +1,18 @@
+DESCRIPTION >
+    A/B test reports per UTC day, experiment, variant and kind ($exposure,
+    $conversion per goal, $experiment_error). Each device reports each at most
+    once per experiment, so unique report IDs count devices. Kept 13 months.
+
+SCHEMA >
+    `day` Date,
+    `app_id` String,
+    `experiment_id` String,
+    `variant` String,
+    `name` LowCardinality(String),
+    `goal` String,
+    `event_ids_uniq_exact_state` AggregateFunction(uniqExact, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(day)"
+ENGINE_SORTING_KEY "app_id, experiment_id, day, variant, name, goal"
+ENGINE_TTL "day + toIntervalDay(395)"

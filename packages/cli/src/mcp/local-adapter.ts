@@ -15,6 +15,9 @@ import {
   releaseTimeseriesEnvelopeParts,
   remoteConfigSummary,
   remoteConfigWriteParts,
+  experimentChangeSummary,
+  experimentListSummary,
+  experimentResultsParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -329,6 +332,14 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.getRemoteConfig(input);
         case 'set_remote_config':
           return await this.setRemoteConfig(input);
+        case 'list_experiments':
+          return await this.listExperiments(input);
+        case 'get_experiment_results':
+          return await this.getExperimentResults(input);
+        case 'stop_experiment':
+          return await this.stopExperiment(input);
+        case 'ship_experiment_variant':
+          return await this.shipExperimentVariant(input);
         case 'inspect_project':
           return await this.inspectProject();
         case 'check_compatibility':
@@ -920,6 +931,41 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       warnings: parts.warnings,
       links: [this.appLink(appId, 'View remote config')],
     });
+  }
+
+  private async listExperiments(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const result = await this.api(appId).listExperiments();
+    return toolEnvelope(experimentListSummary(result.experiments), json(result), {
+      links: [this.appLink(appId, 'View A/B tests')],
+    });
+  }
+
+  private async getExperimentResults(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const result = await this.api(appId).getExperimentResults(stringInput(input, 'experiment'));
+    const parts = experimentResultsParts(result);
+    return toolEnvelope(parts.summary, json(result), {
+      warnings: parts.warnings,
+      links: [this.appLink(appId, 'View A/B tests')],
+    });
+  }
+
+  private async stopExperiment(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const result = await this.api(appId).stopExperiment(stringInput(input, 'experiment'));
+    const parts = experimentChangeSummary('stopped', result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
+  }
+
+  private async shipExperimentVariant(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const result = await this.api(appId).shipExperimentVariant(
+      stringInput(input, 'experiment'),
+      stringInput(input, 'variant'),
+    );
+    const parts = experimentChangeSummary('shipped', result);
+    return toolEnvelope(parts.summary, json(result), { warnings: parts.warnings });
   }
 
   private async revokePreview(input: JsonObject): Promise<ToolEnvelope> {

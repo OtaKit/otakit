@@ -370,6 +370,28 @@ applyConfig(values);
 - With a native shell older than 3.4 (new JavaScript sent over the air), the
   methods return your defaults instead of throwing.
 
+## A/B tests
+
+Tests run on remote config: devices in a variant get its values from
+`getConfig()`, and code can branch on the variant. Create them in the
+dashboard, with `otakit experiments`, or over the API. Plugin 3.4+.
+
+```ts
+// Code tests: 'control', another variant, or null when the device is not in the test.
+const variant = await OtaKit.getVariant('new_onboarding');
+if (variant === 'b') showNewOnboarding();
+
+// The goal is a custom event:
+track('purchase_completed');
+```
+
+- Each device gets a variant from a random secret that never leaves the device,
+  and keeps it for the whole test.
+- A device reports once when it first uses a test (`getVariant()`, or
+  `getConfig()` for a test that overrides config), once per goal after that,
+  and once for its first error after that. Results count devices, without any
+  device identifier.
+
 ## Events
 
 The plugin emits lifecycle events alongside the pull APIs:

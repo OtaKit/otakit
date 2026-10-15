@@ -24,7 +24,8 @@ export type ConfigValues = Record<string, unknown>;
 
 export type ConfigWarning = {
   key: string;
-  reason: 'secret_name' | 'secret_value';
+  /** experiment: devices of this channel leave A/B tests running on the base config. */
+  reason: 'secret_name' | 'secret_value' | 'experiment';
   message: string;
 };
 

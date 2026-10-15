@@ -1,0 +1,25 @@
+DESCRIPTION >
+    Materialized daily rollup of A/B test reports from raw custom events.
+
+NODE rollup_experiment_reports
+SQL >
+    SELECT
+        toDate(toDateTime(received_at, 'UTC')) AS day,
+        app_id,
+        JSONExtractString(properties, 'experiment') AS experiment_id,
+        JSONExtractString(properties, 'variant') AS variant,
+        name,
+        JSONExtractString(properties, 'goal') AS goal,
+        uniqExactState(event_id) AS event_ids_uniq_exact_state
+    FROM app_events_raw
+    WHERE name IN ('$exposure', '$conversion', '$experiment_error')
+    GROUP BY
+        day,
+        app_id,
+        experiment_id,
+        variant,
+        name,
+        goal
+
+TYPE MATERIALIZED
+DATASOURCE app_experiment_daily

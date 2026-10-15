@@ -61,6 +61,12 @@ otakit remote-config unset <key...>
 otakit remote-config push config.json --yes        # replace the whole object
 otakit remote-config history
 otakit remote-config restore <version>
+
+otakit experiments list                            # A/B tests (plugin 3.4+)
+otakit experiments results <key>                   # devices, conversion, lift, verdict
+otakit experiments create --file test.json [--start]
+otakit experiments stop <key> --yes
+otakit experiments ship <key> --variant b --yes    # the variant's values for every device
 ```
 
 Flags that change device behavior, so show them before running:

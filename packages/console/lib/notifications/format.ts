@@ -6,6 +6,8 @@ import {
   notificationEventLabel,
   type AutoRevertHealth,
   type NotificationErrorIssue,
+  type NotificationExperiment,
+  type NotificationExperimentVariant,
   type NotificationPayload,
 } from './events';
 
@@ -70,6 +72,24 @@ function formatRate(rate: number): string {
 
 function issueCode(issue: NotificationErrorIssue): string[] {
   return [issue.title, ...(issue.topFrame ? [`at ${issue.topFrame}`] : [])];
+}
+
+function experimentConfig(experiment: NotificationExperiment): string {
+  return experiment.channel ? `the ${experiment.channel} config` : 'the base config';
+}
+
+function percent(share: number | null): string {
+  if (share === null) return '–';
+  const value = share * 100;
+  return `${value > 0 && value < 0.1 ? '<0.1' : value.toFixed(1)}%`;
+}
+
+/** "control: 10.0% of 1,000 devices" for each variant. */
+function variantLines(variants: NotificationExperimentVariant[]): string[] {
+  return variants.map(
+    (variant) =>
+      `${variant.key}: ${percent(variant.rate)} of ${variant.exposed.toLocaleString('en-US')} devices converted`,
+  );
 }
 
 const NO_PREVIOUS_RELEASE =
@@ -209,6 +229,97 @@ export function describeEvent(payload: NotificationPayload): EventDescription {
         ],
         notes: null,
         severity: 'info',
+        url,
+      };
+    }
+    case 'experiment.started': {
+      const { experiment } = payload.data;
+      return {
+        title: `A/B test started: ${experiment.name} (${slug})`,
+        lines: [
+          `Runs on ${experimentConfig(experiment)}: ${experiment.variants.map((variant) => `${variant.key} ${variant.weight}%`).join(', ')}. Goal: ${experiment.goalEvent}.`,
+          ...byLine(payload),
+        ],
+        notes: null,
+        severity: 'info',
+        url,
+      };
+    }
+    case 'experiment.stopped': {
+      const { experiment } = payload.data;
+      const shipped = experiment.variants.find(
+        (variant) => variant.key === experiment.shippedVariant,
+      );
+      return experiment.shippedVariant
+        ? {
+            title: `A/B test ended, ${experiment.shippedVariant} shipped: ${experiment.name} (${slug})`,
+            lines: [
+              experiment.shippedVariant === 'control'
+                ? `Every device gets ${experimentConfig(experiment)} as before.`
+                : shipped?.changesConfig
+                  ? `The values of ${experiment.shippedVariant} are now part of ${experimentConfig(experiment)} for every device.`
+                  : `${experiment.shippedVariant} changes no config values: getVariant() now returns null, so make ${experiment.shippedVariant}'s code path the default in your app to keep it.`,
+              ...byLine(payload),
+            ],
+            notes: null,
+            severity: 'success',
+            url,
+          }
+        : {
+            title: `A/B test stopped: ${experiment.name} (${slug})`,
+            lines: [
+              `Every device gets ${experimentConfig(experiment)} without test values again.`,
+              ...byLine(payload),
+            ],
+            notes: null,
+            severity: 'info',
+            url,
+          };
+    }
+    case 'experiment.verdict_reached': {
+      const { experiment, verdict, variants } = payload.data;
+      const probability = (value: number) => `${Math.round(value * 1000) / 10}%`;
+      if (verdict.kind === 'guardrail') {
+        const control = variants[0];
+        const harmful = variants.find((variant) => variant.key === verdict.variant);
+        const share = (variant: NotificationExperimentVariant | undefined) =>
+          variant && variant.exposed > 0 ? percent(variant.errors / variant.exposed) : '–';
+        return {
+          title: `A/B test warning: ${verdict.variant} has more errors in ${experiment.name} (${slug})`,
+          lines: [
+            `${share(harmful)} of devices on ${verdict.variant} had an error after joining the test, against ${share(control)} on control (${probability(verdict.probability)} probability that ${verdict.variant} is worse).`,
+            'Consider stopping the test.',
+          ],
+          notes: null,
+          severity: 'warning',
+          url,
+        };
+      }
+      if (verdict.kind === 'no_difference') {
+        return {
+          title: `A/B test result: no clear difference in ${experiment.name} (${slug})`,
+          lines: [
+            ...variantLines(variants),
+            'The planned sample is reached and no variant is clearly better. Stop the test, or ship the variant you prefer.',
+          ],
+          notes: null,
+          severity: 'info',
+          url,
+        };
+      }
+      return {
+        title: `A/B test result: ${verdict.variant} is better in ${experiment.name} (${slug})`,
+        lines: [
+          `${probability(verdict.probability)} probability that ${verdict.variant} is the best variant for ${experiment.goalEvent}.`,
+          ...variantLines(variants),
+          verdict.variant === 'control'
+            ? 'Stop the test to keep the current values.'
+            : experiment.variants.find((variant) => variant.key === verdict.variant)?.changesConfig
+              ? `Ship ${verdict.variant} from the dashboard to give every device its values.`
+              : `Make ${verdict.variant}'s code path the default in your app, then stop the test.`,
+        ],
+        notes: null,
+        severity: 'success',
         url,
       };
     }

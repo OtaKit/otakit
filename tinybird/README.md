@@ -35,6 +35,9 @@ analytics and error tracking. It is mainly relevant for advanced self-hosted set
 - `endpoints/app_event_release_comparison.pipe`
 - `endpoints/app_events_live.pipe`
 - `endpoints/app_event_usage.pipe`
+- `datasources/app_experiment_daily.datasource`
+- `materializations/app_experiment_daily_mv.pipe`
+- `endpoints/experiment_reports.pipe`
 
 ## Required names
 
@@ -47,6 +50,7 @@ The web app and ingest service expect these resource names:
   - `app_error_daily`
   - `app_events_raw`
   - `app_event_hourly`
+  - `app_experiment_daily`
 - endpoints:
   - `app_events_recent`
   - `release_event_counts`
@@ -59,6 +63,7 @@ The web app and ingest service expect these resource names:
     `release_capable_applies`, `app_error_usage`
   - `app_event_names`, `app_event_timeseries`, `app_event_breakdown`,
     `app_event_release_comparison`, `app_events_live`, `app_event_usage`
+  - `experiment_reports`
 
 ## Event schema requirements
 
@@ -120,3 +125,12 @@ its properties as a JSON object of string values. `app_event_hourly` keeps uniqu
 unique sessions (app launches) per hour, name, release, channel and platform for 13 months.
 `$session_start`, sent once per app launch by `initAnalytics()`, is the denominator of
 per-session rates in `app_event_release_comparison`.
+
+## A/B tests
+
+Devices report each A/B test at most once: `$exposure` when they use it, `$conversion` per
+goal event after that, and `$experiment_error` for their first error after that, as custom
+events with `experiment`, `variant` and `goal` properties. `app_experiment_daily` keeps unique
+report IDs per UTC day, experiment, variant, kind and goal for 13 months, so
+`experiment_reports` counts devices per variant without any device identifier. Totals are
+merged over the whole range (a retried report can fall on two days).
