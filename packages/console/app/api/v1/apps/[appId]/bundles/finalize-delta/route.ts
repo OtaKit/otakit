@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveOrganizationAccess } from '@/lib/organization-access';
 import { accessActor, recordAuditLog } from '@/lib/audit-log';
 import { db } from '@/lib/db';
+import { scheduleNotificationDelivery } from '@/lib/notifications/deliver';
+import { bundleUploadedEvent, emitNotification } from '@/lib/notifications/emit';
 import { computeFilesHash, type DeltaFileEntry } from '@/lib/delta-files';
 import {
   BUNDLE_CACHE_CONTROL,
@@ -166,8 +168,9 @@ export async function POST(
 
   const totalSize = session.expectedSize;
 
+  const actor = await accessActor(access.access);
   try {
-    const bundle = await db.$transaction(async (tx) => {
+    const { bundle, notifications } = await db.$transaction(async (tx) => {
       const createdBundle = await tx.bundle.create({
         data: {
           appId: session.appId,
@@ -192,12 +195,22 @@ export async function POST(
         },
       });
 
-      return createdBundle;
+      const notifications = await emitNotification(
+        tx,
+        bundleUploadedEvent({
+          organizationId: access.access.organizationId,
+          appId,
+          actor,
+          bundle: createdBundle,
+        }),
+      );
+      return { bundle: createdBundle, notifications };
     });
+    if (notifications > 0) scheduleNotificationDelivery();
 
     await recordAuditLog({
       organizationId: access.access.organizationId,
-      actor: await accessActor(access.access),
+      actor,
       action: 'bundle.uploaded',
       targetType: 'bundle',
       targetId: bundle.id,

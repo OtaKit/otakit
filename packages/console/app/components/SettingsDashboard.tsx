@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { DashboardHeader } from '@/app/components/DashboardHeader';
 import { AddonsSection } from '@/app/components/AddonsSection';
 import { AgentsSection } from '@/app/components/agents/AgentsSection';
+import { NotificationsSection } from '@/app/components/NotificationsSection';
 import {
   PricingDialog,
   type PlanKey,
@@ -864,6 +865,17 @@ User ID: ${initialData.user.id}`,
                       </Table>
                     </div>
                   )}
+                </div>
+              </section>
+
+              <Separator />
+
+              <section>
+                <div className="mx-auto max-w-3xl bg-muted/30">
+                  <NotificationsSection
+                    key={initialData.activeOrganization.id}
+                    canManage={canManageTeam}
+                  />
                 </div>
               </section>
 

@@ -14,6 +14,7 @@ import { isReviewerLoginEnabled } from './reviewer-login';
 import { fetchCimdMetadataResource } from './mcp/cimd-fetch';
 import { withMcpRegistrationDefaults } from './mcp/client-registration';
 import { normalizeRequestedScope, normalizeResourceIndicator } from './mcp/oauth-request';
+import { createDefaultNotificationDestination } from './notifications/emit';
 import {
   selectedOAuthOrganizationId,
   shouldSelectOAuthOrganization,
@@ -346,6 +347,7 @@ export async function provisionUser(userId: string, email: string) {
       const organization = await tx.organization.create({
         data: { name: 'Personal account' },
       });
+      await createDefaultNotificationDestination(tx, organization.id);
       await tx.organizationMember.create({
         data: { organizationId: organization.id, userId, role: 'owner' },
       });

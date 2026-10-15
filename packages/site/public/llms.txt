@@ -19,6 +19,7 @@ Generated from the public docs pages in `packages/site/app/docs`.
 - Release Notes: /docs/release-notes
 - Update Strategies: /docs/update-strategies
 - Events & Listeners: /docs/events
+- Webhooks & Alerts: /docs/webhooks
 - Push Notifications: /docs/push
 - CI Automation: /docs/ci
 - MCP & Agent Skills: /docs/agents
@@ -1985,6 +1986,136 @@ if (failure) reportError('ota_rollback_startup', failure);
 
 Also see Update Strategies for choosing the policies these events observe, and the Plugin API reference for the full method list.
 
+## Webhooks & Alerts
+
+Route: /docs/webhooks
+
+Get release, rollout, auto-revert, upload and usage events by email, in Slack or Discord, or as signed webhooks.
+
+OtaKit tells your team when releases go out, roll out, are reverted, or fail health checks. It works for every release, made in the dashboard, with the CLI, from CI, or by an agent. Send notifications by email, to a Slack or Discord channel, or as signed webhooks to your own systems.
+
+Every workspace starts with one destination, “Owners and admins”. It emails owners and admins about auto-reverts and usage warnings. Change or turn it off like any other destination.
+
+### Add a destination
+
+In the dashboard, open Settings → Notifications and add a destination. Owners and admins can manage destinations.
+- Email — to the workspace's owners and admins, or to chosen members.
+- Slack — add an incoming webhook to a channel in Slack and paste its URL, which starts with `https://hooks.slack.com/services/`.
+- Discord — in the channel settings, open Integrations → Webhooks, create one and paste its URL, which starts with `https://discord.com/api/webhooks/`.
+- Webhook — any HTTPS endpoint. OtaKit posts the JSON payload below and signs every request.
+
+Choose the events, and optionally limit the destination to one app (usage warnings cover the whole workspace, so they are sent either way). Use Send test to check the setup; the destination's Deliveries show what was sent, the response, and a Redeliver button. Members who are not owners or admins see the list of destinations, without their URLs.
+
+### Events
+- `release.published` — a bundle is released to a channel, at 100% or as the start of a rollout.
+- `release.rollout_updated` — a rollout moves to a new percentage or completes.
+- `release.reverted` — someone reverts a release or cancels a rollout.
+- `release.auto_reverted` — too many update attempts rolled back, so OtaKit reverted the release; see health and auto-revert for the thresholds.
+- `release.auto_revert_suppressed` — a release is unhealthy but was not reverted, because the previous release on its lane was auto-reverted within 24 hours. Needs action.
+- `bundle.uploaded` — a new bundle is uploaded.
+- `usage.warning` — monthly downloads reach 90% or 100% of the plan.
+
+### Payload
+
+Webhooks receive a JSON body with the event `id`, its `type`, a `timestamp`, and `data`. Release events carry the release in the same shape as the REST API and MCP tools:
+
+```txt
+{
+  "id": "evt_6f1c0e8a2b7d4c9e8f0a1b2c3d4e5f60",
+  "type": "release.published",
+  "timestamp": "2026-10-01T12:00:00.000Z",
+  "data": {
+    "organization": { "id": "…", "name": "Acme" },
+    "app": { "id": "…", "slug": "com.acme.app" },
+    "actor": { "type": "user", "id": "…", "label": "dev@acme.com" },
+    "dashboardUrl": "https://console.otakit.app/dashboard?org=…&app=…",
+    "release": {
+      "id": "…",
+      "channel": "production",
+      "runtimeVersion": "2026.10",
+      "bundleId": "…",
+      "bundleVersion": "1.4.2",
+      "previousBundleId": "…",
+      "previousBundleVersion": "1.4.1",
+      "forceImmediate": false,
+      "autoRevert": true,
+      "autoRevertRatePercent": 20,
+      "autoRevertMinSample": 50,
+      "rolloutPercent": 100,
+      "notes": "Faster checkout. Photo upload fixed on Android.",
+      "promotedAt": "2026-10-01T12:00:00.000Z",
+      "promotedBy": "dev@acme.com",
+      "revertedAt": null,
+      "revertedBy": null
+    },
+    "previousRelease": { "id": "…", "bundleVersion": "1.4.1", … }
+  }
+}
+```
+
+Depending on the type, `data` also has:
+- `release.published`: `previousRelease` (or `null` for the first release on a lane), and `replacedRelease` when it replaced an active rollout.
+- `release.rollout_updated`: `previousRolloutPercent`.
+- `release.reverted`: `currentRelease`, the release devices receive now, or `null`.
+- `release.auto_reverted` and `release.auto_revert_suppressed`: `health` with `rollbacks`, `attempts` (applies plus rollbacks), `rollbackSharePercent`, the release's `thresholdPercent` and `thresholdMinSample`, and `windowHours`. Counts are events reported by devices, not unique devices.
+- `bundle.uploaded`: `bundle` with `id`, `version`, `runtimeVersion`, `size` in bytes, `strategy` (`zip` or `deltas`) and `createdAt` .
+- `usage.warning`: `usage` with `threshold` (90 or 100), `downloadsCount`, `downloadsLimit` and `periodStart`. `app` and `actor` are `null`.
+- `test.ping`, sent by Send test: `message`. `app` is `null`.
+
+`actor.type` is `user` (`label` is the email), `api_key` (`label` is the key's name), or `system` ( `label` is `auto-revert`, and `id` is `null`). New fields and event types may be added; ignore the ones you do not use.
+
+Notifications are queued with the change itself, so every committed change is reported exactly once per destination. Devices pick up a release once it is published to the CDN, normally within seconds of the notification.
+
+### Verify signatures
+
+Requests follow the Standard Webhooks spec, so its libraries verify them. Each request has `webhook-id` (the event's `id`), `webhook-timestamp` and `webhook-signature` headers, and the user agent `OtaKit-Webhooks/1.0`. Find the signing secret (`whsec_…`) under Settings → Notifications → ⋯ → Edit → Signing secret → Reveal, and verify the raw request body before parsing it:
+
+```txt
+// npm install standardwebhooks
+import { Webhook } from 'standardwebhooks';
+
+const webhook = new Webhook(process.env.OTAKIT_WEBHOOK_SECRET!);
+
+export async function POST(request: Request) {
+  const body = await request.text();
+  let event: { type: string; data: any };
+  try {
+    event = webhook.verify(body, Object.fromEntries(request.headers)) as typeof event;
+  } catch {
+    return new Response('Invalid signature', { status: 401 });
+  }
+  if (event.type === 'release.published') {
+    console.log(`Released ${event.data.release.bundleVersion}`);
+  }
+  return new Response(null, { status: 204 });
+}
+```
+
+```txt
+# pip install standardwebhooks
+import os
+from standardwebhooks.webhooks import Webhook
+
+webhook = Webhook(os.environ["OTAKIT_WEBHOOK_SECRET"])
+
+# In a Flask view: raises an exception if the signature is invalid
+event = webhook.verify(request.get_data(), dict(request.headers))
+```
+
+The libraries also reject requests older than five minutes, which stops replays. Rotate secret issues a new secret; for 24 hours requests carry signatures for both, so you can switch without missing events.
+
+### Retries and failures
+- Answer with any 2xx status within 10 seconds. Do slow work after responding.
+- Other answers, timeouts and network errors are retried after 1 minute, 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours and 10 hours, then the delivery fails.
+- Retries and Redeliver keep the event's `webhook-id`; use it to ignore duplicates. Events can arrive out of order, so use `timestamp` when order matters.
+- Redirects are not followed, and destinations must be public addresses.
+- A destination is turned off at once when the endpoint says it no longer exists: a `410 Gone` answer, or a deleted Slack or Discord webhook. It is also turned off when every delivery has failed for three days, with no success in between. Owners and admins get an email either way, and the audit log records it. Fix the endpoint and turn it back on in Settings.
+- Email is retried on the same schedule, and a retry only goes to the recipients who did not get it yet.
+
+### Self-hosting
+
+Notifications need `DATA_ENCRYPTION_KEY` (32 random bytes, base64) to store webhook secrets and `RESEND_API_KEY` for email. For retries, set `CRON_SECRET` and call `/api/cron/notifications` every minute with `Authorization: Bearer $CRON_SECRET` (or `?secret=`); in production the endpoint refuses calls when `CRON_SECRET` is not set. To post to services inside your network, set `NOTIFICATIONS_ALLOW_PRIVATE_URLS=true`. The Self-hosting guide lists every setting.
+
 ## Push Notifications
 
 Route: /docs/push
@@ -2486,7 +2617,7 @@ tinybird/
 Manifest signing
 — ES256 signatures on manifests. Strongly recommended for production; see below.
 Resend
-— transactional email (OTP codes, invites). Without it, emails are logged to the server console.
+— transactional email (OTP codes, invites, alerts). Without it, emails are logged to the server console.
 Cloudflare cache purge
 — instant CDN invalidation after a release. Without it, manifests may be stale until the CDN TTL (minutes) expires.
 Upstash Redis
@@ -2641,7 +2772,7 @@ RESEND_API_KEY
 and
 
 EMAIL_FROM
-to send OTP codes and invites via Resend.
+to send OTP codes, invites and alerts via Resend.
 Auto-revert
 — releases published with the auto-revert flag are reverted automatically when too many devices roll back within 24 hours. Requires analytics (above) plus any scheduler calling
 
@@ -2653,6 +2784,29 @@ is set, pass it as a Bearer header or
 
 ?secret=
 query param; if unset, the endpoint is open (the sweep is idempotent and only reverts releases whose own thresholds trip).
+Notifications
+— email, Slack, Discord and webhook alerts; see
+
+Webhooks and Alerts
+. Set
+
+DATA_ENCRYPTION_KEY
+(32 random bytes, base64) to store webhook signing secrets. Set
+
+CRON_SECRET
+and call
+
+/api/cron/notifications
+every minute with it as a Bearer header (or
+
+?secret=
+) so failed deliveries are retried; unlike the auto-revert endpoint, this one refuses calls in production when
+
+CRON_SECRET
+is unset. Set
+
+NOTIFICATIONS_ALLOW_PRIVATE_URLS=true
+to post to addresses inside your network.
 CDN purge
 — set
 
@@ -2685,6 +2839,19 @@ Route: /changelog
 New features, improvements and fixes, newest first. Plugin features need the plugin version shown.
 
 Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.10.0 (2026-10-12), @otakit/push 0.1.1 (2026-09-27).
+
+### Webhooks and alerts (2026-10-14)
+
+Get notified when releases go out, roll out, are reverted, or fail health checks: by email, in Slack or Discord, or as signed webhooks to your own systems.
+
+- Add destinations in Settings → Notifications, choose the events, and optionally limit one to a single app.
+- Covers every release, whether it comes from the dashboard, the CLI, CI, or an agent. Release notes appear in Slack, Discord and email messages.
+- Webhooks follow the Standard Webhooks spec, so existing libraries verify them. Failed deliveries are retried for about a day.
+- Auto-revert and usage emails now come from a default “Owners and admins” destination, so you can change who gets them or send them to Slack.
+
+Requires: Self-hosted servers need DATA_ENCRYPTION_KEY, CRON_SECRET and a call to /api/cron/notifications every minute.
+
+Docs: Webhooks and alerts guide (/docs/webhooks)
 
 ### Release notes (2026-10-12, Plugin 3.3.0, CLI 1.10.0)
 
