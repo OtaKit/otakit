@@ -204,6 +204,8 @@ final class ManifestClient {
       connection.setRequestMethod("GET");
       connection.setConnectTimeout(15_000);
       connection.setReadTimeout(30_000);
+      // Always ask the CDN, which every publish purges, never an HTTP cache the app installed.
+      connection.setUseCaches(false);
 
       int status = connection.getResponseCode();
       if (status == 404 || status == 204) {

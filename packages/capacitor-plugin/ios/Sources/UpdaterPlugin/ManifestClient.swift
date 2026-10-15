@@ -112,9 +112,10 @@ enum ManifestClient {
 
     try requireHTTPS(url: url, allowInsecure: allowInsecureUrls)
 
-    var request = URLRequest(url: url)
+    // Always ask the CDN, which every publish purges: a copy kept on the phone
+    // would hide a release, revert or rollout change from this check.
+    var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
     request.httpMethod = "GET"
-    request.timeoutInterval = 30
 
     let (data, response) = try await URLSession.shared.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else {
