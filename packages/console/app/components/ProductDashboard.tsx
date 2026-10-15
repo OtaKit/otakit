@@ -60,6 +60,7 @@ import type {
   PreviewSummary,
   ReleaseHistoryItem,
 } from '@/app/components/dashboard-types';
+import type { RolloutReach } from '@/lib/services/rollout-reach';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -116,6 +117,14 @@ type EventActionFilter =
   | 'rollback'
   | 'check_error';
 type EventTimeframeFilter = '1h' | '24h' | '7d' | '30d';
+/** Updates needed before the share of older plugins on a lane is shown. */
+const MIN_REACH_APPLIES = 20;
+
+function formatReachShare(share: number): string {
+  const percent = share * 100;
+  return percent < 1 ? 'under 1%' : `${Math.round(percent)}%`;
+}
+
 type ReleaseTarget = {
   channel: string | null;
   runtimeVersion: string | null;
@@ -765,6 +774,30 @@ export function ProductDashboard({
   const releaseLaneRollout = isRolling(releaseLaneCurrent) ? releaseLaneCurrent : null;
   // The first release on a lane has nothing to fall back to, so it goes to everyone.
   const releaseCanRollOut = releaseLaneCurrent !== null;
+  // How many recent updates on the lane come from plugins too old for rollouts.
+  const [rolloutReach, setRolloutReach] = useState<{
+    key: string;
+    reach: RolloutReach;
+  } | null>(null);
+  const rolloutReachKey =
+    selectedApp && releaseSelectedTarget && releaseCanRollOut
+      ? `/api/v1/apps/${selectedApp.id}/rollout-reach?${new URLSearchParams({
+          channel: releaseSelectedTarget.channel ?? '',
+          runtimeVersion: releaseSelectedTarget.runtimeVersion ?? '',
+        })}`
+      : null;
+  useEffect(() => {
+    if (!rolloutReachKey) return;
+    const controller = new AbortController();
+    fetch(rolloutReachKey, { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<RolloutReach>) : null))
+      .then((reach) => {
+        if (reach) setRolloutReach({ key: rolloutReachKey, reach });
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [rolloutReachKey]);
+  const laneReach = rolloutReach?.key === rolloutReachKey ? rolloutReach.reach : null;
   const releaseRolloutValue = !releaseConfirm
     ? null
     : releaseCanRollOut
@@ -2772,7 +2805,11 @@ export function ProductDashboard({
                   !releaseCanRollOut
                     ? 'The first release on a channel goes to every device.'
                     : releaseRolloutValue !== null && releaseRolloutValue < FULL_ROLLOUT_PERCENT
-                      ? 'Devices on OtaKit plugin 3.1 or later are picked at random. Older plugin versions get this release when the rollout completes.'
+                      ? `Devices on OtaKit plugin 3.1 or later are picked at random. Older plugin versions get this release when the rollout completes.${
+                          laneReach?.olderShare && laneReach.applies >= MIN_REACH_APPLIES
+                            ? ` On this channel, ${formatReachShare(laneReach.olderShare)} of recent updates came from older plugins.`
+                            : ''
+                        }`
                       : null
                 }
               />

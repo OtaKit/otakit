@@ -329,7 +329,7 @@ try {
   const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
   if (notes) {
     showWhatsNew(notes.text); // render as text, never as HTML
-    await OtaKit.markReleaseNotesSeen();
+    await OtaKit.markReleaseNotesSeen({ releaseId: notes.releaseId });
   }
 } catch {
   // A native shell on plugin 3.2 or older doesn't have these methods.

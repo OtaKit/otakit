@@ -41,6 +41,14 @@ struct CheckFailure {
     return CheckFailure(phase: "check", detail: "rollout_invalid")
   }
 
+  /// Why an entry's release notes were dropped (the update itself goes on).
+  static func notes(_ error: Error) -> CheckFailure {
+    if let failure = from(error), failure.phase == "signature" {
+      return CheckFailure(phase: "signature", detail: "notes_\(failure.detail)")
+    }
+    return CheckFailure(phase: "check", detail: "notes_invalid")
+  }
+
   static func observe<T>(_ operation: () async throws -> T, report: (CheckFailure) throws -> Void) async throws -> T {
     do { return try await operation() }
     catch {

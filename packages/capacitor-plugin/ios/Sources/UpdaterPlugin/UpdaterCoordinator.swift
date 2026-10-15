@@ -274,6 +274,31 @@ final class UpdaterCoordinator {
     }
   }
 
+  /// After a check, a staged bundle the server no longer targets is unstaged
+  /// so it is never applied: its rollout was lowered or canceled, its release
+  /// reverted, the app switched channels, or another release is now the
+  /// target. Without a release on the channel (`latest` nil), nothing is
+  /// targeted. A check on a preview channel leaves the release's staged
+  /// bundle alone: the release's target did not change. Returns the bundle
+  /// to clean up.
+  func unstageObsoleteBundle(latest: LatestManifest?, targetChannel: String?) throws -> [String] {
+    try withStateLock {
+      guard let stagedId = store.getStagedBundleId() else { return [] }
+      guard let staged = store.getBundle(id: stagedId) else {
+        try store.setStagedBundleId(nil)
+        return []
+      }
+      if PreviewLink.isPreviewChannel(targetChannel), trimToNil(staged.channel) != targetChannel {
+        return []
+      }
+      if let latest, doesBundleMatchLatest(staged, latest: latest, targetChannel: targetChannel) {
+        return []
+      }
+      try store.setStagedBundleId(nil)
+      return try store.protectedBundleIds().contains(staged.id) ? [] : [staged.id]
+    }
+  }
+
   func stageDownloadedBundle(_ bundle: BundleInfo) throws -> [String] {
     try withStateLock {
       guard !bundle.isBuiltin, !(try store.protectedBundleIds()).contains(bundle.id) else {

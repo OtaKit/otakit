@@ -60,10 +60,12 @@ function writtenManifest(): Record<string, unknown> & {
   rollout?: Record<string, unknown> & { signature: Signature };
 } {
   expect(storage.putTextObject).toHaveBeenCalledTimes(1);
-  const [{ storageKey, body }] = storage.putTextObject.mock.calls[0] as [
-    { storageKey: string; body: string },
+  const [{ storageKey, body, cacheControl }] = storage.putTextObject.mock.calls[0] as [
+    { storageKey: string; body: string; cacheControl: string },
   ];
   expect(storageKey).toBe('manifests/app-1/production/rt-1/manifest.json');
+  // The CDN caches (and is purged on every write); phones always ask it.
+  expect(cacheControl).toBe('public, max-age=0, s-maxage=300');
   return JSON.parse(body);
 }
 

@@ -1,7 +1,7 @@
 DESCRIPTION >
-    Applies per release from devices whose native plugin can report errors
-    (min_major.min_minor or later, 3.4 by default), for error rates. Reads raw
-    device events (90 days); retries count once.
+    Applies per release from devices whose native plugin is min_major.min_minor
+    or later: 3.4 by default (error tracking, for error rates), 3.1 for rollouts,
+    0.0 for every apply. Reads raw device events (90 days); retries count once.
 
 TOKEN otakit_web READ
 

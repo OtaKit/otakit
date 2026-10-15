@@ -88,6 +88,8 @@ final class ManifestClient {
     final java.util.List<ManifestFileEntry> files;
     /** Verified release notes (plugin 3.3+), or null. */
     final String notes;
+    /** Why the entry's notes were dropped, reported as a check error (plugin 3.4+). */
+    CheckFailure notesFailure;
 
     LatestManifest(
       String version,
@@ -202,6 +204,8 @@ final class ManifestClient {
       connection.setRequestMethod("GET");
       connection.setConnectTimeout(15_000);
       connection.setReadTimeout(30_000);
+      // Always ask the CDN, which every publish purges, never an HTTP cache the app installed.
+      connection.setUseCaches(false);
 
       int status = connection.getResponseCode();
       if (status == 404 || status == 204) {
@@ -382,30 +386,48 @@ final class ManifestClient {
       requireHTTPS(new URL(downloadUrl), allowInsecureUrls);
     }
 
-    return new ParsedEntry(
-      new LatestManifest(
-        version,
-        downloadUrl,
-        sha256,
-        size,
-        responseRuntimeVersion,
-        releaseId,
-        strategy,
-        forceImmediate,
-        encryption,
-        files,
-        verifiedNotes(json.optJSONObject("notes"), appId, channel, releaseId, sha256, manifestKeys)
-      ),
-      signature
+    VerifiedNotes notes = verifiedNotes(
+      json.optJSONObject("notes"),
+      appId,
+      channel,
+      releaseId,
+      sha256,
+      manifestKeys
     );
+    LatestManifest manifest = new LatestManifest(
+      version,
+      downloadUrl,
+      sha256,
+      size,
+      responseRuntimeVersion,
+      releaseId,
+      strategy,
+      forceImmediate,
+      encryption,
+      files,
+      notes.text
+    );
+    manifest.notesFailure = notes.failure;
+    return new ParsedEntry(manifest, signature);
+  }
+
+  private static final class VerifiedNotes {
+
+    final String text;
+    final CheckFailure failure;
+
+    VerifiedNotes(String text, CheckFailure failure) {
+      this.text = text;
+      this.failure = failure;
+    }
   }
 
   /**
    * One entry's release notes (plugin 3.3+). Anything missing, malformed or unverifiable yields
-   * null: notes never block an update. Without manifest keys (unsigned self-hosting) the text is
-   * accepted, like the manifest.
+   * null: notes never block an update. Notes that fail verification also return why, for a check
+   * error. Without manifest keys (unsigned self-hosting) the text is accepted, like the manifest.
    */
-  private static String verifiedNotes(
+  private static VerifiedNotes verifiedNotes(
     JSONObject notes,
     String appId,
     String channel,
@@ -413,13 +435,17 @@ final class ManifestClient {
     String sha256,
     java.util.List<ManifestVerifier.KeyEntry> manifestKeys
   ) {
-    if (notes == null) return null;
+    if (notes == null) return new VerifiedNotes(null, null);
     Object rawText = notes.opt("text");
-    if (!(rawText instanceof String) || ((String) rawText).isEmpty()) return null;
+    if (!(rawText instanceof String) || ((String) rawText).isEmpty()) {
+      return new VerifiedNotes(null, null);
+    }
     String text = (String) rawText;
-    if (manifestKeys == null || manifestKeys.isEmpty()) return text;
+    if (manifestKeys == null || manifestKeys.isEmpty()) return new VerifiedNotes(text, null);
     ManifestSignature signature = parseSignature(notes.optJSONObject("signature"));
-    if (signature == null) return null;
+    if (signature == null) {
+      return new VerifiedNotes(null, new CheckFailure("signature", "notes_signature_missing"));
+    }
     try {
       ManifestVerifier.verifyNotes(
         appId,
@@ -430,10 +456,10 @@ final class ManifestClient {
         signature,
         manifestKeys
       );
-      return text;
+      return new VerifiedNotes(text, null);
     } catch (Exception error) {
       android.util.Log.w("OtaKit", "Ignoring release notes that failed verification", error);
-      return null;
+      return new VerifiedNotes(null, CheckFailure.notes(error));
     }
   }
 

@@ -247,7 +247,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="check()"
           returns="CheckResult"
-          description="Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available."
+          description="Check the configured channel for a newer bundle without downloading it. Returns no_update, already_staged, or update_available. On plugin 3.4+, a staged bundle the channel no longer targets (rollout lowered or cancelled, release reverted) is dropped."
         />
         <Method
           name="download()"
@@ -262,7 +262,7 @@ await OtaKit.notifyAppReady();`}</Pre>
         <Method
           name="apply()"
           returns="void"
-          description="Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context."
+          description="Activate the currently staged bundle and reload the WebView. Terminal operation: on success it does not resolve back into the old JS context. Rejects when nothing usable is staged, for example after a check dropped an update the channel no longer targets."
         />
         <Method
           name="notifyAppReady()"
@@ -285,9 +285,9 @@ await OtaKit.notifyAppReady();`}</Pre>
           description="The running release's notes, until markReleaseNotesSeen() is called (plugin 3.3+). Show them once in a What's new screen, rendered as text. See Release Notes."
         />
         <Method
-          name="markReleaseNotesSeen()"
+          name="markReleaseNotesSeen({ releaseId }?)"
           returns="void"
-          description="Mark the running release's notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes."
+          description="Mark notes as shown, so getUnseenReleaseNotes() returns null until the next release with notes. Pass the releaseId you showed (plugin 3.4+): an update applied while the notes were open is then not marked instead. Without it, the running release's."
         />
       </div>
       <P>

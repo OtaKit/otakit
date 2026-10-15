@@ -995,6 +995,19 @@ public class UpdaterPlugin extends Plugin {
 
   @PluginMethod
   public void markReleaseNotesSeen(PluginCall call) {
+    // The release whose notes the app showed (plugin 3.4+), else the running one: passing the ID
+    // keeps an update applied in between from being marked instead.
+    String requested = call.getString("releaseId");
+    if (requested != null) {
+      String releaseId = requested.trim();
+      if (releaseId.isEmpty() || releaseId.length() > 64) {
+        call.reject("releaseId must be the ID from getUnseenReleaseNotes()");
+        return;
+      }
+      store.markReleaseNotesSeen(releaseId);
+      call.resolve();
+      return;
+    }
     BundleInfo current = store.getCurrentBundle();
     if (current.notes != null && current.releaseId != null) {
       store.markReleaseNotesSeen(current.releaseId);
@@ -1275,7 +1288,21 @@ public class UpdaterPlugin extends Plugin {
     }
     Rollout.Selection selection = Rollout.select(parsed, store.assignmentSecret());
     lastRollout = selection.state;
-    return selection.manifest;
+    ManifestClient.LatestManifest manifest = selection.manifest;
+    if (manifest != null && manifest.notesFailure != null) {
+      // The update goes on without its notes; report why they were dropped.
+      sendDeviceEvent(
+        "check_error",
+        manifest.version,
+        runtimeVersion,
+        channel,
+        manifest.releaseId,
+        manifest.notesFailure.detail,
+        checkId,
+        manifest.notesFailure.phase
+      );
+    }
+    return manifest;
   }
 
   private CheckResolution checkLatest(boolean respectInterval, String channel) throws Exception {
@@ -1288,6 +1315,7 @@ public class UpdaterPlugin extends Plugin {
 
     ManifestClient.LatestManifest latest = fetchLatest(targetChannel);
     if (latest == null) {
+      unstageObsoleteBundle(null, targetChannel);
       if (respectInterval) {
         recordCheckTimestamp();
       }
@@ -1295,6 +1323,7 @@ public class UpdaterPlugin extends Plugin {
     }
 
     CheckResolution resolution = classifyLatestManifest(latest, targetChannel);
+    if (!"already_staged".equals(resolution.kind)) unstageObsoleteBundle(latest, targetChannel);
 
     if ("update_available".equals(resolution.kind) && resolution.latest != null) {
       emitEvent("updateAvailable", manifestToJSObject(resolution.latest));
@@ -1304,6 +1333,18 @@ public class UpdaterPlugin extends Plugin {
       recordCheckTimestamp();
     }
     return resolution;
+  }
+
+  /** Unstage what the server no longer targets (see the coordinator) and delete its files later. */
+  private void unstageObsoleteBundle(ManifestClient.LatestManifest latest, String targetChannel) {
+    try {
+      java.util.List<String> ids = coordinator.unstageObsoleteBundle(latest, targetChannel);
+      if (ids.isEmpty()) return;
+      android.util.Log.i("OtaKit", "Unstaged a bundle the server no longer targets");
+      cleanupInBackground(ids);
+    } catch (Exception error) {
+      android.util.Log.w("OtaKit", "Could not unstage an obsolete bundle", error);
+    }
   }
 
   private DownloadResolution downloadLatest(boolean respectInterval, String channel)

@@ -230,6 +230,8 @@ export async function getErrorIssueReleases(
 export async function getReleaseCapableApplies(
   appId: string,
   releaseIds: string[],
+  /** The oldest native plugin counted: 3.4 (error tracking) by default; 0.0 counts every apply. */
+  minVersion: { major: number; minor: number } = { major: 3, minor: 4 },
 ): Promise<Map<string, number> | null> {
   if (!isTinybirdConfigured()) {
     warnTinybirdNotConfigured('getReleaseCapableApplies');
@@ -239,12 +241,17 @@ export async function getReleaseCapableApplies(
   try {
     for (const batch of chunk(Array.from(new Set(releaseIds.filter(Boolean))), ID_BATCH_SIZE)) {
       const rows = await cachedJson(
-        `otakit:errors:capable-applies:${appId}:${batch.join(',')}`,
+        `otakit:errors:capable-applies:${appId}:${minVersion.major}.${minVersion.minor}:${batch.join(',')}`,
         60,
         () =>
           queryTinybirdPipe<{ release_id?: string | null; applies?: Count }>(
             RELEASE_CAPABLE_APPLIES_PIPE,
-            { app_id: appId, release_ids: batch.join(',') },
+            {
+              app_id: appId,
+              release_ids: batch.join(','),
+              min_major: minVersion.major,
+              min_minor: minVersion.minor,
+            },
           ),
       );
       for (const row of rows) {

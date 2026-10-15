@@ -290,6 +290,77 @@ final class UpdaterCoordinatorTests: XCTestCase {
     XCTAssertTrue(fixture.indexExists(first))
   }
 
+  private func manifest(for id: String) -> LatestManifest {
+    LatestManifest(
+      version: id, url: nil, sha256: "hash-\(id)", size: 0,
+      runtimeVersion: nil, releaseId: "release-\(id)", strategy: "zip",
+      forceImmediate: false, encryption: nil, files: nil, notes: nil
+    )
+  }
+
+  func testUnstagesABundleTheServerNoLongerTargets() throws {
+    // A rolling release was staged, then the rollout was lowered or canceled:
+    // the manifest now targets the release the device already runs.
+    try fixture.installHealthy("A")
+    try fixture.stage("B")
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "A"), targetChannel: nil), ["B"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+    fixture.coordinator.cleanupBundles(["B"])
+    XCTAssertFalse(fixture.indexExists("B"))
+    XCTAssertTrue(fixture.indexExists("A"))
+    let launch = try fixture.coordinator.prepareApplyStaged(
+      isCompatibleRuntime: { _ in true }, isBundleUsable: fixture.isUsable)
+    XCTAssertFalse(launch.didApply)
+    XCTAssertEqual(fixture.store.getCurrentBundleId(), "A")
+  }
+
+  func testKeepsTheStagedTarget() throws {
+    try fixture.installHealthy("A")
+    try fixture.stage("C")
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "C"), targetChannel: nil), [])
+    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
+    // No release on its channel (the release was reverted): unstaged.
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: nil, targetChannel: nil), ["C"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
+  func testUnstagesWhenTheNewChannelHasNoRelease() throws {
+    // setChannel("beta") with no release on beta: the base bundle is not its target.
+    try fixture.installHealthy("A")
+    try fixture.stage("C")
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: nil, targetChannel: "beta"), ["C"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
+  func testPreviewChecksKeepTheReleasesStagedBundle() throws {
+    let preview = PreviewLink.channel(for: "abcdefghijklmnopqrstuvwxyz")
+    try fixture.installHealthy("A")
+    try fixture.stage("C")
+    // Starting a preview whose download then fails, or a revoked one.
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "P"), targetChannel: preview), [])
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: nil, targetChannel: preview), [])
+    XCTAssertEqual(fixture.store.getStagedBundleId(), "C")
+    // A bundle of that preview is unstaged like any other.
+    try fixture.stage("P1", channel: preview)
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "P2"), targetChannel: preview), ["P1"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
+  func testUnstagesABundleOfTheChannelTheAppLeft() throws {
+    try fixture.installHealthy("A", channel: "beta")
+    try fixture.stage("D")
+    XCTAssertEqual(try fixture.coordinator.unstageObsoleteBundle(
+      latest: manifest(for: "A"), targetChannel: "beta"), ["D"])
+    XCTAssertNil(fixture.store.getStagedBundleId())
+  }
+
   func testFailedStagingCleanupPreservesCurrentAndSuccessfulStaging() throws {
     try fixture.installHealthy("A")
     let orphan = BundleStore.newInstallationId()

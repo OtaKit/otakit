@@ -323,6 +323,8 @@ export interface OtaKitPlugin {
 
   /**
    * Check the configured channel for a newer version without downloading it.
+   * A staged bundle the channel no longer targets (rollout lowered or
+   * cancelled, release reverted) is dropped (plugin 3.4+).
    */
   check(): Promise<CheckResult>;
 
@@ -333,6 +335,8 @@ export interface OtaKitPlugin {
 
   /**
    * Activate the currently staged bundle and reload the WebView.
+   * Rejects when nothing usable is staged, for example after a check dropped
+   * an update the channel no longer targets.
    *
    * **WARNING: TERMINAL OPERATION**
    * On success this call does not resolve back into the old JS context.
@@ -475,8 +479,12 @@ export interface OtaKitPlugin {
    */
   getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
 
-  /** Mark the running release's notes as shown (plugin 3.3+). */
-  markReleaseNotesSeen(): Promise<void>;
+  /**
+   * Mark release notes as shown (plugin 3.3+). Pass the `releaseId` from
+   * `getUnseenReleaseNotes()` (plugin 3.4+), so an update applied while the
+   * notes were open is not marked instead; without it, the running release's.
+   */
+  markReleaseNotesSeen(options?: { releaseId?: string }): Promise<void>;
 
   /**
    * Send a custom event (plugin 3.4+), the same as the `track` export.
@@ -600,7 +608,7 @@ export interface OtaKitBridgePlugin {
   getChannel(): Promise<ChannelInfo>;
   stopPreview(): Promise<void>;
   getUnseenReleaseNotes(): Promise<ReleaseNotes | null>;
-  markReleaseNotesSeen(): Promise<void>;
+  markReleaseNotesSeen(options?: { releaseId?: string }): Promise<void>;
   getConfig(): Promise<NativeRemoteConfig>;
   refreshConfig(): Promise<NativeRemoteConfig>;
   enqueueAppTelemetry(options: {

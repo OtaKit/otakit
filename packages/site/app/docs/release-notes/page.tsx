@@ -64,7 +64,7 @@ try {
   const notes = await OtaKit.getUnseenReleaseNotes(); // { text, version, releaseId } or null
   if (notes) {
     showWhatsNew(notes.text);
-    await OtaKit.markReleaseNotesSeen();
+    await OtaKit.markReleaseNotesSeen({ releaseId: notes.releaseId });
   }
 } catch {
   // A native shell on plugin 3.2 or older doesn't have these methods.
@@ -97,8 +97,10 @@ function showWhatsNew(text: string) {
       <H2>Security</H2>
       <P>
         Notes travel in their own signed block of the release manifest. The app only shows notes
-        signed for that exact release, so they cannot be changed in transit. Older plugin versions
-        ignore the block and update as before.
+        signed for that exact release, so they cannot be changed in transit. From plugin 3.4, notes
+        that fail verification are reported as a check error (<Code>notes_signature_invalid</Code>{' '}
+        and similar) in the app&apos;s events; the update itself goes on without them. Older plugin
+        versions ignore the block and update as before.
       </P>
     </>
   );

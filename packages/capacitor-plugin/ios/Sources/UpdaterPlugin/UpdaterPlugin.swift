@@ -531,7 +531,20 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     call.resolve(["text": text, "version": current.version, "releaseId": releaseId])
   }
 
+  /// Marks the notes of `releaseId` seen (the release whose notes the app
+  /// showed, plugin 3.4+), else of the running release. Passing the ID keeps
+  /// an update applied in between from being marked instead.
   @objc func markReleaseNotesSeen(_ call: CAPPluginCall) {
+    if let raw = call.getString("releaseId") {
+      let releaseId = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !releaseId.isEmpty, releaseId.count <= 64 else {
+        call.reject("releaseId must be the ID from getUnseenReleaseNotes()")
+        return
+      }
+      store.markReleaseNotesSeen(releaseId)
+      call.resolve()
+      return
+    }
     let current = store.getCurrentBundle()
     if current.notes != nil, let releaseId = current.releaseId {
       store.markReleaseNotesSeen(releaseId)
@@ -960,7 +973,27 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     let selection = parsed.map { Rollout.select($0, secret: store.assignmentSecret()) }
     rememberRollout(selection?.state)
+    if let manifest = selection?.manifest, let failure = manifest.notesFailure {
+      // The update goes on without its notes; report why they were dropped.
+      sendDeviceEvent(action: .checkError, bundleVersion: manifest.version, runtimeVersion: runtimeVersion,
+        channel: channel, releaseId: manifest.releaseId, detail: failure.detail, attemptId: checkId,
+        phase: failure.phase)
+    }
     return selection?.manifest
+  }
+
+  /// Unstage what the server no longer targets (see the coordinator), and
+  /// delete its files off the calling thread.
+  private func unstageObsoleteBundle(latest: LatestManifest?, targetChannel: String?) {
+    do {
+      let ids = try coordinator.unstageObsoleteBundle(latest: latest, targetChannel: targetChannel)
+      guard !ids.isEmpty else { return }
+      print("[OtaKit] Unstaged a bundle the server no longer targets")
+      let coordinator = self.coordinator
+      DispatchQueue.global(qos: .utility).async { coordinator.cleanupBundles(ids) }
+    } catch {
+      print("[OtaKit] Could not unstage an obsolete bundle: \(error.localizedDescription)")
+    }
   }
 
   private func rememberRollout(_ state: RolloutState?) {
@@ -988,6 +1021,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     let latest = try await fetchLatest(channel: targetChannel)
     guard let manifest = latest else {
+      unstageObsoleteBundle(latest: nil, targetChannel: targetChannel)
       if respectInterval {
         recordCheckTimestamp()
       }
@@ -995,6 +1029,12 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     let resolution = try classifyLatestManifest(manifest, targetChannel: targetChannel)
+    switch resolution {
+    case .noUpdate, .updateAvailable:
+      unstageObsoleteBundle(latest: manifest, targetChannel: targetChannel)
+    case .alreadyStaged:
+      break
+    }
 
     if case let .updateAvailable(available) = resolution {
       emitEvent("updateAvailable", manifestToDictionary(available))
