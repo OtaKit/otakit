@@ -5,6 +5,8 @@ import type {
   Platform,
 } from '@/app/components/dashboard-types';
 
+import { cachedJson } from '@/lib/redis';
+
 import {
   TinybirdConfigError,
   isTinybirdConfigured,
@@ -38,6 +40,14 @@ type AggregateCountRow = {
 
 type DownloadCountRow = {
   downloads_count?: number | string | null;
+};
+
+type TimeseriesRow = {
+  release_id?: string | null;
+  action?: string | null;
+  bucket_start?: number | string | null;
+  events_count?: number | string | null;
+  last_received_at?: number | string | null;
 };
 
 type RecentAppEventsArgs = {
@@ -75,6 +85,11 @@ const ORGANIZATION_DOWNLOAD_COUNTS_PIPE =
 
 const RELEASE_HEALTH_WINDOW_PIPE =
   process.env.TINYBIRD_RELEASE_HEALTH_WINDOW_PIPE ?? 'release_health_window';
+const RELEASE_EVENT_TIMESERIES_PIPE =
+  process.env.TINYBIRD_RELEASE_EVENT_TIMESERIES_PIPE ?? 'release_event_timeseries';
+/** Charts refresh at most this often per query, which bounds Tinybird requests. */
+const TIMESERIES_CACHE_SECONDS = 60;
+export const MAX_TIMESERIES_RELEASES = 10;
 
 const ID_BATCH_SIZE = 50;
 const APP_ID_BATCH_SIZE = 100;
@@ -334,6 +349,87 @@ export async function getReleaseHealthWindowCounts(
       error,
     );
     return null;
+  }
+}
+
+export type ReleaseEventTimeseriesPoint = {
+  releaseId: string;
+  action: 'downloaded' | 'applied' | 'download_error' | 'rollback';
+  /** Bucket start, epoch milliseconds (UTC). */
+  bucketStart: number;
+  count: number;
+  /** Earliest receipt of the newest event in the bucket, epoch milliseconds. */
+  lastReceivedAt: number;
+};
+
+const TIMESERIES_ACTIONS = new Set(['downloaded', 'applied', 'download_error', 'rollback']);
+
+/**
+ * Event counts per release, action and hourly (or daily) bucket, from each
+ * event's earliest receipt. Results are cached briefly; a failed read is
+ * reported as unavailable, never as zero events.
+ */
+export async function getReleaseEventTimeseries(args: {
+  appId: string;
+  releaseIds: string[];
+  from: Date;
+  to: Date;
+  daily: boolean;
+  platform: Platform | null;
+}): Promise<AnalyticsResult<ReleaseEventTimeseriesPoint[]>> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getReleaseEventTimeseries');
+    return { data: [], available: false };
+  }
+  const releaseIds = Array.from(new Set(args.releaseIds.map((id) => id.trim()).filter(Boolean)));
+  if (releaseIds.length === 0) return { data: [], available: true };
+  if (releaseIds.length > MAX_TIMESERIES_RELEASES) {
+    throw new Error(`At most ${MAX_TIMESERIES_RELEASES} releases per timeseries query`);
+  }
+
+  const params = {
+    app_id: args.appId,
+    release_ids: releaseIds.join(','),
+    from_ts: args.from.toISOString(),
+    to_ts: args.to.toISOString(),
+    platform: args.platform ?? '',
+    ...(args.daily ? { daily: 1 } : {}),
+  };
+  try {
+    const rows = await cachedJson(
+      `tinybird:${RELEASE_EVENT_TIMESERIES_PIPE}:${JSON.stringify(params)}`,
+      TIMESERIES_CACHE_SECONDS,
+      () => queryTinybirdPipe<TimeseriesRow>(RELEASE_EVENT_TIMESERIES_PIPE, params),
+    );
+    const points: ReleaseEventTimeseriesPoint[] = [];
+    for (const row of rows) {
+      const releaseId = trimToNull(row.release_id);
+      const action = trimToNull(row.action);
+      const bucketStart = Number(row.bucket_start);
+      if (
+        !releaseId ||
+        !action ||
+        !TIMESERIES_ACTIONS.has(action) ||
+        !Number.isFinite(bucketStart)
+      ) {
+        continue;
+      }
+      points.push({
+        releaseId,
+        action: action as ReleaseEventTimeseriesPoint['action'],
+        bucketStart: bucketStart * 1000,
+        count: parseCount(row.events_count),
+        lastReceivedAt: parseCount(row.last_received_at) * 1000,
+      });
+    }
+    return { data: points, available: true };
+  } catch (error) {
+    logDashboardAnalyticsFailure(
+      'release_event_timeseries',
+      { appId: args.appId, releaseIds: releaseIds.length },
+      error,
+    );
+    return { data: [], available: false };
   }
 }
 
