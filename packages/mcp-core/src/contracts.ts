@@ -7,6 +7,7 @@ export const OTAKIT_TOOL_NAMES = [
   'create_app',
   'list_bundles',
   'get_bundle',
+  'diff_bundles',
   'delete_bundle',
   'list_releases',
   'get_release_state',

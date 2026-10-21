@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import {
   PublicToolError,
+  bundleDiffEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -272,6 +273,8 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.listBundles(input);
         case 'get_bundle':
           return await this.getBundle(input);
+        case 'diff_bundles':
+          return await this.diffBundles(input);
         case 'delete_bundle':
           return await this.deleteBundle(input);
         case 'list_releases':
@@ -429,6 +432,16 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
     const appId = this.resolveAppId(input);
     const bundle = await this.api(appId).getBundle(stringInput(input, 'bundleId'));
     return toolEnvelope(`Read bundle ${bundle.version}.`, json({ bundle }));
+  }
+
+  private async diffBundles(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = this.resolveAppId(input);
+    const diff = await this.api(appId).diffBundle(stringInput(input, 'bundleId'), {
+      against: optionalString(input, 'against'),
+      channel: input.channel === undefined ? undefined : nullableString(input, 'channel'),
+    });
+    const parts = bundleDiffEnvelopeParts(diff);
+    return toolEnvelope(parts.summary, json(parts.data), { warnings: parts.warnings });
   }
 
   private async deleteBundle(input: JsonObject): Promise<ToolEnvelope> {
