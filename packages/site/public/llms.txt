@@ -2657,7 +2657,21 @@ Route: /changelog
 
 New features, improvements and fixes, newest first. Plugin features need the plugin version shown.
 
-Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.10.0 (2026-10-12), @otakit/push 0.1.1 (2026-09-27).
+Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.11.0 (2026-10-22), @otakit/push 0.1.1 (2026-09-27).
+
+### Bundle changes (2026-10-22, CLI 1.11.0)
+
+See what a bundle changes before it ships: files added, changed and removed, the size before and after, and what devices download.
+
+- Open Changes on a bundle in the dashboard, or run `otakit diff`. Compare with the previous upload, another bundle, or what a channel runs.
+- Warnings point out content that should not ship, such as `.env` files, `.git` directories, `node_modules` and source maps.
+- `otakit upload` prints what changed against the bundle the channel runs, and agents compare bundles with `diff_bundles`.
+
+```
+otakit diff <bundleId> --channel production
+```
+
+Docs: CLI reference (/docs/cli)
 
 ### Release notes (2026-10-12, Plugin 3.3.0, CLI 1.10.0)
 
