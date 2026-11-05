@@ -127,6 +127,7 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
     expect(result).toMatchObject({
       range: '24h',
       granularity: 'hour',
+      asOf: NOW.toISOString(),
       from: '2026-09-09T11:00:00.000Z',
       to: '2026-09-10T11:00:00.000Z',
       unit: 'events',
@@ -267,7 +268,7 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
     );
   });
 
-  it('adds the lane: recent releases of the same channel and runtime, oldest first', async () => {
+  it('adds the lane: releases of the same channel and runtime live in the range, oldest first', async () => {
     const lane: Array<{ id: string }> = [];
     for (let index = 0; index < 7; index += 1) {
       lane.push(
@@ -302,9 +303,10 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
 
     const result = await timeseries(subject.id, { lane: true });
 
-    // The five newest others promoted before the end of the range, plus the release
-    // itself; lane[6] is promoted after it, and other lanes are left out.
-    const expected = lane.slice(0, 6);
+    // The 7-day range starts Sep 3, 11:00. The release itself was live then, so
+    // lane[0] and lane[1], replaced before it, are left out. lane[6] is promoted
+    // after the range, and other channels and runtimes are left out.
+    const expected = lane.slice(2, 6);
     expect(result.lane?.releases.map((item) => item.id)).toEqual(expected.map((item) => item.id));
     expect(readTimeseries).toHaveBeenCalledWith(
       expect.objectContaining({ releaseIds: expect.arrayContaining(expected.map((r) => r.id)) }),
@@ -316,6 +318,92 @@ databaseDescribe('release timeseries (PostgreSQL integration)', () => {
     expect(result.lane?.releases[0].applied.every((value) => value === 0)).toBe(true);
     // The lane's counts are not the release's own.
     expect(result.totals.applied).toBe(0);
+  });
+
+  it('keeps the releases a revert within the range fell back to', async () => {
+    const replacedEarlier = await release(0, { promotedAt: at('2026-08-30T00:00:00.000Z') });
+    const liveAtStart = await release(1, { promotedAt: at('2026-09-01T00:00:00.000Z') });
+    const revertedInRange = await release(2, {
+      promotedAt: at('2026-09-02T00:00:00.000Z'),
+      revertedAt: at('2026-09-05T00:00:00.000Z'),
+    });
+    const revertedBefore = await release(3, {
+      promotedAt: at('2026-09-02T12:00:00.000Z'),
+      revertedAt: at('2026-09-03T00:00:00.000Z'),
+    });
+    const subject = await release(4, { promotedAt: at('2026-09-06T00:00:00.000Z') });
+
+    const result = await timeseries(subject.id, { lane: true });
+
+    // From Sep 3, 11:00: the reverted release was live, then devices fell back to
+    // the one before it. A release reverted before the range had no applies in it.
+    expect(result.lane?.releases.map((item) => item.id)).toEqual([
+      liveAtStart.id,
+      revertedInRange.id,
+      subject.id,
+    ]);
+    expect(result.lane?.releases.map((item) => item.id)).not.toContain(replacedEarlier.id);
+    expect(result.lane?.releases.map((item) => item.id)).not.toContain(revertedBefore.id);
+  });
+
+  it('keeps the stable release a rollout shares devices with', async () => {
+    const stable = await release(0, { promotedAt: at('2026-09-01T00:00:00.000Z') });
+    const rolling = await release(1, {
+      promotedAt: at('2026-09-02T00:00:00.000Z'),
+      rolloutPercent: 25,
+    });
+
+    const result = await timeseries(rolling.id, { lane: true, range: '7d' });
+
+    // The rollout started before the range; most devices still run the stable release.
+    expect(result.lane?.releases.map((item) => item.id)).toEqual([stable.id, rolling.id]);
+  });
+
+  it('finds an old release’s neighbours on a lane with many newer releases', async () => {
+    const hourly: Array<{ id: string }> = [];
+    for (let hour = 0; hour < 60; hour += 1) {
+      hourly.push(
+        await release(hour % 7, {
+          promotedAt: new Date(ms('2026-09-01T00:00:00Z') + hour * 3_600_000),
+        }),
+      );
+    }
+
+    const result = await timeseries(hourly[5].id, { lane: true, range: '30d' });
+
+    expect(result.lane?.releases.map((item) => item.id)).toEqual(
+      hourly.slice(1, 9).map((item) => item.id),
+    );
+  });
+
+  it('keeps the releases nearest the viewed one when the lane has more', async () => {
+    const daily: Array<{ id: string }> = [];
+    for (let day = 0; day < 12; day += 1) {
+      daily.push(
+        await release(day % 7, {
+          promotedAt: new Date(ms('2026-08-20T00:00:00Z') + day * 86_400_000),
+        }),
+      );
+    }
+
+    const early = await timeseries(daily[2].id, { lane: true, range: '30d' });
+    expect(early.lane?.releases.map((item) => item.id)).toEqual(
+      daily.slice(0, 8).map((item) => item.id),
+    );
+
+    // The release it replaced and the ones that replaced it stay in view.
+    const late = await timeseries(daily[9].id, { lane: true, range: '30d' });
+    expect(late.lane?.releases.map((item) => item.id)).toEqual(
+      daily.slice(4, 12).map((item) => item.id),
+    );
+    const middle = await timeseries(daily[6].id, { lane: true, range: '30d' });
+    expect(middle.lane?.releases.map((item) => item.id)).toEqual(
+      daily.slice(2, 10).map((item) => item.id),
+    );
+    expect(readTimeseries).toHaveBeenLastCalledWith(
+      expect.objectContaining({ releaseIds: expect.any(Array) }),
+    );
+    expect(readTimeseries.mock.lastCall?.[0].releaseIds).toHaveLength(8);
   });
 
   it('reports unavailable analytics without inventing counts', async () => {

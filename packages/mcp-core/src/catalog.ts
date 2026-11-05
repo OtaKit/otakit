@@ -284,7 +284,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     name: 'get_release_timeseries',
     title: 'Get OtaKit release events over time',
     description:
-      'Return client-reported downloads, applies, download errors and rollbacks of a release per hour (24h and 7d ranges) or per UTC day (30d range), with totals, rollback share, and rollout and revert markers. Counts are events, not unique devices, installations, or adoption.',
+      'Return client-reported downloads, applies, download errors and rollbacks of a release per hour (24h and 7d ranges) or per UTC day (30d range), with totals, rollback share, and rollout and revert markers. Buckets without events are omitted. Counts are events, not unique devices, installations, or adoption.',
     modes: both,
     inputSchema: z.object({
       appId: resolvedAppIdSchema,

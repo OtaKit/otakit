@@ -20,6 +20,10 @@ SQL >
       AND ifNull(release_id, '') != ''
       AND has(splitByChar(',', {{ String(release_ids, '') }}), ifNull(release_id, ''))
       AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+      -- Receipts after the range cannot move an earliest receipt inside it, so
+      -- they are skipped. A lower bound would hide an event's earlier receipt
+      -- and count its retry as new, so there is none.
+      AND received_at < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
     GROUP BY event_id, release_id, action
 
 NODE count_release_buckets

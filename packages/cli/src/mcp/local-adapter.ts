@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  compactReleaseTimeseries,
   releaseTimeseriesEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
@@ -32,7 +33,9 @@ import { findRolloutConflict } from '../lib/rollout.js';
 import { resolveVersion, runUploadWorkflow } from '../lib/upload-workflow.js';
 
 /** What the timeseries summary reads; the rest of the REST response passes through. */
-type ReleaseTimeseriesResponse = Parameters<typeof releaseTimeseriesEnvelopeParts>[0] & JsonObject;
+type ReleaseTimeseriesResponse = Parameters<typeof releaseTimeseriesEnvelopeParts>[0] &
+  Parameters<typeof compactReleaseTimeseries>[0] &
+  JsonObject;
 
 export type LocalMcpConnectionContext = {
   serverUrl: string;
@@ -637,7 +640,7 @@ export class LocalOtaKitToolAdapter implements OtaKitToolAdapter {
       )}`,
     );
     const parts = releaseTimeseriesEnvelopeParts(timeseries);
-    return toolEnvelope(parts.summary, json(timeseries), {
+    return toolEnvelope(parts.summary, json(compactReleaseTimeseries(timeseries)), {
       links: [this.appLink(appId, 'View release health')],
       warnings: parts.warnings,
     });

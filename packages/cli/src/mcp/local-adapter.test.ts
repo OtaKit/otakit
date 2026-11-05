@@ -281,4 +281,58 @@ describe('local OtaKit MCP adapter', () => {
     );
     expect(mocks.runUploadWorkflow).not.toHaveBeenCalled();
   });
+
+  it('returns a release timeseries without its empty buckets', async () => {
+    const root = await fixture();
+    const empty = { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0, appliedTotal: 0 };
+    const busy = {
+      start: '2026-10-01T10:00:00.000Z',
+      downloads: 5,
+      applied: 4,
+      downloadErrors: 0,
+      rollbacks: 1,
+      appliedTotal: 4,
+    };
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            release: { bundleVersion: '1.4.2', channel: 'production' },
+            range: '7d',
+            platform: 'ios',
+            analyticsAvailable: true,
+            totals: {
+              downloads: 5,
+              applied: 4,
+              downloadErrors: 0,
+              rollbacks: 1,
+              rollbackSharePercent: 20,
+            },
+            buckets: [{ start: '2026-10-01T09:00:00.000Z', ...empty }, busy],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const adapter = new LocalOtaKitToolAdapter(connection(root));
+
+    const result = await adapter.invoke(
+      'get_release_timeseries',
+      {
+        appId: '7bb828f1-797c-4d07-8254-068cac664f69',
+        releaseId: 'a320a13e-5f0e-4e2c-bd12-f60c5b63eab2',
+        range: '7d',
+        platform: 'ios',
+      },
+      {} as never,
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://console.example.test/api/v1/apps/7bb828f1-797c-4d07-8254-068cac664f69/releases/a320a13e-5f0e-4e2c-bd12-f60c5b63eab2/timeseries?range=7d&platform=ios',
+    );
+    expect(result.summary).toBe(
+      '1.4.2 on production on iOS, the last 7 days: 4 applies, 1 rollback (20% rollback share), 0 download errors, 5 downloads.',
+    );
+    expect(result.data).toMatchObject({ buckets: [busy] });
+  });
 });

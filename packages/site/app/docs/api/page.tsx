@@ -204,6 +204,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
           response={`{
   "range": "24h",
   "granularity": "hour",           // "day" for 30d
+  "asOf": "2026-10-01T12:40:00.000Z", // the last bucket is still filling
   "unit": "events",
   "analyticsAvailable": true,
   "totals": { "downloads": 53, "applied": 48, "downloadErrors": 0,
@@ -215,7 +216,7 @@ Authorization: Bearer otakit_sk_...`}</Pre>
   "lane": { "channel": "production", "releases": [{ "id": "…",
             "bundleVersion": "1.4.1", "applied": [3, 2] }] }
 }`}
-          description="A release's client-reported events per UTC hour (24h, 7d) or day (30d), zero-filled, with totals, the rollback share (rollbacks ÷ (applies + rollbacks)) and markers for release, rollout steps and reverts. The range defaults to 24h for releases younger than two days and 7d otherwise. lane=1 adds applies per bucket for recent releases of the same channel and runtime. Counts are events, not unique devices; when analytics are unavailable, analyticsAvailable is false."
+          description="A release's client-reported events per UTC hour (24h, 7d) or day (30d), zero-filled, with totals, the rollback share (rollbacks ÷ (applies + rollbacks)) and markers for release, rollout steps and reverts. The range defaults to 24h for releases younger than two days and 7d otherwise. lane=1 adds applies per bucket for the releases of the same channel and runtime that were live during the range, up to 8 around this one. Counts are events, not unique devices; when analytics are unavailable, analyticsAvailable is false."
         />
       </div>
 

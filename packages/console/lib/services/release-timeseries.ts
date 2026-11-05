@@ -1,9 +1,13 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 import type { Platform } from '@/app/components/dashboard-types';
 import { AUTO_REVERT_REVERTED_BY } from '@/lib/auto-revert-alerts';
 import { db } from '@/lib/db';
-import { getReleaseEventTimeseries, type ReleaseEventTimeseriesPoint } from '@/lib/tinybird/events';
+import {
+  getReleaseEventTimeseries,
+  MAX_TIMESERIES_RELEASES,
+  type ReleaseEventTimeseriesPoint,
+} from '@/lib/tinybird/events';
 
 import { OtaKitServiceError } from './errors';
 import {
@@ -30,8 +34,10 @@ const RANGES = {
 export type ReleaseTimeseriesRange = keyof typeof RANGES;
 export const RELEASE_TIMESERIES_RANGES = Object.keys(RANGES) as ReleaseTimeseriesRange[];
 
-/** The lane chart shows this many recent releases of the lane. */
-const LANE_RELEASES = 6;
+/** The lane chart shows at most this many releases, the viewed one included. */
+const LANE_RELEASES = 8;
+/** How far back before the range to look for the releases devices could fall back to. */
+const LANE_CANDIDATES = 50;
 /** Releases younger than this open on the 24-hour range by default. */
 const YOUNG_RELEASE_MS = 2 * DAY_MS;
 
@@ -64,6 +70,8 @@ export type ReleaseTimeseries = {
   release: ReleaseSummary;
   range: ReleaseTimeseriesRange;
   granularity: 'hour' | 'day';
+  /** When the series was computed; the last bucket ends after it. */
+  asOf: string;
   from: string;
   to: string;
   platform: Platform | null;
@@ -147,33 +155,20 @@ export async function getReleaseTimeseries(
   const from = to - bucketCount * bucketMs;
   const platform = input.platform ?? null;
 
-  const laneReleases = input.lane
-    ? (
-        await database.release.findMany({
-          where: {
-            appId: input.appId,
-            channel: release.channel,
-            bundle: { is: { runtimeVersion: release.bundle.runtimeVersion } },
-            promotedAt: { lt: new Date(to) },
-            id: { not: release.id },
-          },
-          orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
-          take: LANE_RELEASES - 1,
-          include: releaseWithBundlesInclude,
-        })
-      )
-        .concat(release)
-        .sort((left, right) => left.promotedAt.getTime() - right.promotedAt.getTime())
-    : [];
+  const lane = input.lane ? await laneReleases(database, release, from, to) : [];
 
-  const analytics = await readTimeseries({
-    appId: input.appId,
-    releaseIds: [release.id, ...laneReleases.map((laneRelease) => laneRelease.id)],
-    from: new Date(from),
-    to: new Date(to),
-    daily: bucketMs === DAY_MS,
-    platform,
-  });
+  const [analytics, markers] = await Promise.all([
+    readTimeseries({
+      appId: input.appId,
+      // The lane includes the release itself.
+      releaseIds: input.lane ? lane.map((laneRelease) => laneRelease.id) : [release.id],
+      from: new Date(from),
+      to: new Date(to),
+      daily: bucketMs === DAY_MS,
+      platform,
+    }),
+    releaseMarkers(database, input.organizationId, release, from, to),
+  ]);
 
   // counts[releaseId][bucketIndex]
   const counts = new Map<string, ReleaseTimeseriesCounts[]>();
@@ -208,6 +203,7 @@ export async function getReleaseTimeseries(
     release: toReleaseSummary(release),
     range,
     granularity: bucketMs === DAY_MS ? 'day' : 'hour',
+    asOf: new Date(now).toISOString(),
     from: new Date(from).toISOString(),
     to: new Date(to).toISOString(),
     platform,
@@ -217,13 +213,13 @@ export async function getReleaseTimeseries(
     lastEventAt: lastEventAt > 0 ? new Date(lastEventAt).toISOString() : null,
     totals: { ...totals, rollbackSharePercent: rollbackSharePercent(totals) },
     buckets,
-    markers: await releaseMarkers(database, input.organizationId, release, from, to),
+    markers,
     ...(input.lane
       ? {
           lane: {
             channel: release.channel,
             runtimeVersion: release.bundle.runtimeVersion,
-            releases: laneReleases.map((laneRelease) => ({
+            releases: lane.map((laneRelease) => ({
               id: laneRelease.id,
               bundleVersion: laneRelease.bundle.version,
               promotedAt: laneRelease.promotedAt.toISOString(),
@@ -236,6 +232,96 @@ export async function getReleaseTimeseries(
         }
       : {}),
   };
+}
+
+const laneReleaseSelect = {
+  id: true,
+  promotedAt: true,
+  revertedAt: true,
+  rolloutPercent: true,
+  bundle: { select: { version: true } },
+} satisfies Prisma.ReleaseSelect;
+
+type LaneRelease = Prisma.ReleaseGetPayload<{ select: typeof laneReleaseSelect }>;
+
+const byPromotion = (left: LaneRelease, right: LaneRelease) =>
+  left.promotedAt.getTime() - right.promotedAt.getTime() || left.id.localeCompare(right.id);
+
+/**
+ * The releases of the viewed release's lane (same channel and runtime) that can
+ * have applies in [from, to), oldest first, and at most the chart's size of
+ * them, nearest the viewed release. Those are the releases promoted during the
+ * range, the one live when it starts, and whatever devices fell back to below
+ * it: through a revert within the range, or the stable release a rollout
+ * shares devices with.
+ */
+async function laneReleases(
+  database: PrismaClient,
+  release: LaneRelease & {
+    appId: string;
+    channel: string | null;
+    bundle: { runtimeVersion: string | null };
+  },
+  from: number,
+  to: number,
+): Promise<LaneRelease[]> {
+  const size = Math.min(LANE_RELEASES, MAX_TIMESERIES_RELEASES);
+  const lane = {
+    appId: release.appId,
+    channel: release.channel,
+    bundle: { is: { runtimeVersion: release.bundle.runtimeVersion } },
+    id: { not: release.id },
+  } satisfies Prisma.ReleaseWhereInput;
+  const promoted = release.promotedAt.getTime();
+  const [earlierInRange, laterInRange, beforeRange] = await Promise.all([
+    promoted > from
+      ? database.release.findMany({
+          where: { ...lane, promotedAt: { gte: new Date(from), lte: release.promotedAt } },
+          orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+          take: size,
+          select: laneReleaseSelect,
+        })
+      : [],
+    database.release.findMany({
+      where: {
+        ...lane,
+        promotedAt: { gte: new Date(Math.max(from, promoted)), lt: new Date(to) },
+      },
+      orderBy: [{ promotedAt: 'asc' }, { id: 'asc' }],
+      take: size,
+      select: laneReleaseSelect,
+    }),
+    database.release.findMany({
+      where: {
+        ...lane,
+        promotedAt: { lt: new Date(from) },
+        // A release reverted before the range has no applies in it.
+        OR: [{ revertedAt: null }, { revertedAt: { gte: new Date(from) } }],
+      },
+      orderBy: [{ promotedAt: 'desc' }, { id: 'desc' }],
+      take: LANE_CANDIDATES,
+      select: laneReleaseSelect,
+    }),
+  ]);
+
+  // Newest first from the start of the range, down to a release that was never
+  // reverted and fully rolled out: devices could not fall back past it.
+  const live: LaneRelease[] = [];
+  const older = [...beforeRange, ...(promoted < from ? [release] : [])].sort((left, right) =>
+    byPromotion(right, left),
+  );
+  for (const item of older) {
+    live.push(item);
+    if (item.revertedAt === null && item.rolloutPercent === 100) break;
+  }
+
+  const all = [...live, ...earlierInRange, ...laterInRange];
+  if (!all.some((item) => item.id === release.id)) all.push(release);
+  const sorted = [...new Map(all.map((item) => [item.id, item])).values()].sort(byPromotion);
+  if (sorted.length <= size) return sorted;
+  const index = sorted.findIndex((item) => item.id === release.id);
+  const first = Math.min(Math.max(0, index - Math.floor(size / 2)), sorted.length - size);
+  return sorted.slice(first, first + size);
 }
 
 /** Release, rollout step and revert times within [from, to), oldest first. */

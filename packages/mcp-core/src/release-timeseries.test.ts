@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { releaseTimeseriesEnvelopeParts } from './release-timeseries';
+import { compactReleaseTimeseries, releaseTimeseriesEnvelopeParts } from './release-timeseries';
 
 const timeseries = {
   release: { bundleVersion: '1.4.2', channel: 'production' },
@@ -56,5 +56,19 @@ describe('releaseTimeseriesEnvelopeParts', () => {
     expect(parts.warnings).toEqual([
       'Analytics are unavailable: the counts in this result are unknown, not zero.',
     ]);
+  });
+});
+
+describe('compactReleaseTimeseries', () => {
+  it('leaves out buckets without events and keeps everything else', () => {
+    const empty = { downloads: 0, applied: 0, downloadErrors: 0, rollbacks: 0 };
+    const busy = { start: 'b', downloads: 0, applied: 0, downloadErrors: 1, rollbacks: 0 };
+    const input = {
+      ...timeseries,
+      buckets: [{ start: 'a', ...empty }, busy, { start: 'c', ...empty }],
+    };
+
+    expect(compactReleaseTimeseries(input)).toEqual({ ...timeseries, buckets: [busy] });
+    expect(input.buckets).toHaveLength(3);
   });
 });

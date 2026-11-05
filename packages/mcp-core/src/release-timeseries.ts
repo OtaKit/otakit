@@ -13,6 +13,29 @@ type ReleaseTimeseriesLike = {
   };
 };
 
+type BucketCounts = {
+  downloads: number;
+  applied: number;
+  downloadErrors: number;
+  rollbacks: number;
+};
+
+/**
+ * The timeseries as the tool returns it: buckets without events are left out,
+ * so a quiet 7-day range is not 168 rows of zeros. The REST API keeps the
+ * zero-filled grid for charts.
+ */
+export function compactReleaseTimeseries<T extends { buckets: readonly BucketCounts[] }>(
+  timeseries: T,
+): T {
+  return {
+    ...timeseries,
+    buckets: timeseries.buckets.filter(
+      (bucket) => bucket.downloads + bucket.applied + bucket.downloadErrors + bucket.rollbacks > 0,
+    ),
+  };
+}
+
 const RANGE_LABELS: Record<string, string> = {
   '24h': 'the last 24 hours',
   '7d': 'the last 7 days',

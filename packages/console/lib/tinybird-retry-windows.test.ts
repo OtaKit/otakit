@@ -360,4 +360,19 @@ describe('release event timeseries', () => {
     ]);
     expect(timeseries({ release_ids: 'missing' })).toEqual([]);
   });
+
+  it('keeps an identity in its bucket when it is retried after the range', () => {
+    addEvent('retried-later', '2026-09-02T23:30:00.000Z', { action: 'applied' });
+    addEvent('retried-later', '2026-09-03T00:30:00.000Z', { action: 'applied' });
+    addEvent('after-range', '2026-09-03T00:00:00.000Z', { action: 'applied' });
+    expect(timeseries()).toEqual([
+      {
+        release_id: 'release-a',
+        action: 'applied',
+        bucket_start: seconds('2026-09-02T23:00:00Z'),
+        events_count: 1,
+        last_received_at: seconds('2026-09-02T23:30:00Z'),
+      },
+    ]);
+  });
 });

@@ -1,6 +1,7 @@
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  compactReleaseTimeseries,
   releaseTimeseriesEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
@@ -583,7 +584,9 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       platform: (optionalString(input, 'platform') as 'ios' | 'android' | undefined) ?? null,
     });
     const parts = releaseTimeseriesEnvelopeParts(timeseries);
-    return toolEnvelope(parts.summary, json(timeseries), { warnings: parts.warnings });
+    return toolEnvelope(parts.summary, json(compactReleaseTimeseries(timeseries)), {
+      warnings: parts.warnings,
+    });
   }
 
   private async listEvents(input: JsonObject): Promise<ToolEnvelope> {
