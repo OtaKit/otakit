@@ -19,10 +19,24 @@ export default function AppflowShutdownPage() {
       <Callout>
         <p>
           The urgent part is Live Updates. A retired backend eventually stops serving update
-          manifests, and a device that can&apos;t reach its update server just keeps running the last
-          bundle it has. Migrate the update channel first; move the CI builds at your own pace.
+          manifests, and a device that can&apos;t reach its update server just keeps running the
+          last bundle it has. Migrate the update channel first; move the CI builds at your own pace.
         </p>
       </Callout>
+
+      <h2>What Ionic announced</h2>
+      <p>
+        On September 22, 2026,{' '}
+        <A href="https://ionic.io/blog/%f0%9f%9a%80-announcing-a-partnership-with-capawesome">
+          Ionic announced
+        </A>{' '}
+        that Appflow, Identity Vault, Auth Connect, and Secure Storage reach their final end of life
+        on <strong>December 31, 2027</strong>. Ionic named Capawesome its preferred migration
+        partner, will end a contract early and refund unused prepaid service if you migrate before
+        your renewal, and offers a Maintenance Materials License if you would rather self-host the
+        existing plugin source. That gives you a year to move, and you can pick whichever
+        live-update provider fits your team &mdash; OtaKit is one of them.
+      </p>
 
       <h2>What you actually lose</h2>
       <p>
@@ -35,8 +49,8 @@ export default function AppflowShutdownPage() {
           that needs a live server, so it&apos;s the one to move first.
         </li>
         <li>
-          <strong>Native cloud builds</strong> (iOS/Android) &mdash; replaceable with GitHub Actions,
-          GitLab CI, Codemagic, or Xcode Cloud. See our{' '}
+          <strong>Native cloud builds</strong> (iOS/Android) &mdash; replaceable with GitHub
+          Actions, GitLab CI, Codemagic, or Xcode Cloud. See our{' '}
           <A href="/blog/github-actions-ios-build-signing">iOS build in GitHub Actions</A> and{' '}
           <A href="/blog/github-actions-android-build-capacitor">Android build</A> guides.
         </li>
@@ -51,8 +65,8 @@ export default function AppflowShutdownPage() {
         Appflow&apos;s pricing is exactly why teams are looking to leave rather than renew: live
         updates were tied into a broad, seat-and-tier platform. OtaKit takes the opposite approach
         &mdash; no MAU metering, no bandwidth metering, CDN-direct delivery from a static signed
-        manifest, and a fully MIT-licensed stack you can self-host. Most apps land in the $0&ndash;25/mo
-        range. We break down the head-to-head in{' '}
+        manifest, and a fully MIT-licensed stack you can self-host. Most apps land in the
+        $0&ndash;25/mo range. We break down the head-to-head in{' '}
         <A href="/blog/capacitor-vs-appflow">Capacitor + OtaKit vs Appflow</A>.
       </p>
 
@@ -71,8 +85,8 @@ export default function AppflowShutdownPage() {
           <Pre>{`otakit upload --release production`}</Pre>
         </li>
         <li>
-          Keep <Code>notifyAppReady()</Code>. If you were calling Appflow&apos;s ready signal after a
-          successful boot, the OtaKit equivalent plays the same role &mdash; it&apos;s what arms
+          Keep <Code>notifyAppReady()</Code>. If you were calling Appflow&apos;s ready signal after
+          a successful boot, the OtaKit equivalent plays the same role &mdash; it&apos;s what arms
           automatic rollback.
         </li>
       </ol>
@@ -84,9 +98,7 @@ export default function AppflowShutdownPage() {
       </p>
 
       <h2>A safe cutover plan for your install base</h2>
-      <p>
-        Devices in the wild are still pointed at Appflow. Cut over without stranding anyone:
-      </p>
+      <p>Devices in the wild are still pointed at Appflow. Cut over without stranding anyone:</p>
       <ol>
         <li>
           Ship one <strong>store release</strong> that swaps the live-update plugin to OtaKit. This
@@ -105,16 +117,15 @@ export default function AppflowShutdownPage() {
       <Callout>
         <p>
           Because the plugin swap is a native change, plan it like any store release &mdash; and use
-          it as the last one you&apos;ll need to wait on for a while. After it lands, OtaKit ships the
-          web layer without another review.
+          it as the last one you&apos;ll need to wait on for a while. After it lands, OtaKit ships
+          the web layer without another review.
         </p>
       </Callout>
 
       <h2>Where to go next</h2>
       <p>
-        Start with <A href="/docs/setup">Setup</A>, then the{' '}
-        <A href="/docs/cli">CLI reference</A> for the release command. If you want the honest
-        feature-by-feature comparison first, read{' '}
+        Start with <A href="/docs/setup">Setup</A>, then the <A href="/docs/cli">CLI reference</A>{' '}
+        for the release command. If you want the honest feature-by-feature comparison first, read{' '}
         <A href="/blog/best-ota-tools-for-capacitor-2026">the best OTA tools for Capacitor</A>.
       </p>
     </BlogArticle>
