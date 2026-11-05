@@ -8,7 +8,10 @@ export const metadata: Metadata = {
   title: 'Blog — OTA updates, live update comparisons & store policy',
   description:
     'Practical guides on Capacitor OTA updates: AI agent workflows, release safety, store policy, tool comparisons, and production migration guides.',
-  alternates: { canonical: `${site.url}/blog` },
+  alternates: {
+    canonical: `${site.url}/blog`,
+    types: { 'application/rss+xml': `${site.url}/blog/rss.xml` },
+  },
   openGraph: {
     title: 'OtaKit Blog — Capacitor OTA updates, explained',
     description:

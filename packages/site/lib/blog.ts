@@ -30,7 +30,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OneSignal vs OtaKit Push for Capacitor apps: pricing, setup, sending from your backend, and what each does better. Includes a migration checklist for moving off the OneSignal SDK.',
     category: 'Comparison',
     publishedAt: '2026-09-27',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'OneSignal alternative',
       'OneSignal alternative Capacitor',
@@ -53,7 +53,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Send push notifications to a Capacitor iOS app with APNs directly: no Firebase SDK, no GoogleService-Info.plist. Key setup, AppDelegate, tokens, the APNs details that trip people up, and a free shortcut.',
     category: 'Tutorial',
     publishedAt: '2026-09-27',
-    readingTime: '8 min read',
+    readingTime: '5 min read',
     keywords: [
       'Capacitor push notifications without Firebase',
       'Capacitor APNs',
@@ -76,7 +76,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Set up Claude Code to check, upload and release Capacitor over-the-air updates through OtaKit. Two install commands, a real session from start to finish, and the safety checks that stop it from shipping something broken.',
     category: 'Guides',
     publishedAt: '2026-09-27',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Claude Code Capacitor',
       'Claude Code mobile app',
@@ -100,7 +100,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Connect OpenAI Codex to OtaKit and ship Capacitor web fixes over the air: setup, the tools Codex uses, how approval works, read-only connections for reporting, and CI with an organization key.',
     category: 'Guides',
     publishedAt: '2026-09-27',
-    readingTime: '6 min read',
+    readingTime: '3 min read',
     keywords: [
       'Codex Capacitor',
       'OpenAI Codex mobile app',
@@ -124,7 +124,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'iPhone Duo ships on 23 October with two very different screen sizes. What changes for a Capacitor app, the CSS that breaks on a foldable, how to test in Xcode 27.1, and how to fix layout issues after launch without a store release.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '8 min read',
+    readingTime: '6 min read',
     keywords: [
       'iPhone Duo Capacitor',
       'iPhone Duo app development',
@@ -148,7 +148,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'From 30 September 2026, certified Android devices in Brazil, Indonesia, Singapore and Thailand block installs from unregistered developers, including Play apps. Who is affected, what to register, and why staging APKs are the trap.',
     category: 'Compliance',
     publishedAt: '2026-09-23',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Android developer verification',
       'Android developer verification deadline',
@@ -172,7 +172,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Play Console now warns when obfuscation, optimization or shrinking is under 25%, and it becomes a requirement in February 2027. Why Capacitor apps fail it, the exact R8 setup that passes, and how to ship it without breaking plugins.',
     category: 'Compliance',
     publishedAt: '2026-09-23',
-    readingTime: '8 min read',
+    readingTime: '5 min read',
     keywords: [
       'app optimization is below our threshold',
       'Google Play obfuscation 25%',
@@ -197,7 +197,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'On 1 October 2026 Apple replaces the Core Technology Fee with a 5% commission and resets EU rates: 26% for In-App Purchase, 20% for alternative payments, 15% for web link-outs. What it means for Capacitor and web-based apps.',
     category: 'Compliance',
     publishedAt: '2026-09-23',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Apple EU App Store changes October 2026',
       'Core Technology Commission',
@@ -220,7 +220,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'New Sign in with Apple relay addresses now end in private.icloud.com instead of privaterelay.appleid.com. Where this breaks apps (validation, allowlists, fraud rules, email delivery) and a drop-in fix.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '5 min read',
+    readingTime: '3 min read',
     keywords: [
       'private.icloud.com',
       'privaterelay.appleid.com',
@@ -243,7 +243,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apple confirmed that App Store uploads must use the iOS 27 SDK from April 2027. That means Xcode 27, an Apple silicon Mac and a UIScene migration. A timeline and plan for Capacitor apps.',
     category: 'Compliance',
     publishedAt: '2026-09-23',
-    readingTime: '6 min read',
+    readingTime: '4 min read',
     keywords: [
       'iOS 27 SDK requirement',
       'App Store minimum SDK April 2027',
@@ -266,7 +266,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'GitHub Actions, GitLab CI, Codemagic, Bitrise and Xcode Cloud compared for Capacitor: macOS builds, signing, cost and setup effort. Plus the step most pipelines are missing: shipping web changes without a store build.',
     category: 'Comparison',
     publishedAt: '2026-09-23',
-    readingTime: '9 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capacitor CI/CD',
       'best CI/CD for Capacitor',
@@ -290,7 +290,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'How to show the native rating prompt in a Capacitor app on iOS and Android, the limits Apple and Google enforce, the moments that earn good reviews, and how to test it.',
     category: 'Tutorial',
     publishedAt: '2026-09-23',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capacitor in-app review',
       'Capacitor rate app',
@@ -313,7 +313,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'When a Capacitor app can charge with Stripe, when it must use In-App Purchase, and what the US link-out ruling and the new EU terms changed. With a working Stripe Checkout flow that returns to the app.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '9 min read',
+    readingTime: '5 min read',
     keywords: [
       'Stripe Capacitor',
       'Capacitor Stripe payments',
@@ -336,7 +336,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Set up Sentry in a Capacitor app so every error maps to the exact OTA bundle that caused it: releases, debug IDs, source maps that never ship to devices, and rollback alerts.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '8 min read',
+    readingTime: '4 min read',
     keywords: [
       'Sentry Capacitor',
       'Capacitor source maps',
@@ -360,7 +360,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Call Apple’s on-device language model from a Capacitor app with a 60-line local plugin. Free inference, no API keys, works offline. Includes availability checks, the Swift plugin, the TypeScript bridge and the Android story.',
     category: 'Tutorial',
     publishedAt: '2026-09-23',
-    readingTime: '9 min read',
+    readingTime: '4 min read',
     keywords: [
       'Apple Foundation Models Capacitor',
       'on-device AI Capacitor',
@@ -383,7 +383,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor 9 makes the Cordova layer optional. Find every Cordova plugin in your app, swap each for its Capacitor equivalent with a replacement table, and retire cordova-plugin-ionic and CodePush along the way.',
     category: 'Migration',
     publishedAt: '2026-09-23',
-    readingTime: '8 min read',
+    readingTime: '4 min read',
     keywords: [
       'remove Cordova plugins Capacitor',
       'Capacitor 9 Cordova optional',
@@ -407,7 +407,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Twenty concrete fixes for slow or web-feeling Capacitor apps: startup, splash screen, bundle size, scrolling, touch, keyboard, images and memory. How to measure each one on a real device.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '10 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capacitor performance',
       'Capacitor app slow',
@@ -430,7 +430,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Weekly, every two weeks, or monthly? How store review, phased rollouts and user update behavior shape release cadence, and the two-track model that lets you ship daily without annoying users or reviewers.',
     category: 'Guides',
     publishedAt: '2026-09-23',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'how often to release mobile app',
       'mobile app release cadence',
@@ -454,7 +454,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Compile, run the iOS Simulator and archive a Capacitor app on a disposable cloud Mac from Windows or Linux, driven by you or your AI agent. Then ship every later web change over the air.',
     category: 'Tutorial',
     publishedAt: '2026-09-22',
-    readingTime: '7 min read',
+    readingTime: '3 min read',
     keywords: [
       'Capacitor iOS without Mac',
       'build Capacitor iOS app Windows',
@@ -503,7 +503,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Since 31 August 2026, Google Play rejects new apps and updates that target below Android 16 (API 36). What changed, what it means for a Capacitor app, and the extension to 1 November.',
     category: 'Compliance',
     publishedAt: '2026-09-02',
-    readingTime: '6 min read',
+    readingTime: '4 min read',
     keywords: [
       'Google Play API 36',
       'target API level 36',
@@ -527,7 +527,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apps built with the iOS 27 SDK must adopt the scene-based lifecycle or they do not launch at all. What Capacitor 8.5 changed, the two-command migration, and where it goes wrong.',
     category: 'Guides',
     publishedAt: '2026-09-02',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'iOS 27 UIScene',
       'UIScene life cycle required',
@@ -551,7 +551,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor 9 is forecast for the end of November 2026: Cordova becomes optional, the iOS runtime is Swift, XCFramework distribution ends. Plus the CocoaPods deadline hiding inside it.',
     category: 'Guides',
     publishedAt: '2026-09-02',
-    readingTime: '8 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capacitor 9',
       'Capacitor 9 release date',
@@ -575,7 +575,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'What actually happens when a Capacitor app updates over the air: bundles, channels, signed manifests, delta downloads, safe activation, and automatic rollback.',
     category: 'Guides',
     publishedAt: '2026-07-02',
-    readingTime: '9 min read',
+    readingTime: '5 min read',
     keywords: [
       'Capacitor OTA updates',
       'over-the-air updates',
@@ -599,7 +599,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'What Apple and Google actually say about over-the-air updates, quoted from the primary sources — and the practical line between compliant web-layer updates and rejection territory.',
     category: 'Compliance',
     publishedAt: '2026-07-02',
-    readingTime: '9 min read',
+    readingTime: '4 min read',
     keywords: [
       'are OTA updates allowed',
       'App Store OTA policy',
@@ -625,7 +625,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     category: 'Comparison',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
-    readingTime: '10 min read',
+    readingTime: '6 min read',
     keywords: [
       'best Capacitor live update',
       'Capacitor OTA comparison',
@@ -650,7 +650,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OtaKit delivers the same live updates for a fraction of the price: no MAU metering, CDN-direct delivery, delta updates, end-to-end encryption, and a fully MIT-licensed stack.',
     category: 'Comparison',
     publishedAt: '2026-07-02',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capgo alternative',
       'Capawesome alternative',
@@ -674,7 +674,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     category: 'Comparison',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
-    readingTime: '6 min read',
+    readingTime: '5 min read',
     keywords: [
       'Capgo alternative',
       'Capgo pricing',
@@ -699,7 +699,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     category: 'Comparison',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
-    readingTime: '6 min read',
+    readingTime: '4 min read',
     keywords: [
       'Capawesome alternative',
       'Capawesome Live Update pricing',
@@ -723,7 +723,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     category: 'Guides',
     publishedAt: '2026-07-02',
     updatedAt: '2026-08-30',
-    readingTime: '7 min read',
+    readingTime: '4 min read',
     keywords: [
       'Claude Code mobile',
       'vibe coding',
@@ -749,7 +749,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A production-grade migration guide: exact config and API translations from Capgo and Capawesome to OtaKit, what maps cleanly, and a safe cutover plan for your install base.',
     category: 'Migration',
     publishedAt: '2026-07-02',
-    readingTime: '14 min read',
+    readingTime: '7 min read',
     keywords: [
       'migrate from Capgo',
       'migrate from Capawesome',
@@ -773,7 +773,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Turn an existing Next.js app into real iOS and Android apps with Capacitor — static export config, native project setup, plugins, safe areas — then ship JS/CSS changes instantly with OtaKit live updates.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '11 min read',
+    readingTime: '4 min read',
     keywords: [
       'Next.js mobile app',
       'Next.js Capacitor',
@@ -798,7 +798,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A step-by-step guide to wrapping a plain React (Vite) app as native iOS and Android with Capacitor — no React Native rewrite — plus over-the-air updates with OtaKit so you can ship fixes without a store review.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '3 min read',
     keywords: [
       'React mobile app',
       'React Capacitor',
@@ -822,7 +822,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Convert a Vue 3 (Vite) web app into native iOS and Android apps with Capacitor, add device plugins, and wire up OtaKit live updates to push web-layer changes over the air in minutes.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '3 min read',
     keywords: [
       'Vue mobile app',
       'Vue Capacitor',
@@ -846,7 +846,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'OTA updates ship code to production devices, so the pipeline is a security surface. How to sign bundles, verify hashes, encrypt end-to-end, lock down channels, and roll back safely — with OtaKit examples.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '4 min read',
     keywords: [
       'secure OTA updates',
       'Capacitor OTA security',
@@ -870,7 +870,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ship OTA updates to a slice of users first, watch the health signals, then promote to everyone — or roll back. How to run staged rollouts safely with channels, runtime versions, and OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'staged rollout',
       'phased rollout mobile app',
@@ -894,7 +894,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apple and Google allow over-the-air updates — within limits. Exactly where the compliance line sits, what you can and cannot ship OTA, and how to stay on the right side of guideline 2.5.2 with Capacitor.',
     category: 'Compliance',
     publishedAt: '2026-07-08',
-    readingTime: '11 min read',
+    readingTime: '3 min read',
     keywords: [
       'App Store compliant OTA',
       'OTA updates Apple compliance',
@@ -918,7 +918,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Turn every merge to main into a live update: a copy-paste GitHub Actions workflow that builds your web app, uploads the bundle, and releases it to a channel with the OtaKit CLI — no manual steps.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'GitHub Actions Capacitor',
       'CI CD Capacitor OTA',
@@ -942,7 +942,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'React Native rewrites your UI in native components; Capacitor wraps your existing web app. An honest comparison of performance, ecosystem, team velocity, and over-the-air updates — and when each one wins.',
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '11 min read',
+    readingTime: '3 min read',
     keywords: [
       'React Native vs Capacitor',
       'Capacitor vs React Native',
@@ -966,7 +966,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "Microsoft retired CodePush, and Expo's EAS Update only serves React Native. If you're on Capacitor and need over-the-air updates, here are the real alternatives — and how OtaKit compares.",
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'CodePush alternative',
       'CodePush shutdown',
@@ -990,7 +990,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The failure modes that bite teams shipping live updates: skipping notifyAppReady, breaking native compatibility, no rollback, shipping to everyone at once, ignoring bundle size. What goes wrong and the fix.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'Capacitor OTA mistakes',
       'live update best practices',
@@ -1014,7 +1014,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Convert an existing Angular app into native iOS and Android apps with Capacitor — no rewrite — then push web-layer changes over the air with OtaKit live updates.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '3 min read',
     keywords: [
       'Angular mobile app',
       'Angular Capacitor',
@@ -1038,7 +1038,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Turn a Nuxt 3/4 app into native iOS and Android apps with Capacitor using static generation, add device plugins, and ship instant updates over the air with OtaKit.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '3 min read',
     keywords: [
       'Nuxt mobile app',
       'Nuxt Capacitor',
@@ -1062,7 +1062,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Wrap a SvelteKit app as native iOS and Android with Capacitor using the static adapter, then wire up OtaKit so you can ship JS and CSS changes over the air in minutes.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'SvelteKit mobile app',
       'SvelteKit Capacitor',
@@ -1086,7 +1086,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Quasar has a Capacitor mode built in. Here is how to build native iOS and Android apps from your Quasar project and add over-the-air updates with OtaKit.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Quasar mobile app',
       'Quasar Capacitor',
@@ -1110,7 +1110,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A framework-agnostic guide: take any Vite-built web app to native iOS and Android with Capacitor, then push over-the-air updates with OtaKit. Works with vanilla JS, Solid, Preact, and more.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Vite mobile app',
       'Vite Capacitor',
@@ -1134,7 +1134,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Your PWA already runs everywhere except the App Store. Capacitor wraps it as a native iOS and Android app you can submit, and OtaKit keeps it updated over the air like a PWA.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'PWA to native app',
       'PWA Capacitor',
@@ -1158,7 +1158,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Built an app with Lovable, v0, or Bolt? Export the code, wrap it with Capacitor for the App Store and Google Play, and iterate fast with OtaKit over-the-air updates.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'Lovable to native app',
       'Lovable mobile app',
@@ -1182,7 +1182,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ionic apps run on Capacitor, so they can update over the air. How to add live updates to an Ionic Angular, React, or Vue app with OtaKit — the affordable Appflow Live Updates alternative.',
     category: 'Tutorial',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Ionic live updates',
       'Ionic OTA updates',
@@ -1206,7 +1206,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A repeatable way to test live updates on real devices before production: use a staging channel, verify activation and rollback, and catch native compatibility issues early with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'test OTA updates',
       'test Capacitor live updates',
@@ -1230,7 +1230,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Sometimes an update cannot wait for the next cold start. How to ship immediate, mandatory OTA updates in Capacitor with OtaKit using force-immediate releases and update policies.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'forced app update',
       'mandatory update mobile',
@@ -1254,7 +1254,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'How to version OTA bundles and keep them compatible with the native shells in the wild. A practical semver strategy for Capacitor live updates using runtime versions and channels.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'semantic versioning mobile app',
       'OTA bundle version',
@@ -1278,7 +1278,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Automatic rollback, manual rollback, and channel roll-forward: the three ways to recover from a bad live update in Capacitor, when to use each, and how OtaKit makes a broken release a non-event.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '3 min read',
     keywords: [
       'OTA rollback',
       'app update rollback',
@@ -1302,7 +1302,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Silent background updates on next launch, or a restart-to-update prompt? The tradeoffs of each OTA update UX and how to configure both with OtaKit launch and resume policies.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'background app updates',
       'silent OTA update',
@@ -1326,7 +1326,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'For asset-heavy apps, full-bundle updates waste bandwidth on files that never changed. How delta updates work, when they matter, and how to enable them in OtaKit with one flag.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'delta updates',
       'differential updates mobile',
@@ -1350,7 +1350,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A complete GitHub Actions workflow to build, sign, and upload a Capacitor iOS app — certificates, provisioning profiles, and the secrets setup — plus shipping the web layer with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '11 min read',
+    readingTime: '3 min read',
     keywords: [
       'GitHub Actions iOS build',
       'iOS build certificate CI',
@@ -1374,7 +1374,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Automate your Capacitor Android builds: a GitHub Actions workflow that assembles a signed AAB, handles the keystore securely, and ships web-layer updates with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'GitHub Actions Android build',
       'Capacitor Android CI',
@@ -1398,7 +1398,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A copy-paste .gitlab-ci.yml that builds your web app and releases an OTA bundle with the OtaKit CLI on every pipeline — the GitLab equivalent of the GitHub Actions flow.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'GitLab CI Capacitor',
       'GitLab CI/CD mobile app',
@@ -1422,7 +1422,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Use Fastlane for the native store builds and OtaKit for the web-layer updates in between. How to combine both in one release lane so store submissions and live updates share a pipeline.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Fastlane Capacitor',
       'Fastlane OTA updates',
@@ -1446,7 +1446,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Promote the exact bundle you validated from beta to production automatically — on a schedule, a tag, or a manual approval gate. Channel-promotion patterns for Capacitor live updates with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'channel promotion',
       'promote beta to production',
@@ -1470,7 +1470,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The exact wording of App Store Review Guideline 2.5.2, the WebKit/JavaScriptCore exception it grants, and what it means in practice for Capacitor apps shipping over-the-air updates.',
     category: 'Compliance',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'guideline 2.5.2',
       'Apple 2.5.2 OTA',
@@ -1494,7 +1494,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "What Google Play's Device and Network Abuse policy actually restricts, why interpreted web-layer updates stay within policy, and a checklist to keep your Capacitor OTA setup compliant.",
     category: 'Compliance',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Google Play OTA policy',
       'Google Play compliance checklist',
@@ -1518,7 +1518,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "Apple's privacy manifest and required-reason APIs are now mandatory. What a Capacitor app needs in its PrivacyInfo.xcprivacy, how plugins factor in, and common submission errors to avoid.",
     category: 'Compliance',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'iOS privacy manifest',
       'PrivacyInfo.xcprivacy',
@@ -1542,7 +1542,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The most common reasons first submissions get rejected, a pre-submission checklist for Capacitor apps, and how OTA updates let you fix post-launch issues without waiting on another review.',
     category: 'Compliance',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'first app store review',
       'app store rejection reasons',
@@ -1566,7 +1566,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ionic Appflow bundles live updates into a broader paid platform. A focused comparison of Appflow live updates vs OtaKit on price, delivery, rollback, encryption, and lock-in.',
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor vs Appflow',
       'Appflow live updates',
@@ -1590,7 +1590,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Looking for an Appflow alternative for live updates? OtaKit ships the same OTA capability with no per-seat platform pricing, CDN-direct delivery, delta updates, and an open-source stack.',
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'Appflow alternative',
       'Ionic Appflow alternative',
@@ -1614,7 +1614,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A buyer-focused roundup of live update tools for Capacitor apps — OtaKit, Capgo, Capawesome, and Appflow — compared on pricing model, delivery, security, and self-hosting.',
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'best OTA tools Capacitor',
       'live update tools 2026',
@@ -1638,7 +1638,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "Expo's EAS Update serves React Native; Capacitor OTA serves web-layer apps. A comparison of the two live-update models, their ecosystems, and how to choose based on your stack.",
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'EAS Update vs Capacitor',
       'Expo Updates alternative',
@@ -1662,7 +1662,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The two best-known Capacitor live-update tools compared head to head on pricing, MAU metering, features, and open-source stance — with OtaKit as the no-metering third option.',
     category: 'Comparison',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capgo vs Capawesome',
       'Capawesome vs Capgo',
@@ -1686,7 +1686,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Smaller bundles mean faster startups and faster OTA updates. Practical ways to shrink a Capacitor web bundle — code splitting, asset optimization, tree shaking — and why delta updates finish the job.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'reduce app bundle size',
       'Capacitor bundle size',
@@ -1710,7 +1710,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Combine feature flags with over-the-air updates to ship dark, flip features on remotely, and run controlled rollouts — without a store release. Patterns for Capacitor apps using OtaKit channels.',
     category: 'Guides',
     publishedAt: '2026-07-08',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'feature flags mobile app',
       'feature flags Capacitor',
@@ -1734,7 +1734,8 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ionic Appflow is being wound down. Here is what the shutdown means for your live updates and native builds, your realistic migration options, and how to move to OtaKit without a rebuild.',
     category: 'Migration',
     publishedAt: '2026-07-09',
-    readingTime: '9 min read',
+    updatedAt: '2026-11-05',
+    readingTime: '3 min read',
     keywords: [
       'Ionic Appflow shutdown',
       'Appflow end of life',
@@ -1759,7 +1760,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Microsoft retired App Center, taking CodePush distribution with it. A practical migration path from App Center to OtaKit for Capacitor live updates, with the config and API mapping.',
     category: 'Migration',
     publishedAt: '2026-07-09',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'App Center alternative',
       'App Center shutdown',
@@ -1783,7 +1784,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'VoltBuilder compiles your web app into native binaries in the cloud, but it does not do over-the-air updates. How OtaKit adds instant live updates to that workflow, and where each tool fits.',
     category: 'Comparison',
     publishedAt: '2026-07-09',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'VoltBuilder alternative',
       'VoltBuilder live updates',
@@ -1807,7 +1808,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Own your update infrastructure end to end. How to self-host Capacitor live updates with OtaKit — a fully MIT-licensed stack, static CDN delivery, and no per-device metering or vendor lock-in.',
     category: 'Guides',
     publishedAt: '2026-07-09',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'self-hosted live updates',
       'self-hosted OTA Capacitor',
@@ -1831,7 +1832,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Live update tools split into open-source and closed SaaS. What each choice means for lock-in, cost, auditability, and self-hosting — and why OtaKit ships a fully MIT stack.',
     category: 'Comparison',
     publishedAt: '2026-07-09',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'open source OTA updates',
       'open source vs proprietary',
@@ -1855,7 +1856,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Cordova is in maintenance mode. A step-by-step guide to migrating a Cordova app to Capacitor without a rewrite — plugins, config, native projects — and adding OTA live updates Cordova never had.',
     category: 'Migration',
     publishedAt: '2026-07-10',
-    readingTime: '11 min read',
+    readingTime: '2 min read',
     keywords: [
       'Cordova to Capacitor migration',
       'migrate Cordova to Capacitor',
@@ -1879,7 +1880,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Managed service, self-hosted server, or roll-your-own on a CDN? The real tradeoffs of each way to host Capacitor OTA updates on cost, reliability, and maintenance — with OtaKit as the static-CDN option.',
     category: 'Comparison',
     publishedAt: '2026-07-10',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor OTA hosting',
       'host live updates',
@@ -1903,7 +1904,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'An update you cannot see is an update you cannot trust. How to monitor Capacitor live updates in production — download and apply events, failure signals, and the metrics that should gate a rollout.',
     category: 'Guides',
     publishedAt: '2026-07-10',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'monitor OTA updates',
       'track live update success',
@@ -1927,7 +1928,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Ship on your timeline, not at merge time. How to schedule Capacitor live updates with channel promotion, CI cron jobs, and approval gates so releases go out at the right moment.',
     category: 'Guides',
     publishedAt: '2026-07-10',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'schedule OTA updates',
       'scheduled app updates',
@@ -1951,7 +1952,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Your update did not land — now what? A systematic checklist for debugging Capacitor live updates: notifyAppReady, runtime version mismatches, manifest errors, channel config, and rollback loops.',
     category: 'Guides',
     publishedAt: '2026-07-10',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'debug OTA updates',
       'Capacitor update not working',
@@ -1975,7 +1976,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Not every update should reach everyone at once. How to target Capacitor live updates to specific users, beta groups, or cohorts using channels and runtime versions with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-11',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'target app updates',
       'send update to specific users',
@@ -1999,7 +2000,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Run real experiments in production without a store release. How to A/B test Capacitor apps using live update channels and feature flags, measure the result, and promote the winner with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-11',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'A/B testing mobile app',
       'A/B test Capacitor',
@@ -2023,7 +2024,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A critical bug is live and the next store review is days away. How to ship an emergency hotfix to your Capacitor app over the air with a force-immediate OTA release — no store queue.',
     category: 'Guides',
     publishedAt: '2026-07-11',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'mobile app hotfix',
       'deploy hotfix Capacitor',
@@ -2047,7 +2048,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A failed update should be invisible to users, not a broken app. How to handle live update errors gracefully in Capacitor — retries, silent rollback, and the UX patterns that keep users unaffected.',
     category: 'Guides',
     publishedAt: '2026-07-11',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'app update error handling',
       'OTA update failure UX',
@@ -2071,7 +2072,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Wrap the release flow in package.json so shipping an update is one command everyone on the team knows. Copy-paste npm scripts for building and releasing Capacitor OTA bundles with the OtaKit CLI.',
     category: 'Guides',
     publishedAt: '2026-07-12',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'npm scripts Capacitor',
       'package.json OTA release',
@@ -2095,7 +2096,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'One app ID, many environments. How to run dev, staging, and production for a Capacitor app using update channels — validate a bundle on staging, then promote the exact same build to production.',
     category: 'Guides',
     publishedAt: '2026-07-12',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'staging environment Capacitor',
       'dev staging production channels',
@@ -2119,7 +2120,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Sometimes a fix only applies to one platform. When and how to ship platform-specific Capacitor live updates for iOS and Android separately using channels and runtime versions.',
     category: 'Guides',
     publishedAt: '2026-07-12',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'platform specific update',
       'iOS Android separate update',
@@ -2143,7 +2144,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A complete checklist for planning how your Capacitor app ships updates: cadence, channels, staged rollouts, rollback, versioning, and user communication — the operational playbook in one page.',
     category: 'Guides',
     publishedAt: '2026-07-12',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'app update strategy',
       'mobile update checklist',
@@ -2167,7 +2168,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The questions developers actually ask about Capacitor live updates — are they allowed, what can you ship, how fast, how safe, how much they cost — answered in one place with links to the details.',
     category: 'Guides',
     publishedAt: '2026-07-13',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor live updates FAQ',
       'OTA updates questions',
@@ -2192,7 +2193,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
     category: 'Tutorial',
     publishedAt: '2026-07-13',
     updatedAt: '2026-09-27',
-    readingTime: '11 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor push notifications',
       'Capacitor Firebase FCM',
@@ -2216,7 +2217,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Make your Capacitor app open from URLs. How to set up deep links, iOS universal links, and Android app links — association files, intent filters, and routing — and tune the routing logic over the air.',
     category: 'Tutorial',
     publishedAt: '2026-07-13',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor deep links',
       'Capacitor universal links',
@@ -2240,7 +2241,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Add Face ID, Touch ID, and Android biometric login to your Capacitor app. How biometric authentication works, how to store secrets safely behind it, and how OTA updates keep the flow current.',
     category: 'Tutorial',
     publishedAt: '2026-07-13',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor biometric authentication',
       'Face ID Capacitor',
@@ -2264,7 +2265,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Add Sign in with Apple, Google, and OAuth2 to a Capacitor app the native way, with Supabase as the backend. Setup, redirect handling, token storage, and iterating the flow with OTA updates.',
     category: 'Tutorial',
     publishedAt: '2026-07-14',
-    readingTime: '10 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor social login',
       'Capacitor OAuth2',
@@ -2288,7 +2289,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Where you keep auth tokens decides how secure your app really is. How to store tokens safely in Capacitor using the iOS Keychain and Android Keystore — not localStorage — and why it matters for OTA.',
     category: 'Guides',
     publishedAt: '2026-07-14',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'secure token storage',
       'Capacitor secure storage',
@@ -2312,7 +2313,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Configure a native splash screen for your Capacitor app on iOS and Android, control when it hides, and use that first moment to check for an OTA update before the user sees stale content.',
     category: 'Tutorial',
     publishedAt: '2026-07-14',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor splash screen',
       'splash screen iOS Android',
@@ -2336,7 +2337,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Android 15 makes edge-to-edge mandatory. How to handle edge-to-edge display and safe areas in a Capacitor app with native config and CSS env() — no extra plugin — and ship tweaks over the air.',
     category: 'Tutorial',
     publishedAt: '2026-07-14',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor edge to edge',
       'Android 15 edge to edge',
@@ -2360,7 +2361,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'What Capacitor apps can and cannot do in the background on iOS and Android, how to run background fetch and tasks within OS limits, and how to check for an OTA update on resume.',
     category: 'Guides',
     publishedAt: '2026-07-15',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor background tasks',
       'background fetch Capacitor',
@@ -2384,7 +2385,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Add subscriptions and in-app purchases to a Capacitor app with StoreKit and Google Play Billing, stay compliant with store rules, and iterate your paywall over the air to grow revenue.',
     category: 'Tutorial',
     publishedAt: '2026-07-15',
-    readingTime: '11 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor in-app purchases',
       'Capacitor subscriptions',
@@ -2408,7 +2409,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Add fast, native barcode and QR code scanning to your Capacitor app, handle camera permissions cleanly, and ship scanning-flow changes over the air without a store release.',
     category: 'Tutorial',
     publishedAt: '2026-07-15',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor barcode scanner',
       'Capacitor QR scanner',
@@ -2432,7 +2433,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Real apps lose the network. How to detect connectivity, cache the app shell, show a clean offline screen, and keep OTA updates working across connection drops in a Capacitor app.',
     category: 'Guides',
     publishedAt: '2026-07-15',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor offline mode',
       'offline screen Capacitor',
@@ -2456,7 +2457,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Android Gradle Plugin 9 breaks older Capacitor plugin builds with namespace and compileSdk errors. What actually fails, the exact fixes, and how to unblock your Android build fast.',
     category: 'Guides',
     publishedAt: '2026-07-16',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor AGP 9 error',
       'Android Gradle Plugin 9 Capacitor',
@@ -2480,7 +2481,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "Google Play now requires 16KB page-size support. How to detect which Capacitor plugin's native library breaks 16KB alignment, what to do about it, and how to verify the fix before you submit.",
     category: 'Guides',
     publishedAt: '2026-07-16',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'Android 16KB page size',
       '16KB page size Capacitor',
@@ -2504,7 +2505,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Apple now requires builds from a recent Xcode and SDK. What the Xcode 26 requirement means for Capacitor apps, what breaks in older setups, and how to update your local and CI builds.',
     category: 'Guides',
     publishedAt: '2026-07-16',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'Xcode 26 requirement',
       'Xcode 26 Capacitor',
@@ -2528,7 +2529,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor core, CLI, and plugins have to agree on a version. What triggers version mismatch errors, how to align @capacitor packages cleanly, and how it relates to your OTA runtime version.',
     category: 'Guides',
     publishedAt: '2026-07-16',
-    readingTime: '7 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor version mismatch',
       'Capacitor plugin version error',
@@ -2552,7 +2553,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Gradle failures, SDK mismatches, manifest merger conflicts, duplicate classes — the Android build errors that hit Capacitor apps most, and a repeatable way to diagnose and fix each one.',
     category: 'Guides',
     publishedAt: '2026-07-17',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor Android build error',
       'Gradle build failed Capacitor',
@@ -2576,7 +2577,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Capacitor is moving from CocoaPods to Swift Package Manager on iOS. Why the switch matters, how SPM compares to CocoaPods, and a step-by-step migration for your Capacitor iOS project.',
     category: 'Migration',
     publishedAt: '2026-07-17',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor Swift Package Manager',
       'Capacitor SPM migration',
@@ -2600,7 +2601,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Every Capacitor CLI command you actually use — add, sync, copy, update, run, open, doctor — what each does, when to run it, and how the OtaKit CLI fits alongside for live updates.',
     category: 'Guides',
     publishedAt: '2026-07-17',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Capacitor CLI commands',
       'npx cap sync',
@@ -2624,7 +2625,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'A step-by-step guide to upgrading a project from Capacitor 7 to Capacitor 8 — dependency bumps, native project changes, breaking changes to watch, and keeping your OTA runtime version in sync.',
     category: 'Migration',
     publishedAt: '2026-07-17',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'upgrade Capacitor 8',
       'Capacitor 7 to 8',
@@ -2648,7 +2649,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'The direct answer, quoted from Apple’s own guidelines: yes, within limits. What guideline 2.5.2 permits for over-the-air updates, how Apple enforces the line, and how to stay compliant with Capacitor.',
     category: 'Compliance',
     publishedAt: '2026-07-18',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'does Apple allow live updates',
       'Apple live updates without review',
@@ -2672,7 +2673,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       "The direct answer for Android: yes, for interpreted web-layer code. What Google Play's Device and Network Abuse policy actually restricts, and how Capacitor OTA updates stay inside it.",
     category: 'Compliance',
     publishedAt: '2026-07-18',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'does Google allow live updates',
       'Google Play live updates',
@@ -2696,7 +2697,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'You can update a Capacitor app without waiting for another App Store or Play review — legitimately. How over-the-air updates let you bypass the store review queue for web-layer changes, and where the line is.',
     category: 'Compliance',
     publishedAt: '2026-07-18',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'bypass app store review',
       'update app without store review',
@@ -2721,7 +2722,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Beyond hotfixes: the real ways teams use Capacitor over-the-air updates — emergency fixes, staged rollouts, A/B tests, feature flags, seasonal content, and remote config — with links to how each works.',
     category: 'Guides',
     publishedAt: '2026-07-18',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'OTA update use cases',
       'live update examples',
@@ -2745,7 +2746,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'No Mac? You can still ship a Capacitor iOS app. How to build, sign, and submit an iOS app from a Windows machine using cloud CI runners — and ship every web-layer change after with OtaKit.',
     category: 'Guides',
     publishedAt: '2026-07-19',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'build iOS app on Windows',
       'Capacitor iOS Windows',
@@ -2769,7 +2770,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Give reviewers a real device build for every pull request. How to publish per-PR preview channels so testers install the exact change on their phone before it merges, with OtaKit and CI.',
     category: 'Guides',
     publishedAt: '2026-07-19',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'PR preview build mobile',
       'pull request preview app',
@@ -2793,7 +2794,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Built an app with Bolt.new? Export the code, wrap it with Capacitor for the App Store and Google Play, and iterate fast with OtaKit over-the-air updates — no rewrite.',
     category: 'Tutorial',
     publishedAt: '2026-07-19',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Bolt.new mobile app',
       'Bolt.new to native app',
@@ -2817,7 +2818,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Turn a Base44 app into real iOS and Android apps with Capacitor for the stores, then push updates over the air with OtaKit so your AI-built app keeps improving without store delays.',
     category: 'Tutorial',
     publishedAt: '2026-07-19',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Base44 mobile app',
       'Base44 to native app',
@@ -2841,7 +2842,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Take an Astro site to native iOS and Android with Capacitor using static output, add device plugins, and ship content and UI changes over the air with OtaKit live updates.',
     category: 'Tutorial',
     publishedAt: '2026-07-20',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Astro mobile app',
       'Astro Capacitor',
@@ -2865,7 +2866,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Wrap a Remix app as native iOS and Android with Capacitor using SPA mode and static output, then wire up OtaKit to ship JS and CSS changes over the air in minutes.',
     category: 'Tutorial',
     publishedAt: '2026-07-20',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'Remix mobile app',
       'Remix Capacitor',
@@ -2889,7 +2890,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'AI apps change constantly as models, prompts, and UX evolve. Why Capacitor plus over-the-air updates is the fastest stack for shipping and iterating AI mobile apps without waiting on store reviews.',
     category: 'Guides',
     publishedAt: '2026-07-20',
-    readingTime: '9 min read',
+    readingTime: '2 min read',
     keywords: [
       'AI mobile app Capacitor',
       'build AI app mobile',
@@ -2913,7 +2914,7 @@ export const BLOG_POSTS: BlogPostMeta[] = [
       'Store release notes do not cover over-the-air updates. How to manage changelogs for Capacitor OTA releases, surface them in-app when an update applies, and keep users informed of what changed.',
     category: 'Guides',
     publishedAt: '2026-07-20',
-    readingTime: '8 min read',
+    readingTime: '2 min read',
     keywords: [
       'app release notes',
       'changelog mobile app',
@@ -2951,7 +2952,10 @@ export function blogPostMetadata(slug: string): Metadata {
     title,
     description: post.description,
     keywords: post.keywords,
-    alternates: { canonical: url },
+    alternates: {
+      canonical: url,
+      types: { 'application/rss+xml': `${site.url}/blog/rss.xml` },
+    },
     openGraph: {
       title,
       description: post.description,
