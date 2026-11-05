@@ -18,6 +18,7 @@ import {
   Copy,
   Cpu,
   Download,
+  Ellipsis,
   Filter,
   Hash,
   LoaderCircle,
@@ -774,6 +775,50 @@ export function ProductDashboard({
     }
     return map;
   }, [releaseHistory]);
+
+  // A bundle's releases with health to show, for its More menu: live channels
+  // first, then previously live ones. The runtime is named only when a channel
+  // appears more than once.
+  const bundleHealthTargets = useCallback(
+    (bundle: BundleSummaryItem) => {
+      const current = new Set(
+        bundle.currentTargets.map((target) =>
+          getReleaseTargetKey(target.channel, target.runtimeVersion),
+        ),
+      );
+      const entries = bundle.deployedTargets
+        .map((entry) => {
+          const key = getReleaseTargetKey(entry.channel, entry.runtimeVersion);
+          return {
+            entry,
+            key,
+            live: current.has(key),
+            release: releaseByKey.get(`${bundle.version}::${key}`),
+          };
+        })
+        .filter(
+          (item): item is typeof item & { release: ReleaseHistoryItem } =>
+            item.release !== undefined,
+        )
+        .sort((left, right) => Number(right.live) - Number(left.live));
+      const perChannel = new Map<string | null, number>();
+      for (const { entry } of entries) {
+        perChannel.set(entry.channel, (perChannel.get(entry.channel) ?? 0) + 1);
+      }
+      return entries.map(({ entry, key, live, release }) => {
+        const runtime =
+          (perChannel.get(entry.channel) ?? 0) > 1 && entry.runtimeVersion
+            ? `, runtime ${entry.runtimeVersion}`
+            : '';
+        return {
+          key,
+          release,
+          label: `Health · ${entry.channel ?? 'base'}${runtime}${live ? '' : ' (previously live)'}`,
+        };
+      });
+    },
+    [releaseByKey],
+  );
 
   const eventChannelOptions = useMemo(() => {
     const channels = new Set<string>();
@@ -1660,6 +1705,7 @@ export function ProductDashboard({
                               <TableBody>
                                 {bundles.slice(0, visibleBundleCount).map((b) => {
                                   const isReleasing = releasingAction?.version === b.version;
+                                  const healthTargets = bundleHealthTargets(b);
                                   const currentSet = new Set(
                                     b.currentTargets.map((target) =>
                                       getReleaseTargetKey(target.channel, target.runtimeVersion),
@@ -2103,31 +2149,6 @@ export function ProductDashboard({
                                       {hasBundleColumn('action') ? (
                                         <TableCell className="text-center whitespace-nowrap">
                                           <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="mr-1.5 h-7 px-2"
-                                            title="Changes: compare with the previous upload"
-                                            aria-label={`Changes in ${b.version}`}
-                                            onClick={() =>
-                                              setChangesFor({
-                                                bundle: { id: b.id, version: b.version },
-                                              })
-                                            }
-                                          >
-                                            <FileDiff className="size-3.5" />
-                                          </Button>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="mr-1.5 h-7 px-2"
-                                            title="Preview link: open this bundle on a phone without releasing it"
-                                            aria-label={`Preview link for ${b.version}`}
-                                            disabled={previewDialog !== null}
-                                            onClick={() => void openPreviewDialog(b)}
-                                          >
-                                            <QrCode className="size-3.5" />
-                                          </Button>
-                                          <Button
                                             variant="default"
                                             size="sm"
                                             className="h-7 text-xs"
@@ -2146,6 +2167,50 @@ export function ProductDashboard({
                                               </>
                                             )}
                                           </Button>
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="ml-1.5 h-7 px-2"
+                                                title="More: health, changes and a preview link"
+                                                aria-label={`More actions for ${b.version}`}
+                                              >
+                                                <Ellipsis className="size-3.5" />
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="min-w-48">
+                                              {healthTargets.map(({ key, release, label }) => (
+                                                <DropdownMenuItem
+                                                  key={key}
+                                                  onClick={() => openHealth(release)}
+                                                >
+                                                  <ChartLine className="size-3.5" />
+                                                  {label}
+                                                </DropdownMenuItem>
+                                              ))}
+                                              {healthTargets.length > 0 ? (
+                                                <DropdownMenuSeparator />
+                                              ) : null}
+                                              <DropdownMenuItem
+                                                onClick={() =>
+                                                  setChangesFor({
+                                                    bundle: { id: b.id, version: b.version },
+                                                  })
+                                                }
+                                              >
+                                                <FileDiff className="size-3.5" />
+                                                Changes
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                disabled={previewDialog !== null}
+                                                onClick={() => void openPreviewDialog(b)}
+                                              >
+                                                <QrCode className="size-3.5" />
+                                                Preview link
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
                                         </TableCell>
                                       ) : null}
                                     </TableRow>
