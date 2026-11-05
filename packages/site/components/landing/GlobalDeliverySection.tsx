@@ -12,14 +12,14 @@ export function GlobalDeliverySection() {
     <section className="border-x border-border mx-auto max-w-screen-xl">
       <div className="grid md:grid-cols-2">
         <div className="flex flex-col">
-          <div className="px-8 pt-12 md:pt-20" data-blur-reveal>
+          <div className="px-8 pt-12 text-center md:pt-20" data-blur-reveal>
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
               Global CDN delivery
             </p>
             <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Every update, served from the nearest edge
             </h2>
-            <p className="mt-4 max-w-lg text-muted-foreground">
+            <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
               Fast downloads, no single point of failure.
             </p>
           </div>

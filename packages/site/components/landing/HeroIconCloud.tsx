@@ -87,7 +87,7 @@ const HERO_ICONS: HeroIcon[] = [
   {
     src: '/app-icons/budget.svg',
     top: '70%',
-    left: '58%',
+    left: '20%',
     size: 52,
     opacity: 0.09,
     rotate: -10,

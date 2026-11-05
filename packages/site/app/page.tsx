@@ -282,6 +282,11 @@ export default function LandingPage() {
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)] bg-[size:28px_28px] opacity-60"
           aria-hidden="true"
         />
+        {/* Soft orange glow behind the headline */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-[300px] h-[32rem] w-[min(56rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.15),transparent)] blur-2xl"
+          aria-hidden="true"
+        />
         {/* App icon cloud */}
         <HeroIconCloud />
         {/* Top fade */}
@@ -296,8 +301,8 @@ export default function LandingPage() {
         />
 
         <div className="relative mx-auto max-w-screen-xl p-10">
-          <div className="max-w-3xl xl:max-w-4xl">
-            <div className="mb-8 flex flex-wrap items-center gap-2">
+          <div className="mx-auto max-w-3xl text-center xl:max-w-4xl">
+            <div className="mb-8 flex flex-wrap items-center justify-center gap-2">
               <Link
                 href="/push"
                 className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-amber-500/45 hover:bg-amber-500/[0.12] sm:gap-2 sm:text-sm"
@@ -316,22 +321,17 @@ export default function LandingPage() {
                 not app store reviews
               </span> */}
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl xl:max-w-[39.5rem] xl:text-[1.375rem]">
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl xl:max-w-[39.5rem] xl:text-[1.375rem]">
               Push over-the-air (OTA) updates directly to your Capacitor app without app store
               reviews.
             </p>
-            <div className="mt-20 flex flex-col items-start gap-4 sm:flex-row">
-              <div>
-                <Link href={`${site.console}/login`}>
-                  <Button size="lg" className="group rounded-full px-8">
-                    <span className="shimmer">Start releasing free</span>
-                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                  </Button>
-                </Link>
-                <p className="mt-1 text-xs text-muted-foreground/60 text-center hidden sm:block">
-                  No credit card required.
-                </p>
-              </div>
+            <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link href={`${site.console}/login`}>
+                <Button size="lg" className="group rounded-full px-8">
+                  <span className="shimmer">Start releasing free</span>
+                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+              </Link>
               <Link href="/docs" target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" size="lg" className="rounded-full px-8">
                   <BookOpen className="size-4" />
@@ -339,6 +339,16 @@ export default function LandingPage() {
                 </Button>
               </Link>
             </div>
+            <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              {['No credit card required', 'Open source (MIT)', 'App Store compliant'].map(
+                (note) => (
+                  <li key={note} className="inline-flex items-center gap-1.5">
+                    <Check className="size-3.5 text-orange-500" />
+                    {note}
+                  </li>
+                ),
+              )}
+            </ul>
           </div>
         </div>
       </section>
@@ -350,7 +360,7 @@ export default function LandingPage() {
         <div className="">
           <div className="overflow-hidden">
             <div
-              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
               data-blur-reveal
             >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -359,7 +369,7 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Over-The-Air updates for Capacitor
               </h2>
-              <p className="mt-4 max-w-lg text-muted-foreground">
+              <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
                 Simple setup and fast release flow with the OtaKit CLI.
               </p>
             </div>
@@ -397,7 +407,7 @@ export default function LandingPage() {
           <div className="overflow-clip">
             {/* Header */}
             <div
-              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
               data-blur-reveal
             >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -406,7 +416,7 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Everything in one click
               </h2>
-              <p className="mt-4 max-w-2xl text-muted-foreground">
+              <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
                 A full-featured web dashboard to manage and monitor your releases in real-time.
               </p>
             </div>
@@ -436,7 +446,7 @@ export default function LandingPage() {
         <div className="">
           <div className="overflow-hidden">
             <div
-              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
               data-blur-reveal
             >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -445,7 +455,7 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Everything you need for live updates
               </h2>
-              <p className="mt-4 max-w-lg text-muted-foreground">
+              <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
                 A complete OTA platform for Capacitor teams of any size.
               </p>
             </div>
@@ -507,7 +517,7 @@ export default function LandingPage() {
         <div className="">
           <div className="overflow-hidden">
             <div
-              className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+              className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
               data-blur-reveal
             >
               <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -516,7 +526,7 @@ export default function LandingPage() {
               <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
                 Simple, value-aligned pricing
               </h2>
-              <p className="mt-4 max-w-3xl text-muted-foreground">
+              <p className="mx-auto mt-4 max-w-3xl text-muted-foreground">
                 Pay for updates delivered. No MAU limits, seat fees, bandwidth charges, or storage
                 fees.
               </p>
@@ -597,6 +607,11 @@ export default function LandingPage() {
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] bg-[size:40px_40px] opacity-50"
           aria-hidden="true"
         />
+        {/* Soft orange glow behind the title */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[26rem] w-[min(48rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.12),transparent)] blur-2xl"
+          aria-hidden="true"
+        />
         {/* Top fade */}
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-background to-transparent"
@@ -607,12 +622,12 @@ export default function LandingPage() {
           className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent"
           aria-hidden="true"
         />
-        <div className="relative" data-blur-reveal>
+        <div className="relative text-center" data-blur-reveal>
           <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">Ready to ship faster?</h2>
           <p className="mt-4 text-lg text-muted-foreground">
             Push over-the-air updates directly to your users without delays.
           </p>
-          <div className="mt-20 flex flex-col gap-4 sm:flex-row">
+          <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link href={`${site.console}/login`}>
               <Button size="lg" className="group rounded-full px-8">
                 <span className="shimmer">Get started free</span>
@@ -645,7 +660,7 @@ export default function LandingPage() {
       <section id="faq" className="border-x border-border mx-auto max-w-screen-xl">
         <div className="overflow-hidden">
           <div
-            className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+            className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
             data-blur-reveal
           >
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
