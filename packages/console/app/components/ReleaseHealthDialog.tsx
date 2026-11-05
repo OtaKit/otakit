@@ -635,7 +635,10 @@ export function ReleaseHealthDialog({
 
             <p className="text-[11px] text-muted-foreground">
               Counts are events reported by devices, not unique users.
-              {charts.inProgress ? ` The shaded ${data.granularity} is still in progress.` : ''}
+              {/* Only when a chart shows the shading. */}
+              {charts.inProgress && (!empty || lane)
+                ? ` The shaded ${data.granularity} is still in progress.`
+                : ''}
               {data.lastEventAt ? ` Last event ${relativeTime(data.lastEventAt, charts.now)}.` : ''}
             </p>
           </div>
