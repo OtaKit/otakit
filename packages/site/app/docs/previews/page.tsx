@@ -69,8 +69,8 @@ plugins: {
 
       <H2>Create a preview link</H2>
       <P>
-        From the dashboard: the QR button on a bundle row. The first link asks for the app&apos;s
-        URL scheme and remembers it. From the CLI:
+        From the dashboard: <strong>Preview link</strong> in a bundle row&apos;s ⋯ menu. The first
+        link asks for the app&apos;s URL scheme and remembers it. From the CLI:
       </P>
       <Pre>{`# Upload and create a link in one step
 otakit upload --preview

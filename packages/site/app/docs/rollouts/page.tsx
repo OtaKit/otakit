@@ -101,10 +101,10 @@ otakit rollout --channel production --cancel      # everyone returns to the prev
         apps should start at 5% or more.
       </P>
       <P>
-        To watch a rollout over time, open the release&apos;s channel badge and choose{' '}
-        <strong>Health</strong>. It charts applies, rollbacks and download errors per hour or day,
-        marks each rollout step, and shows the lane&apos;s releases replacing each other. Agents
-        read the same data with <Code>get_release_timeseries</Code>.
+        To watch a rollout over time, choose <strong>Health</strong> in the bundle row&apos;s ⋯ menu
+        or in its channel badge&apos;s menu. It charts applies, rollbacks and download errors per
+        hour or day, marks each rollout step, and shows the lane&apos;s releases replacing each
+        other. Agents read the same data with <Code>get_release_timeseries</Code>.
       </P>
 
       <Separator className="my-10" />

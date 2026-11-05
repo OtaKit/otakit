@@ -1653,7 +1653,7 @@ otakit upload --release production --replace-rollout --rollout 10
 
 Devices on the rolling release report events with its own release ID, so its health counts only those devices. Auto-revert works on rolling releases and returns every device to the previous release. At low percentages it takes longer to reach the minimum sample, so small apps should start at 5% or more.
 
-To watch a rollout over time, open the release's channel badge and choose Health. It charts applies, rollbacks and download errors per hour or day, marks each rollout step, and shows the lane's releases replacing each other. Agents read the same data with `get_release_timeseries`.
+To watch a rollout over time, choose Health in the bundle row's ⋯ menu or in its channel badge's menu. It charts applies, rollbacks and download errors per hour or day, marks each rollout step, and shows the lane's releases replacing each other. Agents read the same data with `get_release_timeseries`.
 
 ### On the device
 
@@ -1719,7 +1719,7 @@ The plugin handles `myapp://otakit-preview?…` links itself; no app code is nee
 
 ### Create a preview link
 
-From the dashboard: the QR button on a bundle row. The first link asks for the app's URL scheme and remembers it. From the CLI:
+From the dashboard: Preview link in a bundle row's ⋯ menu. The first link asks for the app's URL scheme and remembers it. From the CLI:
 
 ```txt
 # Upload and create a link in one step
