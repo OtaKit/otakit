@@ -9,11 +9,11 @@ export default function CapgoVsCapawesomePage() {
   return (
     <BlogArticle post={post}>
       <p>
-        Capgo and Capawesome are the two best-known live-update tools for Capacitor, and they&apos;re
-        often shortlisted together. They&apos;re genuinely similar: both ship signed, rollback-safe
-        over-the-air updates, and both meter by monthly active users. This is an honest head-to-head
-        &mdash; and, since we make one, a fair look at where <A href="/">OtaKit</A> sits as a
-        no-metering third option.
+        Capgo and Capawesome are the two best-known live-update tools for Capacitor, and
+        they&apos;re often shortlisted together. They&apos;re genuinely similar: both ship signed,
+        rollback-safe over-the-air updates, and both meter by monthly active users. This is an
+        honest head-to-head &mdash; and, since we make one, a fair look at where{' '}
+        <A href="/">OtaKit</A> sits as a no-metering third option.
       </p>
 
       <Callout>
@@ -27,39 +27,51 @@ export default function CapgoVsCapawesomePage() {
       <DataTable
         headers={['', 'Capgo', 'Capawesome', 'OtaKit']}
         rows={[
-          ['Pricing model', 'Meters MAU', 'Meters MAU', 'No MAU/bandwidth metering'],
+          [
+            'Pricing model',
+            'MAU plans or pay as you go',
+            'Meters MAU',
+            'No MAU/bandwidth metering',
+          ],
           ['Delivery', 'CDN', 'CDN', 'CDN-direct'],
           ['Rollback', 'Yes', 'Yes', 'Auto on failed boot + roll-forward'],
           ['Delta updates', 'Yes', 'Yes', 'Yes'],
           ['Encryption', 'Yes', 'Yes', 'End-to-end, your key'],
-          ['Open source', 'Partly', 'Plugin open', 'Full MIT stack, self-host'],
+          [
+            'Open source',
+            'MPL-2.0 plugin, AGPL-3.0 backend, self-host',
+            'Plugin open',
+            'Full MIT stack, self-host',
+          ],
         ]}
       />
 
       <h2>Capgo</h2>
       <p>
-        Capgo is mature and widely used, with a full-featured dashboard and a large content/community
-        footprint. It meters by monthly active users, with tiered plans as your audience grows. If
-        you want the most established metered option and don&apos;t mind MAU-based pricing, it&apos;s
-        a solid pick.
+        Capgo is mature and widely used, with a full-featured dashboard and a large
+        content/community footprint. It prices by monthly active users, with plans from $12/mo
+        billed yearly or pay as you go from $5 in credits. Its plugin (MPL-2.0) and backend
+        (AGPL-3.0) are open source and self-hostable, and it goes beyond OTA with cloud native
+        builds, store submission, and release monitoring. If you want the most established metered
+        option and don&apos;t mind MAU-based pricing, it&apos;s a solid pick.
       </p>
 
       <h2>Capawesome</h2>
       <p>
         Capawesome comes from a well-regarded Capacitor plugin maintainer, with a clean plugin and a
-        focus on the Capacitor ecosystem. Its Live Update service also meters monthly active users on
-        tiered plans. Teams that already use Capawesome&apos;s other plugins often find it a natural
-        fit.
+        focus on the Capacitor ecosystem. Its Live Update service also meters monthly active users
+        on tiered plans. Teams that already use Capawesome&apos;s other plugins often find it a
+        natural fit.
       </p>
 
       <h2>Where OtaKit differs from both</h2>
       <p>
-        The common thread with Capgo and Capawesome is MAU metering &mdash; your bill scales with your
-        active user count. OtaKit&apos;s model is different: no monthly-active-user or bandwidth
-        metering, so most apps pay $0&ndash;25/mo regardless of how many users open the app. Add
-        CDN-direct delivery, end-to-end encryption with a key you hold, and a fully MIT-licensed,
-        self-hostable stack, and it&apos;s the option for teams that don&apos;t want their
-        live-update cost to grow with their success.
+        The common thread with Capgo and Capawesome is MAU metering &mdash; your bill scales with
+        your active user count. OtaKit&apos;s model is different: no monthly-active-user or
+        bandwidth metering, so most apps pay $0&ndash;25/mo regardless of how many users open the
+        app. Add CDN-direct delivery, end-to-end encryption with a key you hold, and a permissive
+        MIT-licensed, self-hostable stack, and it&apos;s the option for teams that don&apos;t want
+        their live-update cost to grow with their success.
       </p>
 
       <Callout>
@@ -78,8 +90,8 @@ export default function CapgoVsCapawesomePage() {
           <strong>Already in the Capawesome plugin ecosystem?</strong> Capawesome.
         </li>
         <li>
-          <strong>Don&apos;t want MAU metering, or want to self-host?</strong> OtaKit &mdash; see the{' '}
-          <A href="/blog/capgo-alternative">Capgo</A> and{' '}
+          <strong>Don&apos;t want MAU metering, or want to self-host?</strong> OtaKit &mdash; see
+          the <A href="/blog/capgo-alternative">Capgo</A> and{' '}
           <A href="/blog/capawesome-alternative">Capawesome</A> alternative breakdowns.
         </li>
       </ul>
@@ -87,7 +99,8 @@ export default function CapgoVsCapawesomePage() {
       <h2>Where to go next</h2>
       <p>
         See the full field in the{' '}
-        <A href="/blog/best-ota-tools-for-capacitor-2026">2026 OTA tools roundup</A> and the detailed{' '}
+        <A href="/blog/best-ota-tools-for-capacitor-2026">2026 OTA tools roundup</A> and the
+        detailed{' '}
         <A href="/blog/best-live-update-frameworks-for-capacitor-apps">three-way comparison</A>.
       </p>
     </BlogArticle>

@@ -11,9 +11,9 @@ export default function BestOtaToolsPage() {
       <p>
         If you&apos;re shopping for a way to ship over-the-air updates to a Capacitor app, there are
         four names worth knowing in 2026: OtaKit, Capgo, Capawesome, and Ionic Appflow. They all do
-        the core job &mdash; signed, rollback-safe live updates &mdash; so the real decision is about
-        pricing model, delivery, security, and lock-in. This is a buyer-focused roundup to help you
-        choose.
+        the core job &mdash; signed, rollback-safe live updates &mdash; so the real decision is
+        about pricing model, delivery, security, and lock-in. This is a buyer-focused roundup to
+        help you choose.
       </p>
 
       <Callout>
@@ -29,7 +29,12 @@ export default function BestOtaToolsPage() {
         headers={['Tool', 'Pricing model', 'Delivery', 'Open source / self-host']}
         rows={[
           ['OtaKit', 'No MAU or bandwidth metering', 'CDN-direct', 'Yes, MIT stack'],
-          ['Capgo', 'Meters monthly active users', 'CDN', 'Partly open'],
+          [
+            'Capgo',
+            'Monthly active users, or pay as you go',
+            'CDN',
+            'Yes, MPL-2.0 plugin + AGPL-3.0 backend',
+          ],
           ['Capawesome', 'Meters monthly active users', 'CDN', 'Plugin open, service hosted'],
           ['Ionic Appflow', 'Platform subscription (tiered)', 'Platform-managed', 'No'],
         ]}
@@ -63,8 +68,8 @@ export default function BestOtaToolsPage() {
       <h2>Quick recommendations by situation</h2>
       <ul>
         <li>
-          <strong>Cost-sensitive or growing fast?</strong> An unmetered model (OtaKit) avoids the
-          MAU tax. See the <A href="/blog/capgo-alternative">Capgo</A> and{' '}
+          <strong>Cost-sensitive or growing fast?</strong> An unmetered model (OtaKit) avoids
+          MAU-based pricing. See the <A href="/blog/capgo-alternative">Capgo</A> and{' '}
           <A href="/blog/capawesome-alternative">Capawesome</A> price breakdowns.
         </li>
         <li>
@@ -82,8 +87,8 @@ export default function BestOtaToolsPage() {
 
       <Callout>
         <p>
-          They all ship live updates. Pick on total cost of ownership as you scale, security fit, and
-          whether you want a platform or a focused tool.
+          They all ship live updates. Pick on total cost of ownership as you scale, security fit,
+          and whether you want a platform or a focused tool.
         </p>
       </Callout>
 

@@ -9,12 +9,27 @@ const comparisonRows = [
   [
     'Pricing based on',
     'Updates delivered',
-    'Monthly active users + bandwidth + storage',
+    'Monthly active users (bandwidth and storage caps per plan)',
     'Monthly active users',
   ],
-  ['Free tier', '5,000 updates/mo, unlimited apps — free forever', '14-day trial', '14-day trial'],
-  ['First paid tier', '$10/mo (100K updates)', '$12/mo (2,000 MAU)', '$9/mo (1,000 MAU)'],
-  ['Device delivery path', '100% CDN edge (Cloudflare)', 'Vendor servers', 'Vendor cloud'],
+  [
+    'Free tier',
+    '5,000 updates/mo, unlimited apps — free forever',
+    '14-day trial; pay as you go from $5 in credits',
+    '14-day trial',
+  ],
+  [
+    'First paid tier',
+    '$10/mo (100K updates)',
+    '$12/mo billed yearly (2,000 MAU)',
+    '$9/mo (1,000 MAU)',
+  ],
+  [
+    'Update check',
+    'Static signed manifest on the Cloudflare CDN',
+    'Per-device call to Capgo’s API',
+    'Vendor cloud',
+  ],
   [
     'End-user tracking',
     'None (no device IDs)',
@@ -46,7 +61,7 @@ const comparisonRows = [
   [
     'Open source',
     'Entire stack, MIT',
-    'Source-available, license terms apply',
+    'Yes — plugin MPL-2.0, backend AGPL-3.0, self-hostable',
     'Plugin only; cloud closed',
   ],
 ];
@@ -64,8 +79,8 @@ export default function BestFrameworksPage() {
       </p>
       <p>
         Full disclosure: we build OtaKit. Every number below comes from each vendor&apos;s public
-        pricing and documentation as of August 2026, so check our math — it&apos;s the strongest
-        part of the argument.
+        pricing and documentation (Capgo&apos;s checked in November 2026), so check our math —
+        it&apos;s the strongest part of the argument.
       </p>
 
       <h2>The verdict up front</h2>
@@ -75,9 +90,10 @@ export default function BestFrameworksPage() {
       </p>
       <ul>
         <li>
-          <strong>CDN-direct delivery.</strong> Devices download 100% from Cloudflare&apos;s global
-          edge — never from vendor servers. Capgo and Capawesome route your updates through their
-          own infrastructure; OtaKit takes itself out of the delivery path entirely.
+          <strong>CDN-direct delivery.</strong> Devices read a static, signed manifest and download
+          bundles straight from Cloudflare&apos;s global edge, with no per-device server deciding
+          what to serve. Capgo and Capawesome answer every update check from their own API; OtaKit
+          takes itself out of the delivery path entirely.
         </li>
         <li>
           <strong>No user tracking.</strong> MAU billing requires identifying and counting your
@@ -85,8 +101,8 @@ export default function BestFrameworksPage() {
           a single user. Your privacy policy stays clean.
         </li>
         <li>
-          <strong>Dramatically cheaper.</strong> $10–25/mo where the others charge $29–249 for
-          comparable apps. The table below has the like-for-like scenarios.
+          <strong>Cheaper as you grow.</strong> $10–25/mo across the scenarios below, where the
+          MAU-priced alternatives reach $63–79 at 20,000 users and $208–249 at 250,000.
         </li>
         <li>
           <strong>Secure by default.</strong> ES256-signed manifests and SHA-256 verification on
@@ -113,28 +129,29 @@ export default function BestFrameworksPage() {
       </p>
       <ul>
         <li>
-          At 2,500 users: OtaKit <strong>$10</strong>. Capgo <strong>$33</strong>. Capawesome{' '}
-          <strong>$29</strong>.
+          At 2,500 users: OtaKit <strong>$10</strong>. Capgo <strong>about $11–14</strong> (pay as
+          you go, or Solo plus credits). Capawesome <strong>$29</strong>.
         </li>
         <li>
-          At 20,000 users: OtaKit <strong>$10</strong>. Capgo <strong>~$83</strong>. Capawesome{' '}
-          <strong>$79</strong>. Roughly 3x.
+          At 20,000 users: OtaKit <strong>$10</strong>. Capgo <strong>about $63</strong> (Maker plus
+          credits). Capawesome <strong>$79</strong>. Roughly 6–8x.
         </li>
         <li>
           At 250,000 users: OtaKit <strong>still $25</strong>. Capgo <strong>$208+</strong>.
-          Capawesome <strong>$249</strong>. Roughly 10x.
+          Capawesome <strong>$249</strong>. Roughly 8–10x.
         </li>
       </ul>
       <p>
-        The reason is simple: they charge per user, so their price grows with your app. OtaKit
-        charges per update delivered, so it doesn&apos;t.
+        Capgo&apos;s figures use its cheapest option at each size, plans billed yearly, and a
+        5&nbsp;MB bundle for pay as you go. The reason is simple: they charge per user, so their
+        price grows with your app. OtaKit charges per update delivered, so it doesn&apos;t.
       </p>
 
       <h2>Why the pricing model, not just the price, favors OtaKit</h2>
       <p>
-        MAU pricing taxes success. Every user you win raises your bill — even in months you ship
-        nothing. Capgo adds bandwidth and storage meters on top, so you&apos;re forecasting three
-        variables instead of one.
+        MAU pricing grows with your audience. Every user you win raises your bill — even in months
+        you ship nothing. Capgo&apos;s plans also cap bandwidth and storage, so you&apos;re
+        forecasting three variables instead of one.
       </p>
       <p>
         OtaKit bills one number: <strong>updates delivered</strong>. Quiet month, nothing extra.
@@ -180,23 +197,27 @@ export default function BestFrameworksPage() {
       <p>
         And the whole stack — plugin, CLI, dashboard, ingest — is MIT-licensed in{' '}
         <A href="https://github.com/OtaKit/otakit">one repo</A>. Self-hosting runs the same code as
-        the hosted platform. No other tool in the category can say that.
+        the hosted platform. Capgo is open source and self-hostable too (MPL-2.0 plugin, AGPL-3.0
+        backend); OtaKit&apos;s MIT license is the permissive one, with no copyleft obligations.
       </p>
 
       <h2>Capgo</h2>
       <p>
-        Capgo is the most established option and the broadest: live updates plus native builds,
-        store publishing, a large plugin catalog, and elaborate routing controls.
+        Capgo is the most established option and the broadest: live updates plus cloud native builds
+        with store submission, release monitoring, a large plugin catalog, and elaborate routing
+        controls. Its update stack is open source and can be self-hosted.
       </p>
       <p>The breadth has a cost, and you pay it three ways:</p>
       <ul>
-        <li>A three-meter bill — MAU, bandwidth, and storage — that&apos;s hard to forecast.</li>
+        <li>A bill that grows with MAU, with bandwidth and storage caps to watch.</li>
         <li>Per-device identification of your users, because the MAU meter requires it.</li>
-        <li>Updates delivered through vendor infrastructure, not straight from a CDN edge.</li>
+        <li>
+          An update check that calls Capgo&apos;s API for every device, not a static manifest.
+        </li>
       </ul>
       <p>
-        If you want one vendor for builds, publishing, and updates, it&apos;s a credible choice. If
-        you want the best update platform specifically, the extra surface is weight, not value.
+        If you want one vendor for builds, publishing, and updates, it&apos;s a strong choice. If
+        you want the best update platform specifically, a focused tool serves you better.
       </p>
 
       <h2>Capawesome</h2>

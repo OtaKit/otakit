@@ -40,7 +40,7 @@ const copy: ComparisonCopy = {
   featuresSub: 'Everything you use Capgo for, on every plan.',
   priceComparison: {
     rows: [
-      ['2,000 users', '$0', '$12'],
+      ['2,000 users', '$0', '$7–12'],
       ['50,000 users', '$25', '$83'],
       ['250,000 users', '$25', '$208+'],
     ],
@@ -82,15 +82,16 @@ const copy: ComparisonCopy = {
       a: (
         <>
           <p>
-            Capgo bills on three meters — monthly active users, bandwidth, and storage — so every
-            active device counts against your plan every month, even if you ship nothing. OtaKit
-            bills on one meter: <strong>updates delivered</strong>. Free covers 5,000 updates/month
-            with unlimited apps; Starter is $10/mo for 100,000, and Pro starts at $25/mo for 1
-            million.
+            Capgo prices by monthly active users: plans from $12/mo billed yearly (Solo, 2,000 MAU,
+            with bandwidth and storage allowances), or pay as you go from $5 in credits. Every
+            active device counts every month, even if you ship nothing. OtaKit bills on one meter:{' '}
+            <strong>updates delivered</strong>. Free covers 5,000 updates/month with unlimited apps;
+            Starter is $10/mo for 100,000, and Pro starts at $25/mo for 1 million.
           </p>
           <p>
             In practice: 10,000 users at 2 releases/mo is $10 on OtaKit vs $33 on Capgo; 50,000
-            users at 4 releases/mo is $25 vs $83; 500,000 users is $75 vs $208+. The{' '}
+            users at 4 releases/mo is $25 vs $83; 500,000 users is $75 vs $208+ (Capgo plans billed
+            yearly, its cheapest option in each case). The{' '}
             <GuideLink href="/blog/capgo-alternative">full comparison</GuideLink> shows the math.
           </p>
         </>
@@ -107,8 +108,9 @@ const copy: ComparisonCopy = {
             (AES-256-GCM, your key) are all included.
           </p>
           <p>
-            One scope difference: Capgo also sells native builds and store publishing. OtaKit is
-            deliberately OTA-only — if you already have CI, you already have the rest.
+            One scope difference: Capgo also offers cloud native builds with store submission, and
+            release monitoring. OtaKit is deliberately OTA-only, with release health charts built in
+            — if you already have CI, you already have the rest.
           </p>
         </>
       ),
