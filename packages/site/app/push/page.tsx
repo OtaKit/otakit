@@ -189,11 +189,6 @@ export default function PushLandingPage() {
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)] bg-[size:28px_28px] opacity-60"
           aria-hidden="true"
         />
-        {/* Soft orange glow behind the headline */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-[300px] h-[32rem] w-[min(56rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.15),transparent)] blur-2xl"
-          aria-hidden="true"
-        />
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background to-transparent"
           aria-hidden="true"
@@ -233,7 +228,7 @@ export default function PushLandingPage() {
               {['Free up to 100k a month', 'No credit card required', 'Open source (MIT)'].map(
                 (note) => (
                   <li key={note} className="inline-flex items-center gap-1.5">
-                    <Check className="size-3.5 text-orange-500" />
+                    <Check className="size-3.5 text-emerald-500" />
                     {note}
                   </li>
                 ),
@@ -413,11 +408,6 @@ export default function PushLandingPage() {
       <section className="relative overflow-hidden border-x border-border mx-auto max-w-screen-xl py-32 px-10 bg-muted sm:py-40">
         <div
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] bg-[size:40px_40px] opacity-50"
-          aria-hidden="true"
-        />
-        {/* Soft orange glow behind the title */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[26rem] w-[min(48rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.12),transparent)] blur-2xl"
           aria-hidden="true"
         />
         <div

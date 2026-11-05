@@ -282,11 +282,6 @@ export default function LandingPage() {
           className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)] bg-[size:28px_28px] opacity-60"
           aria-hidden="true"
         />
-        {/* Soft orange glow behind the headline */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-[300px] h-[32rem] w-[min(56rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.15),transparent)] blur-2xl"
-          aria-hidden="true"
-        />
         {/* App icon cloud */}
         <HeroIconCloud />
         {/* Top fade */}
@@ -343,7 +338,7 @@ export default function LandingPage() {
               {['No credit card required', 'Open source (MIT)', 'App Store compliant'].map(
                 (note) => (
                   <li key={note} className="inline-flex items-center gap-1.5">
-                    <Check className="size-3.5 text-orange-500" />
+                    <Check className="size-3.5 text-emerald-500" />
                     {note}
                   </li>
                 ),
@@ -605,11 +600,6 @@ export default function LandingPage() {
         {/* Checked grid background */}
         <div
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(var(--color-border)_1px,transparent_1px),linear-gradient(90deg,var(--color-border)_1px,transparent_1px)] bg-[size:40px_40px] opacity-50"
-          aria-hidden="true"
-        />
-        {/* Soft orange glow behind the title */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[26rem] w-[min(48rem,100%)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(249,115,22,0.12),transparent)] blur-2xl"
           aria-hidden="true"
         />
         {/* Top fade */}
