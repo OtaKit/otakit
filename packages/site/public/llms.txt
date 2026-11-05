@@ -61,7 +61,6 @@ Start with the quick setup
 - **Next.js Guide**: Go from Next.js + Capacitor to your first OTA update.
 - **Channels & Runtimes**: Rollout tracks vs runtime compatibility lanes, and when to use each.
 - **Update Strategies**: How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply.
-- **Events & Listeners**: Subscribe to update lifecycle events: available, staged, applied, failed, rolled back.
 - **MCP & Agent Skills**: One command connects Claude Code, Codex, or VS Code to your project.
 - **CI Automation**: Build and ship bundles from GitHub Actions.
 - **CLI Reference**: Commands, options, and release workflows.

@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BookOpen,
   Bot,
+  Check,
   Filter,
   KeyRound,
   Link2,
@@ -198,29 +199,24 @@ export default function PushLandingPage() {
         />
 
         <div className="relative mx-auto max-w-screen-xl p-10">
-          <div className="max-w-3xl xl:max-w-4xl">
+          <div className="mx-auto max-w-3xl text-center xl:max-w-4xl">
             <p className="mb-8 inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-3 py-1.5 text-xs font-medium shadow-sm sm:text-sm">
               Free for Capacitor apps
             </p>
             <h1 className="text-5xl font-bold sm:text-6xl xl:text-[4.25rem]">
               Push notifications for your Capacitor app. Free.
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl xl:max-w-[39.5rem] xl:text-[1.375rem]">
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl xl:max-w-[39.5rem] xl:text-[1.375rem]">
               Use your own Apple and Firebase keys and the official Capacitor plugin. Send to iOS
               and Android from the dashboard, the CLI, your backend or an AI agent.
             </p>
-            <div className="mt-20 flex flex-col items-start gap-4 sm:flex-row">
-              <div>
-                <Link href={SIGN_UP_URL}>
-                  <Button size="lg" className="group rounded-full px-8">
-                    <span className="shimmer">Start sending free</span>
-                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                  </Button>
-                </Link>
-                <p className="mt-1 text-xs text-muted-foreground/60 text-center hidden sm:block">
-                  Free up to 100k a month.
-                </p>
-              </div>
+            <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Link href={SIGN_UP_URL}>
+                <Button size="lg" className="group rounded-full px-8">
+                  <span className="shimmer">Start sending free</span>
+                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+              </Link>
               <Link href="/docs/push">
                 <Button variant="outline" size="lg" className="rounded-full px-8">
                   <BookOpen className="size-4" />
@@ -228,6 +224,16 @@ export default function PushLandingPage() {
                 </Button>
               </Link>
             </div>
+            <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              {['Free up to 100k a month', 'No credit card required', 'Open source (MIT)'].map(
+                (note) => (
+                  <li key={note} className="inline-flex items-center gap-1.5">
+                    <Check className="size-3.5 text-emerald-500" />
+                    {note}
+                  </li>
+                ),
+              )}
+            </ul>
           </div>
         </div>
       </section>
@@ -238,7 +244,7 @@ export default function PushLandingPage() {
       <section className="border-x border-border max-w-screen-xl mx-auto">
         <div className="overflow-hidden">
           <div
-            className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+            className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
             data-blur-reveal
           >
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -247,7 +253,7 @@ export default function PushLandingPage() {
             <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Set up once, send in seconds
             </h2>
-            <p className="mt-4 max-w-lg text-muted-foreground">
+            <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
               About fifteen minutes from zero to the first notification on a real device.
             </p>
           </div>
@@ -278,7 +284,10 @@ export default function PushLandingPage() {
 
       {/* Code */}
       <section className="border-x border-border max-w-screen-xl mx-auto">
-        <div className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36" data-blur-reveal>
+        <div
+          className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
+          data-blur-reveal
+        >
           <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
             The code
           </p>
@@ -312,7 +321,7 @@ export default function PushLandingPage() {
       <section className="border-x border-border mx-auto max-w-screen-xl">
         <div className="overflow-hidden">
           <div
-            className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+            className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
             data-blur-reveal
           >
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -361,14 +370,17 @@ export default function PushLandingPage() {
 
       {/* Limits */}
       <section className="border-x border-border mx-auto max-w-screen-xl">
-        <div className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36" data-blur-reveal>
+        <div
+          className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
+          data-blur-reveal
+        >
           <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Limits
           </p>
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
             Generous on every plan
           </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground">
+          <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
             Push is included in every OtaKit plan at no extra cost.{' '}
             <Link
               href="/#pricing"
@@ -406,12 +418,12 @@ export default function PushLandingPage() {
           className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent"
           aria-hidden="true"
         />
-        <div className="relative" data-blur-reveal>
+        <div className="relative text-center" data-blur-reveal>
           <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">
             Send your first notification today
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">Free to start. No credit card.</p>
-          <div className="mt-20 flex flex-col gap-4 sm:flex-row">
+          <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link href={SIGN_UP_URL}>
               <Button size="lg" className="group rounded-full px-8">
                 <span className="shimmer">Get started free</span>
@@ -434,7 +446,7 @@ export default function PushLandingPage() {
       <section id="faq" className="border-x border-border mx-auto max-w-screen-xl">
         <div className="overflow-hidden">
           <div
-            className="border-b border-border px-8 pb-10 pt-30 sm:pb-14 sm:pt-36"
+            className="border-b border-border px-8 pb-10 pt-30 text-center sm:pb-14 sm:pt-36"
             data-blur-reveal
           >
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
@@ -644,7 +656,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="group bg-background p-8 transition-colors hover:bg-muted/95 sm:p-12">
+    <div className="group bg-background p-8 transition-colors hover:bg-muted-soft sm:p-12">
       <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-muted">
         <Icon className="size-5 text-muted-foreground" />
       </div>

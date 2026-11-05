@@ -1,10 +1,18 @@
+import { Activity, CloudDownload, Smartphone, type LucideIcon } from 'lucide-react';
+
 import { CountUp } from './CountUp';
 import { UpdateGlobe } from './UpdateGlobe';
 
-const STATS: { value: number; decimals?: number; suffix: string; label: string }[] = [
-  { value: 1000, suffix: '+', label: 'Apps registered' },
-  { value: 20_000_000, suffix: '+', label: 'Updates delivered' },
-  { value: 99.99, decimals: 2, suffix: '%', label: 'Delivery uptime' },
+const STATS: {
+  icon: LucideIcon;
+  value: number;
+  decimals?: number;
+  suffix: string;
+  label: string;
+}[] = [
+  { icon: Smartphone, value: 1000, suffix: '+', label: 'Apps registered' },
+  { icon: CloudDownload, value: 20_000_000, suffix: '+', label: 'Updates delivered' },
+  { icon: Activity, value: 99.99, decimals: 2, suffix: '%', label: 'Delivery uptime' },
 ];
 
 export function GlobalDeliverySection() {
@@ -12,25 +20,27 @@ export function GlobalDeliverySection() {
     <section className="border-x border-border mx-auto max-w-screen-xl">
       <div className="grid md:grid-cols-2">
         <div className="flex flex-col">
-          <div className="px-8 pt-12 md:pt-20" data-blur-reveal>
+          <div className="px-8 pt-12 text-center md:pt-20" data-blur-reveal>
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
               Global CDN delivery
             </p>
             <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Every update, served from the nearest edge
             </h2>
-            <p className="mt-4 max-w-lg text-muted-foreground">
+            <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
               Fast downloads, no single point of failure.
             </p>
           </div>
-          {/* The globe is wider than its panel on purpose: the lower half is
-              clipped so it sinks into the bottom edge of the section. */}
-          <div className="relative mt-8 h-[220px] overflow-hidden sm:h-[260px] md:mt-10 md:h-[300px]">
+          {/* The globe sits on the bottom edge of the section with its lower part
+              clipped. On md+ this panel stretches to the height of the stats
+              column, and the globe stays pinned to the bottom, so no gap opens
+              up under it. */}
+          <div className="relative mt-8 h-[220px] overflow-hidden sm:h-[260px] md:mt-10 md:h-auto md:min-h-[300px] md:flex-1">
             <div
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-[size:22px_22px] opacity-50 [mask-image:radial-gradient(ellipse_at_top,black_20%,transparent_70%)]"
               aria-hidden="true"
             />
-            <UpdateGlobe className="absolute left-1/2 top-0 w-[380px] -translate-x-1/2 md:w-[440px] lg:w-[520px]" />
+            <UpdateGlobe className="absolute bottom-0 left-1/2 w-[380px] -translate-x-1/2 translate-y-[40%] md:w-[440px] lg:w-[520px]" />
           </div>
         </div>
 
@@ -43,7 +53,10 @@ export function GlobalDeliverySection() {
               <div className="text-4xl font-bold tracking-tight sm:text-5xl">
                 <CountUp value={s.value} decimals={s.decimals} suffix={s.suffix} />
               </div>
-              <div className="mt-3 text-sm text-muted-foreground">{s.label}</div>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <s.icon className="size-3.5" aria-hidden="true" />
+                {s.label}
+              </div>
             </div>
           ))}
         </div>

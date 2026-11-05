@@ -67,6 +67,11 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  /* Opaque hover tints, half as strong as muted/accent. Opaque on purpose: tiles
+     sit on the border-colored grid background, which a translucent hover would
+     let show through. */
+  --color-muted-soft: color-mix(in oklab, var(--muted) 50%, var(--background));
+  --color-accent-soft: color-mix(in oklab, var(--accent) 50%, var(--background));
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -128,6 +133,11 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Tailwind v4 dropped the pointer cursor on buttons; bring it back. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
   }
 }
 

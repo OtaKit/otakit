@@ -124,7 +124,7 @@ export function CopyForAgent({ className = '' }: { className?: string }) {
       type="button"
       onClick={copy}
       aria-label="Copy the setup guide for a coding agent"
-      className={`inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${className}`}
+      className={`inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground ${className}`}
     >
       {copied ? (
         <Check className="size-4 text-emerald-500" strokeWidth={2} aria-hidden />

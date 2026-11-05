@@ -58,105 +58,166 @@ function isBrandNew(createdAt: Date | string | undefined) {
 
 type LoginIcon = {
   src: string;
-  top: string;
-  left?: string;
-  right?: string;
+  // Icon center, in % of the viewport width / height.
+  x: number;
+  y: number;
   size: number;
-  opacity: number;
+  // "near" icons are larger and stronger, "far" ones smaller and fainter,
+  // which gives the cloud some depth.
+  depth: 'near' | 'far';
   rotate: number;
   // Independent drift: delta x/y (px), rotation delta (deg), duration (s).
   dx: number;
   dy: number;
   dr: number;
   dur: number;
+  // Where the icon shows: every screen (the two top corners, above the card),
+  // md+ (outer columns), or xl+ (inner columns, which need the wide gutters).
+  show: 'always' | 'md' | 'xl';
 };
 
+// A symmetric frame around the centered sign-in card, matching the site hero.
 const LOGIN_ICON_CLOUD: LoginIcon[] = [
+  // Left
   {
     src: '/app-icons/time-tracking.svg',
-    top: '12%',
-    left: '7%',
-    size: 56,
-    opacity: 0.1,
-    rotate: -16,
+    x: 15,
+    y: 10,
+    size: 58,
+    depth: 'near',
+    rotate: -12,
     dx: 11,
-    dy: -14,
+    dy: -12,
     dr: 4,
     dur: 7.5,
+    show: 'always',
+  },
+  {
+    src: '/app-icons/notes.svg',
+    x: 29,
+    y: 21,
+    size: 42,
+    depth: 'far',
+    rotate: 8,
+    dx: -8,
+    dy: 9,
+    dr: -3,
+    dur: 8.5,
+    show: 'xl',
   },
   {
     src: '/app-icons/ai-chat.svg',
-    top: '23%',
-    left: '21%',
-    size: 62,
-    opacity: 0.07,
-    rotate: 12,
+    x: 8,
+    y: 44,
+    size: 68,
+    depth: 'near',
+    rotate: 10,
     dx: -10,
     dy: -9,
     dr: -4.5,
     dur: 9,
-  },
-  {
-    src: '/app-icons/calorie-tracking.svg',
-    top: '13%',
-    right: '10%',
-    size: 60,
-    opacity: 0.09,
-    rotate: -8,
-    dx: 14,
-    dy: 11,
-    dr: 3,
-    dur: 6.5,
-  },
-  {
-    src: '/app-icons/recording.svg',
-    top: '43%',
-    right: '6%',
-    size: 46,
-    opacity: 0.08,
-    rotate: 20,
-    dx: -9,
-    dy: 13,
-    dr: 5,
-    dur: 8.5,
+    show: 'md',
   },
   {
     src: '/app-icons/fitness.svg',
-    top: '60%',
-    left: '6%',
-    size: 84,
-    opacity: 0.06,
-    rotate: -18,
-    dx: 15,
-    dy: -11,
-    dr: -3.5,
+    x: 24,
+    y: 63,
+    size: 46,
+    depth: 'far',
+    rotate: -14,
+    dx: 12,
+    dy: 10,
+    dr: 3.5,
     dur: 7,
+    show: 'xl',
+  },
+  {
+    src: '/app-icons/music.svg',
+    x: 13,
+    y: 83,
+    size: 56,
+    depth: 'near',
+    rotate: 6,
+    dx: -9,
+    dy: -11,
+    dr: 3,
+    dur: 8,
+    show: 'md',
+  },
+  // Right
+  {
+    src: '/app-icons/calorie-tracking.svg',
+    x: 85,
+    y: 9,
+    size: 60,
+    depth: 'near',
+    rotate: 10,
+    dx: 13,
+    dy: 10,
+    dr: 3,
+    dur: 6.5,
+    show: 'always',
   },
   {
     src: '/app-icons/budget.svg',
-    top: '74%',
-    right: '21%',
-    size: 50,
-    opacity: 0.09,
-    rotate: 10,
-    dx: -13,
-    dy: -10,
+    x: 71,
+    y: 22,
+    size: 44,
+    depth: 'far',
+    rotate: -8,
+    dx: -11,
+    dy: -8,
     dr: 4,
-    dur: 8,
+    dur: 9.5,
+    show: 'xl',
+  },
+  {
+    src: '/app-icons/recording.svg',
+    x: 92,
+    y: 43,
+    size: 52,
+    depth: 'far',
+    rotate: -16,
+    dx: -9,
+    dy: 12,
+    dr: 5,
+    dur: 8.5,
+    show: 'md',
   },
   {
     src: '/app-icons/habit-tracker.svg',
-    top: '80%',
-    right: '9%',
-    size: 70,
-    opacity: 0.06,
-    rotate: 14,
+    x: 77,
+    y: 64,
+    size: 64,
+    depth: 'near',
+    rotate: 12,
     dx: 10,
-    dy: 14,
+    dy: 12,
     dr: -3,
     dur: 6,
+    show: 'xl',
+  },
+  {
+    src: '/app-icons/weather.svg',
+    x: 88,
+    y: 84,
+    size: 46,
+    depth: 'far',
+    rotate: -6,
+    dx: 12,
+    dy: -9,
+    dr: -3.5,
+    dur: 7.8,
+    show: 'md',
   },
 ];
+
+const DEPTH_OPACITY = { near: 0.42, far: 0.24 } as const;
+const SHOW_CLASS = {
+  always: 'absolute',
+  md: 'absolute hidden md:block',
+  xl: 'absolute hidden xl:block',
+} as const;
 
 /* Very gentle, endless drift + rotation for the login background icons only.
    The base position/rotation lives on each icon's wrapper; this only nudges it
@@ -384,14 +445,13 @@ export function LoginPageClient({
         <div className="absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)] bg-[size:28px_28px] opacity-60" />
         {LOGIN_ICON_CLOUD.map((icon, index) => (
           <div
-            key={index}
-            className="absolute"
+            key={icon.src}
+            className={SHOW_CLASS[icon.show]}
             style={{
-              top: icon.top,
-              left: icon.left,
-              right: icon.right,
-              opacity: icon.opacity,
-              transform: `rotate(${icon.rotate}deg)`,
+              left: `${icon.x}%`,
+              top: `${icon.y}%`,
+              opacity: DEPTH_OPACITY[icon.depth],
+              transform: `translate(-50%, -50%) rotate(${icon.rotate}deg)`,
             }}
           >
             <Image
@@ -399,7 +459,9 @@ export function LoginPageClient({
               alt=""
               width={icon.size}
               height={icon.size}
-              className="login-float-icon block select-none rounded-[22%]"
+              className={`login-float-icon block select-none rounded-[22%] ${
+                icon.depth === 'near' ? 'drop-shadow-[0_10px_16px_rgba(15,23,42,0.18)]' : ''
+              }`}
               style={
                 {
                   animationDuration: `${icon.dur}s`,
