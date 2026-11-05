@@ -863,7 +863,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="group bg-background p-8 transition-colors hover:bg-muted/95 sm:p-12">
+    <div className="group bg-background p-8 transition-colors hover:bg-muted-soft sm:p-12">
       <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-muted">
         <Icon className="size-5 text-muted-foreground" />
       </div>

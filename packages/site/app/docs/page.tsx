@@ -173,7 +173,7 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Feature({ title, description }: { title: string; description: string }) {
   return (
-    <div className="bg-background p-5 transition-colors hover:bg-muted/30">
+    <div className="bg-background p-5 transition-colors hover:bg-muted-soft">
       <h3 className="text-sm font-medium">{title}</h3>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
     </div>
@@ -190,7 +190,7 @@ function NavCard({
   description: string;
 }) {
   return (
-    <Link href={href} className="group bg-background p-4 transition-colors hover:bg-muted/30">
+    <Link href={href} className="group bg-background p-4 transition-colors hover:bg-muted-soft">
       <h3 className="text-sm font-medium group-hover:underline">{title}</h3>
       <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </Link>

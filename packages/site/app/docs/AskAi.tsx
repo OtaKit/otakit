@@ -100,7 +100,7 @@ export function AskAi() {
                 navigator.clipboard?.writeText(prompt).catch(() => {});
                 setOpen(false);
               }}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-accent/50 hover:text-accent-foreground"
             >
               <t.icon className="size-4 shrink-0" />
               {t.label}
@@ -118,7 +118,7 @@ export function AskAi() {
                 .catch(() => {});
               setOpen(false);
             }}
-            className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex w-full items-center gap-2.5 border-t border-border px-4 py-2.5 text-left text-sm transition-colors hover:bg-accent/50 hover:text-accent-foreground"
           >
             <Copy className="size-4 shrink-0" strokeWidth={2} aria-hidden="true" />
             Copy starter prompt

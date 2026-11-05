@@ -69,7 +69,7 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
                       className={`block rounded-md px-2 py-1.5 text-sm transition-colors ${
                         isActive
                           ? 'bg-muted font-medium text-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                       }`}
                     >
                       {link.label}
@@ -89,7 +89,7 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           className={`mb-1 block rounded-md px-2 py-1.5 text-sm transition-colors ${
             pathname === '/docs/security'
               ? 'bg-muted font-medium text-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           Security
@@ -99,7 +99,7 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={onClick}
-          className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="mb-1 block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
         >
           GitHub
         </Link>
@@ -109,7 +109,7 @@ function NavLinks({ onClick }: { onClick?: () => void }) {
           className={`block rounded-md px-2 py-1.5 text-sm transition-colors ${
             isLlms
               ? 'bg-muted font-medium text-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           llms.txt
