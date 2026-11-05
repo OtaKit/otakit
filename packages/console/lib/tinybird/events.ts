@@ -53,6 +53,8 @@ type TimeseriesRow = {
 type RecentAppEventsArgs = {
   appId: string;
   from: Date;
+  /** Exclusive end; omitted means up to now. */
+  to?: Date;
   limit: number;
   platform?: Platform | null;
   action?: DeviceEventAction | null;
@@ -87,6 +89,8 @@ const RELEASE_HEALTH_WINDOW_PIPE =
   process.env.TINYBIRD_RELEASE_HEALTH_WINDOW_PIPE ?? 'release_health_window';
 const RELEASE_EVENT_TIMESERIES_PIPE =
   process.env.TINYBIRD_RELEASE_EVENT_TIMESERIES_PIPE ?? 'release_event_timeseries';
+const APP_EVENT_TIMESERIES_PIPE =
+  process.env.TINYBIRD_APP_EVENT_TIMESERIES_PIPE ?? 'app_event_timeseries';
 /** Charts refresh at most this often per query, which bounds Tinybird requests. */
 const TIMESERIES_CACHE_SECONDS = 60;
 export const MAX_TIMESERIES_RELEASES = 10;
@@ -209,6 +213,7 @@ export async function listRecentAppEventsWithStatus(
     const rows = await queryTinybirdPipe<RecentEventRow>(APP_EVENTS_RECENT_PIPE, {
       app_id: args.appId,
       from_ts: args.from.toISOString(),
+      ...(args.to ? { to_ts: args.to.toISOString() } : {}),
       limit: args.limit,
       platform: args.platform ?? '',
       action: args.action ?? '',
@@ -427,6 +432,94 @@ export async function getReleaseEventTimeseries(args: {
     logDashboardAnalyticsFailure(
       'release_event_timeseries',
       { appId: args.appId, releaseIds: releaseIds.length },
+      error,
+    );
+    return { data: [], available: false };
+  }
+}
+
+type AppEventTimeseriesRow = {
+  bucket_start?: number | string | null;
+  action?: string | null;
+  segment?: string | null;
+  events_count?: number | string | null;
+};
+
+/** The dimension an app's activity chart splits its bars by. */
+export type AppEventSplit = 'action' | 'bundle' | 'channel' | 'platform' | 'runtime';
+
+export type AppEventTimeseriesPoint = {
+  /** Bucket start, epoch milliseconds. */
+  bucketStart: number;
+  action: DeviceEventAction;
+  /** Value of the split dimension; empty for an action split and for no channel or runtime. */
+  segment: string;
+  count: number;
+};
+
+/**
+ * An app's event counts per bucket, action and split value, under the event
+ * list's filters, from each event's earliest receipt. Results are cached
+ * briefly; a failed read is reported as unavailable, never as zero events.
+ */
+export async function getAppEventTimeseries(args: {
+  appId: string;
+  from: Date;
+  to: Date;
+  bucketSeconds: number;
+  /** 0 <= shift < bucket: buckets start this long before each multiple of the bucket. */
+  shiftSeconds: number;
+  splitBy: AppEventSplit;
+  platform?: Platform | null;
+  action?: DeviceEventAction | null;
+  bundleVersion?: string | null;
+  channel?: string | null;
+  channelIsNull?: boolean;
+  runtimeVersion?: string | null;
+  runtimeVersionIsNull?: boolean;
+}): Promise<AnalyticsResult<AppEventTimeseriesPoint[]>> {
+  if (!isTinybirdConfigured()) {
+    warnTinybirdNotConfigured('getAppEventTimeseries');
+    return { data: [], available: false };
+  }
+  const params = {
+    app_id: args.appId,
+    from_ts: args.from.toISOString(),
+    to_ts: args.to.toISOString(),
+    bucket_seconds: args.bucketSeconds,
+    shift_seconds: args.shiftSeconds,
+    split_by: args.splitBy,
+    platform: args.platform ?? '',
+    action: args.action ?? '',
+    bundle_version: args.bundleVersion ?? '',
+    channel: args.channel ?? '',
+    channel_is_null: args.channelIsNull ?? false,
+    runtime_version: args.runtimeVersion ?? '',
+    runtime_version_is_null: args.runtimeVersionIsNull ?? false,
+  };
+  try {
+    const rows = await cachedJson(
+      `tinybird:${APP_EVENT_TIMESERIES_PIPE}:${JSON.stringify(params)}`,
+      TIMESERIES_CACHE_SECONDS,
+      () => queryTinybirdPipe<AppEventTimeseriesRow>(APP_EVENT_TIMESERIES_PIPE, params),
+    );
+    const points: AppEventTimeseriesPoint[] = [];
+    for (const row of rows) {
+      const action = trimToNull(row.action);
+      const bucketStart = Number(row.bucket_start);
+      if (!action || !isValidAction(action) || !Number.isFinite(bucketStart)) continue;
+      points.push({
+        bucketStart: bucketStart * 1000,
+        action,
+        segment: row.segment?.trim() ?? '',
+        count: parseCount(row.events_count),
+      });
+    }
+    return { data: points, available: true };
+  } catch (error) {
+    logDashboardAnalyticsFailure(
+      'app_event_timeseries',
+      { appId: args.appId, splitBy: args.splitBy },
       error,
     );
     return { data: [], available: false };

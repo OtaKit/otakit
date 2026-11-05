@@ -1,0 +1,68 @@
+DESCRIPTION >
+    Event counts for an app's activity chart: per time bucket, action and one
+    split dimension (`split_by`: action, bundle, channel, platform or runtime),
+    under the same filters as app_events_recent. Like release_event_timeseries,
+    it buckets each event by its earliest receipt within raw-table retention,
+    so a retry never counts twice or moves into a later bucket. Buckets are
+    `bucket_seconds` long and start `shift_seconds` (0 <= shift < bucket) before
+    each multiple of the bucket length, so they can follow the viewer's clock.
+
+TOKEN otakit_web READ
+
+NODE first_app_receipts
+SQL >
+    %
+    SELECT
+        event_id,
+        action,
+        platform,
+        bundle_version,
+        coalesce(channel, '') AS channel_value,
+        coalesce(runtime_version, '') AS runtime_value,
+        min(received_at) AS first_received_at
+    FROM device_events_raw
+    WHERE app_id = {{ String(app_id, '__missing_app_id__') }}
+      -- Receipts after the range cannot move an earliest receipt inside it, so
+      -- they are skipped. A lower bound would hide an event's earlier receipt
+      -- and count its retry as new, so there is none.
+      AND received_at < parseDateTime64BestEffort({{ String(to_ts, '2100-01-01T00:00:00.000Z') }}, 3)
+      AND ({{ String(platform, '') }} = '' OR platform = {{ String(platform, '') }})
+      AND ({{ String(action, '') }} = '' OR action = {{ String(action, '') }})
+      AND ({{ String(bundle_version, '') }} = '' OR bundle_version = {{ String(bundle_version, '') }})
+      {% if defined(channel_is_null) %}
+        AND (({{ UInt8(channel_is_null) }} = 1 AND coalesce(channel, '') = '')
+             OR ({{ UInt8(channel_is_null) }} = 0
+                 AND ({{ String(channel, '') }} = '' OR channel = {{ String(channel, '') }})))
+      {% else %}
+        AND ({{ String(channel, '') }} = '' OR channel = {{ String(channel, '') }})
+      {% end %}
+      {% if defined(runtime_version_is_null) %}
+        AND (({{ UInt8(runtime_version_is_null) }} = 1 AND coalesce(runtime_version, '') = '')
+             OR ({{ UInt8(runtime_version_is_null) }} = 0
+                 AND ({{ String(runtime_version, '') }} = '' OR runtime_version = {{ String(runtime_version, '') }})))
+      {% else %}
+        AND ({{ String(runtime_version, '') }} = '' OR runtime_version = {{ String(runtime_version, '') }})
+      {% end %}
+    GROUP BY event_id, action, platform, bundle_version, channel_value, runtime_value
+
+NODE count_activity_buckets
+SQL >
+    %
+    SELECT
+        intDiv(toUnixTimestamp(first_received_at) + {{ UInt32(shift_seconds, 0) }}, {{ UInt32(bucket_seconds, 3600) }})
+            * {{ UInt32(bucket_seconds, 3600) }} - {{ UInt32(shift_seconds, 0) }} AS bucket_start,
+        action,
+        CASE {{ String(split_by, 'action') }}
+            WHEN 'bundle' THEN bundle_version
+            WHEN 'channel' THEN channel_value
+            WHEN 'platform' THEN platform
+            WHEN 'runtime' THEN runtime_value
+            ELSE ''
+        END AS segment,
+        count() AS events_count
+    FROM first_app_receipts
+    WHERE first_received_at >= parseDateTime64BestEffort({{ String(from_ts, '1970-01-01T00:00:00.000Z') }}, 3)
+    GROUP BY bucket_start, action, segment
+    ORDER BY bucket_start, action, segment
+
+TYPE ENDPOINT

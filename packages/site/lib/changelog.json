@@ -1,6 +1,26 @@
 {
   "entries": [
     {
+      "slug": "activity-chart",
+      "date": "2026-11-06",
+      "type": "improvement",
+      "title": "Activity chart above device events",
+      "areas": ["Dashboard"],
+      "versions": {},
+      "summary": "Device activity over time now sits on the app page, above the event list and under the same filters, with every release, rollout step and revert marked on it.",
+      "highlights": [
+        "Split the bars by action, bundle, channel, platform or runtime. The range sets the bucket size: per minute, per 30 minutes, per 3 hours or per day.",
+        "Click a bar to list that bucket's events, or a legend entry to filter to it.",
+        "Activity in a release's ⋯ menu or on its channel badge filters the chart to that release. It replaces the Health dialog."
+      ],
+      "links": [
+        {
+          "label": "Rollouts guide",
+          "href": "/docs/rollouts"
+        }
+      ]
+    },
+    {
       "slug": "release-health-charts",
       "date": "2026-11-05",
       "type": "feature",

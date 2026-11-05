@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useMemo, useState, useEffect, useCallback, type ElementType } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, type ElementType } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
@@ -42,9 +42,17 @@ import { InfoHint } from '@/app/components/InfoHint';
 import { PricingDialog, type PricingDialogBillingData } from '@/app/components/PricingDialog';
 import { trackConversion } from '@/lib/gtag';
 import { appIdentifierError } from '@/lib/onboarding-profile';
+import {
+  isEventActivitySplit,
+  type EventActivity,
+  type EventActivitySegment,
+  type EventActivitySplit,
+} from '@/lib/event-activity-types';
 import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
+import type { ActivityWindow } from '@/app/components/EventActivityChart';
+import { useStoredPreference } from '@/app/components/useStoredPreference';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
 import type {
@@ -96,9 +104,9 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-// Charts load only when someone opens a release's health.
-const ReleaseHealthDialog = dynamic(
-  () => import('@/app/components/ReleaseHealthDialog').then((module) => module.ReleaseHealthDialog),
+// The chart library loads once there is activity to draw.
+const EventActivityChart = dynamic(
+  () => import('@/app/components/EventActivityChart').then((module) => module.EventActivityChart),
   { ssr: false },
 );
 
@@ -137,6 +145,10 @@ const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 const MAX_RELEASE_NOTES_LENGTH = 2000;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
 const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v3';
+const ACTIVITY_SPLIT_STORAGE_KEY = 'dashboard:activity-split';
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 const ROLLOUT_PRESETS = ['100', '50', '25', '10', '5', '1'] as const;
 const CUSTOM_ROLLOUT = 'custom';
 const STAT_COLUMN_HINTS = {
@@ -497,6 +509,16 @@ export function ProductDashboard({
   const [eventChannel, setEventChannel] = useState<string>('all');
   const [eventRuntime, setEventRuntime] = useState<string>('all');
   const [eventTimeframe, setEventTimeframe] = useState<EventTimeframeFilter>('24h');
+  // The activity chart above the list: the same filters, split by one
+  // dimension; a clicked bar narrows the list to that bucket.
+  const [activity, setActivity] = useState<EventActivity | null>(null);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [storedActivitySplit, setActivitySplit] = useStoredPreference(ACTIVITY_SPLIT_STORAGE_KEY);
+  const activitySplit: EventActivitySplit = isEventActivitySplit(storedActivitySplit)
+    ? storedActivitySplit
+    : 'action';
+  const [eventWindow, setEventWindow] = useState<ActivityWindow | null>(null);
+  const activityRequest = useRef(0);
   const [visibleBundleCount, setVisibleBundleCount] = useState(5);
   const [visibleEventCount, setVisibleEventCount] = useState(20);
   const [bundleColumnsDialogOpen, setBundleColumnsDialogOpen] = useState(false);
@@ -546,18 +568,6 @@ export function ProductDashboard({
     against?: string | null;
     againstLabel?: string;
   } | null>(null);
-
-  // Release health charts, with the app the release belongs to.
-  const [healthDialog, setHealthDialog] = useState<{
-    appId: string;
-    release: ReleaseHistoryItem;
-  } | null>(null);
-  const openHealth = useCallback(
-    (release: ReleaseHistoryItem) => {
-      if (selectedAppId) setHealthDialog({ appId: selectedAppId, release });
-    },
-    [selectedAppId],
-  );
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -776,10 +786,10 @@ export function ProductDashboard({
     return map;
   }, [releaseHistory]);
 
-  // A bundle's releases with health to show, for its More menu: live channels
+  // A bundle's releases with activity to show, for its More menu: live channels
   // first, then previously live ones. The runtime is named only when a channel
   // appears more than once.
-  const bundleHealthTargets = useCallback(
+  const bundleActivityTargets = useCallback(
     (bundle: BundleSummaryItem) => {
       const current = new Set(
         bundle.currentTargets.map((target) =>
@@ -813,7 +823,7 @@ export function ProductDashboard({
         return {
           key,
           release,
-          label: `Health · ${entry.channel ?? 'base'}${runtime}${live ? '' : ' (previously live)'}`,
+          label: `Activity · ${entry.channel ?? 'base'}${runtime}${live ? '' : ' (previously live)'}`,
         };
       });
     },
@@ -840,6 +850,70 @@ export function ProductDashboard({
     }
     return Array.from(runtimes).sort((a, b) => a.localeCompare(b));
   }, [releaseTargets, bundles]);
+
+  // A release's activity: the chart and list filtered to its bundle and
+  // channel, over the shortest range that still shows its release marker.
+  const showActivity = useCallback(
+    (release: ReleaseHistoryItem) => {
+      const channel = release.channel ?? 'base';
+      const age = Date.now() - Date.parse(release.promotedAt);
+      setEventPlatform('all');
+      setEventAction('all');
+      setEventRuntime('all');
+      setEventBundle(
+        eventBundleOptions.includes(release.bundleVersion) ? release.bundleVersion : 'all',
+      );
+      setEventChannel(eventChannelOptions.includes(channel) ? channel : 'all');
+      setEventTimeframe(
+        age <= 50 * MINUTE_MS
+          ? '1h'
+          : age <= 22 * HOUR_MS
+            ? '24h'
+            : age <= 6.5 * DAY_MS
+              ? '7d'
+              : '30d',
+      );
+      setEventWindow(null);
+      document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [eventBundleOptions, eventChannelOptions],
+  );
+
+  // Legend entries filter the list to their value when that filter exists.
+  const activityFilterValue = useCallback(
+    (split: EventActivitySplit): string => {
+      if (split === 'action') return eventAction;
+      if (split === 'bundle') return eventBundle;
+      if (split === 'channel') return eventChannel;
+      if (split === 'platform') return eventPlatform;
+      return eventRuntime;
+    },
+    [eventAction, eventBundle, eventChannel, eventPlatform, eventRuntime],
+  );
+  const canFilterActivitySegment = useCallback(
+    (segment: EventActivitySegment) => {
+      const value = segment.filterValue;
+      if (value === null) return false;
+      if (activitySplit === 'bundle') return eventBundleOptions.includes(value);
+      if (activitySplit === 'channel') return eventChannelOptions.includes(value);
+      if (activitySplit === 'runtime') return eventRuntimeOptions.includes(value);
+      return true;
+    },
+    [activitySplit, eventBundleOptions, eventChannelOptions, eventRuntimeOptions],
+  );
+  const filterToActivitySegment = useCallback(
+    (segment: EventActivitySegment) => {
+      if (!segment.filterValue || !canFilterActivitySegment(segment)) return;
+      const next =
+        activityFilterValue(activitySplit) === segment.filterValue ? 'all' : segment.filterValue;
+      if (activitySplit === 'action') setEventAction(next as EventActionFilter);
+      else if (activitySplit === 'bundle') setEventBundle(next);
+      else if (activitySplit === 'channel') setEventChannel(next);
+      else if (activitySplit === 'platform') setEventPlatform(next as EventPlatformFilter);
+      else setEventRuntime(next);
+    },
+    [activityFilterValue, activitySplit, canFilterActivitySegment],
+  );
 
   const bundleColumnOptions = useMemo(
     () =>
@@ -886,7 +960,12 @@ export function ProductDashboard({
           action: eventAction,
           channel: eventChannel,
           runtime: eventRuntime,
-          timeframe: eventTimeframe,
+          ...(eventWindow
+            ? {
+                from: new Date(eventWindow.start).toISOString(),
+                to: new Date(eventWindow.end).toISOString(),
+              }
+            : { timeframe: eventTimeframe }),
           limit: '100',
         });
         const res = await fetch(
@@ -902,7 +981,56 @@ export function ProductDashboard({
         setLoadingEvents(false);
       }
     },
-    [eventAction, eventBundle, eventChannel, eventRuntime, eventPlatform, eventTimeframe],
+    [
+      eventAction,
+      eventBundle,
+      eventChannel,
+      eventRuntime,
+      eventPlatform,
+      eventTimeframe,
+      eventWindow,
+    ],
+  );
+
+  const loadActivity = useCallback(
+    async (appId: string) => {
+      // Filters can change faster than responses arrive; only the newest counts.
+      const request = ++activityRequest.current;
+      setLoadingActivity(true);
+      try {
+        const params = new URLSearchParams({
+          platform: eventPlatform,
+          bundle: eventBundle,
+          action: eventAction,
+          channel: eventChannel,
+          runtime: eventRuntime,
+          range: eventTimeframe,
+          splitBy: activitySplit,
+          tzOffset: String(new Date().getTimezoneOffset()),
+        });
+        const res = await fetch(
+          `/api/v1/apps/${encodeURIComponent(appId)}/events/timeseries?${params.toString()}`,
+        );
+        const data = await parseJson<EventActivity & ApiError>(res);
+        if (!res.ok) throw new Error(data.error ?? 'Failed to load activity');
+        if (request === activityRequest.current) setActivity(data);
+      } catch (err) {
+        if (request !== activityRequest.current) return;
+        toast.error(err instanceof Error ? err.message : 'Failed to load activity');
+        setActivity(null);
+      } finally {
+        if (request === activityRequest.current) setLoadingActivity(false);
+      }
+    },
+    [
+      activitySplit,
+      eventAction,
+      eventBundle,
+      eventChannel,
+      eventRuntime,
+      eventPlatform,
+      eventTimeframe,
+    ],
   );
 
   const loadReleaseHistory = useCallback(async (appId: string) => {
@@ -946,6 +1074,21 @@ export function ProductDashboard({
     }
     void loadReleaseHistory(selectedAppId);
   }, [loadReleaseHistory, selectedAppId]);
+
+  // Markers come from releases, so the chart reloads with the release history
+  // as well as with the filters: after a release, rollout change or revert.
+  useEffect(() => {
+    if (!selectedAppId) {
+      setActivity(null);
+      return;
+    }
+    if (!releasesLoadedOnce) return;
+    void loadActivity(selectedAppId);
+  }, [loadActivity, selectedAppId, releasesLoadedOnce, releaseHistory]);
+
+  useEffect(() => {
+    setEventWindow(null);
+  }, [selectedAppId, eventTimeframe]);
 
   useEffect(() => {
     if (eventBundle === 'all') {
@@ -1707,7 +1850,7 @@ export function ProductDashboard({
                               <TableBody>
                                 {bundles.slice(0, visibleBundleCount).map((b) => {
                                   const isReleasing = releasingAction?.version === b.version;
-                                  const healthTargets = bundleHealthTargets(b);
+                                  const activityTargets = bundleActivityTargets(b);
                                   const currentSet = new Set(
                                     b.currentTargets.map((target) =>
                                       getReleaseTargetKey(target.channel, target.runtimeVersion),
@@ -1963,10 +2106,10 @@ export function ProductDashboard({
                                                           <>
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem
-                                                              onClick={() => openHealth(rel)}
+                                                              onClick={() => showActivity(rel)}
                                                             >
                                                               <ChartLine className="size-3.5" />
-                                                              Health
+                                                              Show activity
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem
                                                               onClick={() =>
@@ -2089,15 +2232,15 @@ export function ProductDashboard({
                                                   );
                                                   const pillClass =
                                                     'inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground';
-                                                  // Without a release record there is no health
-                                                  // to open; a span keeps the title tooltip,
+                                                  // Without a release record there is no activity
+                                                  // to show; a span keeps the title tooltip,
                                                   // which a disabled button loses in some browsers.
                                                   return rel ? (
                                                     <button
                                                       type="button"
                                                       key={tKey}
-                                                      onClick={() => openHealth(rel)}
-                                                      title={`${title} · open health`}
+                                                      onClick={() => showActivity(rel)}
+                                                      title={`${title} · show activity`}
                                                       className={`${pillClass} transition-colors hover:bg-secondary/70 hover:text-foreground`}
                                                     >
                                                       {content}
@@ -2175,23 +2318,23 @@ export function ProductDashboard({
                                                 variant="outline"
                                                 size="sm"
                                                 className="ml-1.5 h-7 px-2"
-                                                title="More: health, changes and a preview link"
+                                                title="More: activity, changes and a preview link"
                                                 aria-label={`More actions for ${b.version}`}
                                               >
                                                 <Ellipsis className="size-3.5" />
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="min-w-48">
-                                              {healthTargets.map(({ key, release, label }) => (
+                                              {activityTargets.map(({ key, release, label }) => (
                                                 <DropdownMenuItem
                                                   key={key}
-                                                  onClick={() => openHealth(release)}
+                                                  onClick={() => showActivity(release)}
                                                 >
                                                   <ChartLine className="size-3.5" />
                                                   {label}
                                                 </DropdownMenuItem>
                                               ))}
-                                              {healthTargets.length > 0 ? (
+                                              {activityTargets.length > 0 ? (
                                                 <DropdownMenuSeparator />
                                               ) : null}
                                               <DropdownMenuItem
@@ -2246,7 +2389,10 @@ export function ProductDashboard({
 
               {/* Events */}
               {selectedApp ? (
-                <section className={cn(showEmptyEvents && 'flex flex-1')}>
+                <section
+                  id="events"
+                  className={cn('scroll-mt-16', showEmptyEvents && 'flex flex-1')}
+                >
                   <div
                     className={cn(
                       'mx-auto max-w-screen-xl bg-muted/30',
@@ -2409,6 +2555,7 @@ export function ProductDashboard({
                           onClick={() => {
                             if (!selectedAppId) return;
                             void loadEvents(selectedAppId);
+                            void loadActivity(selectedAppId);
                           }}
                           title="Refresh events"
                         >
@@ -2421,6 +2568,24 @@ export function ProductDashboard({
                         </Button>
                       </div>
                     </div>
+
+                    {activity?.analyticsAvailable &&
+                    (eventWindow || activity.buckets.some((bucket) => bucket.total > 0)) ? (
+                      <EventActivityChart
+                        activity={activity}
+                        loading={loadingActivity}
+                        splitBy={activitySplit}
+                        onSplitByChange={setActivitySplit}
+                        selected={eventWindow}
+                        onSelect={setEventWindow}
+                        canFilter={canFilterActivitySegment}
+                        isFiltered={(segment) =>
+                          segment.filterValue !== null &&
+                          activityFilterValue(activitySplit) === segment.filterValue
+                        }
+                        onFilterSegment={filterToActivitySegment}
+                      />
+                    ) : null}
 
                     {appEvents.length === 0 && !loadingEvents ? (
                       <div className={cn('p-5', showEmptyEvents && 'flex flex-1')}>
@@ -2551,15 +2716,6 @@ export function ProductDashboard({
           against={changesFor.against}
           againstLabel={changesFor.againstLabel}
           onClose={() => setChangesFor(null)}
-        />
-      ) : null}
-
-      {healthDialog ? (
-        <ReleaseHealthDialog
-          key={healthDialog.release.id}
-          appId={healthDialog.appId}
-          release={healthDialog.release}
-          onClose={() => setHealthDialog(null)}
         />
       ) : null}
 
