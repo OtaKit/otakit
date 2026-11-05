@@ -1,6 +1,28 @@
 {
   "entries": [
     {
+      "slug": "release-health-charts",
+      "date": "2026-11-05",
+      "type": "feature",
+      "title": "Release health charts",
+      "areas": ["Dashboard", "API", "Agents", "CLI"],
+      "versions": {
+        "cli": "1.12.0"
+      },
+      "summary": "Watch a release spread and stay healthy over time: applies, rollbacks and download errors per hour or day, with each rollout step marked.",
+      "highlights": [
+        "Choose Health on a release in the dashboard. View 24 hours, 7 days or 30 days, for all platforms or only iOS or Android.",
+        "With auto-revert on, the rollback share turns amber, then red, as a release nears its threshold.",
+        "See the release next to the ones before and after it on the same channel, and read the same data over the REST API or with the `get_release_timeseries` agent tool."
+      ],
+      "links": [
+        {
+          "label": "Rollouts guide",
+          "href": "/docs/rollouts"
+        }
+      ]
+    },
+    {
       "slug": "bundle-changes",
       "date": "2026-10-22",
       "type": "feature",
@@ -437,8 +459,8 @@
       "name": "@otakit/cli",
       "label": "CLI",
       "install": "npm install -g @otakit/cli@latest",
-      "version": "1.11.0",
-      "date": "2026-10-22"
+      "version": "1.12.0",
+      "date": "2026-11-05"
     },
     {
       "key": "push",
