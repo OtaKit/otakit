@@ -1,6 +1,29 @@
 {
   "entries": [
     {
+      "slug": "bundle-changes",
+      "date": "2026-10-22",
+      "type": "feature",
+      "title": "Bundle changes",
+      "areas": ["CLI", "Dashboard", "API", "Agents"],
+      "versions": {
+        "cli": "1.11.0"
+      },
+      "summary": "See what a bundle changes before it ships: files added, changed and removed, the size before and after, and what devices download.",
+      "highlights": [
+        "Open Changes on a bundle in the dashboard, or run `otakit diff`. Compare with the previous upload, another bundle, or what a channel runs.",
+        "Warnings point out content that should not ship, such as `.env` files, `.git` directories, `node_modules` and source maps.",
+        "`otakit upload` prints what changed against the bundle the channel runs, and agents compare bundles with `diff_bundles`."
+      ],
+      "code": "otakit diff <bundleId> --channel production",
+      "links": [
+        {
+          "label": "CLI reference",
+          "href": "/docs/cli"
+        }
+      ]
+    },
+    {
       "slug": "release-notes",
       "date": "2026-10-12",
       "type": "feature",
@@ -414,8 +437,8 @@
       "name": "@otakit/cli",
       "label": "CLI",
       "install": "npm install -g @otakit/cli@latest",
-      "version": "1.10.0",
-      "date": "2026-10-12"
+      "version": "1.11.0",
+      "date": "2026-10-22"
     },
     {
       "key": "push",
