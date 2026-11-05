@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useMemo, useState, useEffect, useCallback, type ElementType } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,6 +8,7 @@ import {
   Activity,
   BadgeCheck,
   Calendar,
+  ChartLine,
   Check,
   ChevronDown,
   ChevronsUpDown,
@@ -92,6 +94,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+
+// Charts load only when someone opens a release's health.
+const ReleaseHealthDialog = dynamic(
+  () => import('@/app/components/ReleaseHealthDialog').then((module) => module.ReleaseHealthDialog),
+  { ssr: false },
+);
 
 /* ─── Types ────────────────────────────────────────────────────────── */
 
@@ -537,6 +545,18 @@ export function ProductDashboard({
     against?: string | null;
     againstLabel?: string;
   } | null>(null);
+
+  // Release health charts, with the app the release belongs to.
+  const [healthDialog, setHealthDialog] = useState<{
+    appId: string;
+    release: ReleaseHistoryItem;
+  } | null>(null);
+  const openHealth = useCallback(
+    (release: ReleaseHistoryItem) => {
+      if (selectedAppId) setHealthDialog({ appId: selectedAppId, release });
+    },
+    [selectedAppId],
+  );
 
   // Preview links
   const [previewDialog, setPreviewDialog] = useState<{
@@ -1895,6 +1915,12 @@ export function ProductDashboard({
                                                           <>
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem
+                                                              onClick={() => openHealth(rel)}
+                                                            >
+                                                              <ChartLine className="size-3.5" />
+                                                              Health
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
                                                               onClick={() =>
                                                                 setChangesFor({
                                                                   bundle: {
@@ -2002,18 +2028,39 @@ export function ProductDashboard({
                                                       ? rel.revertedAt
                                                       : null;
                                                   const wasAutoReverted = autoRevertedAt !== null;
-                                                  return (
-                                                    <span
-                                                      key={tKey}
-                                                      title={`Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}${autoRevertedAt ? ` · auto-reverted ${formatDate(autoRevertedAt)}` : ''}`}
-                                                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
-                                                    >
+                                                  const title = `Previously live · Channel: ${entry.channel ?? 'base'} · released ${formatDate(entry.deployedAt)}${rel ? ` · by ${formatReleasedBy(rel.promotedBy)}` : ''}${autoRevertedAt ? ` · auto-reverted ${formatDate(autoRevertedAt)}` : ''}`;
+                                                  const content = (
+                                                    <>
                                                       {wasAutoReverted ? (
                                                         <ShieldAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
                                                       ) : null}
                                                       <span className="truncate">
                                                         {entry.channel ?? 'base'}
                                                       </span>
+                                                    </>
+                                                  );
+                                                  const pillClass =
+                                                    'inline-flex max-w-full items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground';
+                                                  // Without a release record there is no health
+                                                  // to open; a span keeps the title tooltip,
+                                                  // which a disabled button loses in some browsers.
+                                                  return rel ? (
+                                                    <button
+                                                      type="button"
+                                                      key={tKey}
+                                                      onClick={() => openHealth(rel)}
+                                                      title={`${title} · open health`}
+                                                      className={`${pillClass} transition-colors hover:bg-secondary/70 hover:text-foreground`}
+                                                    >
+                                                      {content}
+                                                    </button>
+                                                  ) : (
+                                                    <span
+                                                      key={tKey}
+                                                      title={title}
+                                                      className={pillClass}
+                                                    >
+                                                      {content}
                                                     </span>
                                                   );
                                                 })}
@@ -2437,6 +2484,15 @@ export function ProductDashboard({
           against={changesFor.against}
           againstLabel={changesFor.againstLabel}
           onClose={() => setChangesFor(null)}
+        />
+      ) : null}
+
+      {healthDialog ? (
+        <ReleaseHealthDialog
+          key={healthDialog.release.id}
+          appId={healthDialog.appId}
+          release={healthDialog.release}
+          onClose={() => setHealthDialog(null)}
         />
       ) : null}
 

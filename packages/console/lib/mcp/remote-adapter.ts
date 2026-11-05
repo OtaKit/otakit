@@ -1,6 +1,8 @@
 import {
   PublicToolError,
   bundleDiffEnvelopeParts,
+  compactReleaseTimeseries,
+  releaseTimeseriesEnvelopeParts,
   getToolDefinition,
   previewEnvelopeParts,
   rolloutChangeSummary,
@@ -24,6 +26,7 @@ import { getConnectionContext } from '@/lib/services/context';
 import { isOtaKitServiceError } from '@/lib/services/errors';
 import { getBundleDiff } from '@/lib/services/bundle-diff';
 import { listEvents } from '@/lib/services/events';
+import { getReleaseTimeseries, isReleaseTimeseriesRange } from '@/lib/services/release-timeseries';
 import { createPreview, revokePreview } from '@/lib/services/previews';
 import type { PreviewExpiry } from '@/lib/preview-links';
 import {
@@ -253,6 +256,8 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
           return await this.publishRelease(input);
         case 'get_release_health':
           return await this.getReleaseHealth(input);
+        case 'get_release_timeseries':
+          return await this.getReleaseTimeseries(input);
         case 'list_events':
           return await this.listEvents(input);
         case 'list_audit_log':
@@ -564,6 +569,23 @@ export class RemoteOtaKitToolAdapter implements OtaKitToolAdapter {
       warnings: [
         'Event counts are client-reported and are not unique devices, adoption, or authenticated installations.',
       ],
+    });
+  }
+
+  private async getReleaseTimeseries(input: JsonObject): Promise<ToolEnvelope> {
+    const appId = stringInput(input, 'appId');
+    await this.ensureApp(appId);
+    const range = optionalString(input, 'range');
+    const timeseries = await getReleaseTimeseries({
+      organizationId: this.connection.access.organizationId,
+      appId,
+      releaseId: stringInput(input, 'releaseId'),
+      range: isReleaseTimeseriesRange(range) ? range : undefined,
+      platform: (optionalString(input, 'platform') as 'ios' | 'android' | undefined) ?? null,
+    });
+    const parts = releaseTimeseriesEnvelopeParts(timeseries);
+    return toolEnvelope(parts.summary, json(compactReleaseTimeseries(timeseries)), {
+      warnings: parts.warnings,
     });
   }
 

@@ -4,5 +4,6 @@ export * from './contracts';
 export * from './previews';
 export * from './prompts';
 export * from './registry';
+export * from './release-timeseries';
 export * from './rollouts';
 export * from './version';

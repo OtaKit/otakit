@@ -1,4 +1,5 @@
 import { recordAuditLog, type AuditActor } from './audit-log';
+import { shouldAutoRevert } from './auto-revert-rule';
 import {
   AUTO_REVERT_REVERTED_BY,
   deliverPendingAutoRevertAlerts,
@@ -11,6 +12,8 @@ import { revertCurrentRelease } from './releases';
 import { isOtaKitServiceError } from './services/errors';
 import { revertRelease } from './services/releases';
 import { getReleaseHealthWindowCounts } from './tinybird/events';
+
+export { shouldAutoRevert };
 
 export const AUTO_REVERT_WINDOW_HOURS = 24;
 export const AUTO_REVERT_ACTOR_LABEL = 'auto-revert';
@@ -37,20 +40,6 @@ type CandidateRelease = {
   bundle: { version: string; runtimeVersion: string | null };
   app: { slug: string; organizationId: string };
 };
-
-export function shouldAutoRevert(
-  counts: { applied: number; rollbacks: number },
-  thresholds: { ratePercent: number; minSample: number },
-): boolean {
-  // `applied` only fires on a successful trial, so the failure share of
-  // devices that completed a trial is rollbacks / (applied + rollbacks) —
-  // a fully broken bundle has ~zero applied events.
-  const attempts = counts.applied + counts.rollbacks;
-  if (attempts < thresholds.minSample) {
-    return false;
-  }
-  return counts.rollbacks * 100 >= thresholds.ratePercent * attempts;
-}
 
 function alertPayload(
   candidate: CandidateRelease,
