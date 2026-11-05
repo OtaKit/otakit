@@ -130,11 +130,6 @@ export default function DocsOverviewPage() {
           description="How launchPolicy, resumePolicy, and runtimePolicy combine to control when updates apply."
         />
         <NavCard
-          href="/docs/events"
-          title="Events & Listeners"
-          description="Subscribe to update lifecycle events: available, staged, applied, failed, rolled back."
-        />
-        <NavCard
           href="/docs/agents"
           title="MCP & Agent Skills"
           description="One command connects Claude Code, Codex, or VS Code to your project."

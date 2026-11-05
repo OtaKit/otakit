@@ -149,12 +149,6 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                   <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                 </Button>
               </Link>
-              <Link href="/docs" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="lg" className="rounded-full px-8">
-                  <BookOpen className="size-4" />
-                  Read the docs
-                </Button>
-              </Link>
             </div>
             <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
               {['No credit card required', 'Open source (MIT)', 'App Store compliant'].map(
@@ -395,6 +389,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                   'Dashboard + CLI + API',
                   'MCP server + Agent Skills',
                   'Real-time analytics',
+                  { label: 'Free push notifications', href: '/push' },
                 ]}
                 cta="Get started free"
               />
@@ -740,7 +735,7 @@ function PricingCard({
   period: string;
   description: React.ReactNode;
   allowance: string;
-  features: string[];
+  features: (string | { label: string; href: string })[];
   cta: string;
   highlighted?: boolean;
   href?: string;
@@ -769,9 +764,21 @@ function PricingCard({
       </div>
       <ul className="mt-8 flex-1 space-y-3">
         {features.map((f) => (
-          <li key={f} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+          <li
+            key={typeof f === 'string' ? f : f.label}
+            className="flex items-start gap-2.5 text-sm text-muted-foreground"
+          >
             <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-            {f}
+            {typeof f === 'string' ? (
+              f
+            ) : (
+              <Link
+                href={f.href}
+                className="underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground"
+              >
+                {f.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>

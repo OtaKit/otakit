@@ -297,18 +297,6 @@ export default function LandingPage() {
 
         <div className="relative mx-auto max-w-screen-xl p-10">
           <div className="mx-auto max-w-3xl text-center xl:max-w-4xl">
-            <div className="mb-8 flex flex-wrap items-center justify-center gap-2">
-              <Link
-                href="/push"
-                className="group inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/[0.08] px-3 py-1.5 text-xs shadow-sm transition-colors hover:border-amber-500/45 hover:bg-amber-500/[0.12] sm:gap-2 sm:text-sm"
-              >
-                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
-                  New
-                </span>
-                <span className="font-medium">Free push notifications</span>
-                <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </div>
             <h1 className="text-6xl font-bold xl:text-[4.25rem]">
               Ship app updates instantly
               {/* <br />
@@ -325,12 +313,6 @@ export default function LandingPage() {
                 <Button size="lg" className="group rounded-full px-8">
                   <span className="shimmer">Start releasing free</span>
                   <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </Button>
-              </Link>
-              <Link href="/docs" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="lg" className="rounded-full px-8">
-                  <BookOpen className="size-4" />
-                  Read the docs
                 </Button>
               </Link>
             </div>
@@ -541,6 +523,7 @@ export default function LandingPage() {
                   'Dashboard + CLI + API',
                   'MCP server + Agent Skills',
                   'Real-time analytics',
+                  { label: 'Free push notifications', href: '/push' },
                 ]}
                 cta="Get started free"
               />
@@ -907,7 +890,7 @@ function PricingCard({
   period: string;
   description: React.ReactNode;
   allowance: string;
-  features: string[];
+  features: (string | { label: string; href: string })[];
   cta: string;
   highlighted?: boolean;
   href?: string;
@@ -936,9 +919,21 @@ function PricingCard({
       </div>
       <ul className="mt-8 flex-1 space-y-3">
         {features.map((f) => (
-          <li key={f} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+          <li
+            key={typeof f === 'string' ? f : f.label}
+            className="flex items-start gap-2.5 text-sm text-muted-foreground"
+          >
             <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-400" />
-            {f}
+            {typeof f === 'string' ? (
+              f
+            ) : (
+              <Link
+                href={f.href}
+                className="underline decoration-border underline-offset-4 transition-colors hover:text-foreground hover:decoration-foreground"
+              >
+                {f.label}
+              </Link>
+            )}
           </li>
         ))}
       </ul>
