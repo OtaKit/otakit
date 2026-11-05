@@ -1696,7 +1696,9 @@ export function ProductDashboard({
                                     </TableHead>
                                   ) : null}
                                   {hasBundleColumn('action') ? (
-                                    <TableHead className="w-[120px] text-center whitespace-nowrap">
+                                    // The table pads its last column on the right to line up with
+                                    // the card; the same padding on the left keeps Action centered.
+                                    <TableHead className="w-[152px] pl-6 text-center whitespace-nowrap">
                                       Action
                                     </TableHead>
                                   ) : null}
@@ -2147,7 +2149,7 @@ export function ProductDashboard({
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('action') ? (
-                                        <TableCell className="text-center whitespace-nowrap">
+                                        <TableCell className="pl-6 text-center whitespace-nowrap">
                                           <Button
                                             variant="default"
                                             size="sm"
