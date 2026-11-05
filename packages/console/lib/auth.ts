@@ -7,6 +7,7 @@ import { cimd } from '@better-auth/cimd';
 import { mcp } from '@better-auth/mcp';
 import { headers } from 'next/headers';
 
+import { restartOnFailedStart } from './auth-restart';
 import { db } from './db';
 import { sendOtpEmail } from './email';
 import { recordAuditLog } from './audit-log';
@@ -75,239 +76,252 @@ const socialProviders = {
     : {}),
 };
 
-const remoteMcpOAuthPlugins = isRemoteMcpOAuthEnabled()
-  ? [
-      jwt({ disableSettingJwtHeader: true }),
-      mcp({
-        loginPage: '/login',
-        consentPage: '/oauth/consent',
-        resource: remoteMcpResourceUrl(),
-        // Config is the only source of truth for this resource, so apply its
-        // fields to the stored row on startup. The default, insertOnly, never
-        // updates an existing row and would leave a deployed policy stale.
-        resourceSeedMode: 'merge',
-        resources: [
-          {
-            identifier: remoteMcpResourceUrl(),
-            // offline_access must be allowed here too: Better Auth stores refresh
-            // tokens with the scopes this list permits, and a stored refresh token
-            // without offline_access is never rotated on use.
-            allowedScopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
+/**
+ * Built per auth instance: plugin init mutates plugin state (cimd registers itself on
+ * the OAuth provider's options), so an instance rebuilt after a failed startup must
+ * not reuse the objects from the failed one.
+ */
+const remoteMcpOAuthPlugins = () =>
+  isRemoteMcpOAuthEnabled()
+    ? [
+        jwt({ disableSettingJwtHeader: true }),
+        mcp({
+          loginPage: '/login',
+          consentPage: '/oauth/consent',
+          resource: remoteMcpResourceUrl(),
+          // Config is the only source of truth for this resource, so apply its
+          // fields to the stored row on startup. The default, insertOnly, never
+          // updates an existing row and would leave a deployed policy stale.
+          resourceSeedMode: 'merge',
+          resources: [
+            {
+              identifier: remoteMcpResourceUrl(),
+              // offline_access must be allowed here too: Better Auth stores refresh
+              // tokens with the scopes this list permits, and a stored refresh token
+              // without offline_access is never rotated on use.
+              allowedScopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
+            },
+          ],
+          scopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
+          clientRegistrationDefaultScopes: ['otakit:read'],
+          clientRegistrationAllowedScopes: [
+            'otakit:app:write',
+            'otakit:bundle:write',
+            'otakit:release:write',
+            'offline_access',
+          ],
+          grantTypes: ['authorization_code', 'refresh_token'],
+          allowDynamicClientRegistration: isLegacyMcpDcrEnabled(),
+          allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
+          postLogin: {
+            page: '/oauth/select-organization',
+            shouldRedirect: async ({ headers: requestHeaders, user, scopes }) =>
+              shouldSelectOAuthOrganization(user.id, scopes, requestHeaders),
+            consentReferenceId: async ({ user, scopes }) => {
+              if (!scopes.some(isOtaKitOAuthScope)) {
+                return undefined;
+              }
+              const organizationId = await selectedOAuthOrganizationId(user.id, await headers());
+              if (!organizationId) {
+                throw new APIError('BAD_REQUEST', {
+                  message: 'Select an organization before authorizing OtaKit MCP',
+                });
+              }
+              return organizationId;
+            },
           },
-        ],
-        scopes: [...OTAKIT_OAUTH_SCOPES, 'offline_access'],
-        clientRegistrationDefaultScopes: ['otakit:read'],
-        clientRegistrationAllowedScopes: [
-          'otakit:app:write',
-          'otakit:bundle:write',
-          'otakit:release:write',
-          'offline_access',
-        ],
-        grantTypes: ['authorization_code', 'refresh_token'],
-        allowDynamicClientRegistration: isLegacyMcpDcrEnabled(),
-        allowUnauthenticatedClientRegistration: isLegacyMcpDcrEnabled(),
-        postLogin: {
-          page: '/oauth/select-organization',
-          shouldRedirect: async ({ headers: requestHeaders, user, scopes }) =>
-            shouldSelectOAuthOrganization(user.id, scopes, requestHeaders),
-          consentReferenceId: async ({ user, scopes }) => {
-            if (!scopes.some(isOtaKitOAuthScope)) {
-              return undefined;
-            }
-            const organizationId = await selectedOAuthOrganizationId(user.id, await headers());
-            if (!organizationId) {
-              throw new APIError('BAD_REQUEST', {
-                message: 'Select an organization before authorizing OtaKit MCP',
+          customAccessTokenClaims: async ({ user, referenceId }) => {
+            if (!user?.id || !referenceId) {
+              throw new APIError('UNAUTHORIZED', {
+                message: 'OtaKit MCP access must be bound to a user and organization',
               });
             }
-            return organizationId;
+            const membership = await db.organizationMember.findUnique({
+              where: {
+                organizationId_userId: { organizationId: referenceId, userId: user.id },
+              },
+              select: { id: true },
+            });
+            if (!membership) {
+              throw new APIError('FORBIDDEN', {
+                message: 'The user is no longer a member of this organization',
+              });
+            }
+            return {
+              otakit_organization_id: referenceId,
+              otakit_user_id: user.id,
+            };
           },
-        },
-        customAccessTokenClaims: async ({ user, referenceId }) => {
-          if (!user?.id || !referenceId) {
-            throw new APIError('UNAUTHORIZED', {
-              message: 'OtaKit MCP access must be bound to a user and organization',
-            });
-          }
-          const membership = await db.organizationMember.findUnique({
-            where: {
-              organizationId_userId: { organizationId: referenceId, userId: user.id },
-            },
-            select: { id: true },
-          });
-          if (!membership) {
-            throw new APIError('FORBIDDEN', {
-              message: 'The user is no longer a member of this organization',
-            });
-          }
-          return {
-            otakit_organization_id: referenceId,
-            otakit_user_id: user.id,
-          };
-        },
-      }),
-      cimd({
-        fetchClientMetadataResource: fetchCimdMetadataResource,
-        metadataProfile: 'mcp-2026-07-28',
-        // The default also binds client_uri to the client ID's origin, which
-        // refuses Smithery Connect (client ID on connect.smithery.ai, homepage
-        // https://smithery.ai). client_uri is only a homepage link: the consent
-        // page and Settings → Agents show the client ID's origin instead
-        // (lib/mcp/client-identity.ts).
-        originBoundFields: ['post_logout_redirect_uris'],
-      }),
-    ]
-  : [];
+        }),
+        cimd({
+          fetchClientMetadataResource: fetchCimdMetadataResource,
+          metadataProfile: 'mcp-2026-07-28',
+          // The default also binds client_uri to the client ID's origin, which
+          // refuses Smithery Connect (client ID on connect.smithery.ai, homepage
+          // https://smithery.ai). client_uri is only a homepage link: the consent
+          // page and Settings → Agents show the client ID's origin instead
+          // (lib/mcp/client-identity.ts).
+          originBoundFields: ['post_logout_redirect_uris'],
+        }),
+      ]
+    : [];
 
-export const auth = betterAuth({
-  database: prismaAdapter(db, { provider: 'postgresql' }),
-  ...(isRemoteMcpOAuthEnabled() ? { disabledPaths: ['/token'] } : {}),
-  socialProviders,
-  plugins: [
-    bearer(),
-    emailOTP({
-      async sendVerificationOTP({ email, otp, type }) {
-        if (isDev) {
-          try {
-            const { default: clipboardy } = await import('clipboardy');
-            await clipboardy.write(otp);
-            console.log(`[OTP] ${type} for ${email}: ${otp} (copied to clipboard)`);
-          } catch (error) {
-            console.warn('[OTP] Failed to copy OTP to clipboard in development', error);
+function createAuth() {
+  return betterAuth({
+    database: prismaAdapter(db, { provider: 'postgresql' }),
+    ...(isRemoteMcpOAuthEnabled() ? { disabledPaths: ['/token'] } : {}),
+    socialProviders,
+    plugins: [
+      bearer(),
+      emailOTP({
+        async sendVerificationOTP({ email, otp, type }) {
+          if (isDev) {
+            try {
+              const { default: clipboardy } = await import('clipboardy');
+              await clipboardy.write(otp);
+              console.log(`[OTP] ${type} for ${email}: ${otp} (copied to clipboard)`);
+            } catch (error) {
+              console.warn('[OTP] Failed to copy OTP to clipboard in development', error);
+            }
           }
+          await sendOtpEmail(email, otp);
+        },
+        otpLength: 6,
+        expiresIn: 300,
+        disableSignUp: false,
+      }),
+      ...remoteMcpOAuthPlugins(),
+      nextCookies(),
+    ],
+    trustedOrigins,
+    hooks: {
+      // MCP clients vary in how closely they follow RFC 7591/8707 and which
+      // scopes they ask for. Normalize the requests before Better Auth validates
+      // them; each rule is documented next to its function in lib/mcp.
+      before: createAuthMiddleware(async (ctx) => {
+        if (!isRemoteMcpOAuthEnabled()) return;
+        if (ctx.path === '/oauth2/register') {
+          const body = withMcpRegistrationDefaults(ctx.body);
+          if (body !== ctx.body) return { context: { body } };
+          return;
         }
-        await sendOtpEmail(email, otp);
-      },
-      otpLength: 6,
-      expiresIn: 300,
-      disableSignUp: false,
-    }),
-    ...remoteMcpOAuthPlugins,
-    nextCookies(),
-  ],
-  trustedOrigins,
-  hooks: {
-    // MCP clients vary in how closely they follow RFC 7591/8707 and which
-    // scopes they ask for. Normalize the requests before Better Auth validates
-    // them; each rule is documented next to its function in lib/mcp.
-    before: createAuthMiddleware(async (ctx) => {
-      if (!isRemoteMcpOAuthEnabled()) return;
-      if (ctx.path === '/oauth2/register') {
-        const body = withMcpRegistrationDefaults(ctx.body);
-        if (body !== ctx.body) return { context: { body } };
-        return;
-      }
-      if (ctx.path === '/oauth2/authorize' && ctx.query) {
-        const clientId = typeof ctx.query.client_id === 'string' ? ctx.query.client_id : undefined;
-        const client = clientId
-          ? await db.oauthClient.findUnique({
-              where: { clientId },
-              select: { grantTypes: true },
-            })
-          : null;
-        const query: Record<string, unknown> = { ...ctx.query };
-        const scope = normalizeRequestedScope(query.scope, {
-          addOfflineAccess: client?.grantTypes.includes('refresh_token') ?? false,
-        });
-        if (scope !== undefined) query.scope = scope;
-        // /mcp is the only protected resource. A client that omits the RFC 8707
-        // indicator would otherwise get a consent bound to no resource, which
-        // the MCP endpoint refuses on every call.
-        query.resource =
-          query.resource === undefined
-            ? remoteMcpResourceUrl()
-            : normalizeResourceIndicator(query.resource, remoteMcpResourceUrl());
-        return { context: { query } };
-      }
-      if (ctx.path === '/oauth2/token' && ctx.body && typeof ctx.body === 'object') {
-        const body = ctx.body as Record<string, unknown>;
-        if (body.resource === undefined) return;
-        return {
-          context: {
-            body: {
-              ...body,
-              resource: normalizeResourceIndicator(body.resource, remoteMcpResourceUrl()),
+        if (ctx.path === '/oauth2/authorize' && ctx.query) {
+          const clientId =
+            typeof ctx.query.client_id === 'string' ? ctx.query.client_id : undefined;
+          const client = clientId
+            ? await db.oauthClient.findUnique({
+                where: { clientId },
+                select: { grantTypes: true },
+              })
+            : null;
+          const query: Record<string, unknown> = { ...ctx.query };
+          const scope = normalizeRequestedScope(query.scope, {
+            addOfflineAccess: client?.grantTypes.includes('refresh_token') ?? false,
+          });
+          if (scope !== undefined) query.scope = scope;
+          // /mcp is the only protected resource. A client that omits the RFC 8707
+          // indicator would otherwise get a consent bound to no resource, which
+          // the MCP endpoint refuses on every call.
+          query.resource =
+            query.resource === undefined
+              ? remoteMcpResourceUrl()
+              : normalizeResourceIndicator(query.resource, remoteMcpResourceUrl());
+          return { context: { query } };
+        }
+        if (ctx.path === '/oauth2/token' && ctx.body && typeof ctx.body === 'object') {
+          const body = ctx.body as Record<string, unknown>;
+          if (body.resource === undefined) return;
+          return {
+            context: {
+              body: {
+                ...body,
+                resource: normalizeResourceIndicator(body.resource, remoteMcpResourceUrl()),
+              },
             },
-          },
-        };
-      }
-    }),
-    // Granting an agent access is recorded next to its revocation.
-    after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== '/oauth2/consent' || !isRemoteMcpOAuthEnabled()) return;
-      const body = (ctx.body ?? {}) as { accept?: unknown; oauth_query?: unknown };
-      if (body.accept !== true) return;
-      const returned = ctx.context.returned as { url?: unknown } | undefined;
-      if (typeof returned?.url !== 'string' || !URL.canParse(returned.url)) return;
-      if (!new URL(returned.url).searchParams.has('code')) return;
-      const clientId = new URLSearchParams(
-        typeof body.oauth_query === 'string' ? body.oauth_query : '',
-      ).get('client_id');
-      const session = await getSessionFromCtx(ctx);
-      if (!clientId || !session) return;
-      const consent = await db.oauthConsent.findFirst({
-        where: { clientId, userId: session.user.id },
-        orderBy: { updatedAt: 'desc' },
-        select: { referenceId: true, scopes: true, client: { select: { name: true } } },
-      });
-      if (!consent?.referenceId) return;
-      await recordAuditLog({
-        organizationId: consent.referenceId,
-        actor: { actorType: 'user', actorId: session.user.id, actorLabel: session.user.email },
-        action: 'oauth.connection_granted',
-        targetType: 'oauth_client',
-        targetId: clientId,
-        metadata: { client: consent.client.name, scopes: consent.scopes.join(' ') },
-      });
-    }),
-  },
-  /**
-   * A failed social callback used to end up at Better Auth's own /error, which
-   * redirects to the site root, which redirects to /login — dropping the error
-   * code on the way. Clicking "Continue with Google" and landing back on the
-   * sign-in page with nothing said is indistinguishable from the button being
-   * dead. Send those failures to /login instead, which now reads the code.
-   *
-   * The client's errorCallbackURL only covers failures where the state still
-   * parses; this covers the ones where it does not, which is most of them.
-   */
-  onAPIError: { errorURL: '/login' },
-  account: {
-    encryptOAuthTokens: true,
-    updateAccountOnSignIn: true,
-    accountLinking: {
-      enabled: true,
-      trustedProviders: trustedSocialProviders,
-      allowDifferentEmails: false,
+          };
+        }
+      }),
+      // Granting an agent access is recorded next to its revocation.
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/oauth2/consent' || !isRemoteMcpOAuthEnabled()) return;
+        const body = (ctx.body ?? {}) as { accept?: unknown; oauth_query?: unknown };
+        if (body.accept !== true) return;
+        const returned = ctx.context.returned as { url?: unknown } | undefined;
+        if (typeof returned?.url !== 'string' || !URL.canParse(returned.url)) return;
+        if (!new URL(returned.url).searchParams.has('code')) return;
+        const clientId = new URLSearchParams(
+          typeof body.oauth_query === 'string' ? body.oauth_query : '',
+        ).get('client_id');
+        const session = await getSessionFromCtx(ctx);
+        if (!clientId || !session) return;
+        const consent = await db.oauthConsent.findFirst({
+          where: { clientId, userId: session.user.id },
+          orderBy: { updatedAt: 'desc' },
+          select: { referenceId: true, scopes: true, client: { select: { name: true } } },
+        });
+        if (!consent?.referenceId) return;
+        await recordAuditLog({
+          organizationId: consent.referenceId,
+          actor: { actorType: 'user', actorId: session.user.id, actorLabel: session.user.email },
+          action: 'oauth.connection_granted',
+          targetType: 'oauth_client',
+          targetId: clientId,
+          metadata: { client: consent.client.name, scopes: consent.scopes.join(' ') },
+        });
+      }),
     },
-  },
-  // Only pre-created app-directory reviewer accounts sign in with a password;
-  // it is off unless OTAKIT_REVIEWER_LOGIN is set, and sign-up is never allowed.
-  emailAndPassword: { enabled: isReviewerLoginEnabled(), disableSignUp: true },
-  session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // refresh after 1 day
-  },
-  user: {
-    additionalFields: {
-      activeOrganizationId: {
-        type: 'string',
-        required: false,
-        input: false,
+    /**
+     * A failed social callback used to end up at Better Auth's own /error, which
+     * redirects to the site root, which redirects to /login — dropping the error
+     * code on the way. Clicking "Continue with Google" and landing back on the
+     * sign-in page with nothing said is indistinguishable from the button being
+     * dead. Send those failures to /login instead, which now reads the code.
+     *
+     * The client's errorCallbackURL only covers failures where the state still
+     * parses; this covers the ones where it does not, which is most of them.
+     */
+    onAPIError: { errorURL: '/login' },
+    account: {
+      encryptOAuthTokens: true,
+      updateAccountOnSignIn: true,
+      accountLinking: {
+        enabled: true,
+        trustedProviders: trustedSocialProviders,
+        allowDifferentEmails: false,
       },
     },
-  },
-  databaseHooks: {
+    // Only pre-created app-directory reviewer accounts sign in with a password;
+    // it is off unless OTAKIT_REVIEWER_LOGIN is set, and sign-up is never allowed.
+    emailAndPassword: { enabled: isReviewerLoginEnabled(), disableSignUp: true },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7, // 7 days
+      updateAge: 60 * 60 * 24, // refresh after 1 day
+    },
     user: {
-      create: {
-        after: async (user) => {
-          // Provisioning: apply pending invites, or create personal organization.
-          // This runs after better-auth inserts the user row.
-          await provisionUser(user.id, user.email);
+      additionalFields: {
+        activeOrganizationId: {
+          type: 'string',
+          required: false,
+          input: false,
         },
       },
     },
-  },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            // Provisioning: apply pending invites, or create personal organization.
+            // This runs after better-auth inserts the user row.
+            await provisionUser(user.id, user.email);
+          },
+        },
+      },
+    },
+  });
+}
+
+export const auth = restartOnFailedStart(createAuth, (error) => {
+  console.error('[auth] Better Auth failed to start; the next request starts it again', error);
 });
 
 /**

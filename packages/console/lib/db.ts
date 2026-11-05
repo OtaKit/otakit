@@ -1,7 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { attachDatabasePool } from '@vercel/functions';
-import { Pool } from 'pg';
+
+import { createPoolHold, RetryingPool } from './db-pool';
+
+/** Idle connections close after this long. */
+const IDLE_TIMEOUT_MS = 5_000;
 
 /**
  * DATABASE_URL in the form the pg driver expects. Undefined when it is not set, so
@@ -26,24 +29,42 @@ function connectionString(): string | undefined {
 }
 
 function createClient(): PrismaClient {
-  const pool = new Pool({
+  const pool = new RetryingPool({
     connectionString: connectionString(),
     max: 10,
-    // Idle connections close after 5s. attachDatabasePool keeps the Vercel instance
-    // alive until they have, so a suspended instance never wakes up holding dead
-    // sockets (see the 2026-10-01 "Timed out fetching a new connection" outage).
-    idleTimeoutMillis: 5_000,
-    // pg waits forever by default; fail the request instead of hanging the pool.
+    idleTimeoutMillis: IDLE_TIMEOUT_MS,
+    // pg waits forever by default; fail instead of hanging. This also bounds the
+    // wait for a free client when all 10 are busy. RetryingPool makes one more
+    // attempt when opening a connection fails on the network.
     connectionTimeoutMillis: 10_000,
   });
-  attachDatabasePool(pool);
+  // An idle connection the server drops is reported here; without a listener Node
+  // would crash on it. PrismaPg's own onPoolError listener goes away on $disconnect.
+  pool.on('error', (error) => console.error('[db] idle pool client error', error));
+  // Keep the instance awake until idle connections have closed, so it is never
+  // frozen holding sockets (see the 2026-10-01 "Timed out fetching a new
+  // connection" outage). Registered after each query, from the request.
+  // The cap is above the longest transaction (releases allow 60s).
+  const holdInstance = createPoolHold(pool, IDLE_TIMEOUT_MS + 1_000, 120_000);
 
-  return new PrismaClient({
-    adapter: new PrismaPg(pool, {
-      onPoolError: (error) => console.error('[db] idle pool client error', error),
-    }),
+  const client = new PrismaClient({
+    adapter: new PrismaPg(pool),
     log: process.env.NODE_ENV === 'development' ? ['query', 'warn'] : ['error'],
   });
+
+  // The extension only adds behaviour, so the client keeps its PrismaClient type.
+  // One difference: extended clients have no $on (log events are configured above).
+  return client.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        try {
+          return await query(args);
+        } finally {
+          holdInstance();
+        }
+      },
+    },
+  }) as unknown as PrismaClient;
 }
 
 const globalForPrisma = globalThis as unknown as {
