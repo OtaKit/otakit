@@ -33,25 +33,28 @@ describe('demo history', () => {
     expect(new DemoConsole(NOW).worlds[0].events.length).toBe(world.events.length);
   });
 
-  it('auto-reverts the broken 2.2.0 and ends with 2.3.0 rolled out on base', async () => {
+  it('auto-reverts the broken 2.2.0 and ends with 2.3.0 rolled out on production', async () => {
     const { body } = await call(demo, 'GET', '/releases?limit=100', NOW);
     const releases = (body as { releases: Array<Record<string, unknown>> }).releases;
-    const broken = releases.find((r) => r.bundleVersion === '2.2.0' && r.channel === null)!;
+    const broken = releases.find((r) => r.bundleVersion === '2.2.0' && r.channel === 'production')!;
     expect(broken.revertedBy).toBe(AUTO_REVERT_REVERTED_BY);
     const revertedAfter =
       Date.parse(String(broken.revertedAt)) - Date.parse(String(broken.promotedAt));
     expect(revertedAfter).toBeLessThan(12 * 60 * 60 * SECOND);
-    const latest = releases.find((r) => r.channel === null && r.runtimeVersion === '5.0')!;
+    const latest = releases.find((r) => r.channel === 'production' && r.runtimeVersion === '5.0')!;
     expect(latest).toMatchObject({ bundleVersion: '2.3.0', rolloutPercent: 100, revertedAt: null });
 
     const summary = (await call(demo, 'GET', '/bundles/summary', NOW)).body as {
-      bundles: Array<{ version: string; isLive: boolean; currentTargets: unknown[] }>;
+      bundles: Array<{ version: string; currentTargets: Array<{ channel: string | null }> }>;
     };
-    const live = summary.bundles.filter((b) => b.isLive).map((b) => b.version);
-    expect(live.sort()).toEqual(['1.9.7', '2.3.0']);
-    expect(
-      summary.bundles.find((b) => b.version === DEMO_NEXT_VERSION)?.currentTargets,
-    ).toHaveLength(2);
+    const onProduction = summary.bundles
+      .filter((b) => b.currentTargets.some((target) => target.channel === 'production'))
+      .map((b) => b.version);
+    expect(onProduction.sort()).toEqual(['1.9.7', '2.3.0']);
+    // The demo has two channels; the next bundle waits on beta.
+    expect(summary.bundles.find((b) => b.version === DEMO_NEXT_VERSION)?.currentTargets).toEqual([
+      expect.objectContaining({ channel: 'beta' }),
+    ]);
   });
 
   it('serves the event list newest first and a zero-filled activity chart', async () => {
@@ -70,7 +73,7 @@ describe('demo history', () => {
       true,
     );
     const byBundle = (
-      await call(demo, 'GET', '/events/timeseries?range=7d&splitBy=bundle&channel=base', NOW)
+      await call(demo, 'GET', '/events/timeseries?range=7d&splitBy=bundle&channel=production', NOW)
     ).body as EventActivity;
     expect(byBundle.segments.map((s) => s.label)).toContain('2.3.0');
   });
@@ -96,14 +99,14 @@ describe('demo changes', () => {
         }>;
       };
       return releases.find(
-        (r) => r.channel === null && r.runtimeVersion === '5.0' && !r.revertedAt,
+        (r) => r.channel === 'production' && r.runtimeVersion === '5.0' && !r.revertedAt,
       )!.id;
     };
 
     // Rules the real service enforces.
     const again = await call(demo, 'POST', '/releases', NOW, {
       bundleId: idOf('2.3.0'),
-      channel: null,
+      channel: 'production',
       expectedCurrentReleaseId: await currentBase(NOW),
     });
     expect(again).toMatchObject({
@@ -124,7 +127,7 @@ describe('demo changes', () => {
     const stableBefore = stableDownloads();
     const released = await call(demo, 'POST', '/releases', now, {
       bundleId: idOf(DEMO_NEXT_VERSION),
-      channel: null,
+      channel: 'production',
       expectedCurrentReleaseId: await currentBase(now),
       rolloutPercent: 10,
     });
@@ -153,7 +156,7 @@ describe('demo changes', () => {
     now += 30 * SECOND;
     await call(demo, 'POST', '/releases', now, {
       bundleId: idOf(DEMO_BROKEN_VERSION),
-      channel: null,
+      channel: 'production',
       expectedCurrentReleaseId: await currentBase(now),
       autoRevert: true,
       autoRevertRatePercent: 20,
@@ -163,7 +166,7 @@ describe('demo changes', () => {
       world.advanceTo(now + i * SECOND);
     }
     const reverted = changes.find((c) => c.type === 'auto_reverted');
-    expect(reverted).toMatchObject({ bundleVersion: DEMO_BROKEN_VERSION, channel: null });
+    expect(reverted).toMatchObject({ bundleVersion: DEMO_BROKEN_VERSION, channel: 'production' });
     expect(reverted!.rollbackSharePercent).toBeGreaterThanOrEqual(20);
   });
 

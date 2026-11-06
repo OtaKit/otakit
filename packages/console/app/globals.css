@@ -134,3 +134,27 @@ body {
     cursor: pointer;
   }
 }
+
+/* A device event streamed in by a live update fades in with a short highlight
+   while the list glides down (the demo's fleet; the dashboard itself does not
+   live-reload). */
+@keyframes event-row-in {
+  from {
+    opacity: 0;
+    background-color: color-mix(in oklab, var(--color-sky-500) 14%, transparent);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+@utility animate-event-row-in {
+  animation: event-row-in 1.6s ease-out backwards;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}

@@ -23,7 +23,7 @@ import { DemoHeader } from './DemoHeader';
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://otakit.app').replace(/\/+$/, '');
 /** How often the event list and chart pick up the fleet's new events. */
-const LIVE_REFRESH_MS = 3000;
+const LIVE_REFRESH_MS = 5000;
 const DEVICES = DEMO_APPS[0].lanes.reduce((sum, lane) => sum + lane.devices, 0);
 
 function demoInitialData(now: number): DashboardInitialData {
@@ -52,7 +52,7 @@ function demoInitialData(now: number): DashboardInitialData {
 }
 
 function missionOf(change: DemoChange): DemoMission[] {
-  const production = change.channel === null;
+  const production = change.channel === 'production';
   const next = change.bundleVersion === DEMO_NEXT_VERSION && production;
   if (change.type === 'released' && next) {
     return change.rolloutPercent === 100 ? ['release', 'complete'] : ['release'];
@@ -109,7 +109,7 @@ export function DemoApp() {
         if (reached.length > 0) setDone((current) => new Set([...current, ...reached]));
         if (change.type === 'auto_reverted') {
           toast.error(
-            `Auto-revert reverted ${change.bundleVersion} on ${change.channel ?? 'base'}`,
+            `Auto-revert reverted ${change.bundleVersion} on ${change.channel ?? 'production'}`,
             {
               description: `${change.rollbackSharePercent}% of its launches rolled back. Devices are returning to the previous bundle.`,
               duration: 12_000,
@@ -156,7 +156,7 @@ export function DemoApp() {
         // Room below the dashboard so the guide never covers its end on phones.
         shellClassName="mb-40 sm:mb-3"
       />
-      <DemoGuide done={done} devices={DEVICES} onReset={reset} />
+      <DemoGuide done={done} onReset={reset} />
     </>
   );
 }
