@@ -101,10 +101,11 @@ otakit rollout --channel production --cancel      # everyone returns to the prev
         apps should start at 5% or more.
       </P>
       <P>
-        To watch a rollout over time, choose <strong>Health</strong> in the bundle row&apos;s ⋯ menu
-        or in its channel badge&apos;s menu. It charts applies, rollbacks and download errors per
-        hour or day, marks each rollout step, and shows the lane&apos;s releases replacing each
-        other. Agents read the same data with <Code>get_release_timeseries</Code>.
+        To watch a rollout over time, click the release&apos;s channel badge in the bundle row, or
+        choose <strong>Activity</strong> in its ⋯ menu for the bundle on every channel. The activity
+        chart above the app&apos;s device events then shows downloads, applies, errors and rollbacks
+        over time, with each release, rollout step and revert marked, and the rollback share above
+        it. Agents read a release&apos;s series with <Code>get_release_timeseries</Code>.
       </P>
 
       <Separator className="my-10" />

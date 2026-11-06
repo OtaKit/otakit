@@ -4,6 +4,8 @@ import { listRecentAppEventsWithStatus } from '@/lib/tinybird/events';
 export async function listEvents(input: {
   appId: string;
   from: Date;
+  /** Exclusive end; omitted means up to now. */
+  to?: Date;
   limit: number;
   platform?: Platform | null;
   action?: DeviceEventAction | null;

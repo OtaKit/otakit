@@ -12,6 +12,7 @@ analytics. It is mainly relevant for advanced self-hosted setups.
 - `endpoints/release_event_counts.pipe`
 - `endpoints/release_health_window.pipe`
 - `endpoints/release_event_timeseries.pipe`
+- `endpoints/app_event_timeseries.pipe`
 - `endpoints/bundle_event_counts.pipe`
 - `endpoints/organization_download_counts.pipe`
 
@@ -27,6 +28,7 @@ The web app and ingest service expect these resource names:
   - `release_event_counts`
   - `release_health_window`
   - `release_event_timeseries`
+  - `app_event_timeseries`
   - `bundle_event_counts`
   - `organization_download_counts`
 

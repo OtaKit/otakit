@@ -118,6 +118,19 @@ function recent(parameters: Record<string, string> = {}) {
   return db.prepare(pipeQuery('app_events_recent', { app_id: 'app-a', ...parameters })).all();
 }
 
+function activity(parameters: Record<string, string> = {}) {
+  return db
+    .prepare(
+      pipeQuery('app_event_timeseries', {
+        app_id: 'app-a',
+        from_ts: '2026-09-01T00:00:00.000Z',
+        to_ts: '2026-09-03T00:00:00.000Z',
+        ...parameters,
+      }),
+    )
+    .all();
+}
+
 function timeseries(parameters: Record<string, string> = {}) {
   return db
     .prepare(
@@ -164,6 +177,7 @@ beforeEach(() => {
     (value) => `${String(value).slice(0, 10)}T00:00:00.000Z`,
   );
   db.function('toUnixTimestamp', (value) => Math.floor(Date.parse(String(value)) / 1000));
+  db.function('intDiv', (left, right) => Math.floor(Number(left) / Number(right)));
   db.function('splitByChar', (separator, value) =>
     JSON.stringify(String(value).split(String(separator))),
   );
@@ -374,5 +388,108 @@ describe('release event timeseries', () => {
         last_received_at: seconds('2026-09-02T23:30:00Z'),
       },
     ]);
+  });
+});
+
+describe('recent events end bound', () => {
+  it('keeps events first received before to_ts, once', () => {
+    addEvent('inside', '2026-09-01T10:00:00.000Z');
+    addEvent('inside', '2026-09-01T12:00:00.000Z');
+    addEvent('at-end', '2026-09-01T11:00:00.000Z');
+    addEvent('before', '2026-09-01T09:59:59.999Z');
+    const rows = recent({
+      from_ts: '2026-09-01T10:00:00.000Z',
+      to_ts: '2026-09-01T11:00:00.000Z',
+    });
+    expect(rows.map((row) => row.event_id)).toEqual(['inside']);
+    expect(rows[0]).toMatchObject({ received_at: '2026-09-01T10:00:00.000Z' });
+  });
+});
+
+describe('app event timeseries', () => {
+  const counts = (rows: Record<string, SQLOutputValue>[]) =>
+    rows.map((row) => `${row.bucket_start} ${row.action} ${row.segment} ${row.events_count}`);
+
+  it('buckets each identity once, by its earliest receipt', () => {
+    addEvent('applied', '2026-09-01T10:15:00.000Z', { action: 'applied' });
+    // A retry in a later bucket of the same event.
+    addEvent('applied', '2026-09-01T12:00:00.000Z', { action: 'applied' });
+    addEvent('applied-2', '2026-09-01T10:59:59.999Z', { action: 'applied' });
+    addEvent('rollback', '2026-09-01T11:00:00.000Z', { action: 'rollback' });
+    // First received before the range, retried inside it: not counted.
+    addEvent('earlier', '2026-08-31T23:59:59.999Z', { action: 'applied' });
+    addEvent('earlier', '2026-09-01T10:30:00.000Z', { action: 'applied' });
+    // First received inside the range, retried after it: counted once.
+    addEvent('retried-later', '2026-09-02T23:30:00.000Z');
+    addEvent('retried-later', '2026-09-03T00:30:00.000Z');
+    addEvent('after-range', '2026-09-03T00:00:00.000Z');
+    expect(counts(activity({ bucket_seconds: '3600' }))).toEqual([
+      `${seconds('2026-09-01T10:00:00Z')} applied  2`,
+      `${seconds('2026-09-01T11:00:00Z')} rollback  1`,
+      `${seconds('2026-09-02T23:00:00Z')} downloaded  1`,
+    ]);
+  });
+
+  it('shifts buckets so they start on the viewer clock', () => {
+    // Local times: UTC+1 → 05:30 Sep 1, 00:30 Sep 2, 04:30 Sep 2;
+    //              UTC-5 → 23:30 Aug 31, 18:30 Sep 1, 22:30 Sep 1.
+    addEvent('dawn', '2026-09-01T04:30:00.000Z');
+    addEvent('late', '2026-09-01T23:30:00.000Z');
+    addEvent('early', '2026-09-02T03:30:00.000Z');
+    expect(counts(activity({ bucket_seconds: '86400' }))).toEqual([
+      `${seconds('2026-09-01T00:00:00Z')} downloaded  2`,
+      `${seconds('2026-09-02T00:00:00Z')} downloaded  1`,
+    ]);
+    // UTC+1: local days start at 23:00 UTC.
+    expect(counts(activity({ bucket_seconds: '86400', shift_seconds: '3600' }))).toEqual([
+      `${seconds('2026-08-31T23:00:00Z')} downloaded  1`,
+      `${seconds('2026-09-01T23:00:00Z')} downloaded  2`,
+    ]);
+    // UTC-5: local days start at 05:00 UTC; the shift is -5h modulo a day.
+    expect(counts(activity({ bucket_seconds: '86400', shift_seconds: '68400' }))).toEqual([
+      `${seconds('2026-08-31T05:00:00Z')} downloaded  1`,
+      `${seconds('2026-09-01T05:00:00Z')} downloaded  2`,
+    ]);
+  });
+
+  it('splits by one dimension, with null channel and runtime as empty', () => {
+    addEvent('base', '2026-09-01T10:00:00.000Z');
+    addEvent('beta', '2026-09-01T10:10:00.000Z', {
+      channel: 'beta',
+      runtime_version: 'r2',
+      bundle_version: '2.0',
+      platform: 'android',
+    });
+    const split = (split_by: string) => counts(activity({ bucket_seconds: '86400', split_by }));
+    const day = seconds('2026-09-01T00:00:00Z');
+    expect(split('action')).toEqual([`${day} downloaded  2`]);
+    expect(split('bundle')).toEqual([`${day} downloaded 1.0 1`, `${day} downloaded 2.0 1`]);
+    expect(split('channel')).toEqual([`${day} downloaded  1`, `${day} downloaded beta 1`]);
+    expect(split('platform')).toEqual([`${day} downloaded android 1`, `${day} downloaded ios 1`]);
+    expect(split('runtime')).toEqual([`${day} downloaded  1`, `${day} downloaded r2 1`]);
+  });
+
+  it('applies the event list filters and app scope', () => {
+    addEvent('base', '2026-09-01T10:00:00.000Z');
+    addEvent('beta', '2026-09-01T10:00:00.000Z', { channel: 'beta', runtime_version: 'r2' });
+    addEvent('android', '2026-09-01T10:00:00.000Z', {
+      platform: 'android',
+      action: 'rollback',
+      bundle_version: '2.0',
+    });
+    addEvent('other-app', '2026-09-01T10:00:00.000Z', { app_id: 'app-b' });
+    const total = (parameters: Record<string, string>) =>
+      activity({ bucket_seconds: '86400', ...parameters }).reduce(
+        (sum, row) => sum + Number(row.events_count),
+        0,
+      );
+    expect(total({})).toBe(3);
+    expect(total({ platform: 'android' })).toBe(1);
+    expect(total({ action: 'rollback', bundle_version: '2.0' })).toBe(1);
+    expect(total({ channel_is_null: '1' })).toBe(2);
+    expect(total({ channel_is_null: '0', channel: 'beta' })).toBe(1);
+    expect(total({ runtime_version_is_null: '1' })).toBe(2);
+    expect(total({ runtime_version_is_null: '0', runtime_version: 'r2' })).toBe(1);
+    expect(total({ app_id: 'app-b' })).toBe(1);
   });
 });
