@@ -245,31 +245,28 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 A full-featured web dashboard to manage and monitor your releases in real-time.
               </p>
             </div>
-            {/* Dashboard mockup — tilted back in 3D. Its bottom fades into the
-                live demo's call to action, which sits below it on phones. */}
+            {/* Dashboard mockup — tilted back in 3D. Its last rows fade into the
+                live demo's call to action below it. */}
             <div className="relative overflow-clip bg-[linear-gradient(180deg,rgba(245,245,240,0.9)_0%,rgba(250,250,248,0.98)_54%,rgba(255,255,255,1)_100%)] px-6 pt-8 [perspective:2200px] dark:bg-[linear-gradient(180deg,rgba(18,18,16,0.96)_0%,rgba(12,12,11,0.98)_54%,rgba(10,10,9,1)_100%)]">
               <div className="dashboard-tilt relative mx-auto max-w-6xl origin-top [transform:rotateX(7deg)]">
                 <div className="pointer-events-none absolute inset-x-[10%] top-4 h-24 rounded-full bg-foreground/10 opacity-20 blur-3xl" />
                 <ScaleToFit
                   designWidth={1152}
                   maxScale={0.8}
-                  cropBottom={72}
+                  cropBottom={24}
                   boxClassName="rounded-t-2xl border border-border bg-background shadow-[0_56px_150px_-72px_rgba(15,23,42,0.65)]"
                 >
                   <DashboardPreview />
                 </ScaleToFit>
               </div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-60 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.92)_40%,rgba(255,255,255,1)_100%)] sm:h-[20%] dark:bg-[linear-gradient(180deg,rgba(10,10,9,0)_0%,rgba(10,10,9,0.92)_40%,rgba(10,10,9,1)_100%)]" />
-              <div className="relative z-20 flex flex-col items-center pb-10 pt-6 sm:-mt-24 sm:pt-0">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.92)_30%,rgba(255,255,255,1)_100%)] sm:h-44 dark:bg-[linear-gradient(180deg,rgba(10,10,9,0)_0%,rgba(10,10,9,0.92)_30%,rgba(10,10,9,1)_100%)]" />
+              <div className="relative z-20 flex justify-center pb-10 pt-6 sm:pb-16 sm:pt-4">
                 <Link href={`${site.console}/demo`}>
                   <Button size="lg" className="group rounded-full px-8">
                     Try the live demo
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                   </Button>
                 </Link>
-                <p className="mt-3 text-balance text-center text-sm text-muted-foreground">
-                  The real dashboard on a simulated fleet. No sign-up.
-                </p>
               </div>
             </div>
           </div>
