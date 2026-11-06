@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import {
+  ArrowDown,
   ArrowRight,
   Bot,
   BookOpen,
@@ -195,12 +196,14 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             </div>
             <div className="grid gap-px bg-border sm:grid-cols-3">
               <StepCard
+                next
                 number="01"
                 title="Install"
                 description="Add the OtaKit plugin to your Capacitor app and publish once to the stores."
                 code="npm install @otakit/capacitor-updater"
               />
               <StepCard
+                next
                 number="02"
                 title="Upload"
                 description="Make changes, build your app, and upload the new web bundle to OtaKit."
@@ -240,22 +243,22 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 A full-featured web dashboard to manage and monitor your releases in real-time.
               </p>
             </div>
-            {/* Dashboard mockup — tilted back in 3D. Its last rows fade out under
-                the live demo's call to action, which floats on its bottom edge. */}
+            {/* Dashboard mockup — tilted back in 3D, running into the section's
+                bottom border. Its last rows fade out under the live demo's call
+                to action, which floats on them. */}
             <div className="relative overflow-clip bg-[linear-gradient(180deg,rgba(245,245,240,0.9)_0%,rgba(250,250,248,0.98)_54%,rgba(255,255,255,1)_100%)] px-6 pt-8 [perspective:2200px] dark:bg-[linear-gradient(180deg,rgba(18,18,16,0.96)_0%,rgba(12,12,11,0.98)_54%,rgba(10,10,9,1)_100%)]">
               <div className="dashboard-tilt relative mx-auto max-w-6xl origin-top [transform:rotateX(7deg)]">
                 <div className="pointer-events-none absolute inset-x-[10%] top-4 h-24 rounded-full bg-foreground/10 opacity-20 blur-3xl" />
                 <ScaleToFit
                   designWidth={1152}
                   maxScale={0.7}
-                  cropBottom={24}
                   boxClassName="rounded-t-2xl border border-border bg-background shadow-[0_56px_150px_-72px_rgba(15,23,42,0.65)]"
                 >
                   <DashboardPreview />
                 </ScaleToFit>
               </div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-20 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.9)_60%,rgba(255,255,255,1)_100%)] sm:h-24 dark:bg-[linear-gradient(180deg,rgba(10,10,9,0)_0%,rgba(10,10,9,0.9)_60%,rgba(10,10,9,1)_100%)]" />
-              <div className="relative z-20 -mt-8 flex justify-center pb-10 sm:-mt-12 sm:pb-12">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-16 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.85)_65%,rgba(255,255,255,1)_100%)] sm:h-28 dark:bg-[linear-gradient(180deg,rgba(10,10,9,0)_0%,rgba(10,10,9,0.85)_65%,rgba(10,10,9,1)_100%)]" />
+              <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center sm:bottom-8">
                 <Link href={`${site.console}/demo`}>
                   <Button size="lg" className="group rounded-full px-8">
                     Try the live demo
@@ -475,20 +478,20 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
           <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">{copy.ctaTitle}</h2>
           <p className="mt-4 text-lg text-muted-foreground">{copy.ctaSub}</p>
           <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link href={`${site.console}/login`}>
-              <Button size="lg" className="group rounded-full px-8">
+            <Link href={`${site.console}/login`} className="w-60 sm:w-auto">
+              <Button size="lg" className="group w-full rounded-full px-8 sm:w-auto">
                 <span className="shimmer">Get started free</span>
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
             </Link>
-            <Link href="/docs" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="lg" className="rounded-full px-8">
+            <Link href="/docs" target="_blank" rel="noopener noreferrer" className="w-60 sm:w-auto">
+              <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto">
                 <BookOpen className="size-4" />
                 Documentation
               </Button>
             </Link>
-            <Link href={`${site.console}/demo`}>
-              <Button variant="outline" size="lg" className="rounded-full px-8">
+            <Link href={`${site.console}/demo`} className="w-60 sm:w-auto">
+              <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto">
                 <MousePointerClick className="size-4" />
                 Live demo
               </Button>
@@ -696,14 +699,17 @@ function StepCard({
   title,
   description,
   code,
+  next = false,
 }: {
   number: string;
   title: string;
   description: string;
   code: string;
+  /** Points to the following step: right on wide screens, down on phones. */
+  next?: boolean;
 }) {
   return (
-    <div className="bg-background p-8 sm:p-12">
+    <div className="relative bg-background p-8 sm:p-12">
       <span className="font-mono text-sm text-muted-foreground/50">{number}</span>
       <h3 className="mt-3 text-lg font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
@@ -711,6 +717,15 @@ function StepCard({
         <span className="opacity-50">$ </span>
         {code}
       </pre>
+      {next ? (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-1/2 z-10 flex size-8 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground sm:bottom-auto sm:left-auto sm:right-0 sm:top-1/2 sm:translate-x-1/2 sm:-translate-y-1/2"
+        >
+          <ArrowDown className="size-3.5 sm:hidden" />
+          <ArrowRight className="hidden size-3.5 sm:block" />
+        </span>
+      ) : null}
     </div>
   );
 }
