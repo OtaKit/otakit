@@ -1,6 +1,26 @@
 {
   "entries": [
     {
+      "slug": "live-demo",
+      "date": "2026-11-06",
+      "type": "feature",
+      "title": "Live demo of the dashboard",
+      "areas": ["Dashboard"],
+      "versions": {},
+      "summary": "Try the real OtaKit dashboard on 72,000 simulated devices, with no sign-up. Bundles, releases, channels, events and the activity chart all respond as they would for your app.",
+      "highlights": [
+        "Release a bundle to a share of devices, complete the rollout and watch the new version land in the chart.",
+        "Ship a broken bundle with auto-revert on and see it reverted once rollbacks cross the threshold.",
+        "Open bundle changes, preview links with QR codes and the event list, all running in your browser."
+      ],
+      "links": [
+        {
+          "label": "Open the live demo",
+          "href": "https://console.otakit.app/demo"
+        }
+      ]
+    },
+    {
       "slug": "activity-chart",
       "date": "2026-11-06",
       "type": "improvement",
