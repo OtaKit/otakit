@@ -2696,23 +2696,13 @@ Try the real OtaKit dashboard on 72,000 simulated devices, with no sign-up. Bund
 
 Docs: Open the live demo (https://console.otakit.app/demo)
 
-### Activity chart above device events (2026-11-06)
+### Release health and activity chart (2026-11-05, CLI 1.12.0)
 
-Device activity over time now sits on the app page, above the event list and under the same filters, with every release, rollout step and revert marked on it.
+Watch every release spread and stay healthy: device activity over time on the app page, above the event list and under the same filters, with each release, rollout step and revert marked on it.
 
 - Split the bars by action, bundle, channel, platform or runtime. The range sets the bucket size: per minute, per 30 minutes, per 3 hours or per day.
-- Click a bar to list that bucket's events, or a legend entry to filter to it.
-- Activity in a bundle's ⋯ menu filters the chart to that bundle; its channel badge narrows it to that release. It replaces the Health dialog.
-
-Docs: Rollouts guide (/docs/rollouts)
-
-### Release health charts (2026-11-05, CLI 1.12.0)
-
-Watch a release spread and stay healthy over time: applies, rollbacks and download errors per hour or day, with each rollout step marked.
-
-- Choose Health on a release in the dashboard. View 24 hours, 7 days or 30 days, for all platforms or only iOS or Android.
-- With auto-revert on, the rollback share turns amber, then red, as a release nears its threshold.
-- See the release next to the ones before and after it on the same channel, and read the same data over the REST API or with the `get_release_timeseries` agent tool.
+- The totals show downloads, applies, errors, rollbacks and the rollback share auto-revert watches. Click a bar to list its events, or a legend entry to filter to it.
+- Activity in a bundle's ⋯ menu filters to that bundle, and its channel badge to that release. Read a release's numbers over the REST API or with the `get_release_timeseries` agent tool.
 
 Docs: Rollouts guide (/docs/rollouts)
 

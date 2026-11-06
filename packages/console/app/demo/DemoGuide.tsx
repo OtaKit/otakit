@@ -14,8 +14,8 @@ export type DemoMission = 'release' | 'complete' | 'autoRevert';
 const STEPS: Array<{ id: DemoMission; title: string; hint: string }> = [
   {
     id: 'release',
-    title: `Release ${DEMO_NEXT_VERSION} to production`,
-    hint: `Press Release in the ${DEMO_NEXT_VERSION} row, keep the base channel (production) and roll out to 10% of devices. Then set Events to Last 1 hour to watch it land.`,
+    title: `Release ${DEMO_NEXT_VERSION} to 10% of devices`,
+    hint: `Press Release in the ${DEMO_NEXT_VERSION} row and roll out to 10%. Then set Events to Last 1 hour to watch it land.`,
   },
   {
     id: 'complete',
@@ -25,7 +25,7 @@ const STEPS: Array<{ id: DemoMission; title: string; hint: string }> = [
   {
     id: 'autoRevert',
     title: `Ship ${DEMO_BROKEN_VERSION} and let auto-revert catch it`,
-    hint: `${DEMO_BROKEN_VERSION} crashes on launch. Release it to base with "Auto-revert if unhealthy" ticked, then watch the rollbacks.`,
+    hint: `${DEMO_BROKEN_VERSION} crashes on launch. Release it with "Auto-revert if unhealthy" ticked, then watch the rollbacks.`,
   },
 ];
 

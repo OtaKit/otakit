@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import {
+  ArrowDown,
   ArrowRight,
   BookOpen,
   Bot,
@@ -148,12 +149,6 @@ export default function PushLandingPage() {
           </Link>
           <nav className="ml-auto flex items-center gap-1">
             <Link
-              href={`${site.console}/demo`}
-              className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
-            >
-              Demo
-            </Link>
-            <Link
               href="/#pricing"
               className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
             >
@@ -265,12 +260,14 @@ export default function PushLandingPage() {
           </div>
           <div className="grid gap-px bg-border sm:grid-cols-3">
             <StepCard
+              next
               number="01"
               title="Upload your keys"
               description="Your APNs key for iOS and your Firebase service account for Android. OtaKit tests them with Apple and Google right away."
               code="Push → Setup"
             />
             <StepCard
+              next
               number="02"
               title="Register devices"
               description="Add the official Capacitor plugin and a small helper that sends the device token to OtaKit, with your user ID and topics."
@@ -430,14 +427,14 @@ export default function PushLandingPage() {
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">Free to start. No credit card.</p>
           <div className="mt-20 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link href={SIGN_UP_URL}>
-              <Button size="lg" className="group rounded-full px-8">
+            <Link href={SIGN_UP_URL} className="w-60 sm:w-auto">
+              <Button size="lg" className="group w-full rounded-full px-8 sm:w-auto">
                 <span className="shimmer">Get started free</span>
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </Button>
             </Link>
-            <Link href="/docs/push">
-              <Button variant="outline" size="lg" className="rounded-full px-8">
+            <Link href="/docs/push" className="w-60 sm:w-auto">
+              <Button variant="outline" size="lg" className="w-full rounded-full px-8 sm:w-auto">
                 <BookOpen className="size-4" />
                 Read the push docs
               </Button>
@@ -542,6 +539,7 @@ export default function PushLandingPage() {
             title="Product"
             links={[
               { label: 'Pricing', href: '/#pricing' },
+              { label: 'Live demo', href: `${site.console}/demo` },
               { label: 'Push notifications', href: '/push' },
               { label: 'Changelog', href: '/changelog' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
@@ -634,20 +632,32 @@ function StepCard({
   title,
   description,
   code,
+  next = false,
 }: {
   number: string;
   title: string;
   description: string;
   code: string;
+  /** Points to the following step: right on wide screens, down on phones. */
+  next?: boolean;
 }) {
   return (
-    <div className="bg-background p-8 sm:p-12">
+    <div className="relative bg-background p-8 sm:p-12">
       <span className="font-mono text-sm text-muted-foreground/50">{number}</span>
       <h3 className="mt-3 text-lg font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
       <pre className="mt-4 overflow-x-auto rounded-lg border border-border bg-background/50 px-4 py-3 font-mono text-[12px] text-muted-foreground bg-muted">
         {code}
       </pre>
+      {next ? (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-1/2 z-10 flex size-8 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground sm:bottom-auto sm:left-auto sm:right-0 sm:top-1/2 sm:translate-x-1/2 sm:-translate-y-1/2"
+        >
+          <ArrowDown className="size-3.5 sm:hidden" />
+          <ArrowRight className="hidden size-3.5 sm:block" />
+        </span>
+      ) : null}
     </div>
   );
 }
