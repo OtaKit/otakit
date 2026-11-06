@@ -2,7 +2,15 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useMemo, useState, useEffect, useCallback, useRef, type ElementType } from 'react';
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ElementType,
+  type ReactNode,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
@@ -435,6 +443,15 @@ type ProductDashboardProps = {
   dashboardHref?: string;
   settingsHref?: string;
   docsHref?: string;
+  /** Replaces the console header (the demo brings its own). */
+  header?: ReactNode;
+  /** Where this browser remembers the selected app. */
+  selectionStorageKey?: string;
+  /**
+   * Bump a counter to reload quietly, without loading states: `events` reloads
+   * the event list and chart, `releases` the bundles and release history.
+   */
+  liveRefresh?: { events: number; releases: number };
 };
 
 /* ─── Main Component ───────────────────────────────────────────────── */
@@ -446,13 +463,15 @@ export function ProductDashboard({
   dashboardHref,
   settingsHref,
   docsHref,
+  header,
+  selectionStorageKey = 'selectedAppId',
+  liveRefresh,
 }: ProductDashboardProps) {
   const router = useRouter();
   // Docs live on the marketing site, not the console — resolve an absolute base
   // so these links don't 404 against console.otakit.app.
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://otakit.app').replace(/\/+$/, '');
   const docsUrl = docsHref ?? `${siteUrl}/docs`;
-  const selectionStorageKey = 'selectedAppId';
   const [apps, setApps] = useState<AppSummary[]>(initialData.apps);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
   const [pricingDialogBillingData, setPricingDialogBillingData] =
@@ -519,6 +538,7 @@ export function ProductDashboard({
     : 'action';
   const [eventWindow, setEventWindow] = useState<ActivityWindow | null>(null);
   const activityRequest = useRef(0);
+  const eventsRequest = useRef(0);
   const [visibleBundleCount, setVisibleBundleCount] = useState(5);
   const [visibleEventCount, setVisibleEventCount] = useState(20);
   const [bundleColumnsDialogOpen, setBundleColumnsDialogOpen] = useState(false);
@@ -912,25 +932,31 @@ export function ProductDashboard({
 
   // ── Data loading ──────────────────────────────────────────────────
 
-  const loadBundles = useCallback(async (appId: string) => {
-    setLoadingBundles(true);
+  // `silent` reloads keep what is shown on failure and show no loading state.
+  const loadBundles = useCallback(async (appId: string, options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) setLoadingBundles(true);
     try {
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/bundles/summary`);
       const data = await parseJson<{ bundles?: BundleSummaryItem[] } & ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Failed to load bundles');
       setBundles(data.bundles ?? []);
     } catch (err) {
+      if (silent) return;
       toast.error(err instanceof Error ? err.message : 'Failed to load bundles');
       setBundles([]);
     } finally {
-      setLoadingBundles(false);
+      if (!silent) setLoadingBundles(false);
       setBundlesLoadedOnce(true);
     }
   }, []);
 
   const loadEvents = useCallback(
-    async (appId: string) => {
-      setLoadingEvents(true);
+    async (appId: string, options?: { silent?: boolean }) => {
+      const silent = options?.silent === true;
+      // Filters can change faster than responses arrive; only the newest counts.
+      const request = ++eventsRequest.current;
+      if (!silent) setLoadingEvents(true);
       try {
         const params = new URLSearchParams({
           platform: eventPlatform,
@@ -951,12 +977,13 @@ export function ProductDashboard({
         );
         const data = await parseJson<{ events?: DeviceEvent[] } & ApiError>(res);
         if (!res.ok) throw new Error(data.error ?? 'Failed to load events');
-        setAppEvents(data.events ?? []);
+        if (request === eventsRequest.current) setAppEvents(data.events ?? []);
       } catch (err) {
+        if (silent || request !== eventsRequest.current) return;
         toast.error(err instanceof Error ? err.message : 'Failed to load events');
         setAppEvents([]);
       } finally {
-        setLoadingEvents(false);
+        if (!silent && request === eventsRequest.current) setLoadingEvents(false);
       }
     },
     [
@@ -971,10 +998,11 @@ export function ProductDashboard({
   );
 
   const loadActivity = useCallback(
-    async (appId: string) => {
+    async (appId: string, options?: { silent?: boolean }) => {
+      const silent = options?.silent === true;
       // Filters can change faster than responses arrive; only the newest counts.
       const request = ++activityRequest.current;
-      setLoadingActivity(true);
+      if (!silent) setLoadingActivity(true);
       try {
         const params = new URLSearchParams({
           platform: eventPlatform,
@@ -993,7 +1021,7 @@ export function ProductDashboard({
         if (!res.ok) throw new Error(data.error ?? 'Failed to load activity');
         if (request === activityRequest.current) setActivity(data);
       } catch (err) {
-        if (request !== activityRequest.current) return;
+        if (silent || request !== activityRequest.current) return;
         toast.error(err instanceof Error ? err.message : 'Failed to load activity');
         setActivity(null);
       } finally {
@@ -1011,19 +1039,39 @@ export function ProductDashboard({
     ],
   );
 
-  const loadReleaseHistory = useCallback(async (appId: string) => {
+  const loadReleaseHistory = useCallback(async (appId: string, options?: { silent?: boolean }) => {
     try {
       const res = await fetch(`/api/v1/apps/${encodeURIComponent(appId)}/releases?limit=100`);
       const data = await parseJson<{ releases?: ReleaseHistoryItem[] } & ApiError>(res);
       if (!res.ok) throw new Error(data.error ?? 'Failed to load release history');
       setReleaseHistory(data.releases ?? []);
     } catch (err) {
+      if (options?.silent) return;
       toast.error(err instanceof Error ? err.message : 'Failed to load release history');
       setReleaseHistory([]);
     } finally {
       setReleasesLoadedOnce(true);
     }
   }, []);
+
+  // Quiet reloads on request (the demo's fleet keeps moving). The latest
+  // loaders are read from a ref so a filter change does not trigger one.
+  const liveLoaders = useRef({ loadBundles, loadEvents, loadActivity, loadReleaseHistory });
+  useEffect(() => {
+    liveLoaders.current = { loadBundles, loadEvents, loadActivity, loadReleaseHistory };
+  });
+  const liveEvents = liveRefresh?.events ?? 0;
+  const liveReleases = liveRefresh?.releases ?? 0;
+  useEffect(() => {
+    if (liveEvents === 0 || !selectedAppId) return;
+    void liveLoaders.current.loadEvents(selectedAppId, { silent: true });
+    void liveLoaders.current.loadActivity(selectedAppId, { silent: true });
+  }, [liveEvents, selectedAppId]);
+  useEffect(() => {
+    if (liveReleases === 0 || !selectedAppId) return;
+    void liveLoaders.current.loadBundles(selectedAppId, { silent: true });
+    void liveLoaders.current.loadReleaseHistory(selectedAppId, { silent: true });
+  }, [liveReleases, selectedAppId]);
 
   useEffect(() => {
     setBundlesLoadedOnce(false);
@@ -1539,14 +1587,16 @@ export function ProductDashboard({
 
   return (
     <div className={cn('m-3 min-h-screen border border-border bg-background', shellClassName)}>
-      <DashboardHeader
-        activeSection="dashboard"
-        showPush={initialData.activeOrganization.pushEnabled}
-        brandHref={brandHref}
-        dashboardHref={dashboardHref}
-        settingsHref={settingsHref}
-        docsHref={docsUrl}
-      />
+      {header ?? (
+        <DashboardHeader
+          activeSection="dashboard"
+          showPush={initialData.activeOrganization.pushEnabled}
+          brandHref={brandHref}
+          dashboardHref={dashboardHref}
+          settingsHref={settingsHref}
+          docsHref={docsUrl}
+        />
+      )}
 
       <main className="relative flex min-h-[calc(100vh-3.5rem)] flex-col">
         <div className="pointer-events-none absolute inset-0 z-10 hidden justify-center sm:flex">

@@ -67,6 +67,12 @@ export default function ChangelogPage() {
           </Link>
           <nav className="ml-auto flex items-center gap-1">
             <Link
+              href={`${site.console}/demo`}
+              className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
+            >
+              Demo
+            </Link>
+            <Link
               href="/#pricing"
               className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
             >

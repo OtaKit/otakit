@@ -34,8 +34,16 @@ function gtagCall(...args: unknown[]) {
   gtag(...args);
 }
 
+// The dashboard demo turns conversions off: a release made there is not a
+// customer's release and must not reach Google Ads or GA4.
+let conversionsEnabled = true;
+
+export function setConversionTracking(enabled: boolean) {
+  conversionsEnabled = enabled;
+}
+
 export function trackConversion(event: ConversionEvent) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !conversionsEnabled) return;
   gtagCall('event', event);
   const label = CONVERSION_LABELS[event];
   if (ADS_ID && label) {

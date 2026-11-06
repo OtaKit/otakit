@@ -3,7 +3,9 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { db } from './db';
 import { sendAutoRevertEmail } from './email';
 
-export const AUTO_REVERT_REVERTED_BY = 'system:auto-revert';
+import { AUTO_REVERT_REVERTED_BY } from './release-actors';
+
+export { AUTO_REVERT_REVERTED_BY };
 
 const ALERT_CLAIM_TIMEOUT_MS = 15 * 60 * 1000;
 
