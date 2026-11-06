@@ -1,9 +1,27 @@
 name: Native updater
 
+# Only when something the native tests build or run can change: the Capacitor
+# plugin, the scripts and Gradle wrapper they use, dependencies, or this file.
 on:
   pull_request:
+    paths:
+      - 'packages/capacitor-plugin/**'
+      - 'scripts/verify-ios-plugin.mjs'
+      - 'examples/demo-app/android/gradlew'
+      - 'examples/demo-app/android/gradle/**'
+      - 'pnpm-lock.yaml'
+      - '.nvmrc'
+      - '.github/workflows/native.yml'
   push:
     branches: [main]
+    paths:
+      - 'packages/capacitor-plugin/**'
+      - 'scripts/verify-ios-plugin.mjs'
+      - 'examples/demo-app/android/gradlew'
+      - 'examples/demo-app/android/gradle/**'
+      - 'pnpm-lock.yaml'
+      - '.nvmrc'
+      - '.github/workflows/native.yml'
 
 concurrency:
   group: native-${{ github.event.pull_request.number || github.ref }}
