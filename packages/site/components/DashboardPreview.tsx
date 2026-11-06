@@ -23,7 +23,6 @@ import {
   RotateCcw,
   Rocket,
   Settings,
-  ShieldAlert,
   SlidersHorizontal,
   Smartphone,
 } from 'lucide-react';
@@ -38,9 +37,8 @@ const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : use
    page, lightly animated so it feels live: events stream in, the current bar of
    the activity chart grows and the totals tick up. Hand-kept in visual sync
    with the real dashboard (packages/console, ProductDashboard and
-   EventActivityChart). The story in the data: 2.2.0 went to a quarter of
-   devices and auto-revert caught it, 2.3.0 fixed it for everyone, and 2.4.0 is
-   on beta and rolling out to 25%. */
+   EventActivityChart). The story in the data: 2.3.0 went to every device
+   yesterday evening, and 2.4.0 is on beta and rolling out to 25%. */
 
 const SIGNUP_URL = `${site.console}/login`;
 
@@ -63,7 +61,7 @@ type Bundle = {
   date: string;
   time: string;
   live: LiveTarget[];
-  previous: Array<{ channel: string; autoReverted?: boolean }>;
+  previous: string[];
 };
 
 const BUNDLES: Bundle[] = [
@@ -100,27 +98,18 @@ const BUNDLES: Bundle[] = [
     runtime: '5.0',
     size: '2.4 MB',
     date: 'Nov 5',
-    time: '07:58 PM',
+    time: '05:12 PM',
     live: [
       {
         channel: 'base',
-        since: 'Nov 5, 08:30 PM',
+        since: 'Nov 5, 06:00 PM',
         by: 'you@acme.com',
-        previous: '2.1.1',
+        previous: '2.2.1',
         autoRevert: true,
         sharedWith: '2.4.0',
       },
     ],
-    previous: [{ channel: 'beta' }],
-  },
-  {
-    version: '2.2.0',
-    runtime: '5.0',
-    size: '2.3 MB',
-    date: 'Nov 5',
-    time: '03:58 PM',
-    live: [],
-    previous: [{ channel: 'base', autoReverted: true }, { channel: 'beta' }],
+    previous: ['beta'],
   },
 ];
 
@@ -143,7 +132,7 @@ const FIRST_HOUR = 15;
 const BASE_DEVICES = 64_000;
 const BETA_DEVICES = 2_600;
 /** When things happened, in buckets since the first bar. */
-const AT = { broken: 3, autoRevert: 6, fix: 11, beta: 37.5, rollout10: 38, rollout25: 44 };
+const AT = { release: 6, beta: 37.5, rollout10: 38, rollout25: 44 };
 
 type Marker = {
   at: number;
@@ -151,20 +140,10 @@ type Marker = {
   channel: string;
   label: string;
   time: string;
-  revert?: boolean;
 };
 
 const MARKERS: Marker[] = [
-  { at: AT.broken, bundle: '2.2.0', channel: 'base', label: 'Released', time: 'Nov 5, 4:30 PM' },
-  {
-    at: AT.autoRevert,
-    bundle: '2.2.0',
-    channel: 'base',
-    label: 'Auto-reverted',
-    time: 'Nov 5, 6:00 PM',
-    revert: true,
-  },
-  { at: AT.fix, bundle: '2.3.0', channel: 'base', label: 'Released', time: 'Nov 5, 8:30 PM' },
+  { at: AT.release, bundle: '2.3.0', channel: 'base', label: 'Released', time: 'Nov 5, 6:00 PM' },
   { at: AT.beta, bundle: '2.4.0', channel: 'beta', label: 'Released', time: 'Nov 6, 9:45 AM' },
   {
     at: AT.rollout10,
@@ -205,59 +184,56 @@ function seededRandom(seed: number) {
 /** Share of devices that open the app in a bucket: quiet at night, busiest late afternoon. */
 function openShare(bucket: number): number {
   const hour = (FIRST_HOUR + bucket / 2 + 0.25) % 24;
-  return 0.025 * (1 + 0.6 * Math.sin((2 * Math.PI * (hour - 10.5)) / 24));
+  return 0.0225 * (1 + 0.6 * Math.sin((2 * Math.PI * (hour - 10.5)) / 24));
 }
 
 /**
  * A small, deterministic fleet model (same on the server and the client):
- * devices download a release when they next open the app.
+ * devices download a release when they next open the app, so a release swells
+ * and fades with the daily rhythm.
  */
 function buildActivity(): Bucket[] {
   const random = seededRandom(20261106);
-  const noise = () => 0.88 + random() * 0.24;
-  let pending = 9_000; // stragglers still moving to 2.1.1
-  let pendingBroken = 0;
+  const noise = () => 0.95 + random() * 0.1;
+  let pending = 14_000; // devices still moving to 2.2.1
   let pendingBeta = 0;
-  let onBroken = 0;
   let previousGood = 0;
-  let previousBrokenGood = 0;
-  const buckets: Bucket[] = [];
+  const raw: Bucket[] = [];
 
   for (let i = 0; i < BUCKETS; i += 1) {
-    // 2.2.0 goes to a quarter of base devices, and auto-revert sends them back.
-    if (i === AT.broken) pendingBroken = Math.round((BASE_DEVICES - pending) * 0.25);
-    if (i === AT.autoRevert) {
-      pendingBroken = 0;
-      pending += Math.round(onBroken * 0.7);
-    }
-    if (i === AT.fix) pending = BASE_DEVICES;
+    if (i === AT.release) pending = BASE_DEVICES;
     if (i === Math.ceil(AT.beta)) pendingBeta = BETA_DEVICES;
-    if (i === AT.rollout10) pending += Math.round((BASE_DEVICES - pending) * 0.1);
-    if (i === AT.rollout25) pending += Math.round((BASE_DEVICES - pending) * 0.15);
+    if (i === AT.rollout10) pending += (BASE_DEVICES - pending) * 0.1;
+    if (i === AT.rollout25) pending += (BASE_DEVICES - pending) * 0.15;
 
     const share = openShare(i);
-    const baseDownloads = Math.round(pending * share * noise());
-    const brokenDownloads = Math.round(pendingBroken * share * noise());
-    const betaDownloads = Math.round(pendingBeta * share * 1.5 * noise());
+    const baseDownloads = pending * share * noise();
+    const betaDownloads = pendingBeta * share * 1.5 * noise();
     pending -= baseDownloads;
-    pendingBroken -= brokenDownloads;
     pendingBeta -= betaDownloads;
 
-    const downloaded = baseDownloads + brokenDownloads + betaDownloads;
-    const downloadError = Math.round(downloaded * 0.012 * noise());
+    const downloaded = baseDownloads + betaDownloads;
+    const downloadError = downloaded * 0.012 * noise();
     const good = downloaded - downloadError;
-    const applied = Math.round(0.55 * good + 0.4 * previousGood);
-    const brokenApplied = Math.round(0.55 * brokenDownloads + 0.4 * previousBrokenGood);
-    onBroken += brokenApplied;
-    const rollback =
-      Math.round(brokenApplied * 0.33 * noise()) + Math.round(applied * 0.004 * noise());
-    const checkError = Math.round((BASE_DEVICES + BETA_DEVICES) * share * 0.0011 * noise());
-
-    buckets.push({ downloaded, applied, downloadError, checkError, rollback });
+    const applied = 0.6 * good + 0.36 * previousGood;
     previousGood = good;
-    previousBrokenGood = brokenDownloads;
+    raw.push({
+      downloaded,
+      applied,
+      downloadError,
+      checkError: (BASE_DEVICES + BETA_DEVICES) * share * 0.0011 * noise(),
+      rollback: applied * 0.004 * noise(),
+    });
   }
-  return buckets;
+
+  // Devices check in over a while rather than all at once: ease each series.
+  let eased = raw[0];
+  return raw.map((bucket) => {
+    eased = Object.fromEntries(
+      ACTIONS.map(({ key }) => [key, eased[key] * 0.45 + bucket[key] * 0.55]),
+    ) as Bucket;
+    return Object.fromEntries(ACTIONS.map(({ key }) => [key, Math.round(eased[key])])) as Bucket;
+  });
 }
 
 const FULL_ACTIVITY = buildActivity();
@@ -287,7 +263,7 @@ function niceTicks(max: number): number[] {
   const raw = max / 4;
   const power = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * power).find((m) => m >= raw) ?? raw;
-  const top = Math.ceil(max / step) * step;
+  const top = Math.ceil((max * 1.04) / step) * step;
   return Array.from({ length: Math.round(top / step) + 1 }, (_, index) => index * step);
 }
 
@@ -340,7 +316,7 @@ type EventRow = {
 };
 
 // Rows visible in the events viewport (its height is frozen to exactly this).
-const VISIBLE_ROWS = 6;
+const VISIBLE_ROWS = 5;
 
 const INITIAL_EVENTS: EventRow[] = [
   { id: 5, platform: 'iOS', action: 'Applied', bundle: '2.4.0', channel: 'base' },
@@ -348,12 +324,11 @@ const INITIAL_EVENTS: EventRow[] = [
   { id: 3, platform: 'iOS', action: 'Applied', bundle: '2.4.0', channel: 'beta' },
   { id: 2, platform: 'Android', action: 'Download error', bundle: '2.3.0', channel: 'base' },
   { id: 1, platform: 'iOS', action: 'Downloaded', bundle: '2.4.0', channel: 'base' },
-  { id: 0, platform: 'Android', action: 'Applied', bundle: '2.3.0', channel: 'base' },
 ].map((event) => ({ ...event, time: 'Nov 6, 02:41 PM', runtime: '5.0' }) as EventRow);
 
 const BUNDLE_ROUTES: Array<{ bundle: string; channel: string; weight: number }> = [
-  { bundle: '2.3.0', channel: 'base', weight: 0.55 },
-  { bundle: '2.4.0', channel: 'base', weight: 0.3 },
+  { bundle: '2.3.0', channel: 'base', weight: 0.6 },
+  { bundle: '2.4.0', channel: 'base', weight: 0.25 },
   { bundle: '2.4.0', channel: 'beta', weight: 0.15 },
 ];
 
@@ -478,15 +453,9 @@ function LivePill({ live }: { live: LiveTarget }) {
   );
 }
 
-function PrevPill({ channel, autoReverted }: { channel: string; autoReverted?: boolean }) {
+function PrevPill({ channel }: { channel: string }) {
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground"
-      title={autoReverted ? 'Previously live · auto-reverted' : 'Previously live'}
-    >
-      {autoReverted ? (
-        <ShieldAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
-      ) : null}
+    <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
       {channel}
     </span>
   );
@@ -642,8 +611,8 @@ function ActivityChart({ current }: { current: Bucket }) {
               className="pointer-events-none absolute inset-y-0 border-l border-dashed"
               style={{
                 left: `${(marker.at / BUCKETS) * 100}%`,
-                borderColor: marker.revert ? '#ef4444' : 'var(--foreground)',
-                opacity: marker.revert ? 0.8 : 0.5,
+                borderColor: 'var(--foreground)',
+                opacity: 0.5,
               }}
             />
           ))}
@@ -700,7 +669,7 @@ function ActivityChart({ current }: { current: Bucket }) {
                 <span className="flex h-5 items-center gap-1 rounded-full border bg-background px-1.5 font-mono text-[10px] leading-none text-foreground shadow-xs">
                   <span
                     className="size-1.5 rounded-full"
-                    style={{ background: newest.revert ? '#ef4444' : 'var(--foreground)' }}
+                    style={{ background: 'var(--foreground)' }}
                   />
                   {newest.bundle}
                   {cluster.length > 1 ? (
@@ -954,8 +923,8 @@ export function DashboardPreview() {
                     {b.live.map((l) => (
                       <LivePill key={l.channel} live={l} />
                     ))}
-                    {b.previous.map((p) => (
-                      <PrevPill key={p.channel} channel={p.channel} autoReverted={p.autoReverted} />
+                    {b.previous.map((channel) => (
+                      <PrevPill key={channel} channel={channel} />
                     ))}
                     {b.live.length === 0 && b.previous.length === 0 ? 'Not released' : null}
                   </div>
