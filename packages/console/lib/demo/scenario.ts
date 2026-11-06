@@ -1,9 +1,10 @@
 /**
- * The dashboard demo's starting point: an organization with two apps, their
- * lanes (who runs what), bundles and 30 days of release history. Times are
- * offsets before the moment the demo opens. Auto-reverts are not scripted:
- * the simulation reverts a release when its rollbacks cross the threshold,
- * exactly as it does for releases made in the demo.
+ * The dashboard demo's starting point: an organization with one app, its
+ * lanes (who runs what) on the production and beta channels, bundles and 30
+ * days of release history. Times are offsets before the moment the demo
+ * opens. Auto-reverts are not scripted: the simulation reverts a release when
+ * its rollbacks cross the threshold, exactly as it does for releases made in
+ * the demo.
  */
 
 const MINUTE = 60_000;
@@ -74,10 +75,9 @@ export const DEMO_APPS: DemoAppSpec[] = [
     createdAgo: 120 * DAY,
     seed: 20261106,
     lanes: [
-      { channel: null, runtimeVersion: '5.0', devices: 64_000, iosShare: 0.58 },
-      { channel: null, runtimeVersion: '4.0', devices: 5_200, iosShare: 0.52 },
+      { channel: 'production', runtimeVersion: '5.0', devices: 64_000, iosShare: 0.58 },
+      { channel: 'production', runtimeVersion: '4.0', devices: 5_200, iosShare: 0.52 },
       { channel: 'beta', runtimeVersion: '5.0', devices: 2_600, iosShare: 0.66 },
-      { channel: 'staging', runtimeVersion: '5.0', devices: 120, iosShare: 0.5 },
     ],
     bundles: [
       {
@@ -134,15 +134,13 @@ export const DEMO_APPS: DemoAppSpec[] = [
       },
     ],
     releases: [
-      { version: '1.9.6', channel: null, ago: 52 * DAY, by: MAYA },
-      { version: '2.0.3', channel: null, ago: 41 * DAY, by: CI },
+      { version: '1.9.6', channel: 'production', ago: 52 * DAY, by: MAYA },
+      { version: '2.0.3', channel: 'production', ago: 41 * DAY, by: CI },
       { version: '2.0.3', channel: 'beta', ago: 41 * DAY, by: CI },
-      { version: '2.0.3', channel: 'staging', ago: 41 * DAY, by: CI },
-      { version: '2.1.0', channel: 'staging', ago: 31 * DAY, by: CI },
       { version: '2.1.0', channel: 'beta', ago: 29 * DAY, by: MAYA },
       {
         version: '2.1.0',
-        channel: null,
+        channel: 'production',
         ago: 27 * DAY,
         by: MAYA,
         rolloutPercent: 10,
@@ -154,18 +152,17 @@ export const DEMO_APPS: DemoAppSpec[] = [
       },
       {
         version: '2.1.1',
-        channel: null,
+        channel: 'production',
         ago: 23 * DAY,
         by: JONAS,
         forceImmediate: true,
         notes: 'Fixes a crash when opening a shared plan link.',
       },
       { version: '2.1.1', channel: 'beta', ago: 23 * DAY, by: JONAS },
-      { version: '2.2.0', channel: 'staging', ago: 18 * DAY, by: CI },
       { version: '2.2.0', channel: 'beta', ago: 17 * DAY, by: CI },
       {
         version: '2.2.0',
-        channel: null,
+        channel: 'production',
         ago: 15 * DAY,
         by: CI,
         rolloutPercent: 25,
@@ -175,7 +172,7 @@ export const DEMO_APPS: DemoAppSpec[] = [
       { version: '2.2.1', channel: 'beta', ago: 14 * DAY, by: MAYA },
       {
         version: '2.2.1',
-        channel: null,
+        channel: 'production',
         ago: 13 * DAY,
         by: MAYA,
         rolloutPercent: 20,
@@ -183,12 +180,17 @@ export const DEMO_APPS: DemoAppSpec[] = [
         autoRevert: { ratePercent: 20, minSample: 50 },
         notes: 'Redesigned home screen, with the Android 10 launch crash fixed.',
       },
-      { version: '1.9.7', channel: null, ago: 9 * DAY, by: MAYA, notes: 'Fixes the sync banner.' },
-      { version: '2.3.0', channel: 'staging', ago: 8 * DAY, by: CI },
+      {
+        version: '1.9.7',
+        channel: 'production',
+        ago: 9 * DAY,
+        by: MAYA,
+        notes: 'Fixes the sync banner.',
+      },
       { version: '2.3.0', channel: 'beta', ago: 6 * DAY, by: JONAS },
       {
         version: '2.3.0',
-        channel: null,
+        channel: 'production',
         ago: 22 * HOUR,
         by: MAYA,
         rolloutPercent: 10,
@@ -199,7 +201,6 @@ export const DEMO_APPS: DemoAppSpec[] = [
         autoRevert: { ratePercent: 20, minSample: 100 },
         notes: 'Weekly goals and offline workouts.',
       },
-      { version: '2.4.0', channel: 'staging', ago: 26 * HOUR, by: CI },
       {
         version: '2.4.0',
         channel: 'beta',
@@ -207,24 +208,6 @@ export const DEMO_APPS: DemoAppSpec[] = [
         by: JONAS,
         notes: 'Streaks and a new progress chart.',
       },
-    ],
-  },
-  {
-    id: 'a51c0e2b-8d4f-4e6a-b1c9-3f2e7d6a8b90',
-    slug: 'com.acme.studio',
-    createdAgo: 70 * DAY,
-    seed: 77,
-    lanes: [{ channel: null, runtimeVersion: '1.2', devices: 380, iosShare: 0.71 }],
-    bundles: [
-      { version: '0.8.0', runtimeVersion: '1.2', uploadedAgo: 40 * DAY + HOUR, size: 960_114 },
-      { version: '0.9.0', runtimeVersion: '1.2', uploadedAgo: 20 * DAY + HOUR, size: 1_012_486 },
-      { version: '0.9.1', runtimeVersion: '1.2', uploadedAgo: 6 * DAY + HOUR, size: 1_013_022 },
-      { version: '0.10.0', runtimeVersion: '1.2', uploadedAgo: 5 * HOUR, size: 1_090_731 },
-    ],
-    releases: [
-      { version: '0.8.0', channel: null, ago: 40 * DAY, by: JONAS },
-      { version: '0.9.0', channel: null, ago: 20 * DAY, by: JONAS },
-      { version: '0.9.1', channel: null, ago: 6 * DAY, by: JONAS },
     ],
   },
 ];

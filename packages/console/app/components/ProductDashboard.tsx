@@ -60,6 +60,7 @@ import { isPreviewChannel, normalizeUrlScheme } from '@/lib/preview-links';
 import { FULL_ROLLOUT_PERCENT, isRolling } from '@/lib/rollouts';
 import { BundleChangesDialog } from '@/app/components/BundleChangesDialog';
 import type { ActivityWindow } from '@/app/components/EventActivityChart';
+import { useEventStream } from '@/app/components/useEventStream';
 import { useStoredPreference } from '@/app/components/useStoredPreference';
 import { CheckoutStatus } from '@/app/components/CheckoutStatus';
 import { CopyButton } from '@/app/components/CopyButton';
@@ -152,7 +153,8 @@ const CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,64}$/;
 /** Same limit as the server (lib/validation.ts), which also normalises the text. */
 const MAX_RELEASE_NOTES_LENGTH = 2000;
 const RESERVED_CHANNEL_NAMES = new Set(['base', 'default']);
-const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v3';
+// v4: the device counters are default columns again.
+const BUNDLE_COLUMNS_STORAGE_KEY = 'dashboard:bundle-columns:v4';
 const ACTIVITY_SPLIT_STORAGE_KEY = 'dashboard:activity-split';
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -184,14 +186,19 @@ const DEFAULT_BUNDLE_COLUMNS: BundleTableColumn[] = [
   'size',
   'uploaded',
   'targets',
+  'downloads',
+  'applied',
+  'errors',
+  'rollbacks',
   'action',
 ];
+/** Fixed column widths; the default columns fit a 1144px table, so laptops do not scroll sideways. */
 const BUNDLE_COLUMN_WIDTHS: Record<BundleTableColumn, number> = {
-  version: 208,
-  runtime: 208,
-  size: 96,
+  version: 176,
+  runtime: 128,
+  size: 88,
   uploaded: 96,
-  targets: 240,
+  targets: 208,
   downloads: 64,
   applied: 64,
   errors: 64,
@@ -360,10 +367,26 @@ function getReleaseTargetsForRuntime(
   return Array.from(byKey.values()).sort(compareReleaseTargets);
 }
 
-function getDefaultReleaseTargetKey(bundle: BundleSummaryItem, targets: ReleaseTarget[]): string {
-  const firstAvailableTarget = targets.find(
+/**
+ * The first lane the bundle is not current on. Lanes the app already releases
+ * to come before the always-offered base channel, so an app that only uses
+ * named channels does not start on an empty base lane.
+ */
+function getDefaultReleaseTargetKey(
+  bundle: BundleSummaryItem,
+  targets: ReleaseTarget[],
+  usedTargets: ReleaseTarget[],
+): string {
+  const used = new Set(
+    usedTargets.map((target) => getReleaseTargetKey(target.channel, target.runtimeVersion)),
+  );
+  const available = targets.filter(
     (target) => !isCurrentOnTarget(bundle, target.channel, target.runtimeVersion),
   );
+  const firstAvailableTarget =
+    available.find((target) =>
+      used.has(getReleaseTargetKey(target.channel, target.runtimeVersion)),
+    ) ?? available[0];
   return firstAvailableTarget === undefined
     ? NEW_RELEASE_STREAM_KEY
     : getReleaseTargetKey(firstAvailableTarget.channel, firstAvailableTarget.runtimeVersion);
@@ -521,6 +544,9 @@ export function ProductDashboard({
 
   // Events (loaded with filters)
   const [appEvents, setAppEvents] = useState<DeviceEvent[]>([]);
+  /** Live updates stream their new rows in one at a time. */
+  const eventStream = useEventStream();
+  const receiveEvents = eventStream.receive;
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [eventPlatform, setEventPlatform] = useState<EventPlatformFilter>('all');
   const [eventBundle, setEventBundle] = useState<string>('all');
@@ -531,6 +557,8 @@ export function ProductDashboard({
   // The activity chart above the list: the same filters, split by one
   // dimension; a clicked bar narrows the list to that bucket.
   const [activity, setActivity] = useState<EventActivity | null>(null);
+  /** The chart's data came from a live update, so it animates to it. */
+  const [activityLive, setActivityLive] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [storedActivitySplit, setActivitySplit] = useStoredPreference(ACTIVITY_SPLIT_STORAGE_KEY);
   const activitySplit: EventActivitySplit = isEventActivitySplit(storedActivitySplit)
@@ -977,10 +1005,15 @@ export function ProductDashboard({
         );
         const data = await parseJson<{ events?: DeviceEvent[] } & ApiError>(res);
         if (!res.ok) throw new Error(data.error ?? 'Failed to load events');
-        if (request === eventsRequest.current) setAppEvents(data.events ?? []);
+        if (request === eventsRequest.current) {
+          const next = data.events ?? [];
+          receiveEvents(next, silent);
+          setAppEvents(next);
+        }
       } catch (err) {
         if (silent || request !== eventsRequest.current) return;
         toast.error(err instanceof Error ? err.message : 'Failed to load events');
+        receiveEvents([], false);
         setAppEvents([]);
       } finally {
         if (!silent && request === eventsRequest.current) setLoadingEvents(false);
@@ -994,6 +1027,7 @@ export function ProductDashboard({
       eventPlatform,
       eventTimeframe,
       eventWindow,
+      receiveEvents,
     ],
   );
 
@@ -1019,7 +1053,10 @@ export function ProductDashboard({
         );
         const data = await parseJson<EventActivity & ApiError>(res);
         if (!res.ok) throw new Error(data.error ?? 'Failed to load activity');
-        if (request === activityRequest.current) setActivity(data);
+        if (request === activityRequest.current) {
+          setActivity(data);
+          setActivityLive(silent);
+        }
       } catch (err) {
         if (silent || request !== activityRequest.current) return;
         toast.error(err instanceof Error ? err.message : 'Failed to load activity');
@@ -1190,6 +1227,7 @@ export function ProductDashboard({
       selectedTargetKey: getDefaultReleaseTargetKey(
         bundle,
         getReleaseTargetsForRuntime(releaseTargets, bundle.runtimeVersion),
+        releaseTargets,
       ),
       newChannelName: '',
       forceImmediate: false,
@@ -1796,7 +1834,7 @@ export function ProductDashboard({
                     ) : bundles.length > 0 ? (
                       <>
                         <div className="relative">
-                          <div className="overflow-auto">
+                          <div>
                             <Table
                               className="w-full table-fixed text-xs [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_td]:border-r [&_td]:border-border [&_td]:py-2 [&_td:last-child]:border-r-0 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_th]:border-r [&_th]:border-border [&_th:last-child]:border-r-0"
                               style={{ minWidth: `${bundleTableMinWidth}px` }}
@@ -1925,7 +1963,10 @@ export function ProductDashboard({
                                         </TableCell>
                                       ) : null}
                                       {hasBundleColumn('runtime') ? (
-                                        <TableCell className="truncate font-mono text-xs text-muted-foreground">
+                                        <TableCell
+                                          className="truncate font-mono text-xs text-muted-foreground"
+                                          title={b.runtimeVersion ?? undefined}
+                                        >
                                           {b.runtimeVersion ?? 'any'}
                                         </TableCell>
                                       ) : null}
@@ -2600,6 +2641,7 @@ export function ProductDashboard({
                       <EventActivityChart
                         activity={activity}
                         loading={loadingActivity}
+                        animate={activityLive}
                         splitBy={activitySplit}
                         onSplitByChange={setActivitySplit}
                         selected={eventWindow}
@@ -2650,10 +2692,11 @@ export function ProductDashboard({
                       </div>
                     ) : (
                       <div className="relative">
-                        <div className="overflow-auto">
+                        <div>
                           <Table className="min-w-[680px] [&_td:first-child]:pl-6 [&_td:last-child]:pr-6 [&_th:first-child]:pl-6 [&_th:last-child]:pr-6 [&_thead_th]:border-r [&_thead_th]:border-border [&_thead_th:last-child]:border-r-0">
                             <TableHeader>
-                              <TableRow>
+                              {/* Above the body, so a streamed row slides in from under it. */}
+                              <TableRow className="relative z-10 bg-background hover:bg-background">
                                 <TableHead>Time</TableHead>
                                 <TableHead>Platform</TableHead>
                                 <TableHead>Action</TableHead>
@@ -2662,44 +2705,54 @@ export function ProductDashboard({
                                 <TableHead>Runtime</TableHead>
                               </TableRow>
                             </TableHeader>
-                            <TableBody>
-                              {appEvents.slice(0, visibleEventCount).map((ev) => (
-                                <TableRow key={ev.id}>
-                                  <TableCell className="truncate text-xs text-muted-foreground">
-                                    {formatDate(ev.createdAt)}
-                                  </TableCell>
-                                  <TableCell className="truncate text-xs text-muted-foreground">
-                                    {formatEventPlatform(ev.platform)}
-                                  </TableCell>
-                                  <TableCell className="truncate text-xs text-muted-foreground">
-                                    {formatEventAction(ev.action)}
-                                  </TableCell>
-                                  <TableCell className="font-mono text-xs">
-                                    {ev.bundleVersion ? (
-                                      <span className="block truncate" title={ev.bundleVersion}>
-                                        {ev.bundleVersion}
-                                      </span>
-                                    ) : (
-                                      <span className="text-muted-foreground">Unknown</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="truncate text-xs text-muted-foreground">
-                                    {isPreviewChannel(ev.channel) ? (
-                                      <span
-                                        className="rounded bg-violet-500/10 px-1.5 py-0.5 font-medium text-violet-700 dark:text-violet-300"
-                                        title="Opened through a preview link"
-                                      >
-                                        Preview
-                                      </span>
-                                    ) : (
-                                      (ev.channel ?? 'base')
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="truncate font-mono text-xs text-muted-foreground">
-                                    {ev.runtimeVersion ?? 'any'}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
+                            <TableBody ref={eventStream.bodyRef}>
+                              {appEvents
+                                .filter((ev) => !eventStream.isWaiting(ev.id))
+                                .slice(0, visibleEventCount)
+                                .map((ev) => (
+                                  <TableRow
+                                    key={ev.id}
+                                    className={
+                                      eventStream.isStreamed(ev.id)
+                                        ? 'animate-event-row-in'
+                                        : undefined
+                                    }
+                                  >
+                                    <TableCell className="truncate text-xs text-muted-foreground">
+                                      {formatDate(ev.createdAt)}
+                                    </TableCell>
+                                    <TableCell className="truncate text-xs text-muted-foreground">
+                                      {formatEventPlatform(ev.platform)}
+                                    </TableCell>
+                                    <TableCell className="truncate text-xs text-muted-foreground">
+                                      {formatEventAction(ev.action)}
+                                    </TableCell>
+                                    <TableCell className="font-mono text-xs">
+                                      {ev.bundleVersion ? (
+                                        <span className="block truncate" title={ev.bundleVersion}>
+                                          {ev.bundleVersion}
+                                        </span>
+                                      ) : (
+                                        <span className="text-muted-foreground">Unknown</span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="truncate text-xs text-muted-foreground">
+                                      {isPreviewChannel(ev.channel) ? (
+                                        <span
+                                          className="rounded bg-violet-500/10 px-1.5 py-0.5 font-medium text-violet-700 dark:text-violet-300"
+                                          title="Opened through a preview link"
+                                        >
+                                          Preview
+                                        </span>
+                                      ) : (
+                                        (ev.channel ?? 'base')
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="truncate font-mono text-xs text-muted-foreground">
+                                      {ev.runtimeVersion ?? 'any'}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
                             </TableBody>
                           </Table>
                         </div>

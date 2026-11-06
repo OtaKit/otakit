@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import {
   Bar,
@@ -223,6 +223,45 @@ function niceTicks(max: number): number[] {
   }
 }
 
+/** How long live updates take to count up and grow the bars (ms). */
+const LIVE_ANIMATION_MS = 600;
+
+/** Counts to a new value on live updates; any other change shows at once. */
+function CountTo({
+  value,
+  animate,
+  format,
+}: {
+  value: number;
+  animate: boolean;
+  format: (value: number) => string;
+}) {
+  const [shown, setShown] = useState(value);
+  const shownRef = useRef(value);
+  useEffect(() => {
+    const from = shownRef.current;
+    let frame = 0;
+    if (!animate || from === value) {
+      shownRef.current = value;
+      frame = requestAnimationFrame(() => setShown(value));
+      return () => cancelAnimationFrame(frame);
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - start) / LIVE_ANIMATION_MS);
+      shownRef.current = from + (value - from) * (1 - (1 - progress) ** 3);
+      setShown(shownRef.current);
+      if (progress < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value, animate]);
+  return <>{format(animate ? shown : value)}</>;
+}
+
+const countFormat = (value: number) => fullNumber.format(Math.round(value));
+const shareFormat = (value: number) => `${Number(value.toFixed(2))}%`;
+
 function Stat({
   label,
   value,
@@ -230,7 +269,7 @@ function Stat({
   hint,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   color?: string;
   hint?: string;
 }) {
@@ -260,6 +299,7 @@ function Stat({
 export function EventActivityChart({
   activity,
   loading,
+  animate = false,
   splitBy,
   onSplitByChange,
   selected,
@@ -270,6 +310,8 @@ export function EventActivityChart({
 }: {
   activity: EventActivity;
   loading: boolean;
+  /** The data came from a live update: bars grow and totals count to it. */
+  animate?: boolean;
   splitBy: EventActivitySplit;
   onSplitByChange: (split: EventActivitySplit) => void;
   selected: ActivityWindow | null;
@@ -393,32 +435,44 @@ export function EventActivityChart({
           <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:flex sm:flex-wrap sm:gap-x-8 sm:pl-10">
             <Stat
               label="Downloads"
-              value={fullNumber.format(totals.downloads)}
+              value={<CountTo value={totals.downloads} animate={animate} format={countFormat} />}
               color={actionColor('downloaded')}
             />
             <Stat
               label="Applies"
-              value={fullNumber.format(totals.applied)}
+              value={<CountTo value={totals.applied} animate={animate} format={countFormat} />}
               color={actionColor('applied')}
             />
             <Stat
               label="Download errors"
-              value={fullNumber.format(totals.downloadErrors)}
+              value={
+                <CountTo value={totals.downloadErrors} animate={animate} format={countFormat} />
+              }
               color={actionColor('download_error')}
             />
             <Stat
               label="Check errors"
-              value={fullNumber.format(totals.checkErrors)}
+              value={<CountTo value={totals.checkErrors} animate={animate} format={countFormat} />}
               color={actionColor('check_error')}
             />
             <Stat
               label="Rollbacks"
-              value={fullNumber.format(totals.rollbacks)}
+              value={<CountTo value={totals.rollbacks} animate={animate} format={countFormat} />}
               color={actionColor('rollback')}
             />
             <Stat
               label="Rollback share"
-              value={totals.rollbackSharePercent === null ? '–' : `${totals.rollbackSharePercent}%`}
+              value={
+                totals.rollbackSharePercent === null ? (
+                  '–'
+                ) : (
+                  <CountTo
+                    value={totals.rollbackSharePercent}
+                    animate={animate}
+                    format={shareFormat}
+                  />
+                )
+              }
               hint="Rollbacks ÷ (applies + rollbacks): the rate auto-revert watches."
             />
           </dl>
@@ -561,7 +615,9 @@ export function EventActivityChart({
                   dataKey={`s${index}`}
                   stackId="activity"
                   fill={colors[index]}
-                  isAnimationActive={false}
+                  isAnimationActive={animate}
+                  animationDuration={LIVE_ANIMATION_MS}
+                  animationEasing="ease-out"
                 >
                   {rows.map((row) => (
                     <Cell key={row.start} fillOpacity={barOpacity(row)} />

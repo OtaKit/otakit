@@ -82,7 +82,7 @@ const BUNDLES: Bundle[] = [
     time: '09:31 AM',
     live: [
       {
-        channel: 'base',
+        channel: 'production',
         since: 'Nov 6, 10:00 AM',
         by: 'you@acme.com',
         previous: '2.3.0',
@@ -101,7 +101,7 @@ const BUNDLES: Bundle[] = [
     time: '05:12 PM',
     live: [
       {
-        channel: 'base',
+        channel: 'production',
         since: 'Nov 5, 06:00 PM',
         by: 'you@acme.com',
         previous: '2.2.1',
@@ -143,19 +143,25 @@ type Marker = {
 };
 
 const MARKERS: Marker[] = [
-  { at: AT.release, bundle: '2.3.0', channel: 'base', label: 'Released', time: 'Nov 5, 6:00 PM' },
+  {
+    at: AT.release,
+    bundle: '2.3.0',
+    channel: 'production',
+    label: 'Released',
+    time: 'Nov 5, 6:00 PM',
+  },
   { at: AT.beta, bundle: '2.4.0', channel: 'beta', label: 'Released', time: 'Nov 6, 9:45 AM' },
   {
     at: AT.rollout10,
     bundle: '2.4.0',
-    channel: 'base',
+    channel: 'production',
     label: 'Released',
     time: 'Nov 6, 10:00 AM',
   },
   {
     at: AT.rollout25,
     bundle: '2.4.0',
-    channel: 'base',
+    channel: 'production',
     label: 'Rollout 10% → 25%',
     time: 'Nov 6, 1:00 PM',
   },
@@ -319,16 +325,16 @@ type EventRow = {
 const VISIBLE_ROWS = 5;
 
 const INITIAL_EVENTS: EventRow[] = [
-  { id: 5, platform: 'iOS', action: 'Applied', bundle: '2.4.0', channel: 'base' },
-  { id: 4, platform: 'Android', action: 'Downloaded', bundle: '2.3.0', channel: 'base' },
+  { id: 5, platform: 'iOS', action: 'Applied', bundle: '2.4.0', channel: 'production' },
+  { id: 4, platform: 'Android', action: 'Downloaded', bundle: '2.3.0', channel: 'production' },
   { id: 3, platform: 'iOS', action: 'Applied', bundle: '2.4.0', channel: 'beta' },
-  { id: 2, platform: 'Android', action: 'Download error', bundle: '2.3.0', channel: 'base' },
-  { id: 1, platform: 'iOS', action: 'Downloaded', bundle: '2.4.0', channel: 'base' },
+  { id: 2, platform: 'Android', action: 'Download error', bundle: '2.3.0', channel: 'production' },
+  { id: 1, platform: 'iOS', action: 'Downloaded', bundle: '2.4.0', channel: 'production' },
 ].map((event) => ({ ...event, time: 'Nov 6, 02:41 PM', runtime: '5.0' }) as EventRow);
 
 const BUNDLE_ROUTES: Array<{ bundle: string; channel: string; weight: number }> = [
-  { bundle: '2.3.0', channel: 'base', weight: 0.6 },
-  { bundle: '2.4.0', channel: 'base', weight: 0.25 },
+  { bundle: '2.3.0', channel: 'production', weight: 0.6 },
+  { bundle: '2.4.0', channel: 'production', weight: 0.25 },
   { bundle: '2.4.0', channel: 'beta', weight: 0.15 },
 ];
 

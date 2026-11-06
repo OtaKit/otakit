@@ -6,7 +6,6 @@ import { ArrowRight, Check, ChevronDown, ChevronUp, RotateCcw } from 'lucide-rea
 
 import { Button } from '@/components/ui/button';
 import { DEMO_BROKEN_VERSION, DEMO_NEXT_VERSION } from '@/lib/demo/scenario';
-import { DEMO_SPEEDUP } from '@/lib/demo/world';
 import { cn } from '@/lib/utils';
 
 export type DemoMission = 'release' | 'complete' | 'autoRevert';
@@ -14,29 +13,27 @@ export type DemoMission = 'release' | 'complete' | 'autoRevert';
 const STEPS: Array<{ id: DemoMission; title: string; hint: string }> = [
   {
     id: 'release',
-    title: `Release ${DEMO_NEXT_VERSION} to 10% of devices`,
-    hint: `Press Release in the ${DEMO_NEXT_VERSION} row and roll out to 10%. Then set Events to Last 1 hour to watch it land.`,
+    title: `Release ${DEMO_NEXT_VERSION} to production`,
+    hint: `${DEMO_NEXT_VERSION} has been on the beta channel since this morning. Press Release in its row, pick the production channel and roll out to 10% of devices. Set Events to Last 1 hour to watch it land.`,
   },
   {
     id: 'complete',
-    title: 'Roll it out to every device',
-    hint: `Open the base badge in the ${DEMO_NEXT_VERSION} row and choose Complete rollout.`,
+    title: 'Roll it out to all of production',
+    hint: `Open the production badge in the ${DEMO_NEXT_VERSION} row and choose Complete rollout.`,
   },
   {
     id: 'autoRevert',
     title: `Ship ${DEMO_BROKEN_VERSION} and let auto-revert catch it`,
-    hint: `${DEMO_BROKEN_VERSION} crashes on launch. Release it with "Auto-revert if unhealthy" ticked, then watch the rollbacks.`,
+    hint: `${DEMO_BROKEN_VERSION} crashes on launch. Release it to production with "Auto-revert if unhealthy" ticked, then watch the rollbacks.`,
   },
 ];
 
 /** The demo's three steps, kept small and out of the way of the dashboard. */
 export function DemoGuide({
   done,
-  devices,
   onReset,
 }: {
   done: ReadonlySet<DemoMission>;
-  devices: number;
   onReset: () => void;
 }) {
   // Open on wide screens, a bar on phones.
@@ -68,18 +65,13 @@ export function DemoGuide({
 
       {open ? (
         <div className="border-t border-border px-4 pb-4 pt-3">
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {devices.toLocaleString('en-US')} simulated devices, nothing real. Releases you make
-            reach them {DEMO_SPEEDUP}× faster.
-          </p>
-
           {finished ? (
-            <p className="mt-3 text-sm leading-relaxed">
-              No store review, no waiting: a release, a full rollout and a bad update caught on its
-              own. That is OtaKit on your app.
+            <p className="text-sm leading-relaxed">
+              {DEMO_NEXT_VERSION} is on all of production, and auto-revert pulled{' '}
+              {DEMO_BROKEN_VERSION} back on its own.
             </p>
           ) : (
-            <ol className="mt-3 space-y-2.5">
+            <ol className="space-y-2.5">
               {STEPS.map((step, index) => {
                 const complete = done.has(step.id);
                 const current = step.id === next?.id;
