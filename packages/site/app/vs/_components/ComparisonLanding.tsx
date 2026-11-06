@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Bot,
   BookOpen,
+  MousePointerClick,
   Check,
   FileDiff,
   Lock,
@@ -78,12 +79,6 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             <span className="text-[15px] font-semibold tracking-tight">OtaKit</span>
           </Link>
           <nav className="ml-auto flex items-center gap-1">
-            <Link
-              href={`${site.console}/demo`}
-              className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
-            >
-              Demo
-            </Link>
             <Link
               href="#pricing"
               className="hidden rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block"
@@ -492,6 +487,12 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 Documentation
               </Button>
             </Link>
+            <Link href={`${site.console}/demo`}>
+              <Button variant="outline" size="lg" className="rounded-full px-8">
+                <MousePointerClick className="size-4" />
+                Live demo
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -600,6 +601,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
             title="Product"
             links={[
               { label: 'Pricing', href: '#pricing' },
+              { label: 'Live demo', href: `${site.console}/demo` },
               { label: 'Push notifications', href: '/push' },
               { label: 'Changelog', href: '/changelog' },
               { label: 'Dashboard', href: `${site.console}/dashboard` },
