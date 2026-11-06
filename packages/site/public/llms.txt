@@ -1652,7 +1652,7 @@ otakit upload --release production --replace-rollout --rollout 10
 
 Devices on the rolling release report events with its own release ID, so its health counts only those devices. Auto-revert works on rolling releases and returns every device to the previous release. At low percentages it takes longer to reach the minimum sample, so small apps should start at 5% or more.
 
-To watch a rollout over time, choose Activity in the bundle row's ⋯ menu or click its channel badge. The activity chart above the app's device events then shows that release: downloads, applies, errors and rollbacks over time, with each release, rollout step and revert marked, and the rollback share above it. Agents read a release's series with `get_release_timeseries`.
+To watch a rollout over time, click the release's channel badge in the bundle row, or choose Activity in its ⋯ menu for the bundle on every channel. The activity chart above the app's device events then shows downloads, applies, errors and rollbacks over time, with each release, rollout step and revert marked, and the rollback share above it. Agents read a release's series with `get_release_timeseries`.
 
 ### On the device
 
@@ -2692,7 +2692,7 @@ Device activity over time now sits on the app page, above the event list and und
 
 - Split the bars by action, bundle, channel, platform or runtime. The range sets the bucket size: per minute, per 30 minutes, per 3 hours or per day.
 - Click a bar to list that bucket's events, or a legend entry to filter to it.
-- Activity in a release's ⋯ menu or on its channel badge filters the chart to that release. It replaces the Health dialog.
+- Activity in a bundle's ⋯ menu filters the chart to that bundle; its channel badge narrows it to that release. It replaces the Health dialog.
 
 Docs: Rollouts guide (/docs/rollouts)
 

@@ -786,50 +786,6 @@ export function ProductDashboard({
     return map;
   }, [releaseHistory]);
 
-  // A bundle's releases with activity to show, for its More menu: live channels
-  // first, then previously live ones. The runtime is named only when a channel
-  // appears more than once.
-  const bundleActivityTargets = useCallback(
-    (bundle: BundleSummaryItem) => {
-      const current = new Set(
-        bundle.currentTargets.map((target) =>
-          getReleaseTargetKey(target.channel, target.runtimeVersion),
-        ),
-      );
-      const entries = bundle.deployedTargets
-        .map((entry) => {
-          const key = getReleaseTargetKey(entry.channel, entry.runtimeVersion);
-          return {
-            entry,
-            key,
-            live: current.has(key),
-            release: releaseByKey.get(`${bundle.version}::${key}`),
-          };
-        })
-        .filter(
-          (item): item is typeof item & { release: ReleaseHistoryItem } =>
-            item.release !== undefined,
-        )
-        .sort((left, right) => Number(right.live) - Number(left.live));
-      const perChannel = new Map<string | null, number>();
-      for (const { entry } of entries) {
-        perChannel.set(entry.channel, (perChannel.get(entry.channel) ?? 0) + 1);
-      }
-      return entries.map(({ entry, key, live, release }) => {
-        const runtime =
-          (perChannel.get(entry.channel) ?? 0) > 1 && entry.runtimeVersion
-            ? `, runtime ${entry.runtimeVersion}`
-            : '';
-        return {
-          key,
-          release,
-          label: `Activity · ${entry.channel ?? 'base'}${runtime}${live ? '' : ' (previously live)'}`,
-        };
-      });
-    },
-    [releaseByKey],
-  );
-
   const eventChannelOptions = useMemo(() => {
     const channels = new Set<string>();
     for (const target of releaseTargets) {
@@ -851,19 +807,20 @@ export function ProductDashboard({
     return Array.from(runtimes).sort((a, b) => a.localeCompare(b));
   }, [releaseTargets, bundles]);
 
-  // A release's activity: the chart and list filtered to its bundle and
-  // channel, over the shortest range that still shows its release marker.
-  const showActivity = useCallback(
-    (release: ReleaseHistoryItem) => {
-      const channel = release.channel ?? 'base';
-      const age = Date.now() - Date.parse(release.promotedAt);
+  // Activity of a bundle, or of one release of it: the chart and list filtered
+  // to the bundle (and the release's channel), over the shortest range that
+  // still shows the release marker.
+  const showEventActivity = useCallback(
+    (target: { bundleVersion: string; channel?: string | null; releasedAt: number | null }) => {
+      const channel = target.channel === undefined ? 'all' : (target.channel ?? 'base');
+      const age = target.releasedAt === null ? Infinity : Date.now() - target.releasedAt;
       setEventPlatform('all');
       setEventAction('all');
       setEventRuntime('all');
       setEventBundle(
-        eventBundleOptions.includes(release.bundleVersion) ? release.bundleVersion : 'all',
+        eventBundleOptions.includes(target.bundleVersion) ? target.bundleVersion : 'all',
       );
-      setEventChannel(eventChannelOptions.includes(channel) ? channel : 'all');
+      setEventChannel(channel === 'all' || eventChannelOptions.includes(channel) ? channel : 'all');
       setEventTimeframe(
         age <= 50 * MINUTE_MS
           ? '1h'
@@ -877,6 +834,27 @@ export function ProductDashboard({
       document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
     [eventBundleOptions, eventChannelOptions],
+  );
+  const showActivity = useCallback(
+    (release: ReleaseHistoryItem) =>
+      showEventActivity({
+        bundleVersion: release.bundleVersion,
+        channel: release.channel,
+        releasedAt: Date.parse(release.promotedAt),
+      }),
+    [showEventActivity],
+  );
+  const showBundleActivity = useCallback(
+    (version: string) => {
+      const releasedAt = releaseHistory
+        .filter((release) => release.bundleVersion === version)
+        .reduce((latest, release) => Math.max(latest, Date.parse(release.promotedAt)), -Infinity);
+      showEventActivity({
+        bundleVersion: version,
+        releasedAt: Number.isFinite(releasedAt) ? releasedAt : null,
+      });
+    },
+    [releaseHistory, showEventActivity],
   );
 
   // Legend entries filter the list to their value when that filter exists.
@@ -1850,7 +1828,6 @@ export function ProductDashboard({
                               <TableBody>
                                 {bundles.slice(0, visibleBundleCount).map((b) => {
                                   const isReleasing = releasingAction?.version === b.version;
-                                  const activityTargets = bundleActivityTargets(b);
                                   const currentSet = new Set(
                                     b.currentTargets.map((target) =>
                                       getReleaseTargetKey(target.channel, target.runtimeVersion),
@@ -2325,17 +2302,16 @@ export function ProductDashboard({
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="min-w-48">
-                                              {activityTargets.map(({ key, release, label }) => (
-                                                <DropdownMenuItem
-                                                  key={key}
-                                                  onClick={() => showActivity(release)}
-                                                >
-                                                  <ChartLine className="size-3.5" />
-                                                  {label}
-                                                </DropdownMenuItem>
-                                              ))}
-                                              {activityTargets.length > 0 ? (
-                                                <DropdownMenuSeparator />
+                                              {b.deployedTargets.length > 0 ? (
+                                                <>
+                                                  <DropdownMenuItem
+                                                    onClick={() => showBundleActivity(b.version)}
+                                                  >
+                                                    <ChartLine className="size-3.5" />
+                                                    Activity
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuSeparator />
+                                                </>
                                               ) : null}
                                               <DropdownMenuItem
                                                 onClick={() =>

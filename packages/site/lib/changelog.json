@@ -11,7 +11,7 @@
       "highlights": [
         "Split the bars by action, bundle, channel, platform or runtime. The range sets the bucket size: per minute, per 30 minutes, per 3 hours or per day.",
         "Click a bar to list that bucket's events, or a legend entry to filter to it.",
-        "Activity in a release's ⋯ menu or on its channel badge filters the chart to that release. It replaces the Health dialog."
+        "Activity in a bundle's ⋯ menu filters the chart to that bundle; its channel badge narrows it to that release. It replaces the Health dialog."
       ],
       "links": [
         {

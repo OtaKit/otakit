@@ -56,12 +56,13 @@ const ACTION_COLORS: Record<string, string> = {
 const SEGMENT_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#14b8a6'];
 const OTHER_COLOR = '#a1a1aa';
 
-const MARKER_COLORS: Record<EventActivityMarker['type'], string> = {
-  released: 'var(--foreground)',
-  rollout: '#8b5cf6',
-  reverted: '#f59e0b',
-  auto_reverted: '#ef4444',
-};
+/** Reverts are red; other markers are neutral, or their bundle's color when bars split by bundle. */
+const REVERT_COLOR = '#ef4444';
+const MARKER_COLOR = 'var(--foreground)';
+
+function isRevert(marker: EventActivityMarker): boolean {
+  return marker.type === 'reverted' || marker.type === 'auto_reverted';
+}
 
 // The plot sits between the y-axis and a small right margin; the marker flags
 // above it use the same insets so they line up with their lines.
@@ -234,8 +235,8 @@ function Stat({
   hint?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <dt className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+    <div className="min-w-0 text-center sm:text-left">
+      <dt className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground sm:justify-start">
         {color ? (
           <span className="size-1.5 shrink-0 rounded-full" style={{ background: color }} />
         ) : null}
@@ -300,6 +301,13 @@ export function EventActivityChart({
     return every > 1 ? all.filter((_, index) => index % every === 0) : all;
   }, [activity.range, from, to, plotWidth]);
   const colors = segments.map((segment, index) => segmentColor(activity.splitBy, segment, index));
+  const bundleColors = new Map(
+    activity.splitBy === 'bundle'
+      ? segments.map((segment, index) => [segment.key, colors[index]] as const)
+      : [],
+  );
+  const markerColor = (marker: EventActivityMarker) =>
+    isRevert(marker) ? REVERT_COLOR : (bundleColors.get(marker.bundleVersion) ?? MARKER_COLOR);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -380,8 +388,9 @@ export function EventActivityChart({
           loading && 'opacity-60',
         )}
       >
-        <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-x-8 sm:gap-y-3">
+          {/* Starts where the bars start (past the y-axis) on wider screens. */}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:flex sm:flex-wrap sm:gap-x-8 sm:pl-10">
             <Stat
               label="Downloads"
               value={fullNumber.format(totals.downloads)}
@@ -413,7 +422,7 @@ export function EventActivityChart({
               hint="Rollbacks ÷ (applies + rollbacks): the rate auto-revert watches."
             />
           </dl>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <label className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             Split by
             <Select
               value={splitBy}
@@ -465,7 +474,7 @@ export function EventActivityChart({
                     >
                       <span
                         className="size-1.5 shrink-0 rounded-full"
-                        style={{ background: MARKER_COLORS[newest.type] }}
+                        style={{ background: markerColor(newest) }}
                       />
                       <span className="truncate">{newest.bundleVersion}</span>
                       {cluster.markers.length > 1 ? (
@@ -540,8 +549,8 @@ export function EventActivityChart({
                 <ReferenceLine
                   key={markerIndex}
                   x={Date.parse(marker.at)}
-                  stroke={MARKER_COLORS[marker.type]}
-                  strokeOpacity={marker.type === 'released' ? 0.45 : 0.8}
+                  stroke={markerColor(marker)}
+                  strokeOpacity={isRevert(marker) ? 0.8 : 0.5}
                   strokeDasharray="3 3"
                   ifOverflow="hidden"
                 />
@@ -563,8 +572,8 @@ export function EventActivityChart({
           </ChartContainer>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pl-10">
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+        <div className="mt-2 flex flex-col items-center gap-2 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-x-6 sm:pl-10">
+          <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs sm:justify-start">
             {segments.map((segment, index) => {
               const filterable = canFilter(segment);
               const filtered = isFiltered(segment);
@@ -616,7 +625,7 @@ export function EventActivityChart({
               <X className="size-3 text-muted-foreground" />
             </button>
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-center text-xs text-muted-foreground">
               {EVENT_ACTIVITY_RANGES[activity.range].bucketLabel} · click a bar to list its events
             </p>
           )}
