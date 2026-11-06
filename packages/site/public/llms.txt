@@ -2686,6 +2686,16 @@ New features, improvements and fixes, newest first. Plugin features need the plu
 
 Latest versions: @otakit/capacitor-updater 3.3.0 (2026-10-12), @otakit/cli 1.12.0 (2026-11-05), @otakit/push 0.1.1 (2026-09-27).
 
+### Live demo of the dashboard (2026-11-06)
+
+Try the real OtaKit dashboard on 72,000 simulated devices, with no sign-up. Bundles, releases, channels, events and the activity chart all respond as they would for your app.
+
+- Release a bundle to a share of devices, complete the rollout and watch the new version land in the chart.
+- Ship a broken bundle with auto-revert on and see it reverted once rollbacks cross the threshold.
+- Open bundle changes, preview links with QR codes and the event list, all running in your browser.
+
+Docs: Open the live demo (https://console.otakit.app/demo)
+
 ### Activity chart above device events (2026-11-06)
 
 Device activity over time now sits on the app page, above the event list and under the same filters, with every release, rollout step and revert marked on it.

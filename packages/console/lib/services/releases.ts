@@ -15,6 +15,7 @@ import {
 } from '@/lib/audit-log';
 import { db } from '@/lib/db';
 import { syncManifestFileForLane } from '@/lib/manifest-files';
+import { ROLLOUT_REPLACED_BY } from '@/lib/release-actors';
 import { revertCurrentRelease } from '@/lib/releases';
 import { FULL_ROLLOUT_PERCENT, isRolling, isRolloutPercent } from '@/lib/rollouts';
 import {
@@ -36,8 +37,7 @@ import {
 
 const IDEMPOTENCY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RELEASE_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 60_000 } as const;
-/** `Release.revertedBy` of a rolling release that a newer rollout replaced. */
-export const ROLLOUT_REPLACED_BY = 'system:rollout-replaced';
+export { ROLLOUT_REPLACED_BY };
 
 export const releaseWithBundlesInclude = {
   bundle: {
