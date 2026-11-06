@@ -242,8 +242,15 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 Everything in one click
               </h2>
               <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-                A full-featured web dashboard to manage and monitor your releases in real-time.
+                A full-featured web dashboard to manage and monitor your releases in real time. Try
+                it on a simulated fleet, no sign-up needed.
               </p>
+              <Link href={`${site.console}/demo`} className="mt-8 inline-block">
+                <Button size="lg" className="group rounded-full px-8">
+                  Try the live demo
+                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+              </Link>
             </div>
             {/* Dashboard mockup — tilted back in 3D, with its flat bottom edge
                 clipped so it slides under the next section (no rounded bottom). */}
