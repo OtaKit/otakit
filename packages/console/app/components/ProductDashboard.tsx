@@ -3405,7 +3405,7 @@ export function ProductDashboard({
             </DialogDescription>
           </DialogHeader>
           {previewDialog ? (
-            <div className="space-y-4 text-sm">
+            <div className="min-w-0 space-y-4 text-sm">
               {previewDialog.loading ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <LoaderCircle className="size-3.5 animate-spin" />
@@ -3465,7 +3465,9 @@ export function ProductDashboard({
                   </div>
                 ),
               )}
-              {!previewDialog.loading && !previewDialog.appScheme ? (
+              {!previewDialog.loading &&
+              previewDialog.previews.length === 0 &&
+              !previewDialog.appScheme ? (
                 <div className="space-y-2">
                   <Label htmlFor="preview-url-scheme">App URL scheme</Label>
                   <Input
@@ -3492,30 +3494,32 @@ export function ProductDashboard({
                   </p>
                 </div>
               ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="preview-expiry">Link works for</Label>
-                <Select
-                  value={previewDialog.expiresIn}
-                  onValueChange={(value) =>
-                    setPreviewDialog((current) =>
-                      current
-                        ? { ...current, expiresIn: value as typeof current.expiresIn }
-                        : current,
-                    )
-                  }
-                  disabled={previewBusy}
-                >
-                  <SelectTrigger id="preview-expiry" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1h">1 hour</SelectItem>
-                    <SelectItem value="24h">24 hours</SelectItem>
-                    <SelectItem value="7d">7 days</SelectItem>
-                    <SelectItem value="30d">30 days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {!previewDialog.loading && previewDialog.previews.length === 0 ? (
+                <div className="space-y-2">
+                  <Label htmlFor="preview-expiry">Link works for</Label>
+                  <Select
+                    value={previewDialog.expiresIn}
+                    onValueChange={(value) =>
+                      setPreviewDialog((current) =>
+                        current
+                          ? { ...current, expiresIn: value as typeof current.expiresIn }
+                          : current,
+                      )
+                    }
+                    disabled={previewBusy}
+                  >
+                    <SelectTrigger id="preview-expiry" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1h">1 hour</SelectItem>
+                      <SelectItem value="24h">24 hours</SelectItem>
+                      <SelectItem value="7d">7 days</SelectItem>
+                      <SelectItem value="30d">30 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 Opens in builds of the app with OtaKit plugin 3.2 or later and{' '}
                 <code className="font-mono">previewLinks: true</code>. Nothing is released; the
@@ -3527,27 +3531,28 @@ export function ProductDashboard({
             <Button variant="outline" disabled={previewBusy} onClick={() => setPreviewDialog(null)}>
               Close
             </Button>
-            <Button
-              disabled={
-                previewBusy ||
-                previewDialog === null ||
-                previewDialog.loading ||
-                (!previewDialog.appScheme && normalizeUrlScheme(previewDialog.urlScheme) === null)
-              }
-              onClick={() => void createPreviewLink()}
-            >
-              {previewBusy ? (
-                <>
-                  <LoaderCircle className="size-3.5 animate-spin" />
-                  Working...
-                </>
-              ) : (
-                <>
-                  <QrCode className="size-3.5" />
-                  {previewDialog?.previews.length ? 'Create another link' : 'Create link'}
-                </>
-              )}
-            </Button>
+            {/* Only a bundle without a live link offers one; revoking brings this back. */}
+            {previewDialog && !previewDialog.loading && previewDialog.previews.length === 0 ? (
+              <Button
+                disabled={
+                  previewBusy ||
+                  (!previewDialog.appScheme && normalizeUrlScheme(previewDialog.urlScheme) === null)
+                }
+                onClick={() => void createPreviewLink()}
+              >
+                {previewBusy ? (
+                  <>
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    Working...
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="size-3.5" />
+                    Create link
+                  </>
+                )}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
