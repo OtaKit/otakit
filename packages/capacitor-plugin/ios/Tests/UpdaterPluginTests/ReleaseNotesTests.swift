@@ -188,4 +188,16 @@ final class ReleaseNotesTests: XCTestCase {
     XCTAssertTrue(store.isReleaseNotesSeen("release-2"))
     XCTAssertTrue(store.isReleaseNotesSeen("release-21"))
   }
+
+  func testReportsANotesFailureOncePerReleaseAndReason() throws {
+    let fixture = try CoordinatorFixture()
+    defer { try? fixture.cleanup() }
+    XCTAssertTrue(fixture.store.claimNotesFailureReport(releaseId: "release-1", detail: "notes_signature_invalid"))
+    XCTAssertFalse(fixture.store.claimNotesFailureReport(releaseId: "release-1", detail: "notes_signature_invalid"))
+    XCTAssertFalse(
+      fixture.reopenStore().claimNotesFailureReport(releaseId: "release-1", detail: "notes_signature_invalid")
+    )
+    XCTAssertTrue(fixture.store.claimNotesFailureReport(releaseId: "release-1", detail: "notes_signature_missing"))
+    XCTAssertTrue(fixture.store.claimNotesFailureReport(releaseId: "release-2", detail: "notes_signature_missing"))
+  }
 }

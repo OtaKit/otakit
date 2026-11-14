@@ -14,6 +14,7 @@ final class BundleStore {
     static let assignmentSecret = "otakit_assignment_secret"
     static let preview = "otakit_preview"
     static let seenReleaseNotes = "otakit_seen_release_notes"
+    static let reportedNotesFailure = "otakit_reported_notes_failure"
   }
 
   /// Releases whose notes the app marked seen; the newest 20 are kept.
@@ -307,6 +308,15 @@ final class BundleStore {
     var seen = (defaults.stringArray(forKey: Keys.seenReleaseNotes) ?? []).filter { $0 != releaseId }
     seen.append(releaseId)
     defaults.set(Array(seen.suffix(Self.seenReleaseNotesLimit)), forKey: Keys.seenReleaseNotes)
+  }
+
+  /// True the first time a release's notes fail verification with this reason,
+  /// so each device reports it once instead of on every check.
+  func claimNotesFailureReport(releaseId: String, detail: String) -> Bool {
+    let key = "\(releaseId):\(detail)"
+    guard defaults.string(forKey: Keys.reportedNotesFailure) != key else { return false }
+    defaults.set(key, forKey: Keys.reportedNotesFailure)
+    return true
   }
 
   func getLastResolvedRuntimeKey() -> String? {

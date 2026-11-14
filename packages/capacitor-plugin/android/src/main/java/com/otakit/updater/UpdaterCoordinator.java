@@ -436,8 +436,9 @@ final class UpdaterCoordinator {
       if (latest != null && doesBundleMatchLatest(staged, latest, targetChannel)) {
         return java.util.Collections.<String>emptyList();
       }
+      boolean isProtected = store.protectedBundleIds().contains(staged.id);
       store.setStagedBundleId(null);
-      return store.protectedBundleIds().contains(staged.id)
+      return isProtected
         ? java.util.Collections.<String>emptyList()
         : java.util.Collections.singletonList(staged.id);
     });

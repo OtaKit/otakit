@@ -776,8 +776,10 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     let selection = parsed.map { Rollout.select($0, secret: store.assignmentSecret()) }
     rememberRollout(selection?.state)
-    if let manifest = selection?.manifest, let failure = manifest.notesFailure {
-      // The update goes on without its notes; report why they were dropped.
+    if let manifest = selection?.manifest, let failure = manifest.notesFailure,
+       store.claimNotesFailureReport(releaseId: manifest.releaseId, detail: failure.detail) {
+      // The update goes on without its notes; report why they were dropped,
+      // once per release on this device.
       sendDeviceEvent(action: .checkError, bundleVersion: manifest.version, runtimeVersion: runtimeVersion,
         channel: channel, releaseId: manifest.releaseId, detail: failure.detail, attemptId: checkId,
         phase: failure.phase)
@@ -792,8 +794,7 @@ public class UpdaterPlugin: CAPPlugin, CAPBridgedPlugin {
       let ids = try coordinator.unstageObsoleteBundle(latest: latest, targetChannel: targetChannel)
       guard !ids.isEmpty else { return }
       print("[OtaKit] Unstaged a bundle the server no longer targets")
-      let coordinator = self.coordinator
-      DispatchQueue.global(qos: .utility).async { coordinator.cleanupBundles(ids) }
+      cleanupInBackground(ids)
     } catch {
       print("[OtaKit] Could not unstage an obsolete bundle: \(error.localizedDescription)")
     }

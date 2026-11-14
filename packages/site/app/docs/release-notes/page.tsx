@@ -98,9 +98,9 @@ function showWhatsNew(text: string) {
       <P>
         Notes travel in their own signed block of the release manifest. The app only shows notes
         signed for that exact release, so they cannot be changed in transit. From plugin 3.4, notes
-        that fail verification are reported as a check error (<Code>notes_signature_invalid</Code>{' '}
-        and similar) in the app&apos;s events; the update itself goes on without them. Older plugin
-        versions ignore the block and update as before.
+        that fail verification are reported once per device as a check error (
+        <Code>notes_signature_invalid</Code> and similar) in the app&apos;s events; the update
+        itself goes on without them. Older plugin versions ignore the block and update as before.
       </P>
     </>
   );

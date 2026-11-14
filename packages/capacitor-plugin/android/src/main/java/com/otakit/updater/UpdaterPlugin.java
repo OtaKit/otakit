@@ -1024,8 +1024,13 @@ public class UpdaterPlugin extends Plugin {
     Rollout.Selection selection = Rollout.select(parsed, store.assignmentSecret());
     lastRollout = selection.state;
     ManifestClient.LatestManifest manifest = selection.manifest;
-    if (manifest != null && manifest.notesFailure != null) {
-      // The update goes on without its notes; report why they were dropped.
+    if (
+      manifest != null &&
+      manifest.notesFailure != null &&
+      store.claimNotesFailureReport(manifest.releaseId, manifest.notesFailure.detail)
+    ) {
+      // The update goes on without its notes; report why they were dropped, once per release on
+      // this device.
       sendDeviceEvent(
         "check_error",
         manifest.version,
@@ -1070,13 +1075,17 @@ public class UpdaterPlugin extends Plugin {
     return resolution;
   }
 
-  /** Unstage what the server no longer targets (see the coordinator) and delete its files later. */
+  /**
+   * Unstage what the server no longer targets (see the coordinator) and delete its files now. Checks
+   * run on the update executor, so queuing the cleanup there would keep the files on disk during a
+   * download that follows, and that download's free-space check would still count them.
+   */
   private void unstageObsoleteBundle(ManifestClient.LatestManifest latest, String targetChannel) {
     try {
       java.util.List<String> ids = coordinator.unstageObsoleteBundle(latest, targetChannel);
       if (ids.isEmpty()) return;
       android.util.Log.i("OtaKit", "Unstaged a bundle the server no longer targets");
-      cleanupInBackground(ids);
+      coordinator.cleanupBundles(ids);
     } catch (Exception error) {
       android.util.Log.w("OtaKit", "Could not unstage an obsolete bundle", error);
     }

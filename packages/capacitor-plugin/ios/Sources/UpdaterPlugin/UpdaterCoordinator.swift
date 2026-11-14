@@ -294,8 +294,9 @@ final class UpdaterCoordinator {
       if let latest, doesBundleMatchLatest(staged, latest: latest, targetChannel: targetChannel) {
         return []
       }
+      let isProtected = try store.protectedBundleIds().contains(staged.id)
       try store.setStagedBundleId(nil)
-      return try store.protectedBundleIds().contains(staged.id) ? [] : [staged.id]
+      return isProtected ? [] : [staged.id]
     }
   }
 

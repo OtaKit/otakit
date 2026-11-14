@@ -1817,7 +1817,7 @@ Fix a typo or polish the copy from the release's menu in the dashboard (&ldquo;E
 
 ### Security
 
-Notes travel in their own signed block of the release manifest. The app only shows notes signed for that exact release, so they cannot be changed in transit. From plugin 3.4, notes that fail verification are reported as a check error (`notes_signature_invalid` and similar) in the app's events; the update itself goes on without them. Older plugin versions ignore the block and update as before.
+Notes travel in their own signed block of the release manifest. The app only shows notes signed for that exact release, so they cannot be changed in transit. From plugin 3.4, notes that fail verification are reported once per device as a check error ( `notes_signature_invalid` and similar) in the app's events; the update itself goes on without them. Older plugin versions ignore the block and update as before.
 
 ## Update Strategies
 
@@ -2694,11 +2694,11 @@ Latest versions: @otakit/capacitor-updater 3.4.0 (2026-11-14), @otakit/cli 1.12.
 
 ### Reverts reach phones that already downloaded the update (2026-11-14, Plugin 3.4.0)
 
-When you revert a release, cancel or lower a rollout, phones that downloaded the bundle but have not applied it yet now drop it at their next check instead of applying it once.
+When you revert a release, or cancel or lower a rollout, phones that downloaded the bundle but have not applied it yet drop it at their next check. Before, they applied it once. A cold start with the default launch policy can still apply it before the check runs.
 
 - Update checks always ask the CDN, so a release, revert or rollout change is seen at the next check, not up to a minute later.
 - Pass the `releaseId` from `getUnseenReleaseNotes()` to `markReleaseNotesSeen()`, so an update applied while the notes are open is not marked as seen.
-- Release notes that fail signature verification are reported as an update check error in your events. The update still installs.
+- Release notes that fail signature verification are reported once per phone as an update check error in your events. The update still installs.
 
 Requires: Plugin 3.4+. Older plugins may apply a downloaded bundle once before switching back.
 

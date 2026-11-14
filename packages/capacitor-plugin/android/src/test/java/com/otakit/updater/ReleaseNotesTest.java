@@ -209,4 +209,15 @@ public class ReleaseNotesTest {
     assertTrue(store.isReleaseNotesSeen("release-2"));
     assertTrue(store.isReleaseNotesSeen("release-21"));
   }
+
+  @Test
+  public void reportsANotesFailureOncePerReleaseAndReason() throws Exception {
+    assertTrue(fixture.store.claimNotesFailureReport("release-1", "notes_signature_invalid"));
+    assertFalse(fixture.store.claimNotesFailureReport("release-1", "notes_signature_invalid"));
+    assertFalse(
+      fixture.reopenStore().claimNotesFailureReport("release-1", "notes_signature_invalid")
+    );
+    assertTrue(fixture.store.claimNotesFailureReport("release-1", "notes_signature_missing"));
+    assertTrue(fixture.store.claimNotesFailureReport("release-2", "notes_signature_missing"));
+  }
 }

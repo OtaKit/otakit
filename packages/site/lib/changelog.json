@@ -9,11 +9,11 @@
       "versions": {
         "plugin": "3.4.0"
       },
-      "summary": "When you revert a release, cancel or lower a rollout, phones that downloaded the bundle but have not applied it yet now drop it at their next check instead of applying it once.",
+      "summary": "When you revert a release, or cancel or lower a rollout, phones that downloaded the bundle but have not applied it yet drop it at their next check. Before, they applied it once. A cold start with the default launch policy can still apply it before the check runs.",
       "highlights": [
         "Update checks always ask the CDN, so a release, revert or rollout change is seen at the next check, not up to a minute later.",
         "Pass the `releaseId` from `getUnseenReleaseNotes()` to `markReleaseNotesSeen()`, so an update applied while the notes are open is not marked as seen.",
-        "Release notes that fail signature verification are reported as an update check error in your events. The update still installs."
+        "Release notes that fail signature verification are reported once per phone as an update check error in your events. The update still installs."
       ],
       "requires": "Plugin 3.4+. Older plugins may apply a downloaded bundle once before switching back.",
       "links": [
