@@ -16,7 +16,9 @@ import {
 } from '@/lib/storage';
 import { parseBundleEncryption } from '@/lib/validation';
 
-const MANIFEST_CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
+// The CDN keeps a manifest 5 minutes and every write purges it. Phones must not
+// keep their own copy: it would hide a release, revert or rollout change.
+const MANIFEST_CACHE_CONTROL = 'public, max-age=0, s-maxage=300';
 const MANIFEST_PREFIX = 'manifests';
 const BASE_CHANNEL_KEY = '__base__';
 const DEFAULT_RUNTIME_KEY = '__default__';

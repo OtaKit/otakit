@@ -9,7 +9,7 @@ final class CheckFailure {
   final String phase;
   final String detail;
 
-  private CheckFailure(String phase, String detail) {
+  CheckFailure(String phase, String detail) {
     this.phase = phase;
     this.detail = detail;
   }
@@ -49,6 +49,17 @@ final class CheckFailure {
       );
     }
     return new CheckFailure("check", "rollout_invalid");
+  }
+
+  /** Why an entry's release notes were dropped (the update itself goes on). */
+  static CheckFailure notes(Exception error) {
+    if (error instanceof ManifestVerifier.VerificationException) {
+      return new CheckFailure(
+        "signature",
+        "notes_" + ((ManifestVerifier.VerificationException) error).reason
+      );
+    }
+    return new CheckFailure("check", "notes_invalid");
   }
 
   interface Reporter {

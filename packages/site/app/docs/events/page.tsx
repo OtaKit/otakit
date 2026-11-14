@@ -159,7 +159,15 @@ if (state.staged) showRestartPrompt(state.staged);
 OtaKit.addListener('updateStaged', ({ bundle }) => showRestartPrompt(bundle));
 
 // in the prompt's accept handler
-await OtaKit.apply();`}</Pre>
+try {
+  await OtaKit.apply();
+} catch {
+  hideRestartPrompt(); // nothing is staged anymore
+}`}</Pre>
+      <P>
+        Plugin 3.4+ drops a staged update that the channel no longer targets, for example after a
+        revert or a cancelled rollout, so <Code>apply()</Code> can reject while the prompt is open.
+      </P>
 
       <H3>4. Confirm and report after the fact</H3>
       <P>

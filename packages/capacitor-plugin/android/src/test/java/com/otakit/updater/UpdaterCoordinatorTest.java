@@ -346,4 +346,88 @@ public class UpdaterCoordinatorTest {
     assertTrue(fixture.indexExists("B"));
     assertTrue(fixture.indexExists("C"));
   }
+
+  private static ManifestClient.LatestManifest manifestFor(String id) {
+    return new ManifestClient.LatestManifest(
+      id,
+      null,
+      "hash-" + id,
+      0,
+      null,
+      "release-" + id,
+      "zip",
+      false,
+      null,
+      null,
+      null
+    );
+  }
+
+  @Test
+  public void unstagesABundleTheServerNoLongerTargets() throws Exception {
+    // A rolling release was staged, then the rollout was lowered or canceled:
+    // the manifest now targets the release the device already runs.
+    fixture.installHealthy("A");
+    fixture.stage("B");
+    assertEquals(
+      java.util.List.of("B"),
+      fixture.coordinator.unstageObsoleteBundle(manifestFor("A"), null)
+    );
+    assertNull(fixture.store.getStagedBundleId());
+    fixture.coordinator.cleanupBundles(java.util.List.of("B"));
+    assertFalse(fixture.indexExists("B"));
+    assertTrue(fixture.indexExists("A"));
+    var launch = fixture.coordinator.prepareApplyStaged(bundle -> true, fixture::isUsable);
+    assertFalse(launch.didApply());
+    assertEquals("A", fixture.store.getCurrentBundleId());
+  }
+
+  @Test
+  public void keepsTheStagedTarget() throws Exception {
+    fixture.installHealthy("A");
+    fixture.stage("C");
+    assertTrue(fixture.coordinator.unstageObsoleteBundle(manifestFor("C"), null).isEmpty());
+    assertEquals("C", fixture.store.getStagedBundleId());
+    // No release on its channel (the release was reverted): unstaged.
+    assertEquals(java.util.List.of("C"), fixture.coordinator.unstageObsoleteBundle(null, null));
+    assertNull(fixture.store.getStagedBundleId());
+  }
+
+  @Test
+  public void unstagesWhenTheNewChannelHasNoRelease() throws Exception {
+    // setChannel("beta") with no release on beta: the base bundle is not its target.
+    fixture.installHealthy("A");
+    fixture.stage("C");
+    assertEquals(java.util.List.of("C"), fixture.coordinator.unstageObsoleteBundle(null, "beta"));
+    assertNull(fixture.store.getStagedBundleId());
+  }
+
+  @Test
+  public void previewChecksKeepTheReleasesStagedBundle() throws Exception {
+    String preview = Preview.channel("abcdefghijklmnopqrstuvwxyz");
+    fixture.installHealthy("A");
+    fixture.stage("C");
+    // Starting a preview whose download then fails, or a revoked one.
+    assertTrue(fixture.coordinator.unstageObsoleteBundle(manifestFor("P"), preview).isEmpty());
+    assertTrue(fixture.coordinator.unstageObsoleteBundle(null, preview).isEmpty());
+    assertEquals("C", fixture.store.getStagedBundleId());
+    // A bundle of that preview is unstaged like any other.
+    fixture.stage("P1", preview);
+    assertEquals(
+      java.util.List.of("P1"),
+      fixture.coordinator.unstageObsoleteBundle(manifestFor("P2"), preview)
+    );
+    assertNull(fixture.store.getStagedBundleId());
+  }
+
+  @Test
+  public void unstagesABundleOfTheChannelTheAppLeft() throws Exception {
+    fixture.installHealthy("A", "beta");
+    fixture.stage("D");
+    assertEquals(
+      java.util.List.of("D"),
+      fixture.coordinator.unstageObsoleteBundle(manifestFor("A"), "beta")
+    );
+    assertNull(fixture.store.getStagedBundleId());
+  }
 }

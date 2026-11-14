@@ -21,6 +21,25 @@ final class ManifestKeyConfigTests: XCTestCase {
     XCTAssertEqual(server.requestCount, 2)
   }
 
+  func testEveryCheckAsksTheServerDespiteCacheHeaders() async throws {
+    // The CDN allows phones to keep a manifest; a kept copy would hide a revert.
+    let first = Data(#"{"version":"1.0","sha256":"hash","size":1,"releaseId":"release-a","url":"https://example.test/a.zip"}"#.utf8)
+    let second = Data(#"{"version":"2.0","sha256":"hash2","size":1,"releaseId":"release-b","url":"https://example.test/b.zip"}"#.utf8)
+    let server = try DownloadHTTPServer(responses: [
+      .init(status: 200, retryAfter: nil, body: first, advertisedLength: first.count, cacheControl: "public, max-age=600"),
+      .init(status: 200, retryAfter: nil, body: second, advertisedLength: second.count, cacheControl: "public, max-age=600")
+    ])
+    let url = try await server.start()
+    defer { server.stop() }
+    let before = try await ManifestClient.fetchLatest(cdnUrl: url.absoluteString, appId: "cache-test",
+      channel: nil, runtimeVersion: nil, allowInsecureUrls: true)
+    let after = try await ManifestClient.fetchLatest(cdnUrl: url.absoluteString, appId: "cache-test",
+      channel: nil, runtimeVersion: nil, allowInsecureUrls: true)
+    XCTAssertEqual(before?.stable.version, "1.0")
+    XCTAssertEqual(after?.stable.version, "2.0")
+    XCTAssertEqual(server.requestCount, 2)
+  }
+
   func testWrongTypeCannotSilentlyDisableVerification() {
     for value: Any in ["mistyped", [String: String](), 123, true, NSNull()] {
       XCTAssertFalse(ManifestKeyConfig.parse(["manifestKeys": value]).isEmpty, "\(value)")

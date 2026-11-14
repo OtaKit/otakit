@@ -127,6 +127,7 @@ final class DownloadHTTPServer {
     let retryAfter: String?
     let body: Data
     let advertisedLength: Int
+    var cacheControl = "no-store"
     static func http(status: Int, retryAfter: String? = nil) -> Response {
       Response(status: status, retryAfter: retryAfter, body: Data(), advertisedLength: 0)
     }
@@ -180,7 +181,7 @@ final class DownloadHTTPServer {
       let response = self.responses[min(self.requests, self.responses.count - 1)]
       self.requests += 1
       self.lock.unlock()
-      var header = "HTTP/1.1 \(response.status) Test\r\nContent-Length: \(response.advertisedLength)\r\nConnection: close\r\nCache-Control: no-store\r\n"
+      var header = "HTTP/1.1 \(response.status) Test\r\nContent-Length: \(response.advertisedLength)\r\nConnection: close\r\nCache-Control: \(response.cacheControl)\r\n"
       if let retryAfter = response.retryAfter { header += "Retry-After: \(retryAfter)\r\n" }
       var bytes = Data((header + "\r\n").utf8)
       bytes.append(response.body)

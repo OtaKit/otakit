@@ -41,19 +41,24 @@ type Senders = {
   fcm: typeof sendFcmBatch;
 };
 
+/**
+ * The timestamp columns hold UTC without a time zone, so they are compared
+ * with now() in UTC: a database whose session time zone is not UTC would
+ * otherwise claim batches hours early or late.
+ */
 export async function claimBatches(limit: number): Promise<ClaimedBatch[]> {
   const db = pushDb();
   await db.$executeRaw`
     UPDATE push."PushSendBatch"
     SET status = 'pending', "claimedAt" = NULL
     WHERE status = 'sending'
-      AND "claimedAt" < now() - (${STUCK_AFTER_MINUTES} * interval '1 minute')`;
+      AND "claimedAt" < (now() AT TIME ZONE 'UTC') - (${STUCK_AFTER_MINUTES} * interval '1 minute')`;
   return db.$queryRaw<ClaimedBatch[]>`
     UPDATE push."PushSendBatch"
-    SET status = 'sending', "claimedAt" = now(), attempts = attempts + 1
+    SET status = 'sending', "claimedAt" = (now() AT TIME ZONE 'UTC'), attempts = attempts + 1
     WHERE id IN (
       SELECT id FROM push."PushSendBatch"
-      WHERE status = 'pending' AND "nextAttemptAt" <= now()
+      WHERE status = 'pending' AND "nextAttemptAt" <= (now() AT TIME ZONE 'UTC')
       ORDER BY "nextAttemptAt"
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

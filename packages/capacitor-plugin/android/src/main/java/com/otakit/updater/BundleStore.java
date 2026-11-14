@@ -32,6 +32,7 @@ final class BundleStore {
   private static final String KEY_PREVIEW = "preview";
   private static final String KEY_PREVIEW_LAUNCH_TASK = "preview_launch_task";
   private static final String KEY_SEEN_RELEASE_NOTES = "seen_release_notes";
+  private static final String KEY_REPORTED_NOTES_FAILURE = "reported_notes_failure";
   /** Releases whose notes the app marked seen; the newest 20 are kept. */
   static final int SEEN_RELEASE_NOTES_LIMIT = 20;
 
@@ -348,6 +349,17 @@ final class BundleStore {
       kept.put(id);
     }
     prefs.edit().putString(KEY_SEEN_RELEASE_NOTES, kept.toString()).commit();
+  }
+
+  /**
+   * True the first time a release's notes fail verification with this reason, so each device
+   * reports it once instead of on every check.
+   */
+  synchronized boolean claimNotesFailureReport(String releaseId, String detail) {
+    String key = releaseId + ":" + detail;
+    if (key.equals(prefs.getString(KEY_REPORTED_NOTES_FAILURE, null))) return false;
+    prefs.edit().putString(KEY_REPORTED_NOTES_FAILURE, key).commit();
+    return true;
   }
 
   private java.util.List<String> seenReleaseNotes() {
