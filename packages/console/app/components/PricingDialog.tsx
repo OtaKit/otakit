@@ -1,10 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Building2, Check, ChevronDown, Leaf, LoaderCircle, Rocket, Star } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  Leaf,
+  LoaderCircle,
+  Plus,
+  Rocket,
+  Star,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { ApiError } from '@/app/components/dashboard-types';
+import { startCreditCheckout, useResetOnPageRestore } from '@/app/components/credit-checkout';
+import {
+  formatCreditPackDownloads,
+  formatCreditPackPrice,
+  getCreditPackForPlan,
+  type CreditPack,
+} from '@/lib/billing/credit-packs';
 import { SUPPORT_MAILTO } from '@/lib/support';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,18 +55,27 @@ export function PricingDialog({
   canManageBilling,
   initialBillingData,
   onBillingDataChange,
+  creditPack = null,
+  organizationId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   canManageBilling: boolean;
   initialBillingData?: PricingDialogBillingData | null;
   onBillingDataChange?: (billingData: PricingDialogBillingData) => void;
+  // The pack the server says this workspace can buy; without it the extra
+  // downloads row is informational only.
+  creditPack?: CreditPack | null;
+  organizationId?: string;
 }) {
   const [billingData, setBillingData] = useState<PricingDialogBillingData | null>(
     initialBillingData ?? null,
   );
   const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const [buyingCredits, setBuyingCredits] = useState(false);
+  const resetBuyingCredits = useCallback(() => setBuyingCredits(false), []);
+  useResetOnPageRestore(resetBuyingCredits);
 
   useEffect(() => {
     setBillingData(initialBillingData ?? null);
@@ -144,6 +169,17 @@ export function PricingDialog({
     }
   }
 
+  async function handleBuyCredits(pack: CreditPack) {
+    if (!canManageBilling) return;
+    setBuyingCredits(true);
+    try {
+      await startCreditCheckout({ pack: pack.key, organizationId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
+      setBuyingCredits(false);
+    }
+  }
+
   async function handleManageBilling() {
     if (!canManageBilling) return;
     setOpeningPortal(true);
@@ -204,7 +240,7 @@ export function PricingDialog({
                 'Everything in Free',
                 '20× update capacity',
                 'Single-member workspace',
-                'Hard cap — no overage',
+                'Extra downloads when you need them',
               ]}
               current={currentPlan === 'starter'}
               tag="Popular"
@@ -240,7 +276,7 @@ export function PricingDialog({
               features={[
                 'Everything in Free',
                 'Team members and roles',
-                'Usage-based overage ($50 / extra 1M)',
+                'Extra downloads when you need them',
                 'Priority support',
               ]}
               current={currentPlan === 'pro'}
@@ -307,6 +343,13 @@ export function PricingDialog({
             />
           </div>
 
+          <ExtraDownloadsRow
+            purchasablePack={creditPack}
+            canBuy={canManageBilling}
+            buying={buyingCredits}
+            onBuy={(pack) => void handleBuyCredits(pack)}
+          />
+
           {!canManageBilling ? (
             <p className="text-sm text-muted-foreground">
               Only organization owners/admins can manage billing.
@@ -314,12 +357,90 @@ export function PricingDialog({
           ) : null}
 
           <p className="text-sm text-muted-foreground">
-            * Value-aligned pricing: pay for real downloaded updates. Free and Starter stop at their
-            included limits. Optional Pro overage is $50 per additional 1,000,000 downloads.
+            * Value-aligned pricing: pay for real downloaded updates. When the monthly allowance
+            runs out, updates pause until next month or until you add extra downloads.
           </p>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const EXTRA_DOWNLOAD_CELLS: Array<{
+  planKey: PlanKey;
+  name: string;
+  note: string;
+}> = [
+  { planKey: 'free', name: 'Free', note: 'One-time purchase' },
+  { planKey: 'starter', name: 'Starter', note: 'One-time purchase' },
+  { planKey: 'pro', name: 'Pro', note: 'One-time purchase' },
+  { planKey: 'enterprise', name: 'Enterprise', note: 'Part of your contract' },
+];
+
+// The "table row" under the plan cards: each plan's extra download pack, with
+// the buy action on the workspace's own plan.
+function ExtraDownloadsRow({
+  purchasablePack,
+  canBuy,
+  buying,
+  onBuy,
+}: {
+  purchasablePack: CreditPack | null;
+  canBuy: boolean;
+  buying: boolean;
+  onBuy: (pack: CreditPack) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="border-b border-border bg-card px-5 py-3">
+        <p className="text-sm font-medium">Extra downloads</p>
+        <p className="text-xs text-muted-foreground">
+          Added on top of your monthly allowance when you need more. They never expire.
+        </p>
+      </div>
+      <div className="grid gap-px bg-border md:grid-cols-2 lg:grid-cols-4">
+        {EXTRA_DOWNLOAD_CELLS.map((cell) => {
+          const pack = getCreditPackForPlan(cell.planKey);
+          const isPurchasable = purchasablePack?.planKey === cell.planKey;
+          return (
+            <div key={cell.planKey} className="flex flex-col bg-card px-5 py-4">
+              <p className="text-xs text-muted-foreground">{cell.name}</p>
+              <p className="mt-1 text-sm">
+                {pack ? (
+                  <>
+                    <span className="text-xl font-semibold tracking-tight">
+                      {formatCreditPackPrice(pack)}
+                    </span>{' '}
+                    <span className="text-muted-foreground">
+                      per {formatCreditPackDownloads(pack)} downloads
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xl font-semibold tracking-tight">Custom</span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{cell.note}</p>
+              {pack && isPurchasable && canBuy ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3 w-fit"
+                  disabled={buying}
+                  onClick={() => onBuy(pack)}
+                >
+                  {buying ? (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="size-3.5" />
+                  )}
+                  Buy {formatCreditPackDownloads(pack)}
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

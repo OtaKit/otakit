@@ -1,4 +1,9 @@
 import { Resend } from 'resend';
+import {
+  formatCreditPackDownloads,
+  formatCreditPackPrice,
+  getCreditPackForPlan,
+} from './billing/credit-packs';
 import { SUPPORT_EMAIL } from './support';
 
 let resend: Resend | null = null;
@@ -154,19 +159,51 @@ Open dashboard: ${dashboardUrl}`;
   });
 }
 
+// One plan-specific next step under a usage warning.
+export function usageWarningNextStep(args: {
+  planKey: string;
+  // The plan's monthly allowance (grandfathered Free workspaces have 100,000).
+  includedLimit: number;
+  threshold: 90 | 100;
+}): string | null {
+  const pack = getCreditPackForPlan(args.planKey);
+  if (!pack) return null;
+  const paused =
+    args.threshold === 100
+      ? 'Update downloads are paused until next month starts or you add downloads. '
+      : '';
+  const addPack = `Add ${formatCreditPackDownloads(pack)} extra downloads for ${formatCreditPackPrice(pack)}`;
+  if (args.planKey === 'free') {
+    return args.includedLimit < 100_000
+      ? `${paused}${addPack}, or move to Starter for 100,000 downloads a month.`
+      : `${paused}${addPack}, or move to Pro for 1,000,000 downloads a month.`;
+  }
+  if (args.planKey === 'starter') {
+    return `${paused}${addPack}, or move to Pro for 1,000,000 downloads a month.`;
+  }
+  return `${paused}${addPack}.`;
+}
+
 export async function sendUsageWarningEmail({
   to,
   organizationName,
+  planKey,
   threshold,
   downloadsCount,
   limit,
+  includedLimit,
+  creditsRemaining,
   periodStart,
 }: {
   to: string;
   organizationName: string;
+  planKey: string;
   threshold: 90 | 100;
   downloadsCount: number;
+  // Where updates pause: included downloads plus extra download credits.
   limit: number;
+  includedLimit: number;
+  creditsRemaining: number;
   periodStart: Date;
 }): Promise<void> {
   const safeOrganizationName = escapeHtml(organizationName);
@@ -181,18 +218,25 @@ export async function sendUsageWarningEmail({
     year: 'numeric',
     timeZone: 'UTC',
   }).format(periodStart);
+  const creditsLine =
+    creditsRemaining > 0 ? `Extra downloads left: ${creditsRemaining.toLocaleString()}` : null;
+  const nextStep = usageWarningNextStep({ planKey, includedLimit, threshold });
 
   const html = `
 <p>Usage alert for <strong>${safeOrganizationName}</strong>.</p>
 <p>${threshold}% threshold reached for ${escapeHtml(period)}.</p>
 <p>Downloads: <strong>${downloadsCount.toLocaleString()}</strong> / <strong>${limit.toLocaleString()}</strong></p>
-<p><a href="${escapeHtml(dashboardUrl)}">Open settings</a></p>
+${creditsLine ? `<p>${escapeHtml(creditsLine)}</p>\n` : ''}${nextStep ? `<p>${escapeHtml(nextStep)}</p>\n` : ''}<p><a href="${escapeHtml(dashboardUrl)}">Open settings</a></p>
   `.trim();
 
-  const text = `Usage alert for ${organizationName}.
-${threshold}% threshold reached for ${period}.
-Downloads: ${downloadsCount.toLocaleString()} / ${limit.toLocaleString()}
-Open settings: ${dashboardUrl}`;
+  const text = [
+    `Usage alert for ${organizationName}.`,
+    `${threshold}% threshold reached for ${period}.`,
+    `Downloads: ${downloadsCount.toLocaleString()} / ${limit.toLocaleString()}`,
+    ...(creditsLine ? [creditsLine] : []),
+    ...(nextStep ? [nextStep] : []),
+    `Open settings: ${dashboardUrl}`,
+  ].join('\n');
 
   await sendEmail({
     to,

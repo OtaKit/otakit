@@ -2692,6 +2692,17 @@ New features, improvements and fixes, newest first. Plugin features need the plu
 
 Latest versions: @otakit/capacitor-updater 3.4.0 (2026-11-14), @otakit/cli 1.12.0 (2026-11-05), @otakit/push 0.1.1 (2026-09-27).
 
+### Extra download packs on every plan (2026-11-26)
+
+When a busy month uses up your allowance, add a pack of extra update downloads from Settings instead of waiting for next month or changing plans. Free adds 5,000 for $5, Starter 100,000 for $10 and Pro 1,000,000 for $50.
+
+- Buying a pack while updates are paused resumes them right away.
+- Credits are used only after the monthly allowance, carry over to later months and never expire.
+- Pro works the same way as the other plans: additional usage billed at the end of the cycle is replaced by 1,000,000-download packs, so there are no usage charges after the fact.
+- The usage check now runs every hour, so warnings and pauses follow your usage more closely.
+
+Docs: Pricing (/#pricing)
+
 ### Reverts reach phones that already downloaded the update (2026-11-14, Plugin 3.4.0)
 
 When you revert a release, or cancel or lower a rollout, phones that downloaded the bundle but have not applied it yet drop it at their next check. Before, they applied it once. A cold start with the default launch policy can still apply it before the check runs.

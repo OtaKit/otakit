@@ -3,20 +3,46 @@ import type { PlanKey, UsageWarningSent } from '@prisma/client';
 import { db } from '@/lib/db';
 import { sendUsageWarningEmail } from '@/lib/email';
 import { deleteAllManifestFilesForApp, restoreManifestFilesForApp } from '@/lib/manifest-files';
-import { getPolar, isPolarConfigured } from '@/lib/polar';
+import { isPolarConfigured } from '@/lib/polar';
 import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
-import { getExternalCustomerId, getPlanLimits } from './config';
+import { getPlanLimits } from './config';
+import { getCreditPool, syncCreditOrders } from './credits';
+import { computeUsageState, nextUsageWarning } from './usage-state';
 
-const POLAR_USAGE_EVENT_NAME = process.env.POLAR_USAGE_EVENT_NAME ?? 'otakit.download.usage.v1';
+// Months closed in one refresh. A workspace is refreshed at least hourly, so
+// more than one only happens after an outage; the cap bounds the catch-up work.
+const MAX_PERIODS_CLOSED_PER_REFRESH = 12;
+
+// A refresh lost a race with another refresh or a month close; retry it on a
+// fresh read instead of writing stale numbers.
+const MAX_REFRESH_ATTEMPTS = 3;
+
+// Manifest syncs per block change. One is enough unless another refresh flips
+// the flag while it runs.
+const MAX_MANIFEST_SYNC_PASSES = 3;
 
 type UsageRunStats = {
   processedOrganizations: number;
   blockedOrganizations: number;
   sent90Warnings: number;
   sent100Warnings: number;
-  polarSyncedOrganizations: number;
 };
+
+const USAGE_ORGANIZATION_SELECT = {
+  id: true,
+  name: true,
+  planKey: true,
+  freeDownloadsLimit: true,
+  usageBlocked: true,
+  usagePeriodStart: true,
+  usageCalculatedAt: true,
+  downloadsCount: true,
+  usageIncludedLimit: true,
+  warningSent: true,
+  creditsConsumed: true,
+  creditsUsed: true,
+} as const;
 
 type UsageOrganizationRecord = {
   id: string;
@@ -24,25 +50,31 @@ type UsageOrganizationRecord = {
   planKey: PlanKey;
   freeDownloadsLimit: number;
   usageBlocked: boolean;
-  overageEnabled: boolean;
   usagePeriodStart: Date | null;
   usageCalculatedAt: Date | null;
   downloadsCount: number;
+  usageIncludedLimit: number | null;
   warningSent: UsageWarningSent;
+  creditsConsumed: number;
+  creditsUsed: number;
 };
 
 type RefreshUsageOptions = {
   sendWarnings?: boolean;
-  syncPolar?: boolean;
 };
 
 export type OrganizationUsageSnapshot = {
   periodStart: string;
   downloadsCount: number;
+  // Downloads included in the plan each month.
   limit: number;
+  // Where updates pause: included downloads plus extra download credits.
+  effectiveLimit: number;
+  // Share of effectiveLimit used.
   percentage: number;
+  creditsUsed: number;
+  creditsRemaining: number;
   usageBlocked: boolean;
-  overageEnabled: boolean;
   warningSent: UsageWarningSent;
 };
 
@@ -59,136 +91,223 @@ function isSameMonth(a: Date | null, b: Date): boolean {
   return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth();
 }
 
-async function syncManifestFilesForOrganization(
-  organizationId: string,
-  usageBlocked: boolean,
-): Promise<void> {
+async function listOrganizationAppIds(organizationId: string): Promise<string[]> {
   const apps = await db.app.findMany({
     where: { organizationId },
     select: { id: true },
   });
+  return apps.map((app) => app.id);
+}
+
+async function syncManifestFilesForOrganization(
+  organizationId: string,
+  usageBlocked: boolean,
+): Promise<void> {
+  const appIds = await listOrganizationAppIds(organizationId);
 
   if (usageBlocked) {
-    await Promise.all(apps.map((app) => deleteAllManifestFilesForApp(app.id)));
+    await Promise.all(appIds.map((appId) => deleteAllManifestFilesForApp(appId)));
     return;
   }
 
-  await Promise.all(apps.map((app) => restoreManifestFilesForApp(app.id)));
+  await Promise.all(appIds.map((appId) => restoreManifestFilesForApp(appId)));
 }
+
+/**
+ * Deletes or restores the update manifests after usageBlocked was saved (a
+ * restore reads the saved flag). Two refreshes can flip the flag in opposite
+ * directions with their storage work overlapping, so after each pass the flag
+ * is read again and the manifests follow it until they match.
+ *
+ * If storage fails, the flag is put back while it still holds the value this
+ * pass synced, so the next usage check sees the change again and retries;
+ * otherwise a workspace that just bought credits could stay without manifests.
+ */
+async function applyUsageBlockedChange(
+  organizationId: string,
+  usageBlocked: boolean,
+): Promise<void> {
+  let target = usageBlocked;
+  for (let pass = 0; pass < MAX_MANIFEST_SYNC_PASSES; pass += 1) {
+    try {
+      await syncManifestFilesForOrganization(organizationId, target);
+    } catch (error) {
+      await db.organization
+        .updateMany({
+          where: { id: organizationId, usageBlocked: target },
+          data: { usageBlocked: !target },
+        })
+        .catch((revertError: unknown) => {
+          console.error('[Usage] could not restore the previous block state', {
+            organizationId,
+            error: revertError,
+          });
+        });
+      throw error;
+    }
+
+    const saved = await db.organization.findUnique({
+      where: { id: organizationId },
+      select: { usageBlocked: true },
+    });
+    if (!saved || saved.usageBlocked === target) return;
+    target = saved.usageBlocked;
+  }
+  console.error('[Usage] manifests kept changing while syncing the block state', {
+    organizationId,
+  });
+}
+
+// ── Month close ─────────────────────────────────────────────────────
+
+async function reloadUsageOrganization(organizationId: string): Promise<UsageOrganizationRecord> {
+  const organization = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: USAGE_ORGANIZATION_SELECT,
+  });
+  if (!organization) throw new Error('Organization not found');
+  return organization;
+}
+
+/**
+ * Finalizes every month before `currentPeriodStart` that this workspace still
+ * tracks: recounts its downloads (the last hours after the final hourly check
+ * included) and books the credits it used. The compare-and-set on
+ * usagePeriodStart makes concurrent refreshes close each month exactly once.
+ */
+async function closeElapsedUsagePeriods(
+  organization: UsageOrganizationRecord,
+  currentPeriodStart: Date,
+  appIds: string[],
+): Promise<UsageOrganizationRecord> {
+  let record = organization;
+
+  for (let step = 0; step < MAX_PERIODS_CLOSED_PER_REFRESH; step += 1) {
+    const trackedStart = record.usagePeriodStart;
+    if (!trackedStart || trackedStart >= currentPeriodStart) return record;
+
+    const periodStart = monthStartUTC(trackedStart);
+    const periodEnd = nextMonthStartUTC(periodStart);
+    // The allowance seen during that month, not after a later plan change.
+    const includedLimit =
+      record.usageIncludedLimit ??
+      getPlanLimits(record.planKey, record.freeDownloadsLimit).downloads;
+
+    const downloads = await getCurrentPeriodDownloadCountFromEvents({
+      appIds,
+      periodStart,
+      periodEndExclusive: periodEnd,
+    });
+    // Credits bought after the month ended belong to the next month.
+    const pool = await getCreditPool(record.id, periodEnd);
+    const state = computeUsageState({
+      downloads,
+      includedLimit,
+      creditsAvailable: pool - record.creditsConsumed,
+      enforceLimits: isPolarConfigured(),
+    });
+
+    const { count } = await db.organization.updateMany({
+      where: { id: record.id, usagePeriodStart: trackedStart },
+      data: {
+        usagePeriodStart: periodEnd,
+        downloadsCount: 0,
+        usageIncludedLimit: null,
+        creditsUsed: 0,
+        warningSent: 'none',
+        creditsConsumed: { increment: state.creditsUsed },
+      },
+    });
+
+    if (count === 0) {
+      // Another refresh closed this month first.
+      record = await reloadUsageOrganization(record.id);
+      continue;
+    }
+
+    if (state.creditsUsed > 0) {
+      console.info('[Credits] month closed', {
+        organizationId: record.id,
+        periodStart: periodStart.toISOString(),
+        downloads,
+        creditsUsed: state.creditsUsed,
+      });
+    }
+
+    record = {
+      ...record,
+      usagePeriodStart: periodEnd,
+      downloadsCount: 0,
+      usageIncludedLimit: null,
+      creditsUsed: 0,
+      warningSent: 'none',
+      creditsConsumed: record.creditsConsumed + state.creditsUsed,
+    };
+  }
+
+  return record;
+}
+
+// ── Snapshot (stored values, no recount) ────────────────────────────
 
 export async function getOrganizationUsageSnapshot(
   organizationId: string,
 ): Promise<OrganizationUsageSnapshot> {
   const currentPeriodStart = monthStartUTC();
-  const organization = await db.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      planKey: true,
-      freeDownloadsLimit: true,
-      usagePeriodStart: true,
-      downloadsCount: true,
-      usageBlocked: true,
-      overageEnabled: true,
-      warningSent: true,
-    },
-  });
+  const [organization, pool] = await Promise.all([
+    db.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        planKey: true,
+        freeDownloadsLimit: true,
+        usagePeriodStart: true,
+        downloadsCount: true,
+        usageBlocked: true,
+        warningSent: true,
+        creditsConsumed: true,
+        creditsUsed: true,
+      },
+    }),
+    getCreditPool(organizationId),
+  ]);
 
   const planKey = organization?.planKey ?? 'free';
-  const limit = getPlanLimits(planKey, organization?.freeDownloadsLimit).downloads;
+  const limits = getPlanLimits(planKey, organization?.freeDownloadsLimit);
   const inCurrentPeriod = isSameMonth(organization?.usagePeriodStart ?? null, currentPeriodStart);
+  // A month that is over but not closed yet will still consume its credits.
+  const unclosedCreditsUsed = inCurrentPeriod ? 0 : (organization?.creditsUsed ?? 0);
   const downloadsCount = inCurrentPeriod ? (organization?.downloadsCount ?? 0) : 0;
-  const usageBlocked = inCurrentPeriod ? (organization?.usageBlocked ?? false) : false;
-  const warningSent: UsageWarningSent = inCurrentPeriod
-    ? (organization?.warningSent ?? 'none')
-    : 'none';
-  const percentage = limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0;
+  const state = computeUsageState({
+    downloads: downloadsCount,
+    includedLimit: limits.downloads,
+    creditsAvailable: pool - (organization?.creditsConsumed ?? 0) - unclosedCreditsUsed,
+    enforceLimits: isPolarConfigured(),
+  });
 
   return {
     periodStart: currentPeriodStart.toISOString(),
     downloadsCount,
-    limit,
-    percentage,
-    usageBlocked,
-    overageEnabled: planKey === 'pro' && (organization?.overageEnabled ?? false),
-    warningSent,
+    limit: limits.downloads,
+    effectiveLimit: state.effectiveLimit,
+    percentage: state.percentage,
+    creditsUsed: state.creditsUsed,
+    creditsRemaining: state.creditsRemaining,
+    usageBlocked: inCurrentPeriod ? (organization?.usageBlocked ?? false) : false,
+    warningSent: inCurrentPeriod ? (organization?.warningSent ?? 'none') : 'none',
   };
 }
 
-export async function updateOrganizationOverageEnabled(
-  organizationId: string,
-  overageEnabled: boolean,
-): Promise<OrganizationUsageSnapshot> {
-  const currentPeriodStart = monthStartUTC();
-
-  const organization = await db.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      id: true,
-      planKey: true,
-      freeDownloadsLimit: true,
-      usageBlocked: true,
-      usagePeriodStart: true,
-      usageCalculatedAt: true,
-      downloadsCount: true,
-      warningSent: true,
-    },
-  });
-
-  if (!organization) {
-    throw new Error('Organization not found');
-  }
-
-  const inCurrentPeriod = isSameMonth(organization.usagePeriodStart, currentPeriodStart);
-  const downloadsCount = inCurrentPeriod ? organization.downloadsCount : 0;
-  const warningSent: UsageWarningSent = inCurrentPeriod ? organization.warningSent : 'none';
-  const usageCalculatedAt = inCurrentPeriod
-    ? (organization.usageCalculatedAt ?? (downloadsCount > 0 ? new Date() : currentPeriodStart))
-    : currentPeriodStart;
-
-  const limits = getPlanLimits(organization.planKey, organization.freeDownloadsLimit);
-  if (overageEnabled && !limits.overage) {
-    throw new Error('Additional usage is only available on the Pro plan');
-  }
-
-  const effectiveOverageEnabled = limits.overage && overageEnabled;
-  const limit = limits.downloads;
-  const usageBlocked = isPolarConfigured()
-    ? !effectiveOverageEnabled && downloadsCount >= limit
-    : false;
-  const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
-
-  await db.organization.update({
-    where: { id: organizationId },
-    data: {
-      overageEnabled: effectiveOverageEnabled,
-      usageBlocked,
-      usagePeriodStart: currentPeriodStart,
-      usageCalculatedAt,
-      downloadsCount,
-      warningSent,
-    },
-  });
-  if (usageBlockedChanged) {
-    await syncManifestFilesForOrganization(organizationId, usageBlocked);
-  }
-
-  return {
-    periodStart: currentPeriodStart.toISOString(),
-    downloadsCount,
-    limit,
-    percentage: limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0,
-    usageBlocked,
-    overageEnabled: effectiveOverageEnabled,
-    warningSent,
-  };
-}
+// ── Warnings ────────────────────────────────────────────────────────
 
 async function sendThresholdWarningEmails(args: {
   organizationId: string;
   organizationName: string;
+  planKey: PlanKey;
   threshold: 90 | 100;
   downloadsCount: number;
   limit: number;
+  includedLimit: number;
+  creditsRemaining: number;
   periodStart: Date;
 }): Promise<void> {
   const members = await db.organizationMember.findMany({
@@ -211,9 +330,12 @@ async function sendThresholdWarningEmails(args: {
       sendUsageWarningEmail({
         to: email,
         organizationName: args.organizationName,
+        planKey: args.planKey,
         threshold: args.threshold,
         downloadsCount: args.downloadsCount,
         limit: args.limit,
+        includedLimit: args.includedLimit,
+        creditsRemaining: args.creditsRemaining,
         periodStart: args.periodStart,
       }).catch((error) => {
         console.error('[UsageWarningEmail] send failed', {
@@ -227,169 +349,121 @@ async function sendThresholdWarningEmails(args: {
   );
 }
 
-async function syncOrganizationUsageToPolar(args: {
-  organizationId: string;
-  periodStart: Date;
-  periodEnd: Date;
-  downloadsCount: number;
-}): Promise<boolean> {
-  if (!isPolarConfigured()) return false;
-  const meterId = process.env.POLAR_METER_DOWNLOADS_ID;
-  if (!meterId) return false;
+// ── Refresh ─────────────────────────────────────────────────────────
 
-  const externalCustomerId = getExternalCustomerId(args.organizationId);
-  let polarTotal = 0;
-
-  try {
-    const quantities = await getPolar().meters.quantities({
-      id: meterId,
-      startTimestamp: args.periodStart,
-      endTimestamp: args.periodEnd,
-      interval: 'month',
-      externalCustomerId,
-    });
-    polarTotal = Math.floor(quantities.total ?? 0);
-  } catch (error) {
-    console.error('[UsagePolarSync] quantities failed', {
-      organizationId: args.organizationId,
-      error,
-    });
-    return false;
-  }
-
-  const delta = args.downloadsCount - polarTotal;
-  if (delta <= 0) return false;
-
-  try {
-    await getPolar().events.ingest({
-      events: [
-        {
-          name: POLAR_USAGE_EVENT_NAME,
-          externalCustomerId,
-          externalId: `usage:${args.organizationId}:${args.periodStart.toISOString()}:${args.downloadsCount}`,
-          metadata: {
-            quantity: delta,
-            periodStart: args.periodStart.toISOString(),
-          },
-        },
-      ],
-    });
-    return true;
-  } catch (error) {
-    console.error('[UsagePolarSync] ingest failed', {
-      organizationId: args.organizationId,
-      delta,
-      error,
-    });
-    return false;
-  }
-}
+type RefreshResult = {
+  snapshot: OrganizationUsageSnapshot;
+  warningThresholdSent: 90 | 100 | null;
+};
 
 async function refreshUsageForOrganization(
   organization: UsageOrganizationRecord,
-  now = new Date(),
   options: RefreshUsageOptions = {},
-): Promise<{
-  snapshot: OrganizationUsageSnapshot;
-  warningThresholdSent: 90 | 100 | null;
-  polarSynced: boolean;
-}> {
-  const { sendWarnings = true, syncPolar = true } = options;
+  attempt = 1,
+): Promise<RefreshResult> {
+  const { sendWarnings = true } = options;
+  // Read the clock per attempt: a retry after a month close must count the
+  // new month, never write the old one back.
+  const now = new Date();
   const periodStart = monthStartUTC(now);
   const periodEnd = nextMonthStartUTC(periodStart);
-  const inCurrentPeriod = isSameMonth(organization.usagePeriodStart, periodStart);
-  const previousWarning: UsageWarningSent = inCurrentPeriod ? organization.warningSent : 'none';
+  const appIds = await listOrganizationAppIds(organization.id);
 
-  const apps = await db.app.findMany({
-    where: { organizationId: organization.id },
-    select: { id: true },
-  });
-  const appIds = apps.map((app) => app.id);
+  const record = await closeElapsedUsagePeriods(organization, periodStart, appIds);
+
+  async function retryOnFreshRead(): Promise<RefreshResult> {
+    if (attempt >= MAX_REFRESH_ATTEMPTS) {
+      throw new Error('Usage refresh kept conflicting with other refreshes');
+    }
+    return refreshUsageForOrganization(
+      await reloadUsageOrganization(organization.id),
+      options,
+      attempt + 1,
+    );
+  }
+
+  // Another refresh already moved this workspace into a later month.
+  if (record.usagePeriodStart && record.usagePeriodStart > periodStart) {
+    return retryOnFreshRead();
+  }
+
+  const inCurrentPeriod = isSameMonth(record.usagePeriodStart, periodStart);
+  const previousWarning: UsageWarningSent = inCurrentPeriod ? record.warningSent : 'none';
 
   const downloadsCount = await getCurrentPeriodDownloadCountFromEvents({
     appIds,
     periodStart,
     periodEndExclusive: periodEnd,
   });
-  const limits = getPlanLimits(organization.planKey, organization.freeDownloadsLimit);
-  const limit = limits.downloads;
-  const percentage = limit > 0 ? Math.round((downloadsCount / limit) * 100) : 0;
+  const limits = getPlanLimits(record.planKey, record.freeDownloadsLimit);
+  const pool = await getCreditPool(record.id);
+  const state = computeUsageState({
+    downloads: downloadsCount,
+    includedLimit: limits.downloads,
+    creditsAvailable: pool - record.creditsConsumed,
+    enforceLimits: isPolarConfigured(),
+  });
 
-  let warningSent = previousWarning;
-  let warningThresholdSent: 90 | 100 | null = null;
+  const { warningSent, threshold: warningThreshold } = nextUsageWarning({
+    previous: previousWarning,
+    percentage: state.percentage,
+    sendWarnings,
+  });
 
-  if (sendWarnings) {
-    if (percentage < 90 && warningSent !== 'none') {
-      warningSent = 'none';
-    }
-
-    if (percentage >= 100 && previousWarning !== 'at100') {
-      await sendThresholdWarningEmails({
-        organizationId: organization.id,
-        organizationName: organization.name,
-        threshold: 100,
-        downloadsCount,
-        limit,
-        periodStart,
-      });
-      warningSent = 'at100';
-      warningThresholdSent = 100;
-    } else if (percentage >= 90 && previousWarning === 'none') {
-      await sendThresholdWarningEmails({
-        organizationId: organization.id,
-        organizationName: organization.name,
-        threshold: 90,
-        downloadsCount,
-        limit,
-        periodStart,
-      });
-      warningSent = 'at90';
-      warningThresholdSent = 90;
-    }
-  }
-
-  const effectiveOverageEnabled = limits.overage && organization.overageEnabled;
-  const usageBlocked = isPolarConfigured()
-    ? !effectiveOverageEnabled && downloadsCount >= limit
-    : false;
-  const usageBlockedChanged = usageBlocked !== organization.usageBlocked;
-
-  await db.organization.update({
-    where: { id: organization.id },
+  // Compare-and-set on the state this refresh read: a concurrent refresh, a
+  // credit grant's refresh or a month close wins, and this one starts over on
+  // fresh data instead of saving stale numbers over it.
+  const { count } = await db.organization.updateMany({
+    where: {
+      id: record.id,
+      usagePeriodStart: record.usagePeriodStart,
+      usageCalculatedAt: record.usageCalculatedAt,
+    },
     data: {
       usagePeriodStart: periodStart,
       usageCalculatedAt: now,
       downloadsCount,
-      usageBlocked,
-      overageEnabled: effectiveOverageEnabled,
+      usageIncludedLimit: limits.downloads,
+      usageBlocked: state.usageBlocked,
       warningSent,
+      creditsUsed: state.creditsUsed,
     },
   });
-  if (usageBlockedChanged) {
-    await syncManifestFilesForOrganization(organization.id, usageBlocked);
+  if (count === 0) {
+    return retryOnFreshRead();
   }
 
-  const polarSynced = syncPolar
-    ? await syncOrganizationUsageToPolar({
-        organizationId: organization.id,
-        periodStart,
-        periodEnd,
-        downloadsCount,
-      })
-    : false;
+  if (warningThreshold !== null) {
+    await sendThresholdWarningEmails({
+      organizationId: record.id,
+      organizationName: record.name,
+      planKey: record.planKey,
+      threshold: warningThreshold,
+      downloadsCount,
+      limit: state.effectiveLimit,
+      includedLimit: limits.downloads,
+      creditsRemaining: state.creditsRemaining,
+      periodStart,
+    });
+  }
+
+  if (state.usageBlocked !== record.usageBlocked) {
+    await applyUsageBlockedChange(record.id, state.usageBlocked);
+  }
 
   return {
     snapshot: {
       periodStart: periodStart.toISOString(),
       downloadsCount,
-      limit,
-      percentage,
-      usageBlocked,
-      overageEnabled: effectiveOverageEnabled,
+      limit: limits.downloads,
+      effectiveLimit: state.effectiveLimit,
+      percentage: state.percentage,
+      creditsUsed: state.creditsUsed,
+      creditsRemaining: state.creditsRemaining,
+      usageBlocked: state.usageBlocked,
       warningSent,
     },
-    warningThresholdSent,
-    polarSynced,
+    warningThresholdSent: warningThreshold,
   };
 }
 
@@ -397,61 +471,58 @@ export async function refreshOrganizationUsageSnapshot(
   organizationId: string,
   options: RefreshUsageOptions = {},
 ): Promise<OrganizationUsageSnapshot> {
-  const organization = await db.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      id: true,
-      name: true,
-      planKey: true,
-      freeDownloadsLimit: true,
-      usageBlocked: true,
-      overageEnabled: true,
-      usagePeriodStart: true,
-      usageCalculatedAt: true,
-      downloadsCount: true,
-      warningSent: true,
-    },
-  });
+  const organization = await reloadUsageOrganization(organizationId);
+  return (await refreshUsageForOrganization(organization, options)).snapshot;
+}
 
-  if (!organization) {
-    throw new Error('Organization not found');
+/**
+ * Called after credits were granted or taken back. Never throws: the credits
+ * are stored either way and the hourly usage check applies them.
+ */
+export async function refreshUsageAfterCreditChange(
+  organizationId: string,
+): Promise<OrganizationUsageSnapshot | null> {
+  try {
+    return await refreshOrganizationUsageSnapshot(organizationId, { sendWarnings: false });
+  } catch (error) {
+    console.error('[Credits] usage refresh after a credit change failed', {
+      organizationId,
+      error,
+    });
+    return null;
   }
-
-  return (await refreshUsageForOrganization(organization, new Date(), options)).snapshot;
 }
 
 export async function runUsageAggregationCron(): Promise<UsageRunStats> {
-  const now = new Date();
-
-  const organizations = await db.organization.findMany({
-    select: {
-      id: true,
-      name: true,
-      planKey: true,
-      freeDownloadsLimit: true,
-      usageBlocked: true,
-      overageEnabled: true,
-      usagePeriodStart: true,
-      usageCalculatedAt: true,
-      downloadsCount: true,
-      warningSent: true,
-    },
-  });
-
   const stats: UsageRunStats = {
     processedOrganizations: 0,
     blockedOrganizations: 0,
     sent90Warnings: 0,
     sent100Warnings: 0,
-    polarSyncedOrganizations: 0,
   };
 
-  for (const organization of organizations) {
+  // Apply pack orders whose webhook was lost, for every customer at once (a
+  // first-time buyer may not have its Polar customer id stored yet). The
+  // usage refresh below then counts the new credits.
+  try {
+    await syncCreditOrders();
+  } catch (error) {
+    console.error('[UsageCron] credit order sync failed', { error });
+  }
+
+  // Oldest calculation first, so a run that times out never starves the same
+  // workspaces twice in a row.
+  const organizations = await db.organization.findMany({
+    select: { id: true },
+    orderBy: [{ usageCalculatedAt: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
+  });
+
+  for (const { id } of organizations) {
     try {
-      const { snapshot, warningThresholdSent, polarSynced } = await refreshUsageForOrganization(
-        organization,
-        now,
-      );
+      // Read each workspace right before processing it, so a purchase made
+      // while the run is going is not overwritten with stale data.
+      const organization = await reloadUsageOrganization(id);
+      const { snapshot, warningThresholdSent } = await refreshUsageForOrganization(organization);
 
       if (warningThresholdSent === 100) {
         stats.sent100Warnings += 1;
@@ -463,14 +534,10 @@ export async function runUsageAggregationCron(): Promise<UsageRunStats> {
         stats.blockedOrganizations += 1;
       }
 
-      if (polarSynced) {
-        stats.polarSyncedOrganizations += 1;
-      }
-
       stats.processedOrganizations += 1;
     } catch (error) {
       console.error('[UsageCron] organization processing failed', {
-        organizationId: organization.id,
+        organizationId: id,
         error,
       });
     }

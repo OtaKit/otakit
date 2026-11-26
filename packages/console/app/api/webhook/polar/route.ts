@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhooks } from '@polar-sh/nextjs';
+import type { Order } from '@polar-sh/sdk/models/components/order.js';
 
 import { refreshBillingState } from '@/lib/billing/service';
 import { parseOrganizationIdFromExternalId } from '@/lib/billing/config';
+import { applyCreditOrder } from '@/lib/billing/credits';
+import { refreshUsageAfterCreditChange } from '@/lib/billing/usage';
 import { isPolarConfigured } from '@/lib/polar';
 
 export const runtime = 'nodejs';
@@ -22,6 +25,9 @@ const BILLING_EVENT_TYPES = new Set<string>([
   'subscription.past_due',
   'customer.state_changed',
 ]);
+
+// Extra download packs: grant on payment, take back unused credits on refund.
+const CREDIT_ORDER_EVENT_TYPES = new Set<string>(['order.paid', 'order.refunded']);
 
 function getExternalId(payload: PolarWebhookPayload): string | null {
   const data = payload.data as unknown;
@@ -43,7 +49,25 @@ function getExternalId(payload: PolarWebhookPayload): string | null {
   return null;
 }
 
+async function handleCreditOrderWebhook(payload: PolarWebhookPayload): Promise<void> {
+  // A failure to write the grant throws, so Polar retries the delivery.
+  const result = await applyCreditOrder(payload.data as Order);
+  if (!result) return;
+
+  // Refresh even when the order sync applied it first, so the block state is
+  // always current. The refresh is idempotent and never throws.
+  await refreshUsageAfterCreditChange(result.organizationId);
+  console.info(
+    `[Polar webhook] Credit order applied for organization ${result.organizationId} (${payload.type})`,
+  );
+}
+
 async function handleBillingWebhook(payload: PolarWebhookPayload): Promise<void> {
+  if (CREDIT_ORDER_EVENT_TYPES.has(payload.type)) {
+    await handleCreditOrderWebhook(payload);
+    return;
+  }
+
   if (!BILLING_EVENT_TYPES.has(payload.type)) {
     return;
   }

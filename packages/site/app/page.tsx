@@ -26,6 +26,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { CopyEmailLink } from '@/components/CopyEmailLink';
+import { PricingExtras } from '@/components/PricingExtras';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
 // import { FounderSection } from '@/components/landing/FounderSection';
@@ -549,7 +550,7 @@ export default function LandingPage() {
                 features={[
                   'Everything in Free',
                   '20× the Free allowance',
-                  'No additional usage fees',
+                  'Extra updates when you need them',
                 ]}
                 cta="Choose Starter"
                 highlighted
@@ -564,7 +565,7 @@ export default function LandingPage() {
                   'Everything in Free',
                   '10× the Starter allowance',
                   'Team members & roles',
-                  'Additional usage at $50 / 1M',
+                  'Extra updates when you need them',
                   'Priority support',
                 ]}
                 cta="Start with Pro"
@@ -585,6 +586,7 @@ export default function LandingPage() {
                 copyEmail={site.supportEmail}
               />
             </div>
+            <PricingExtras />
           </div>
         </div>
       </section>

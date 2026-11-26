@@ -9,7 +9,7 @@ const priceRows = [
   ['2,000 users, 2 releases/mo', '$0 (free tier)', '$7–12 (pay as you go or Solo)'],
   ['10,000 users, 2 releases/mo', '$10 (Starter)', '$33 (Maker)'],
   ['50,000 users, 4 releases/mo', '$25 (Pro)', '$83 (Team)'],
-  ['500,000 users, 4 releases/mo', '$75 (Pro + overage)', '$208+ (Enterprise)'],
+  ['500,000 users, 4 releases/mo', '$75 (Pro + extra pack)', '$208+ (Enterprise)'],
 ];
 
 const featureRows = [

@@ -6,7 +6,7 @@ export const metadata = {
     'Terms of Use for OtaKit (otakit.app), including service usage, billing, and legal terms.',
 };
 
-const LAST_UPDATED = 'February 12, 2026';
+const LAST_UPDATED = 'November 26, 2026';
 
 export default function TermsPage() {
   return (
@@ -77,12 +77,18 @@ export default function TermsPage() {
             <P>
               Paid plans, credit allocations, and add-ons are listed on our pricing and checkout
               pages. Billing is handled by Polar (polar.sh) and may include recurring subscriptions
-              and usage-based charges.
+              and one-time purchases.
             </P>
             <P>
               You authorize us and our payment processor to charge your selected payment method for
               subscriptions, add-ons, and applicable taxes. Except where required by law, fees are
               non-refundable.
+            </P>
+            <P>
+              Extra download credits are prepaid, one-time purchases. They are used only after your
+              plan&apos;s monthly allowance, do not expire while your workspace exists, and are
+              forfeited when the workspace is deleted. If a credit purchase is refunded, any of its
+              credits that are still unused are removed.
             </P>
             <P>
               If a payment fails, we may retry charges, suspend paid features, or downgrade your
