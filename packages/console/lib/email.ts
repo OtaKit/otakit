@@ -1,4 +1,9 @@
 import { Resend } from 'resend';
+import {
+  formatCreditPackDownloads,
+  formatCreditPackPrice,
+  getCreditPackForPlan,
+} from './billing/credit-packs';
 import { SUPPORT_EMAIL } from './support';
 
 let resend: Resend | null = null;
@@ -154,19 +159,51 @@ Open dashboard: ${dashboardUrl}`;
   });
 }
 
+// One plan-specific next step under a usage warning.
+export function usageWarningNextStep(args: {
+  planKey: string;
+  threshold: 90 | 100;
+  overageEnabled: boolean;
+}): string | null {
+  if (args.overageEnabled) {
+    return 'Additional usage is on, so updates keep being delivered at $50 per extra 1,000,000 downloads.';
+  }
+  const pack = getCreditPackForPlan(args.planKey);
+  if (!pack) return null;
+  const paused =
+    args.threshold === 100
+      ? 'Update downloads are paused until next month starts or you add downloads. '
+      : '';
+  const addPack = `Add ${formatCreditPackDownloads(pack)} extra downloads for ${formatCreditPackPrice(pack)}`;
+  if (args.planKey === 'free') {
+    return `${paused}${addPack}, or move to Starter for 100,000 downloads a month.`;
+  }
+  if (args.planKey === 'starter') {
+    return `${paused}${addPack}, or move to Pro for 1,000,000 downloads a month.`;
+  }
+  return `${paused}${addPack}, or turn on additional usage in settings.`;
+}
+
 export async function sendUsageWarningEmail({
   to,
   organizationName,
+  planKey,
   threshold,
   downloadsCount,
   limit,
+  creditsRemaining,
+  overageEnabled,
   periodStart,
 }: {
   to: string;
   organizationName: string;
+  planKey: string;
   threshold: 90 | 100;
   downloadsCount: number;
+  // Included downloads plus extra download credits for the month.
   limit: number;
+  creditsRemaining: number;
+  overageEnabled: boolean;
   periodStart: Date;
 }): Promise<void> {
   const safeOrganizationName = escapeHtml(organizationName);
@@ -181,18 +218,25 @@ export async function sendUsageWarningEmail({
     year: 'numeric',
     timeZone: 'UTC',
   }).format(periodStart);
+  const creditsLine =
+    creditsRemaining > 0 ? `Extra downloads left: ${creditsRemaining.toLocaleString()}` : null;
+  const nextStep = usageWarningNextStep({ planKey, threshold, overageEnabled });
 
   const html = `
 <p>Usage alert for <strong>${safeOrganizationName}</strong>.</p>
 <p>${threshold}% threshold reached for ${escapeHtml(period)}.</p>
 <p>Downloads: <strong>${downloadsCount.toLocaleString()}</strong> / <strong>${limit.toLocaleString()}</strong></p>
-<p><a href="${escapeHtml(dashboardUrl)}">Open settings</a></p>
+${creditsLine ? `<p>${escapeHtml(creditsLine)}</p>\n` : ''}${nextStep ? `<p>${escapeHtml(nextStep)}</p>\n` : ''}<p><a href="${escapeHtml(dashboardUrl)}">Open settings</a></p>
   `.trim();
 
-  const text = `Usage alert for ${organizationName}.
-${threshold}% threshold reached for ${period}.
-Downloads: ${downloadsCount.toLocaleString()} / ${limit.toLocaleString()}
-Open settings: ${dashboardUrl}`;
+  const text = [
+    `Usage alert for ${organizationName}.`,
+    `${threshold}% threshold reached for ${period}.`,
+    `Downloads: ${downloadsCount.toLocaleString()} / ${limit.toLocaleString()}`,
+    ...(creditsLine ? [creditsLine] : []),
+    ...(nextStep ? [nextStep] : []),
+    `Open settings: ${dashboardUrl}`,
+  ].join('\n');
 
   await sendEmail({
     to,

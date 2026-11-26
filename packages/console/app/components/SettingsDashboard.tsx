@@ -35,6 +35,12 @@ import {
   type PricingDialogBillingData,
 } from '@/app/components/PricingDialog';
 import { OrganizationKeyAdmin } from '@/app/components/OrganizationKeyAdmin';
+import {
+  confirmCreditCheckout,
+  startCreditCheckout,
+  type UsagePayload,
+} from '@/app/components/credit-checkout';
+import { formatCreditPackDownloads, formatCreditPackPrice } from '@/lib/billing/credit-packs';
 import { authClient } from '@/lib/auth-client';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import type {
@@ -88,18 +94,6 @@ async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-type UsagePayload = {
-  usage: {
-    periodStart: string;
-    downloadsCount: number;
-    limit: number;
-    percentage: number;
-    usageBlocked: boolean;
-    overageEnabled: boolean;
-    warningSent: 'none' | 'at90' | 'at100';
-  };
-};
-
 export function SettingsDashboard({ initialData }: { initialData: DashboardInitialData }) {
   const router = useRouter();
   const canManageTeam =
@@ -131,6 +125,7 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [usageData, setUsageData] = useState<UsagePayload | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [savingOverage, setSavingOverage] = useState(false);
+  const [buyingCredits, setBuyingCredits] = useState(false);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
 
@@ -220,28 +215,75 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
       setUsageLoading(false);
       return;
     }
+    let cancelled = false;
+
+    // Back from an extra downloads checkout: confirm the paid order once the
+    // first usage load is in, so a slower first load cannot overwrite it.
+    async function confirmReturningCreditCheckout() {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('credits') !== 'success') return;
+      const checkoutId = url.searchParams.get('checkout_id');
+      const organizationId =
+        url.searchParams.get('credits_org') ?? initialData.activeOrganization.id;
+      for (const key of ['credits', 'credits_org', 'checkout_id']) url.searchParams.delete(key);
+      window.history.replaceState(window.history.state, '', url);
+
+      const toastId = toast.loading('Confirming your purchase…');
+      const result = await confirmCreditCheckout({
+        organizationId,
+        checkoutId,
+        isCancelled: () => cancelled,
+      });
+      if (cancelled) {
+        toast.dismiss(toastId);
+        return;
+      }
+      if (result.status === 'error') {
+        toast.error(result.message, { id: toastId });
+        return;
+      }
+      if (result.usage) {
+        const usage = result.usage;
+        setUsageData((current) => ({ usage, creditPack: current?.creditPack ?? null }));
+      }
+      if (result.status === 'confirmed') {
+        toast.success('Extra downloads added', { id: toastId });
+      } else {
+        toast.message('Thanks for your purchase. Your extra downloads appear here shortly.', {
+          id: toastId,
+        });
+      }
+    }
+
     async function loadBilling() {
       try {
         const [billingRes, usageRes] = await Promise.all([
           fetch('/api/v1/organization/billing/refresh', { method: 'POST' }),
           fetch('/api/v1/organization/billing/usage'),
         ]);
+        if (cancelled) return;
         if (billingRes.ok) {
           const data = await billingRes.json();
           setBillingData(data);
         }
         if (usageRes.ok) {
-          const data = await usageRes.json();
+          const data = (await usageRes.json()) as UsagePayload;
           setUsageData(data);
         }
       } catch {
         // Billing unavailable — show section without data
       } finally {
-        setBillingLoading(false);
-        setUsageLoading(false);
+        if (!cancelled) {
+          setBillingLoading(false);
+          setUsageLoading(false);
+        }
       }
+      if (!cancelled) await confirmReturningCreditCheckout();
     }
     void loadBilling();
+    return () => {
+      cancelled = true;
+    };
   }, [initialData.activeOrganization.id, initialData.billingEnabled]);
 
   useEffect(() => {
@@ -415,12 +457,29 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
       if (!response.ok || !data.usage) {
         throw new Error(data.error ?? 'Failed to update usage settings');
       }
-      setUsageData({ usage: data.usage });
+      setUsageData({ usage: data.usage, creditPack: data.creditPack ?? null });
       toast.success(checked ? 'Additional usage enabled' : 'Additional usage disabled');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update usage settings');
     } finally {
       setSavingOverage(false);
+    }
+  }
+
+  async function buyCredits() {
+    const pack = usageData?.creditPack;
+    if (!canManageTeam || !pack) return;
+    setBuyingCredits(true);
+    toast.dismiss();
+    try {
+      await startCreditCheckout({
+        pack: pack.key,
+        organizationId: initialData.activeOrganization.id,
+      });
+      // Keep the spinner while the browser navigates to the checkout.
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
+      setBuyingCredits(false);
     }
   }
 
@@ -679,7 +738,9 @@ User ID: ${initialData.user.id}`,
                               ? 'No usage data'
                               : billingData?.billing.planKey === 'enterprise'
                                 ? `${usageData.usage.downloadsCount.toLocaleString()} downloads`
-                                : `${usageData.usage.downloadsCount.toLocaleString()} / ${usageData.usage.limit.toLocaleString()} downloads`}
+                                : usageData.usage.effectiveLimit > usageData.usage.limit
+                                  ? `${usageData.usage.downloadsCount.toLocaleString()} / ${usageData.usage.effectiveLimit.toLocaleString()} downloads · ${usageData.usage.limit.toLocaleString()} included + ${(usageData.usage.effectiveLimit - usageData.usage.limit).toLocaleString()} extra`
+                                  : `${usageData.usage.downloadsCount.toLocaleString()} / ${usageData.usage.limit.toLocaleString()} downloads`}
                           </div>
                         </div>
                         {usageData && billingData?.billing.planKey !== 'enterprise' ? (
@@ -715,10 +776,47 @@ User ID: ${initialData.user.id}`,
                       ) : null}
                       {usageData?.usage.usageBlocked ? (
                         <p className="mt-3 text-xs text-destructive">
-                          Downloads are currently blocked because usage exceeded your plan limit.
+                          Update downloads are paused because this month&apos;s{' '}
+                          {usageData.usage.effectiveLimit > usageData.usage.limit
+                            ? 'allowance and extra downloads are'
+                            : 'allowance is'}{' '}
+                          used up.
+                          {usageData.creditPack ? ' Buy extra downloads to resume right away.' : ''}
                         </p>
                       ) : null}
                     </div>
+                    {usageData && (usageData.creditPack || usageData.usage.creditsRemaining > 0) ? (
+                      <>
+                        <Separator />
+                        <div className="flex items-center justify-between gap-4 py-3">
+                          <div>
+                            <div className="text-sm">Extra downloads</div>
+                            <div className="text-xs text-muted-foreground">
+                              {usageData.usage.creditsRemaining > 0
+                                ? `${usageData.usage.creditsRemaining.toLocaleString()} left. Used after your monthly allowance; they never expire.`
+                                : 'Used after your monthly allowance; they never expire.'}
+                            </div>
+                          </div>
+                          {canManageTeam && usageData.creditPack ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 shrink-0"
+                              onClick={() => void buyCredits()}
+                              disabled={buyingCredits}
+                            >
+                              {buyingCredits ? (
+                                <LoaderCircle className="size-3.5 animate-spin" />
+                              ) : (
+                                <Plus className="size-3.5" />
+                              )}
+                              Buy {formatCreditPackDownloads(usageData.creditPack)} for{' '}
+                              {formatCreditPackPrice(usageData.creditPack)}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </section>

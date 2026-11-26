@@ -82,7 +82,7 @@ export const OTAKIT_TOOL_CATALOG: readonly OtaKitToolDefinition[] = [
     name: 'get_account_status',
     title: 'Get OtaKit account and usage status',
     description:
-      'Return the safe customer-facing plan, usage, limit, period, and overage state needed to explain upload or release failures. Provider IDs are excluded.',
+      'Return the safe customer-facing plan, usage, limit, extra download credits, period, and overage state needed to explain upload or release failures. Provider IDs are excluded.',
     modes: both,
     inputSchema: z.object({}),
     annotations: readOnly,

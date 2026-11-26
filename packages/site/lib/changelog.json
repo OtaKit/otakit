@@ -1,6 +1,27 @@
 {
   "entries": [
     {
+      "slug": "extra-download-packs",
+      "date": "2026-11-26",
+      "type": "feature",
+      "title": "Extra download packs on every plan",
+      "areas": ["Dashboard", "API", "Agents"],
+      "versions": {},
+      "summary": "When a busy month uses up your allowance, add a pack of extra update downloads from Settings instead of waiting for next month or changing plans. Free adds 5,000 for $5, Starter 100,000 for $10 and Pro 1,000,000 for $50.",
+      "highlights": [
+        "Buying a pack while updates are paused resumes them right away.",
+        "Credits are used only after the monthly allowance, carry over to later months and never expire.",
+        "Pro keeps optional additional usage at $50 per extra 1,000,000 downloads; packs you bought are used first.",
+        "The usage check now runs every hour, so warnings and pauses follow your usage more closely."
+      ],
+      "links": [
+        {
+          "label": "Pricing",
+          "href": "/#pricing"
+        }
+      ]
+    },
+    {
       "slug": "reverts-drop-downloaded-updates",
       "date": "2026-11-14",
       "type": "improvement",

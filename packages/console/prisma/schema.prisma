@@ -317,6 +317,13 @@ model Organization {
   usageBlocked        Boolean                 @default(false)
   overageEnabled      Boolean                 @default(false)
   warningSent         UsageWarningSent        @default(none)
+  // Extra download credits (prepaid packs). Credits used in closed months add
+  // up in creditsConsumed; creditsUsed is the current month's running use.
+  creditsConsumed     Int                     @default(0)
+  creditsUsed         Int                     @default(0)
+  // Downloads already reported to the Polar meter for the current month. Pro
+  // overage reported there is billed, so credits never cover it twice.
+  polarReportedCount  Int                     @default(0)
   // Add-ons (their data lives in their own packages and Postgres schemas)
   pushEnabled         Boolean                 @default(false)
   // Relations
@@ -325,6 +332,7 @@ model Organization {
   members             OrganizationMember[]
   invites             OrganizationInvite[]
   auditLogs           AuditLog[]
+  creditGrants        CreditGrant[]
   releaseMutations    ReleaseMutation[]
   activeForUsers      User[]                  @relation("UserActiveOrganization")
   onboarding          OrganizationOnboarding?
@@ -384,6 +392,27 @@ model OrganizationApiKey {
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([organizationId, revokedAt])
+}
+
+// One prepaid download pack bought through Polar. Credits are pooled per
+// organization: available = sum(downloads - revokedDownloads) - consumed.
+model CreditGrant {
+  id               String       @id @default(uuid())
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId   String
+  downloads        Int
+  // Taken back after a refund (only what was still unused at the time).
+  revokedDownloads Int          @default(0)
+  polarOrderId     String       @unique
+  polarProductId   String
+  // Order amount before tax, and the cumulative refunded amount already applied.
+  amountCents      Int
+  refundedCents    Int          @default(0)
+  currency         String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([organizationId, createdAt])
 }
 
 model AuditLog {

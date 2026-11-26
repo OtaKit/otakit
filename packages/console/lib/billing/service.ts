@@ -124,8 +124,10 @@ export async function refreshBillingState(organizationId: string): Promise<Billi
       polarCustomerId,
       polarSubscriptionId,
       // Overage is a Pro-only opt-in. Clear it on cancellation or a move to
-      // Starter/Free so a stale toggle can never bypass those hard caps.
-      ...(planKey === 'pro' ? {} : { overageEnabled: false }),
+      // Starter/Free so a stale toggle can never bypass those hard caps. The
+      // Pro meter count goes too: it would otherwise read as paid overage
+      // against the smaller allowance.
+      ...(planKey === 'pro' ? {} : { overageEnabled: false, polarReportedCount: 0 }),
     },
     select: {
       planKey: true,

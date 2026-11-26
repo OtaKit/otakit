@@ -350,6 +350,6 @@ function usageBlocked(): OtaKitServiceError {
     'USAGE_BLOCKED',
     'This workspace has reached its usage limit, so no update can be served',
     402,
-    'Upgrade the plan or wait for the next billing period.',
+    'Add extra downloads, upgrade the plan, or wait for the next billing period.',
   );
 }

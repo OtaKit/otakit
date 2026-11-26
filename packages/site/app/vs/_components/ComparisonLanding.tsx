@@ -26,6 +26,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { CopyEmailLink } from '@/components/CopyEmailLink';
+import { PricingExtras } from '@/components/PricingExtras';
 import { DashboardPreview } from '@/components/DashboardPreview';
 import { BlurRevealObserver } from '@/components/landing/BlurRevealObserver';
 import { FounderSection } from '@/components/landing/FounderSection';
@@ -415,7 +416,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 features={[
                   'Everything in Free',
                   '20× the Free allowance',
-                  'No additional usage fees',
+                  'Extra updates when you need them',
                 ]}
                 cta="Choose Starter"
                 highlighted
@@ -451,6 +452,7 @@ export function ComparisonLanding({ copy }: { copy: ComparisonCopy }) {
                 copyEmail={site.supportEmail}
               />
             </div>
+            <PricingExtras />
           </div>
         </div>
       </section>

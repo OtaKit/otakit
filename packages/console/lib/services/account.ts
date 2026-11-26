@@ -1,3 +1,4 @@
+import { getPurchasableCreditPack } from '@/lib/billing/config';
 import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { getOrganizationUsageSnapshot } from '@/lib/billing/usage';
 import { db } from '@/lib/db';
@@ -32,6 +33,8 @@ export async function getAccountStatus(access: OrganizationAccess) {
     throw new OtaKitServiceError('ORGANIZATION_NOT_FOUND', 'Organization not found', 404);
   }
 
+  const extraDownloadsPack = getPurchasableCreditPack(entitlements.planKey);
+
   // An empty configured value must fall through, so test truthiness, not null.
   const baseUrl = (
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
@@ -46,6 +49,9 @@ export async function getAccountStatus(access: OrganizationAccess) {
       active: entitlements.isActive,
       teamMembersAvailable: entitlements.limits.teamMembers,
       overageAvailable: entitlements.limits.overage,
+      extraDownloadsPack: extraDownloadsPack
+        ? { downloads: extraDownloadsPack.downloads, priceCents: extraDownloadsPack.priceCents }
+        : null,
     },
     usage: {
       ...usage,

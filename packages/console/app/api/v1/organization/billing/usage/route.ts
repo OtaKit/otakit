@@ -6,6 +6,7 @@ import {
   refreshOrganizationUsageSnapshot,
   updateOrganizationOverageEnabled,
 } from '@/lib/billing/usage';
+import { getPurchasableCreditPack } from '@/lib/billing/config';
 import { getOrganizationEntitlements } from '@/lib/billing/service';
 
 export const runtime = 'nodejs';
@@ -30,7 +31,8 @@ export async function GET() {
     usage = await getOrganizationUsageSnapshot(ctx.organizationId);
   }
 
-  return NextResponse.json({ usage });
+  const entitlements = await getOrganizationEntitlements(ctx.organizationId);
+  return NextResponse.json({ usage, creditPack: getPurchasableCreditPack(entitlements.planKey) });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -51,16 +53,14 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  if (body.overageEnabled) {
-    const entitlements = await getOrganizationEntitlements(ctx.organizationId);
-    if (!entitlements.limits.overage) {
-      return NextResponse.json(
-        { error: 'Additional usage is only available on the Pro plan.' },
-        { status: 400 },
-      );
-    }
+  const entitlements = await getOrganizationEntitlements(ctx.organizationId);
+  if (body.overageEnabled && !entitlements.limits.overage) {
+    return NextResponse.json(
+      { error: 'Additional usage is only available on the Pro plan.' },
+      { status: 400 },
+    );
   }
 
   const usage = await updateOrganizationOverageEnabled(ctx.organizationId, body.overageEnabled);
-  return NextResponse.json({ usage });
+  return NextResponse.json({ usage, creditPack: getPurchasableCreditPack(entitlements.planKey) });
 }
