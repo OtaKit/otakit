@@ -63,6 +63,7 @@ function polarOrder(organizationId: string, overrides: Partial<Order> = {}): Ord
     currency: 'usd',
     checkoutId: `checkout-${randomUUID()}`,
     customer: { externalId: `organization:${organizationId}` },
+    metadata: { organizationId, creditPack: 'downloads_5k' },
     ...overrides,
   } as unknown as Order;
 }
@@ -86,6 +87,7 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.sendUsageWarningEmail.mockResolvedValue(undefined);
     vi.useRealTimers();
     mocks.downloads.clear();
     mocks.duringCount = null;
@@ -97,6 +99,7 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
 
   afterAll(async () => {
     await db.organization.deleteMany({ where: { id: { in: organizationIds } } });
+    await db.user.deleteMany({ where: { email: { endsWith: '@credits-test.example' } } });
   });
 
   it('grants a paid pack once, even when deliveries race', async () => {
@@ -128,7 +131,10 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     ).toBeNull();
     expect(
       await applyCreditOrder(
-        polarOrder(organizationId, { customer: { externalId: null } } as Partial<Order>),
+        polarOrder(organizationId, {
+          customer: { externalId: null },
+          metadata: {},
+        } as unknown as Partial<Order>),
       ),
     ).toBeNull();
     expect(await applyCreditOrder(polarOrder(randomUUID()))).toBeNull();
@@ -215,6 +221,77 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     expect(mocks.restoreManifests).toHaveBeenCalledTimes(2);
   });
 
+  it('follows a block flag that another refresh flipped while the manifests were syncing', async () => {
+    const organizationId = await createOrganization();
+    setDownloads(monthStart(), 5_200);
+    // While this refresh deletes the manifests, a pack's refresh unblocks the
+    // workspace and restores them first; the deletes land last.
+    mocks.deleteManifests.mockImplementationOnce(async () => {
+      await applyCreditOrder(polarOrder(organizationId));
+      await refreshOrganizationUsageSnapshot(organizationId);
+    });
+
+    await refreshOrganizationUsageSnapshot(organizationId);
+    expect(
+      (await db.organization.findUniqueOrThrow({ where: { id: organizationId } })).usageBlocked,
+    ).toBe(false);
+    // Restored once by the pack's refresh and once more after the late deletes.
+    expect(mocks.restoreManifests).toHaveBeenCalledTimes(2);
+    expect(mocks.restoreManifests.mock.invocationCallOrder.at(-1)).toBeGreaterThan(
+      mocks.deleteManifests.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('emails again when a bought pack runs out while usage stayed above 90%', async () => {
+    const organizationId = await createOrganization({ freeDownloadsLimit: 100_000 });
+    await db.organizationMember.create({
+      data: {
+        role: 'owner',
+        organization: { connect: { id: organizationId } },
+        user: {
+          create: {
+            id: randomUUID(),
+            email: `owner-${organizationId}@credits-test.example`,
+            name: 'Owner',
+          },
+        },
+      },
+    });
+
+    setDownloads(monthStart(), 100_000);
+    await refreshOrganizationUsageSnapshot(organizationId);
+    expect(mocks.sendUsageWarningEmail).toHaveBeenCalledTimes(1);
+    expect(mocks.sendUsageWarningEmail.mock.calls[0][0].threshold).toBe(100);
+
+    // A 5,000 pack leaves usage at 95% of the new ceiling: no new 90% email.
+    await applyCreditOrder(polarOrder(organizationId));
+    await refreshOrganizationUsageSnapshot(organizationId, { sendWarnings: false });
+    setDownloads(monthStart(), 102_000);
+    await refreshOrganizationUsageSnapshot(organizationId);
+    expect(mocks.sendUsageWarningEmail).toHaveBeenCalledTimes(1);
+
+    // The pack runs out: paused again, and the owner hears about it.
+    setDownloads(monthStart(), 105_000);
+    expect(await refreshOrganizationUsageSnapshot(organizationId)).toMatchObject({
+      usageBlocked: true,
+    });
+    expect(mocks.sendUsageWarningEmail).toHaveBeenCalledTimes(2);
+    expect(mocks.sendUsageWarningEmail.mock.calls[1][0]).toMatchObject({
+      threshold: 100,
+      creditsRemaining: 0,
+    });
+  });
+
+  it('credits the workspace the pack was bought for, not the Polar customer', async () => {
+    const buyer = await createOrganization();
+    const otherWorkspace = await createOrganization();
+    await applyCreditOrder(
+      polarOrder(buyer, { customer: { externalId: `organization:${otherWorkspace}` } } as never),
+    );
+    expect(await getCreditPool(buyer)).toBe(5_000);
+    expect(await getCreditPool(otherWorkspace)).toBe(0);
+  });
+
   it('closes a finished month once, booking its credits and keeping later packs for later', async () => {
     const organizationId = await createOrganization({
       usagePeriodStart: monthStart(-1),
@@ -247,6 +324,43 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
       creditsUsed: 0,
       creditsRemaining: 8_000,
       effectiveLimit: 13_000,
+    });
+  });
+
+  it('keeps what last month used when its pack is refunded before the month is closed', async () => {
+    // Last month used 3,000 of an older pack and is not closed yet; a new pack
+    // was bought after midnight, then the older one is refunded in full.
+    const organizationId = await createOrganization({
+      usagePeriodStart: monthStart(-1),
+      downloadsCount: 8_000,
+      creditsUsed: 3_000,
+    });
+    setDownloads(monthStart(-1), 8_000);
+    const olderPack = polarOrder(organizationId);
+    await applyCreditOrder(olderPack);
+    await db.creditGrant.updateMany({
+      where: { polarOrderId: olderPack.id },
+      data: { createdAt: new Date(monthStart().getTime() - 86_400_000) },
+    });
+    await applyCreditOrder(polarOrder(organizationId));
+
+    await applyCreditOrder({
+      ...olderPack,
+      status: 'refunded',
+      refundedAmount: 500,
+    } as Order);
+    const refunded = await db.creditGrant.findUniqueOrThrow({
+      where: { polarOrderId: olderPack.id },
+    });
+    expect(refunded.revokedDownloads).toBe(2_000);
+
+    await refreshOrganizationUsageSnapshot(organizationId);
+    const organization = await db.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    expect(organization.creditsConsumed).toBe(3_000);
+    expect(await getOrganizationUsageSnapshot(organizationId)).toMatchObject({
+      creditsRemaining: 5_000,
     });
   });
 
@@ -400,7 +514,7 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     expect(synced.paidCheckoutIds).toEqual(new Set([order.checkoutId]));
     expect(mocks.listOrders).toHaveBeenCalledWith(
       expect.objectContaining({
-        externalCustomerId: `organization:${organizationId}`,
+        metadata: { organizationId },
         productId: ['product-5k', 'product-100k', 'product-1m'],
       }),
     );

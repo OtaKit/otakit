@@ -19,6 +19,8 @@ export type UsageState = {
   creditsRemaining: number;
   // Where updates pause: included downloads plus the credits available.
   effectiveLimit: number;
+  // Share of effectiveLimit used, rounded down: 100 only once the limit is
+  // actually reached, so the 100% email never says paused too early.
   percentage: number;
   usageBlocked: boolean;
 };
@@ -39,7 +41,37 @@ export function computeUsageState(input: UsageStateInput): UsageState {
     creditsUsed,
     creditsRemaining: available - creditsUsed,
     effectiveLimit,
-    percentage: effectiveLimit > 0 ? Math.round((downloads / effectiveLimit) * 100) : 0,
+    percentage: effectiveLimit > 0 ? Math.floor((downloads / effectiveLimit) * 100) : 0,
     usageBlocked: input.enforceLimits && downloads >= effectiveLimit,
   };
+}
+
+export type UsageWarning = 'none' | 'at90' | 'at100';
+
+/**
+ * Which usage emails are due. Warnings follow the current ceiling: when more
+ * downloads become available (a pack, a bigger plan), the ones already sent are
+ * re-armed, so running out again is announced again. The 90% email is not
+ * repeated right after a purchase that still leaves usage at 90% or more.
+ */
+export function nextUsageWarning(args: {
+  previous: UsageWarning;
+  percentage: number;
+  sendWarnings: boolean;
+}): { warningSent: UsageWarning; threshold: 90 | 100 | null } {
+  let warningSent = args.previous;
+  if (args.percentage < 90) {
+    warningSent = 'none';
+  } else if (args.percentage < 100 && warningSent === 'at100') {
+    warningSent = 'at90';
+  }
+
+  if (!args.sendWarnings) return { warningSent, threshold: null };
+  if (args.percentage >= 100 && warningSent !== 'at100') {
+    return { warningSent: 'at100', threshold: 100 };
+  }
+  if (args.percentage >= 90 && warningSent === 'none') {
+    return { warningSent: 'at90', threshold: 90 };
+  }
+  return { warningSent, threshold: null };
 }

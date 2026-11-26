@@ -4,6 +4,8 @@ import { isPolarConfigured } from '@/lib/polar';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSessionContext } from '@/lib/session';
 import { syncCreditOrders } from '@/lib/billing/credits';
+import { getPurchasableCreditPack } from '@/lib/billing/config';
+import { getOrganizationEntitlements } from '@/lib/billing/service';
 import { getOrganizationUsageSnapshot, refreshUsageAfterCreditChange } from '@/lib/billing/usage';
 
 export const runtime = 'nodejs';
@@ -69,5 +71,11 @@ export async function POST(request: NextRequest) {
   const usage =
     (changed ? await refreshUsageAfterCreditChange(ctx.organizationId) : null) ??
     (await getOrganizationUsageSnapshot(ctx.organizationId));
-  return NextResponse.json({ changed, confirmed, usage });
+  const { planKey } = await getOrganizationEntitlements(ctx.organizationId);
+  return NextResponse.json({
+    changed,
+    confirmed,
+    usage,
+    creditPack: getPurchasableCreditPack(planKey),
+  });
 }

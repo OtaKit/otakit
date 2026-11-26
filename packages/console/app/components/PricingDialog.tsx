@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Building2,
   Check,
@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner';
 
 import type { ApiError } from '@/app/components/dashboard-types';
-import { startCreditCheckout } from '@/app/components/credit-checkout';
+import { startCreditCheckout, useResetOnPageRestore } from '@/app/components/credit-checkout';
 import {
   formatCreditPackDownloads,
   formatCreditPackPrice,
@@ -74,6 +74,8 @@ export function PricingDialog({
   const [checkingOut, setCheckingOut] = useState<'starter' | 'pro' | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
   const [buyingCredits, setBuyingCredits] = useState(false);
+  const resetBuyingCredits = useCallback(() => setBuyingCredits(false), []);
+  useResetOnPageRestore(resetBuyingCredits);
 
   useEffect(() => {
     setBillingData(initialBillingData ?? null);
@@ -356,8 +358,7 @@ export function PricingDialog({
 
           <p className="text-sm text-muted-foreground">
             * Value-aligned pricing: pay for real downloaded updates. When the monthly allowance
-            runs out, updates pause until next month or until you add extra downloads. Extra
-            downloads never expire.
+            runs out, updates pause until next month or until you add extra downloads.
           </p>
         </div>
       </DialogContent>
@@ -394,7 +395,7 @@ function ExtraDownloadsRow({
       <div className="border-b border-border bg-card px-5 py-3">
         <p className="text-sm font-medium">Extra downloads</p>
         <p className="text-xs text-muted-foreground">
-          Added on top of your monthly allowance when you need more. Credits never expire.
+          Added on top of your monthly allowance when you need more. They never expire.
         </p>
       </div>
       <div className="grid gap-px bg-border md:grid-cols-2 lg:grid-cols-4">

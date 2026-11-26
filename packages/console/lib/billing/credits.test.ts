@@ -3,7 +3,44 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/db', () => ({ db: {} }));
 vi.mock('@/lib/polar', () => ({ isPolarConfigured: () => true, getPolar: vi.fn() }));
 
-import { refundedDownloadsShare } from './credits';
+import type { Order } from '@polar-sh/sdk/models/components/order.js';
+
+import { organizationIdForOrder, refundedDownloadsShare } from './credits';
+
+function order(fields: { metadata?: Record<string, unknown>; externalId?: string | null }): Order {
+  return {
+    id: 'order-1',
+    metadata: fields.metadata ?? {},
+    customer: { externalId: fields.externalId ?? null },
+  } as unknown as Order;
+}
+
+describe('organizationIdForOrder', () => {
+  it('uses the workspace stored on the checkout', () => {
+    expect(
+      organizationIdForOrder(
+        order({ metadata: { organizationId: 'org-b' }, externalId: 'organization:org-b' }),
+      ),
+    ).toBe('org-b');
+  });
+
+  it('prefers the checkout over a customer that belongs to another workspace', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(
+      organizationIdForOrder(
+        order({ metadata: { organizationId: 'org-b' }, externalId: 'organization:org-a' }),
+      ),
+    ).toBe('org-b');
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('falls back to the customer, and to null without either', () => {
+    expect(organizationIdForOrder(order({ externalId: 'organization:org-a' }))).toBe('org-a');
+    expect(organizationIdForOrder(order({ metadata: { organizationId: 7 } }))).toBeNull();
+    expect(organizationIdForOrder(order({}))).toBeNull();
+  });
+});
 
 describe('refundedDownloadsShare', () => {
   const pack = { downloads: 5_000, amountCents: 500 };

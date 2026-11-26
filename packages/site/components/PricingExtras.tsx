@@ -14,7 +14,7 @@ export function PricingExtras() {
       <div className="border-b border-border bg-background px-8 py-6">
         <h3 className="text-sm font-medium">Extra updates</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Need more in a busy month? Add a pack on top of your monthly allowance. Credits never
+          Need more in a busy month? Add a pack on top of your monthly allowance. Packs never
           expire.
         </p>
       </div>

@@ -38,6 +38,7 @@ import { OrganizationKeyAdmin } from '@/app/components/OrganizationKeyAdmin';
 import {
   confirmCreditCheckout,
   startCreditCheckout,
+  useResetOnPageRestore,
   type UsagePayload,
 } from '@/app/components/credit-checkout';
 import { formatCreditPackDownloads, formatCreditPackPrice } from '@/lib/billing/credit-packs';
@@ -124,6 +125,8 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [usageData, setUsageData] = useState<UsagePayload | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
   const [buyingCredits, setBuyingCredits] = useState(false);
+  const resetBuyingCredits = useCallback(() => setBuyingCredits(false), []);
+  useResetOnPageRestore(resetBuyingCredits);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
 
@@ -240,10 +243,7 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
         toast.error(result.message, { id: toastId });
         return;
       }
-      if (result.usage) {
-        const usage = result.usage;
-        setUsageData((current) => ({ usage, creditPack: current?.creditPack ?? null }));
-      }
+      if (result.payload) setUsageData(result.payload);
       if (result.status === 'confirmed') {
         toast.success('Extra downloads added', { id: toastId });
       } else {

@@ -8,16 +8,26 @@ const mocks = vi.hoisted(() => ({
   syncCreditOrders: vi.fn(),
   refreshUsageAfterCreditChange: vi.fn(),
   getOrganizationUsageSnapshot: vi.fn(),
+  getOrganizationEntitlements: vi.fn(),
+  getPurchasableCreditPack: vi.fn(),
 }));
 vi.mock('@/lib/session', () => ({ getSessionContext: mocks.getSessionContext }));
 vi.mock('@/lib/polar', () => ({ isPolarConfigured: mocks.isPolarConfigured }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock('@/lib/billing/credits', () => ({ syncCreditOrders: mocks.syncCreditOrders }));
+vi.mock('@/lib/billing/service', () => ({
+  getOrganizationEntitlements: mocks.getOrganizationEntitlements,
+}));
+vi.mock('@/lib/billing/config', () => ({
+  getPurchasableCreditPack: mocks.getPurchasableCreditPack,
+}));
 vi.mock('@/lib/billing/usage', () => ({
   refreshUsageAfterCreditChange: mocks.refreshUsageAfterCreditChange,
   getOrganizationUsageSnapshot: mocks.getOrganizationUsageSnapshot,
 }));
 import { POST } from './route';
+
+const PACK = { key: 'downloads_5k', planKey: 'free', downloads: 5_000, priceCents: 500 };
 
 function request(body: unknown, organizationId = 'org-1') {
   return new NextRequest('https://console.example/api/v1/organization/billing/credits/sync', {
@@ -39,6 +49,8 @@ describe('extra downloads purchase confirmation', () => {
     });
     mocks.refreshUsageAfterCreditChange.mockResolvedValue({ creditsRemaining: 5_000 });
     mocks.getOrganizationUsageSnapshot.mockResolvedValue({ creditsRemaining: 4_000 });
+    mocks.getOrganizationEntitlements.mockResolvedValue({ planKey: 'free' });
+    mocks.getPurchasableCreditPack.mockReturnValue(PACK);
   });
 
   it('confirms a checkout the webhook already applied', async () => {
@@ -48,7 +60,9 @@ describe('extra downloads purchase confirmation', () => {
       changed: false,
       confirmed: true,
       usage: { creditsRemaining: 4_000 },
+      creditPack: PACK,
     });
+    expect(mocks.getPurchasableCreditPack).toHaveBeenCalledWith('free');
     expect(mocks.refreshUsageAfterCreditChange).not.toHaveBeenCalled();
   });
 
@@ -58,7 +72,12 @@ describe('extra downloads purchase confirmation', () => {
       paidCheckoutIds: new Set(['checkout-2']),
     });
     const body = await (await POST(request({ checkoutId: 'checkout-2' }))).json();
-    expect(body).toEqual({ changed: true, confirmed: true, usage: { creditsRemaining: 5_000 } });
+    expect(body).toEqual({
+      changed: true,
+      confirmed: true,
+      usage: { creditsRemaining: 5_000 },
+      creditPack: PACK,
+    });
   });
 
   it('keeps an unpaid checkout pending', async () => {

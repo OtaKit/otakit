@@ -8,7 +8,7 @@ import { getCurrentPeriodDownloadCountFromEvents } from '@/lib/tinybird/events';
 
 import { getPlanLimits } from './config';
 import { getCreditPool, syncCreditOrders } from './credits';
-import { computeUsageState } from './usage-state';
+import { computeUsageState, nextUsageWarning } from './usage-state';
 
 // Months closed in one refresh. A workspace is refreshed at least hourly, so
 // more than one only happens after an outage; the cap bounds the catch-up work.
@@ -17,6 +17,10 @@ const MAX_PERIODS_CLOSED_PER_REFRESH = 12;
 // A refresh lost a race with another refresh or a month close; retry it on a
 // fresh read instead of writing stale numbers.
 const MAX_REFRESH_ATTEMPTS = 3;
+
+// Manifest syncs per block change. One is enough unless another refresh flips
+// the flag while it runs.
+const MAX_MANIFEST_SYNC_PASSES = 3;
 
 type UsageRunStats = {
   processedOrganizations: number;
@@ -111,28 +115,47 @@ async function syncManifestFilesForOrganization(
 
 /**
  * Deletes or restores the update manifests after usageBlocked was saved (a
- * restore reads the saved flag). If storage fails, the previous flag is put
- * back, so the next usage check sees the change again and retries; otherwise
- * a workspace that just bought credits could stay without manifests.
+ * restore reads the saved flag). Two refreshes can flip the flag in opposite
+ * directions with their storage work overlapping, so after each pass the flag
+ * is read again and the manifests follow it until they match.
+ *
+ * If storage fails, the flag is put back while it still holds the value this
+ * pass synced, so the next usage check sees the change again and retries;
+ * otherwise a workspace that just bought credits could stay without manifests.
  */
 async function applyUsageBlockedChange(
   organizationId: string,
   usageBlocked: boolean,
-  previousUsageBlocked: boolean,
 ): Promise<void> {
-  try {
-    await syncManifestFilesForOrganization(organizationId, usageBlocked);
-  } catch (error) {
-    await db.organization
-      .update({ where: { id: organizationId }, data: { usageBlocked: previousUsageBlocked } })
-      .catch((revertError: unknown) => {
-        console.error('[Usage] could not restore the previous block state', {
-          organizationId,
-          error: revertError,
+  let target = usageBlocked;
+  for (let pass = 0; pass < MAX_MANIFEST_SYNC_PASSES; pass += 1) {
+    try {
+      await syncManifestFilesForOrganization(organizationId, target);
+    } catch (error) {
+      await db.organization
+        .updateMany({
+          where: { id: organizationId, usageBlocked: target },
+          data: { usageBlocked: !target },
+        })
+        .catch((revertError: unknown) => {
+          console.error('[Usage] could not restore the previous block state', {
+            organizationId,
+            error: revertError,
+          });
         });
-      });
-    throw error;
+      throw error;
+    }
+
+    const saved = await db.organization.findUnique({
+      where: { id: organizationId },
+      select: { usageBlocked: true },
+    });
+    if (!saved || saved.usageBlocked === target) return;
+    target = saved.usageBlocked;
   }
+  console.error('[Usage] manifests kept changing while syncing the block state', {
+    organizationId,
+  });
 }
 
 // ── Month close ─────────────────────────────────────────────────────
@@ -381,20 +404,11 @@ async function refreshUsageForOrganization(
     enforceLimits: isPolarConfigured(),
   });
 
-  let warningSent = previousWarning;
-  let warningThreshold: 90 | 100 | null = null;
-  if (sendWarnings) {
-    if (state.percentage < 90 && warningSent !== 'none') {
-      warningSent = 'none';
-    }
-    if (state.percentage >= 100 && previousWarning !== 'at100') {
-      warningSent = 'at100';
-      warningThreshold = 100;
-    } else if (state.percentage >= 90 && previousWarning === 'none') {
-      warningSent = 'at90';
-      warningThreshold = 90;
-    }
-  }
+  const { warningSent, threshold: warningThreshold } = nextUsageWarning({
+    previous: previousWarning,
+    percentage: state.percentage,
+    sendWarnings,
+  });
 
   // Compare-and-set on the state this refresh read: a concurrent refresh, a
   // credit grant's refresh or a month close wins, and this one starts over on
@@ -434,7 +448,7 @@ async function refreshUsageForOrganization(
   }
 
   if (state.usageBlocked !== record.usageBlocked) {
-    await applyUsageBlockedChange(record.id, state.usageBlocked, record.usageBlocked);
+    await applyUsageBlockedChange(record.id, state.usageBlocked);
   }
 
   return {

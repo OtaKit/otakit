@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeUsageState, type UsageStateInput } from './usage-state';
+import { computeUsageState, nextUsageWarning, type UsageStateInput } from './usage-state';
 
 function state(overrides: Partial<UsageStateInput>) {
   return computeUsageState({
@@ -51,6 +51,11 @@ describe('computeUsageState', () => {
     expect(state({ downloads: 1_000_000, includedLimit: 1_000_000 }).usageBlocked).toBe(true);
   });
 
+  it('reads 100% only once the limit is reached', () => {
+    expect(state({ downloads: 4_999 }).percentage).toBe(99);
+    expect(state({ downloads: 4_500 }).percentage).toBe(90);
+  });
+
   it('never blocks when limits are not enforced (billing off)', () => {
     expect(state({ downloads: 50_000, enforceLimits: false }).usageBlocked).toBe(false);
   });
@@ -71,5 +76,59 @@ describe('computeUsageState', () => {
     });
     expect(result.effectiveLimit).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.usageBlocked).toBe(false);
+  });
+});
+
+describe('nextUsageWarning', () => {
+  it('sends 90% once, then 100% once', () => {
+    expect(nextUsageWarning({ previous: 'none', percentage: 92, sendWarnings: true })).toEqual({
+      warningSent: 'at90',
+      threshold: 90,
+    });
+    expect(nextUsageWarning({ previous: 'at90', percentage: 95, sendWarnings: true })).toEqual({
+      warningSent: 'at90',
+      threshold: null,
+    });
+    expect(nextUsageWarning({ previous: 'at90', percentage: 100, sendWarnings: true })).toEqual({
+      warningSent: 'at100',
+      threshold: 100,
+    });
+    expect(nextUsageWarning({ previous: 'at100', percentage: 130, sendWarnings: true })).toEqual({
+      warningSent: 'at100',
+      threshold: null,
+    });
+  });
+
+  it('goes straight to 100% when usage jumps past 90%', () => {
+    expect(nextUsageWarning({ previous: 'none', percentage: 100, sendWarnings: true })).toEqual({
+      warningSent: 'at100',
+      threshold: 100,
+    });
+  });
+
+  it('re-arms the 100% email after a pack, without repeating the 90% one', () => {
+    // Paused and emailed, then a pack leaves usage at 95% of the new ceiling.
+    const afterPack = nextUsageWarning({ previous: 'at100', percentage: 95, sendWarnings: false });
+    expect(afterPack).toEqual({ warningSent: 'at90', threshold: null });
+    expect(
+      nextUsageWarning({ previous: afterPack.warningSent, percentage: 97, sendWarnings: true }),
+    ).toEqual({ warningSent: 'at90', threshold: null });
+    expect(
+      nextUsageWarning({ previous: afterPack.warningSent, percentage: 100, sendWarnings: true }),
+    ).toEqual({ warningSent: 'at100', threshold: 100 });
+  });
+
+  it('re-arms everything when usage drops under 90%, even without sending', () => {
+    expect(nextUsageWarning({ previous: 'at100', percentage: 50, sendWarnings: false })).toEqual({
+      warningSent: 'none',
+      threshold: null,
+    });
+  });
+
+  it('records nothing new when warnings are not sent', () => {
+    expect(nextUsageWarning({ previous: 'none', percentage: 100, sendWarnings: false })).toEqual({
+      warningSent: 'none',
+      threshold: null,
+    });
   });
 });

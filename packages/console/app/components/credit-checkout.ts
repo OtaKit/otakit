@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 import type { ApiError } from '@/app/components/dashboard-types';
 import type { CreditPack, CreditPackKey } from '@/lib/billing/credit-packs';
 
@@ -20,6 +22,21 @@ export type UsagePayload = {
   // The pack this workspace can buy, or null (Enterprise, billing off).
   creditPack: CreditPack | null;
 };
+
+/**
+ * Runs `reset` when the browser shows this page again from its back/forward
+ * cache, for example after Back from the checkout: a button left busy while
+ * navigating away would otherwise stay disabled.
+ */
+export function useResetOnPageRestore(reset: () => void): void {
+  useEffect(() => {
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted) reset();
+    }
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, [reset]);
+}
 
 /** Starts the Polar checkout for an extra download pack (navigates away). */
 export async function startCreditCheckout(args: {
@@ -42,8 +59,8 @@ export async function startCreditCheckout(args: {
 }
 
 export type CreditConfirmation =
-  | { status: 'confirmed'; usage: UsageSnapshot }
-  | { status: 'pending'; usage: UsageSnapshot | null }
+  | { status: 'confirmed'; payload: UsagePayload }
+  | { status: 'pending'; payload: UsagePayload | null }
   | { status: 'error'; message: string };
 
 const CONFIRM_ATTEMPTS = 8;
@@ -59,10 +76,10 @@ export async function confirmCreditCheckout(args: {
   checkoutId: string | null;
   isCancelled: () => boolean;
 }): Promise<CreditConfirmation> {
-  let lastUsage: UsageSnapshot | null = null;
+  let lastPayload: UsagePayload | null = null;
   for (let attempt = 0; attempt < CONFIRM_ATTEMPTS; attempt += 1) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, CONFIRM_DELAY_MS));
-    if (args.isCancelled()) return { status: 'pending', usage: lastUsage };
+    if (args.isCancelled()) return { status: 'pending', payload: lastPayload };
 
     let response: Response;
     try {
@@ -80,13 +97,14 @@ export async function confirmCreditCheckout(args: {
     const data = (await response.json().catch(() => ({}))) as ApiError & {
       confirmed?: boolean;
       usage?: UsageSnapshot;
+      creditPack?: CreditPack | null;
     };
     if (response.status === 409 || response.status === 401 || response.status === 403) {
       return { status: 'error', message: data.error ?? 'Reload to see your extra downloads.' };
     }
     if (!response.ok) continue;
-    if (data.usage) lastUsage = data.usage;
-    if (data.confirmed && data.usage) return { status: 'confirmed', usage: data.usage };
+    if (data.usage) lastPayload = { usage: data.usage, creditPack: data.creditPack ?? null };
+    if (data.confirmed && lastPayload) return { status: 'confirmed', payload: lastPayload };
   }
-  return { status: 'pending', usage: lastUsage };
+  return { status: 'pending', payload: lastPayload };
 }

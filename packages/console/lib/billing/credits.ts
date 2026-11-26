@@ -7,7 +7,6 @@ import { getPolar, isPolarConfigured } from '@/lib/polar';
 import {
   configuredCreditPackProductIds,
   creditPackForProductId,
-  getExternalCustomerId,
   parseOrganizationIdFromExternalId,
 } from './config';
 
@@ -27,17 +26,36 @@ export async function getCreditPool(organizationId: string, createdBefore?: Date
   return (result._sum.downloads ?? 0) - (result._sum.revokedDownloads ?? 0);
 }
 
-/** Credits left right now, using the last computed use of the open month. */
-async function getRemainingCredits(organizationId: string): Promise<number> {
+/**
+ * Credits of `grant` a refund can still take back: the ones nobody used.
+ * Counts the last computed use of the tracked month. When that month is over
+ * but not closed yet (the first minutes after midnight UTC), its close only
+ * draws on packs bought before it ended, so a pack from that time keeps what
+ * the month used, even if a newer pack is still unused.
+ */
+async function getRevocableCredits(grant: CreditGrantRecord): Promise<number> {
   const [pool, organization] = await Promise.all([
-    getCreditPool(organizationId),
+    getCreditPool(grant.organizationId),
     db.organization.findUnique({
-      where: { id: organizationId },
-      select: { creditsConsumed: true, creditsUsed: true },
+      where: { id: grant.organizationId },
+      select: { creditsConsumed: true, creditsUsed: true, usagePeriodStart: true },
     }),
   ]);
   if (!organization) return 0;
-  return Math.max(0, pool - organization.creditsConsumed - organization.creditsUsed);
+  const used = organization.creditsConsumed + organization.creditsUsed;
+  let revocable = pool - used;
+
+  const trackedStart = organization.usagePeriodStart;
+  if (trackedStart) {
+    const trackedEnd = new Date(
+      Date.UTC(trackedStart.getUTCFullYear(), trackedStart.getUTCMonth() + 1, 1),
+    );
+    if (trackedEnd <= new Date() && grant.createdAt < trackedEnd) {
+      const poolForTrackedMonth = await getCreditPool(grant.organizationId, trackedEnd);
+      revocable = Math.min(revocable, poolForTrackedMonth - used);
+    }
+  }
+  return Math.max(0, revocable);
 }
 
 /**
@@ -63,6 +81,7 @@ type CreditGrantRecord = {
   revokedDownloads: number;
   amountCents: number;
   refundedCents: number;
+  createdAt: Date;
 };
 
 const GRANT_SELECT = {
@@ -72,6 +91,7 @@ const GRANT_SELECT = {
   revokedDownloads: true,
   amountCents: true,
   refundedCents: true,
+  createdAt: true,
 } as const;
 
 // Takes back only credits that are still unused: credits a customer already
@@ -90,10 +110,10 @@ async function applyCreditRefund(
       previousRefundedCents: current.refundedCents,
       refundedCents,
     });
-    const remaining = await getRemainingCredits(current.organizationId);
+    const revocable = await getRevocableCredits(current);
     const revoke = Math.max(
       0,
-      Math.min(share, remaining, current.downloads - current.revokedDownloads),
+      Math.min(share, revocable, current.downloads - current.revokedDownloads),
     );
 
     // Compare-and-set on refundedCents: a concurrent delivery of the same
@@ -122,6 +142,28 @@ async function applyCreditRefund(
   throw new Error(`Credit refund for grant ${grant.id} kept conflicting`);
 }
 
+/**
+ * The workspace a pack order belongs to. The checkout stores it in metadata
+ * (set by our server; the buyer cannot change it) and Polar copies that to the
+ * order. The Polar customer is only a fallback: Polar can attach an order to an
+ * existing customer, for example one created for another workspace.
+ */
+export function organizationIdForOrder(order: Order): string | null {
+  const fromMetadata = order.metadata?.organizationId;
+  const fromCustomer = parseOrganizationIdFromExternalId(order.customer?.externalId ?? '');
+  if (typeof fromMetadata === 'string' && fromMetadata.length > 0) {
+    if (fromCustomer && fromCustomer !== fromMetadata) {
+      console.warn('[Credits] order customer belongs to another organization', {
+        orderId: order.id,
+        organizationId: fromMetadata,
+        customerOrganizationId: fromCustomer,
+      });
+    }
+    return fromMetadata;
+  }
+  return fromCustomer;
+}
+
 export type CreditOrderResult = {
   organizationId: string;
   changed: boolean;
@@ -137,9 +179,9 @@ export async function applyCreditOrder(order: Order): Promise<CreditOrderResult 
   const pack = creditPackForProductId(order.productId);
   if (!pack || !order.productId) return null;
 
-  const organizationId = parseOrganizationIdFromExternalId(order.customer?.externalId ?? '');
+  const organizationId = organizationIdForOrder(order);
   if (!organizationId) {
-    console.warn('[Credits] order without an organization customer', { orderId: order.id });
+    console.warn('[Credits] order without an organization', { orderId: order.id });
     return null;
   }
   // A refunded order was paid before; Polar may report it with paid: false.
@@ -212,9 +254,10 @@ export async function applyCreditOrder(order: Order): Promise<CreditOrderResult 
 /**
  * Re-reads credit pack orders from Polar and applies any that are missing or
  * newly refunded, covering late or lost webhooks. With an organization id only
- * that customer's orders are read (the settings page after a checkout);
- * without one, every customer's (the hourly usage run). Returns the checkouts
- * whose orders are applied, so a caller can confirm one purchase.
+ * that workspace's orders are read, by the checkout metadata (the settings page
+ * after a checkout); without one, every workspace's (the hourly usage run).
+ * Returns the checkouts whose orders are applied, so a caller can confirm one
+ * purchase.
  */
 export async function syncCreditOrders(organizationId?: string): Promise<{
   changed: boolean;
@@ -227,7 +270,7 @@ export async function syncCreditOrders(organizationId?: string): Promise<{
 
   let changed = false;
   const pages = await getPolar().orders.list({
-    ...(organizationId ? { externalCustomerId: getExternalCustomerId(organizationId) } : {}),
+    ...(organizationId ? { metadata: { organizationId } } : {}),
     productId: productIds,
     limit: 100,
   });
