@@ -12,7 +12,6 @@ import {
 export type PlanLimits = {
   downloads: number;
   teamMembers: boolean;
-  overage: boolean;
 };
 
 // Enterprise has no metered cap — it's a custom, operator-provisioned contract.
@@ -23,9 +22,9 @@ export const NEW_FREE_DOWNLOADS = 5_000;
 export const LEGACY_FREE_DOWNLOADS = 100_000;
 
 const PLAN_LIMITS: Record<Exclude<PlanKey, 'free'>, PlanLimits> = {
-  starter: { downloads: 100_000, teamMembers: false, overage: false },
-  pro: { downloads: 1_000_000, teamMembers: true, overage: true },
-  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true, overage: false },
+  starter: { downloads: 100_000, teamMembers: false },
+  pro: { downloads: 1_000_000, teamMembers: true },
+  enterprise: { downloads: ENTERPRISE_DOWNLOADS, teamMembers: true },
 };
 
 /**
@@ -121,7 +120,7 @@ export function getPlanLimits(
   freeDownloadsLimit: number = NEW_FREE_DOWNLOADS,
 ): PlanLimits {
   if (planKey === 'free') {
-    return { downloads: freeDownloadsLimit, teamMembers: false, overage: false };
+    return { downloads: freeDownloadsLimit, teamMembers: false };
   }
   return PLAN_LIMITS[planKey];
 }

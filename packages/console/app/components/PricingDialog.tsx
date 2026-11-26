@@ -274,7 +274,7 @@ export function PricingDialog({
               features={[
                 'Everything in Free',
                 'Team members and roles',
-                'Usage-based overage ($50 / extra 1M)',
+                'Extra downloads when you need them',
                 'Priority support',
               ]}
               current={currentPlan === 'pro'}
@@ -356,8 +356,8 @@ export function PricingDialog({
 
           <p className="text-sm text-muted-foreground">
             * Value-aligned pricing: pay for real downloaded updates. When the monthly allowance
-            runs out, updates pause until you add extra downloads. Pro can also turn on additional
-            usage at $50 per extra 1,000,000 downloads.
+            runs out, updates pause until next month or until you add extra downloads. Extra
+            downloads never expire.
           </p>
         </div>
       </DialogContent>
@@ -372,7 +372,7 @@ const EXTRA_DOWNLOAD_CELLS: Array<{
 }> = [
   { planKey: 'free', name: 'Free', note: 'One-time purchase' },
   { planKey: 'starter', name: 'Starter', note: 'One-time purchase' },
-  { planKey: 'pro', name: 'Pro', note: 'One-time, or automatic with additional usage' },
+  { planKey: 'pro', name: 'Pro', note: 'One-time purchase' },
   { planKey: 'enterprise', name: 'Enterprise', note: 'Part of your contract' },
 ];
 

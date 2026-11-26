@@ -318,15 +318,11 @@ model Organization {
   // uses it, so a plan change right after midnight is not applied backwards.
   usageIncludedLimit  Int?
   usageBlocked        Boolean                 @default(false)
-  overageEnabled      Boolean                 @default(false)
   warningSent         UsageWarningSent        @default(none)
   // Extra download credits (prepaid packs). Credits used in closed months add
   // up in creditsConsumed; creditsUsed is the current month's running use.
   creditsConsumed     Int                     @default(0)
   creditsUsed         Int                     @default(0)
-  // Downloads already reported to the Polar meter for the current month. Pro
-  // overage reported there is billed, so credits never cover it twice.
-  polarReportedCount  Int                     @default(0)
   // Add-ons (their data lives in their own packages and Postgres schemas)
   pushEnabled         Boolean                 @default(false)
   // Relations

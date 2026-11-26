@@ -565,7 +565,7 @@ export default function LandingPage() {
                   'Everything in Free',
                   '10× the Starter allowance',
                   'Team members & roles',
-                  'Additional usage at $50 / 1M',
+                  'Extra updates when you need them',
                   'Priority support',
                 ]}
                 cta="Start with Pro"

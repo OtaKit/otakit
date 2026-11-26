@@ -77,7 +77,7 @@ export default function TermsPage() {
             <P>
               Paid plans, credit allocations, and add-ons are listed on our pricing and checkout
               pages. Billing is handled by Polar (polar.sh) and may include recurring subscriptions
-              and usage-based charges.
+              and one-time purchases.
             </P>
             <P>
               You authorize us and our payment processor to charge your selected payment method for

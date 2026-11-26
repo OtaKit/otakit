@@ -48,7 +48,6 @@ export async function getAccountStatus(access: OrganizationAccess) {
       key: entitlements.planKey,
       active: entitlements.isActive,
       teamMembersAvailable: entitlements.limits.teamMembers,
-      overageAvailable: entitlements.limits.overage,
       extraDownloadsPack: extraDownloadsPack
         ? { downloads: extraDownloadsPack.downloads, priceCents: extraDownloadsPack.priceCents }
         : null,

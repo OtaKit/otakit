@@ -165,11 +165,7 @@ export function usageWarningNextStep(args: {
   // The plan's monthly allowance (grandfathered Free workspaces have 100,000).
   includedLimit: number;
   threshold: 90 | 100;
-  overageEnabled: boolean;
 }): string | null {
-  if (args.overageEnabled) {
-    return 'Additional usage is on, so updates keep being delivered at $50 per extra 1,000,000 downloads.';
-  }
   const pack = getCreditPackForPlan(args.planKey);
   if (!pack) return null;
   const paused =
@@ -185,7 +181,7 @@ export function usageWarningNextStep(args: {
   if (args.planKey === 'starter') {
     return `${paused}${addPack}, or move to Pro for 1,000,000 downloads a month.`;
   }
-  return `${paused}${addPack}, or turn on additional usage in settings.`;
+  return `${paused}${addPack}.`;
 }
 
 export async function sendUsageWarningEmail({
@@ -197,7 +193,6 @@ export async function sendUsageWarningEmail({
   limit,
   includedLimit,
   creditsRemaining,
-  overageEnabled,
   periodStart,
 }: {
   to: string;
@@ -209,7 +204,6 @@ export async function sendUsageWarningEmail({
   limit: number;
   includedLimit: number;
   creditsRemaining: number;
-  overageEnabled: boolean;
   periodStart: Date;
 }): Promise<void> {
   const safeOrganizationName = escapeHtml(organizationName);
@@ -226,7 +220,7 @@ export async function sendUsageWarningEmail({
   }).format(periodStart);
   const creditsLine =
     creditsRemaining > 0 ? `Extra downloads left: ${creditsRemaining.toLocaleString()}` : null;
-  const nextStep = usageWarningNextStep({ planKey, includedLimit, threshold, overageEnabled });
+  const nextStep = usageWarningNextStep({ planKey, includedLimit, threshold });
 
   const html = `
 <p>Usage alert for <strong>${safeOrganizationName}</strong>.</p>

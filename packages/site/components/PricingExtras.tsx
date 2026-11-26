@@ -4,12 +4,7 @@
 const EXTRAS = [
   { plan: 'Free', price: '$5', amount: 'per 5,000 updates', note: 'One-time purchase' },
   { plan: 'Starter', price: '$10', amount: 'per 100,000 updates', note: 'One-time purchase' },
-  {
-    plan: 'Pro',
-    price: '$50',
-    amount: 'per 1,000,000 updates',
-    note: 'One-time, or automatic with additional usage',
-  },
+  { plan: 'Pro', price: '$50', amount: 'per 1,000,000 updates', note: 'One-time purchase' },
   { plan: 'Enterprise', price: 'Custom', amount: 'volume pricing', note: 'Part of your contract' },
 ];
 

@@ -12,7 +12,6 @@ export type UsageSnapshot = {
   creditsUsed: number;
   creditsRemaining: number;
   usageBlocked: boolean;
-  overageEnabled: boolean;
   warningSent: 'none' | 'at90' | 'at100';
 };
 

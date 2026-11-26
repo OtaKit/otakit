@@ -7,8 +7,6 @@ const mocks = vi.hoisted(() => ({
   downloads: new Map<string, number>(),
   // Runs once inside the next download count, to act as a concurrent writer.
   duringCount: null as null | (() => Promise<void>),
-  quantities: vi.fn(),
-  ingest: vi.fn(),
   listOrders: vi.fn(),
   deleteManifests: vi.fn(),
   restoreManifests: vi.fn(),
@@ -26,8 +24,6 @@ vi.mock('@/lib/tinybird/events', () => ({
 vi.mock('@/lib/polar', () => ({
   isPolarConfigured: () => true,
   getPolar: () => ({
-    meters: { quantities: mocks.quantities },
-    events: { ingest: mocks.ingest },
     orders: { list: mocks.listOrders },
   }),
 }));
@@ -39,16 +35,11 @@ vi.mock('@/lib/email', () => ({ sendUsageWarningEmail: mocks.sendUsageWarningEma
 vi.stubEnv('POLAR_PRODUCT_CREDITS_5K', 'product-5k');
 vi.stubEnv('POLAR_PRODUCT_CREDITS_100K', 'product-100k');
 vi.stubEnv('POLAR_PRODUCT_CREDITS_1M', 'product-1m');
-vi.stubEnv('POLAR_METER_DOWNLOADS_ID', 'meter-downloads');
 
 import { db } from '@/lib/db';
 
 import { applyCreditOrder, getCreditPool, syncCreditOrders } from './credits';
-import {
-  getOrganizationUsageSnapshot,
-  refreshOrganizationUsageSnapshot,
-  updateOrganizationOverageEnabled,
-} from './usage';
+import { getOrganizationUsageSnapshot, refreshOrganizationUsageSnapshot } from './usage';
 
 const databaseDescribe = process.env.RUN_DATABASE_TESTS === '1' ? describe : describe.skip;
 
@@ -98,8 +89,6 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     vi.useRealTimers();
     mocks.downloads.clear();
     mocks.duringCount = null;
-    mocks.quantities.mockResolvedValue({ total: 0 });
-    mocks.ingest.mockResolvedValue({ inserted: 1 });
   });
 
   afterEach(() => {
@@ -274,77 +263,25 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     });
   });
 
-  it('reports Pro additional usage without credit-covered downloads and back-dates the month close', async () => {
-    const organizationId = await createOrganization({
-      planKey: 'pro',
-      overageEnabled: true,
-      usagePeriodStart: monthStart(-1),
-    });
-    await applyCreditOrder(
-      polarOrder(organizationId, { productId: 'product-1m', netAmount: 5_000 }),
-    );
-    await db.creditGrant.updateMany({
-      where: { organizationId },
-      data: { createdAt: monthStart(-1) },
-    });
-    setDownloads(monthStart(-1), 1_300_000);
-    setDownloads(monthStart(), 1_200_000);
-    mocks.quantities
-      .mockResolvedValueOnce({ total: 1_000_000 })
-      .mockResolvedValueOnce({ total: 0 });
-
-    const snapshot = await refreshOrganizationUsageSnapshot(organizationId);
-
-    // Last month went 300k over, all covered by the pack: nothing to add to the
-    // 1M already reported. This month 200k over, covered too: the meter gets 1M.
-    expect(mocks.ingest).toHaveBeenCalledTimes(1);
-    const event = mocks.ingest.mock.calls[0][0].events[0];
-    expect(event.metadata.quantity).toBe(1_000_000);
-    expect(event.timestamp).toBeUndefined();
-    expect(snapshot).toMatchObject({ creditsUsed: 200_000, creditsRemaining: 500_000 });
-
-    const organization = await db.organization.findUniqueOrThrow({
-      where: { id: organizationId },
-    });
-    expect(organization.creditsConsumed).toBe(300_000);
-    expect(organization.polarReportedCount).toBe(1_000_000);
-  });
-
-  it('sends the final hours of a closed month to Polar, dated inside that month', async () => {
-    const organizationId = await createOrganization({
-      planKey: 'pro',
-      overageEnabled: true,
-      usagePeriodStart: monthStart(-1),
-      polarReportedCount: 1_100_000,
-    });
-    setDownloads(monthStart(-1), 1_150_000);
-    mocks.quantities
-      .mockResolvedValueOnce({ total: 1_100_000 })
-      .mockResolvedValueOnce({ total: 0 });
-
-    await refreshOrganizationUsageSnapshot(organizationId);
-
-    const event = mocks.ingest.mock.calls[0][0].events[0];
-    expect(event.metadata.quantity).toBe(50_000);
-    expect(event.timestamp).toEqual(new Date(monthStart().getTime() - 1000));
-  });
-
-  it('does not report Pro usage to Polar while additional usage is off', async () => {
+  it('pauses Pro at its allowance like the other plans, until a 1M pack lands', async () => {
     const organizationId = await createOrganization({ planKey: 'pro' });
     setDownloads(monthStart(), 1_050_000);
 
     expect(await refreshOrganizationUsageSnapshot(organizationId)).toMatchObject({
       usageBlocked: true,
+      limit: 1_000_000,
+      effectiveLimit: 1_000_000,
     });
-    expect(mocks.quantities).not.toHaveBeenCalled();
-    expect(mocks.ingest).not.toHaveBeenCalled();
 
-    // Turning it on unblocks at once; the next hourly check reports the usage.
-    expect(await updateOrganizationOverageEnabled(organizationId, true)).toMatchObject({
+    await applyCreditOrder(
+      polarOrder(organizationId, { productId: 'product-1m', netAmount: 5_000 }),
+    );
+    expect(await refreshOrganizationUsageSnapshot(organizationId)).toMatchObject({
       usageBlocked: false,
-      overageEnabled: true,
+      effectiveLimit: 2_000_000,
+      creditsUsed: 50_000,
+      creditsRemaining: 950_000,
     });
-    expect(mocks.ingest).not.toHaveBeenCalled();
   });
 
   it('starts over instead of saving stale numbers when another refresh wins', async () => {
@@ -423,52 +360,6 @@ databaseDescribe('extra download credits (PostgreSQL integration)', () => {
     });
     expect(organization.creditsConsumed).toBe(0);
     expect(organization.usageIncludedLimit).toBe(5_000);
-  });
-
-  it('keeps the additional usage toggle a customer changed during a refresh', async () => {
-    const organizationId = await createOrganization({ planKey: 'pro', overageEnabled: true });
-    setDownloads(monthStart(), 1_200_000);
-    mocks.duringCount = async () => {
-      await db.organization.update({
-        where: { id: organizationId },
-        data: { overageEnabled: false },
-      });
-    };
-    await refreshOrganizationUsageSnapshot(organizationId, { syncPolar: false });
-    const organization = await db.organization.findUniqueOrThrow({
-      where: { id: organizationId },
-    });
-    expect(organization.overageEnabled).toBe(false);
-  });
-
-  it('retries a month close when Polar cannot take the final report', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const organizationId = await createOrganization({
-      planKey: 'pro',
-      overageEnabled: true,
-      usagePeriodStart: monthStart(-1),
-      polarReportedCount: 1_100_000,
-    });
-    setDownloads(monthStart(-1), 1_150_000);
-    mocks.quantities.mockResolvedValue({ total: 1_100_000 });
-    mocks.ingest.mockRejectedValueOnce(new Error('polar down'));
-
-    await expect(refreshOrganizationUsageSnapshot(organizationId)).rejects.toThrow(
-      'Polar ingest failed for the month close',
-    );
-    expect(
-      (
-        await db.organization.findUniqueOrThrow({ where: { id: organizationId } })
-      ).usagePeriodStart?.toISOString(),
-    ).toBe(monthStart(-1).toISOString());
-
-    await refreshOrganizationUsageSnapshot(organizationId);
-    expect(mocks.ingest.mock.calls[1][0].events[0].metadata.quantity).toBe(50_000);
-    expect(
-      (
-        await db.organization.findUniqueOrThrow({ where: { id: organizationId } })
-      ).usagePeriodStart?.toISOString(),
-    ).toBe(monthStart().toISOString());
   });
 
   it("applies every customer's lost pack orders in one sync, without a stored customer id", async () => {

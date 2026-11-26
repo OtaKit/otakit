@@ -2698,7 +2698,7 @@ When a busy month uses up your allowance, add a pack of extra update downloads f
 
 - Buying a pack while updates are paused resumes them right away.
 - Credits are used only after the monthly allowance, carry over to later months and never expire.
-- Pro keeps optional additional usage at $50 per extra 1,000,000 downloads; packs you bought are used first.
+- Pro works the same way as the other plans: additional usage billed at the end of the cycle is replaced by 1,000,000-download packs, so there are no usage charges after the fact.
 - The usage check now runs every hour, so warnings and pauses follow your usage more closely.
 
 Docs: Pricing (/#pricing)

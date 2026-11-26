@@ -76,7 +76,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -124,7 +123,6 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
   const [billingLoading, setBillingLoading] = useState(true);
   const [usageData, setUsageData] = useState<UsagePayload | null>(null);
   const [usageLoading, setUsageLoading] = useState(true);
-  const [savingOverage, setSavingOverage] = useState(false);
   const [buyingCredits, setBuyingCredits] = useState(false);
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -444,28 +442,6 @@ export function SettingsDashboard({ initialData }: { initialData: DashboardIniti
     }
   }
 
-  async function toggleOverage(checked: boolean) {
-    if (!canManageTeam) return;
-    setSavingOverage(true);
-    try {
-      const response = await fetch('/api/v1/organization/billing/usage', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ overageEnabled: checked }),
-      });
-      const data = await parseJson<ApiError & Partial<UsagePayload>>(response);
-      if (!response.ok || !data.usage) {
-        throw new Error(data.error ?? 'Failed to update usage settings');
-      }
-      setUsageData({ usage: data.usage, creditPack: data.creditPack ?? null });
-      toast.success(checked ? 'Additional usage enabled' : 'Additional usage disabled');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update usage settings');
-    } finally {
-      setSavingOverage(false);
-    }
-  }
-
   async function buyCredits() {
     const pack = usageData?.creditPack;
     if (!canManageTeam || !pack) return;
@@ -756,21 +732,6 @@ User ID: ${initialData.user.id}`,
                             style={{
                               width: `${Math.min(100, Math.max(0, usageData?.usage.percentage ?? 0))}%`,
                             }}
-                          />
-                        </div>
-                      ) : null}
-                      {billingData?.billing.planKey === 'pro' ? (
-                        <div className="mt-3 flex items-center justify-between">
-                          <div>
-                            <div className="text-sm">Enable additional usage</div>
-                            <div className="text-xs text-muted-foreground">
-                              Continue delivering updates after included monthly usage is exhausted.
-                            </div>
-                          </div>
-                          <Switch
-                            checked={usageData?.usage.overageEnabled ?? false}
-                            onCheckedChange={(checked) => void toggleOverage(checked)}
-                            disabled={!canManageTeam || savingOverage}
                           />
                         </div>
                       ) : null}
