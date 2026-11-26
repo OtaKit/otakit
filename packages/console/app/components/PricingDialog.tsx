@@ -55,12 +55,18 @@ export function PricingDialog({
   canManageBilling,
   initialBillingData,
   onBillingDataChange,
+  creditPack = null,
+  organizationId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   canManageBilling: boolean;
   initialBillingData?: PricingDialogBillingData | null;
   onBillingDataChange?: (billingData: PricingDialogBillingData) => void;
+  // The pack the server says this workspace can buy; without it the extra
+  // downloads row is informational only.
+  creditPack?: CreditPack | null;
+  organizationId?: string;
 }) {
   const [billingData, setBillingData] = useState<PricingDialogBillingData | null>(
     initialBillingData ?? null,
@@ -165,7 +171,7 @@ export function PricingDialog({
     if (!canManageBilling) return;
     setBuyingCredits(true);
     try {
-      await startCreditCheckout({ pack: pack.key });
+      await startCreditCheckout({ pack: pack.key, organizationId });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to start checkout');
       setBuyingCredits(false);
@@ -336,7 +342,7 @@ export function PricingDialog({
           </div>
 
           <ExtraDownloadsRow
-            currentPlan={billingData ? currentPlan : null}
+            purchasablePack={creditPack}
             canBuy={canManageBilling}
             buying={buyingCredits}
             onBuy={(pack) => void handleBuyCredits(pack)}
@@ -373,12 +379,12 @@ const EXTRA_DOWNLOAD_CELLS: Array<{
 // The "table row" under the plan cards: each plan's extra download pack, with
 // the buy action on the workspace's own plan.
 function ExtraDownloadsRow({
-  currentPlan,
+  purchasablePack,
   canBuy,
   buying,
   onBuy,
 }: {
-  currentPlan: PlanKey | null;
+  purchasablePack: CreditPack | null;
   canBuy: boolean;
   buying: boolean;
   onBuy: (pack: CreditPack) => void;
@@ -394,7 +400,7 @@ function ExtraDownloadsRow({
       <div className="grid gap-px bg-border md:grid-cols-2 lg:grid-cols-4">
         {EXTRA_DOWNLOAD_CELLS.map((cell) => {
           const pack = getCreditPackForPlan(cell.planKey);
-          const isCurrent = currentPlan === cell.planKey;
+          const isPurchasable = purchasablePack?.planKey === cell.planKey;
           return (
             <div key={cell.planKey} className="flex flex-col bg-card px-5 py-4">
               <p className="text-xs text-muted-foreground">{cell.name}</p>
@@ -413,7 +419,7 @@ function ExtraDownloadsRow({
                 )}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{cell.note}</p>
-              {pack && isCurrent && canBuy ? (
+              {pack && isPurchasable && canBuy ? (
                 <Button
                   size="sm"
                   variant="outline"

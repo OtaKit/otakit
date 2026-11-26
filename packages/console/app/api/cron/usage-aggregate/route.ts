@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runUsageAggregationCron } from '@/lib/billing/usage';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 function getBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

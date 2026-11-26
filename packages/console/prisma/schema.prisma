@@ -314,6 +314,9 @@ model Organization {
   usagePeriodStart    DateTime?
   usageCalculatedAt   DateTime?
   downloadsCount      Int                     @default(0)
+  // Plan allowance at the last refresh of the tracked month; the month close
+  // uses it, so a plan change right after midnight is not applied backwards.
+  usageIncludedLimit  Int?
   usageBlocked        Boolean                 @default(false)
   overageEnabled      Boolean                 @default(false)
   warningSent         UsageWarningSent        @default(none)

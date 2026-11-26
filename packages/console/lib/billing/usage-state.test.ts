@@ -92,7 +92,12 @@ describe('computeUsageState', () => {
       overageEnabled: false,
     };
     expect(state({ ...base, downloads: 1_099_999 }).usageBlocked).toBe(false);
-    expect(state({ ...base, downloads: 1_100_000 }).usageBlocked).toBe(true);
+    expect(state({ ...base, downloads: 1_100_000 })).toMatchObject({
+      usageBlocked: true,
+      effectiveLimit: 1_100_000,
+      // 100% means paused, so the warning email can say so.
+      percentage: 100,
+    });
   });
 
   it('clamps negative or invalid inputs', () => {

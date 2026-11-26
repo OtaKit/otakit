@@ -1169,6 +1169,8 @@ User ID: ${initialData.user.id}`,
         onOpenChange={setPricingDialogOpen}
         canManageBilling={canManageTeam}
         initialBillingData={pricingDialogBillingData}
+        creditPack={usageData?.creditPack ?? null}
+        organizationId={initialData.activeOrganization.id}
         onBillingDataChange={(nextBillingData) => {
           setBillingData((current) => {
             if (!current) {

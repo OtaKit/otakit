@@ -21,7 +21,8 @@ export type UsageStateInput = {
 export type UsageState = {
   creditsUsed: number;
   creditsRemaining: number;
-  // Included downloads plus the credits available this month.
+  // Where updates pause with additional usage off: included downloads, plus
+  // overage already reported to Polar, plus the credits available this month.
   effectiveLimit: number;
   percentage: number;
   usageBlocked: boolean;
@@ -41,15 +42,14 @@ export function computeUsageState(input: UsageStateInput): UsageState {
 
   const overflow = Math.max(0, downloads - included);
   const creditsUsed = Math.min(Math.max(0, overflow - paidOverage), available);
-  const effectiveLimit = Math.min(Number.MAX_SAFE_INTEGER, included + available);
-  const blockAt = Math.min(Number.MAX_SAFE_INTEGER, included + paidOverage + available);
+  const effectiveLimit = Math.min(Number.MAX_SAFE_INTEGER, included + paidOverage + available);
 
   return {
     creditsUsed,
     creditsRemaining: available - creditsUsed,
     effectiveLimit,
     percentage: effectiveLimit > 0 ? Math.round((downloads / effectiveLimit) * 100) : 0,
-    usageBlocked: input.enforceLimits && !input.overageEnabled && downloads >= blockAt,
+    usageBlocked: input.enforceLimits && !input.overageEnabled && downloads >= effectiveLimit,
     polarTarget: downloads - creditsUsed,
   };
 }

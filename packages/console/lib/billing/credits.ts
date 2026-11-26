@@ -210,13 +210,16 @@ export async function applyCreditOrder(order: Order): Promise<CreditOrderResult 
 }
 
 /**
- * Re-reads the organization's credit pack orders from Polar and applies any
- * that are missing or newly refunded. Covers late or lost webhooks. Returns
- * the checkouts whose orders are paid, so a caller can confirm one purchase.
+ * Re-reads credit pack orders from Polar and applies any that are missing or
+ * newly refunded, covering late or lost webhooks. With an organization id only
+ * that customer's orders are read (the settings page after a checkout);
+ * without one, every customer's (the hourly usage run). Returns the checkouts
+ * whose orders are applied, so a caller can confirm one purchase.
  */
-export async function syncCreditOrders(
-  organizationId: string,
-): Promise<{ changed: boolean; paidCheckoutIds: Set<string> }> {
+export async function syncCreditOrders(organizationId?: string): Promise<{
+  changed: boolean;
+  paidCheckoutIds: Set<string>;
+}> {
   const paidCheckoutIds = new Set<string>();
   if (!isPolarConfigured()) return { changed: false, paidCheckoutIds };
   const productIds = configuredCreditPackProductIds();
@@ -224,12 +227,29 @@ export async function syncCreditOrders(
 
   let changed = false;
   const pages = await getPolar().orders.list({
-    externalCustomerId: getExternalCustomerId(organizationId),
+    ...(organizationId ? { externalCustomerId: getExternalCustomerId(organizationId) } : {}),
     productId: productIds,
     limit: 100,
   });
   for await (const page of pages) {
-    for (const order of page.result.items) {
+    const orders = page.result.items;
+    // Skip orders that are already applied with their current refund, so the
+    // hourly full read costs one query per page, not several per order.
+    const applied = new Map(
+      (
+        await db.creditGrant.findMany({
+          where: { polarOrderId: { in: orders.map((order) => order.id) } },
+          select: { polarOrderId: true, refundedCents: true },
+        })
+      ).map((grant) => [grant.polarOrderId, grant.refundedCents]),
+    );
+
+    for (const order of orders) {
+      const refundedCents = applied.get(order.id);
+      if (refundedCents !== undefined && Math.max(0, order.refundedAmount) <= refundedCents) {
+        if (order.checkoutId) paidCheckoutIds.add(order.checkoutId);
+        continue;
+      }
       const result = await applyCreditOrder(order);
       if (result?.changed) changed = true;
       if (result && order.checkoutId) paidCheckoutIds.add(order.checkoutId);
